@@ -133,6 +133,7 @@ LecS65AddDevice(
     devExt = (PLECS65_DEVICE_EXTENSION)deviceObject->DeviceExtension;
     RtlZeroMemory(devExt, sizeof(*devExt));
     KeInitializeMutex(&devExt->DallasMutex, 0);
+    KeInitializeMutex(&devExt->TransferMutex, 0);
     KeInitializeSpinLock(&devExt->TraceLock);
 
     devExt->Self = deviceObject;
