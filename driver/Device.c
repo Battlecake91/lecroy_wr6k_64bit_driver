@@ -53,6 +53,28 @@ LecForwardAndWait(
 }
 
 VOID
+LecReleaseLegacyEvents(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    PKEVENT* events[] = {
+        &DevExt->LegacyEvent0,
+        &DevExt->LegacyEvent1,
+        &DevExt->LegacyEvent2,
+        &DevExt->LegacyEvent3,
+        &DevExt->LegacyEvent4
+    };
+    ULONG i;
+
+    for (i = 0; i < RTL_NUMBER_OF(events); ++i) {
+        if (*events[i] != NULL) {
+            ObDereferenceObject(*events[i]);
+            *events[i] = NULL;
+        }
+    }
+}
+
+VOID
 LecUnmapBars(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
     )
@@ -331,6 +353,7 @@ LecS65Pnp(
     case IRP_MN_STOP_DEVICE:
         devExt->Started = FALSE;
         LecDisableInterfaces(devExt);
+        LecReleaseLegacyEvents(devExt);
         LecUnmapBars(devExt);
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(devExt->LowerDeviceObject, Irp);
@@ -338,6 +361,7 @@ LecS65Pnp(
     case IRP_MN_SURPRISE_REMOVAL:
         devExt->Started = FALSE;
         LecDisableInterfaces(devExt);
+        LecReleaseLegacyEvents(devExt);
         LecUnmapBars(devExt);
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(devExt->LowerDeviceObject, Irp);
@@ -347,6 +371,7 @@ LecS65Pnp(
         devExt->Started = FALSE;
 
         LecDisableInterfaces(devExt);
+        LecReleaseLegacyEvents(devExt);
         LecUnmapBars(devExt);
 
         IoSkipCurrentIrpStackLocation(Irp);
