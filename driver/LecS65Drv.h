@@ -23,6 +23,10 @@
 #define LECS65_BAR1_TX_COUNT   0x408
 #define LECS65_BAR1_TX_DATA    0x420
 #define LECS65_BAR1_RX_DATA    0x600
+#define LECS65_BAR1_JTAG_NUM   0x020
+#define LECS65_BAR1_JTAG_DATA  0x024
+#define LECS65_BAR1_JTAG_IN    0x028
+#define LECS65_TRANSFER_TIMEOUT_POLLS 5000
 
 /* Recovered legacy IOCTLs used by the first bring-up build. */
 #define LECS65_IOCTL_CFDC2110          ((ULONG)0xCFDC2110)
