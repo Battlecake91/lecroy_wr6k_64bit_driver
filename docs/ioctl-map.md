@@ -6,86 +6,136 @@ All values below are **confirmed as dispatch values** in the analysed binary.
 
 ## Recovered dispatch table
 
-| IOCTL | Device type | Function | Method | Handler RVA/VA | Recovered name / status |
+| IOCTL | Device type | Function | Method | Handler VA | Recovered behaviour |
 |---:|---:|---:|---|---:|---|
-| `0x00222C00` | `0x22` | `0xB00` | BUFFERED | `0x1286E` | unknown |
-| `0x00222C04` | `0x22` | `0xB01` | BUFFERED | `0x128BC` | unknown |
-| `0x00223000` | `0x22` | `0xC00` | BUFFERED | `0x12ADA` | unknown |
-| `0x00223004` | `0x22` | `0xC01` | BUFFERED | `0x12A5E` | unknown |
-| `0x0022303C` | `0x22` | `0xC0F` | BUFFERED | `0x12CAC` | unknown |
-| `0x00223040` | `0x22` | `0xC10` | BUFFERED | `0x12C18` | unknown |
-| `0x00223044` | `0x22` | `0xC11` | BUFFERED | `0x12D24` | unknown |
+| `0x00222C00` | `0x22` | `0xB00` | BUFFERED | `0x1286E` | input >=4; optional fifth byte |
+| `0x00222C04` | `0x22` | `0xB01` | BUFFERED | `0x128BC` | input exactly 1 byte |
+| `0x00223000` | `0x22` | `0xC00` | BUFFERED | `0x12ADA` | input exactly `0x108` bytes |
+| `0x00223004` | `0x22` | `0xC01` | BUFFERED | `0x12A5E` | variable output / size query |
+| `0x0022303C` | `0x22` | `0xC0F` | BUFFERED | `0x12CAC` | input exactly `0x10A` bytes |
+| `0x00223040` | `0x22` | `0xC10` | BUFFERED | `0x12C18` | variable output / size query |
+| `0x00223044` | `0x22` | `0xC11` | BUFFERED | `0x12D24` | output 4 bytes; direct register read |
 | `0x00223080` | `0x22` | `0xC20` | BUFFERED | `0x130EA` | **IOCTL_GET_DALLAS_ID** |
 | `0x00223084` | `0x22` | `0xC21` | BUFFERED | `0x131B5` | **IOCTL_READ_DALLAS_MEMORY** |
 | `0x00223088` | `0x22` | `0xC22` | BUFFERED | `0x11F54` | **IOCTL_WRITE_DALLAS_MEMORY** |
-| `0x00223100` | `0x22` | `0xC40` | BUFFERED | `0x12988` | unknown |
-| `0xCFDC2110` | `0xCFDC` | `0x844` | BUFFERED | `0x13AE2` | unknown |
-| `0xCFDC2124` | `0xCFDC` | `0x849` | BUFFERED | `0x11BDC` | unknown |
-| `0xCFDC2128` | `0xCFDC` | `0x84A` | BUFFERED | `0x11C36` | unknown |
-| `0xCFDC212C` | `0xCFDC` | `0x84B` | BUFFERED | `0x11C5E` | unknown |
+| `0x00223100` | `0x22` | `0xC40` | BUFFERED | `0x12988` | input 12 bytes; event/control path |
+| `0xCFDC2110` | `0xCFDC` | `0x844` | BUFFERED | `0x13AE2` | complex transfer path |
+| `0xCFDC2124` | `0xCFDC` | `0x849` | BUFFERED | `0x11BDC` | input 12 bytes, result DWORD |
+| `0xCFDC2128` | `0xCFDC` | `0x84A` | BUFFERED | `0x11C36` | input 4 bytes |
+| `0xCFDC212C` | `0xCFDC` | `0x84B` | BUFFERED | `0x11C5E` | always `STATUS_NOT_IMPLEMENTED` |
 | `0xCFDC2130` | `0xCFDC` | `0x84C` | BUFFERED | `0x11CFF` | **IOCTL_ALADDINDRV_PROG_SERTRIG_FPGA** |
-| `0xCFDC2138` | `0xCFDC` | `0x84E` | BUFFERED | `0x141DC` | unknown |
-| `0xCFDC2180` | `0xCFDC` | `0x860` | BUFFERED | `0x128F8` | unknown |
-| `0xCFDC2184` | `0xCFDC` | `0x861` | BUFFERED | inline | completes success with zero information |
-| `0xCFDC218C` | `0xCFDC` | `0x863` | BUFFERED | `0x12B34` | unknown |
-| `0xCFDC2190` | `0xCFDC` | `0x864` | BUFFERED | `0x13A40` | unknown |
-| `0xCFDC2194` | `0xCFDC` | `0x865` | BUFFERED | `0x12BAE` | unknown |
-| `0xCFDC21C0` | `0xCFDC` | `0x870` | BUFFERED | `0x13954` | unknown |
-| `0xCFDC21C4` | `0xCFDC` | `0x871` | BUFFERED | `0x1272A` | unknown |
-| `0xCFDC21C8` | `0xCFDC` | `0x872` | BUFFERED | `0x12832` | unknown |
-| `0xCFDC2400` | `0xCFDC` | `0x900` | BUFFERED | `0x13A2E` | unknown |
-| `0xCFDD219F` | `0xCFDD` | `0x867` | NEITHER | `0x141F8` | unknown; high-priority x64 compatibility risk |
+| `0xCFDC2138` | `0xCFDC` | `0x84E` | BUFFERED | `0x141DC` | structured transfer helper |
+| `0xCFDC2180` | `0xCFDC` | `0x860` | BUFFERED | `0x128F8` | input exactly 4 bytes; event-related |
+| `0xCFDC2184` | `0xCFDC` | `0x861` | BUFFERED | inline | success, zero information |
+| `0xCFDC218C` | `0xCFDC` | `0x863` | BUFFERED | `0x12B34` | input exactly 4 bytes; event-related |
+| `0xCFDC2190` | `0xCFDC` | `0x864` | BUFFERED | `0x13A40` | input exactly 29 bytes |
+| `0xCFDC2194` | `0xCFDC` | `0x865` | BUFFERED | `0x12BAE` | output exactly 29 bytes |
+| `0xCFDC21C0` | `0xCFDC` | `0x870` | BUFFERED | `0x13954` | **generic register read** |
+| `0xCFDC21C4` | `0xCFDC` | `0x871` | BUFFERED | `0x1272A` | **generic register write** |
+| `0xCFDC21C8` | `0xCFDC` | `0x872` | BUFFERED | `0x12832` | **get driver build: 1002** |
+| `0xCFDC2400` | `0xCFDC` | `0x900` | BUFFERED | `0x13A2E` | forwards to internal control helper |
+| `0xCFDD219F` | `0xCFDD` | `0x867` | NEITHER | `0x141F8` | direct user-pointer transfer path |
 
-The access bits decode to `FILE_ANY_ACCESS` for all entries in this table.
+The access bits decode to `FILE_ANY_ACCESS` for all entries.
 
-## Known handler details
+## Generic register read: 0xCFDC21C0
+
+This request is now identified with high confidence.
+
+Accepted forms:
+
+```c
+// 4-byte legacy form: BAR0 is implied
+struct {
+    uint32_t offset;
+};
+
+// 5-byte packed extended form
+struct {
+    uint8_t  bar;       // 0..2
+    uint32_t offset;
+};
+```
+
+The driver returns one 32-bit value and uses `READ_REGISTER_ULONG`.
+
+## Generic register write: 0xCFDC21C4
+
+Accepted forms:
+
+```c
+// 8-byte legacy form: BAR0 is implied
+struct {
+    uint32_t offset;
+    uint32_t value;
+};
+
+// 9-byte packed extended form
+struct {
+    uint8_t  bar;       // 0..2
+    uint32_t offset;
+    uint32_t value;
+};
+```
+
+The driver checks DWORD alignment and writes through `WRITE_REGISTER_ULONG`.
+
+BAR0 offset `0x84` is the `INTEN` register and is special-cased so the written value is cached.
+
+## Driver build query: 0xCFDC21C8
+
+Requires a four-byte output buffer and returns decimal `1002` (`0x3EA`).
+
+That matches the private-build component in file version `6.1.1.1002`.
+
+## Dallas handlers
 
 ### 0x00223080: IOCTL_GET_DALLAS_ID
 
-Confirmed behaviour:
-
-- requires a non-null system buffer;
-- checks output length for exactly 8 bytes;
-- returns up to 8 bytes;
-- uses the internal Dallas/1-Wire implementation.
+- non-null system buffer required;
+- output length exactly 8 bytes;
+- 8-byte ID returned on success.
 
 ### 0x00223084: IOCTL_READ_DALLAS_MEMORY
 
-Confirmed behaviour:
-
-- requires a non-null system buffer;
-- uses the IOCTL output length;
-- accepts lengths `1..0x200`;
-- returns the requested byte count on success.
+- non-null system buffer required;
+- output length `1..0x200`;
+- requested byte count returned on success.
 
 ### 0x00223088: IOCTL_WRITE_DALLAS_MEMORY
 
-Confirmed behaviour:
+- non-null system buffer required;
+- input length `1..0x200`;
+- chunks of at most `0x20` bytes;
+- read-back verification using `RtlCompareMemory`;
+- retry logic is present.
 
-- requires a non-null system buffer;
-- uses the IOCTL input length;
-- accepts lengths `1..0x200`;
-- writes in chunks of at most `0x20` bytes;
-- allocates a read-back buffer;
-- reads the data back and verifies it using `RtlCompareMemory`;
-- contains a retry path.
+## Serial-trigger FPGA handler: 0xCFDC2130
 
-### 0xCFDC2130: IOCTL_ALADDINDRV_PROG_SERTRIG_FPGA
+The original diagnostic string identifies this as:
 
-Confirmed from an embedded original diagnostic string.
+```text
+IOCTL_ALADDINDRV_PROG_SERTRIG_FPGA_Handler
+```
 
-The handler validates a system buffer and buffer size, then performs direct register accesses. Exact request structure is still under analysis.
+The handler requires a non-null buffered input and a non-zero input length, then performs direct register I/O while consuming the input byte stream.
 
-## Important caveat
+## METHOD_NEITHER: 0xCFDD219F
 
-The labels beginning with `IOCTL_ALADDINDRV_...` indicate that part of the interface may derive from an Aladdin/DriverWorks helper layer rather than being LeCroy-specific application ABI. The numeric values are nonetheless real dispatch values in this driver and must be preserved until callers are identified.
+This path passes `Type3InputBuffer` directly to an internal handler and also uses `Irp->UserBuffer`.
 
-## Next analysis targets
+Recovered input parsing starts with:
 
-1. Identify each unknown handler by behaviour and buffer contract.
-2. Recover device-interface GUID(s) passed to `IoRegisterDeviceInterface`.
-3. Recover actual device / DOS-link names.
-4. Recover PCI hardware IDs from the corresponding INF or installed system if available.
-5. Map BAR resource assignment in `IRP_MN_START_DEVICE`.
-6. Recover register offsets for the embedded register-name table.
-7. Identify all pointer-sized structures and the `METHOD_NEITHER` request before attempting an x64 ABI implementation.
+```text
+BYTE count
+BYTE values[count]
+DWORD field1
+DWORD field2
+```
+
+The derived transfer length is bounded to `0x00FFFFFF`. This path is the primary x86/x64/WOW64 compatibility risk and is documented in detail in [abi-analysis.md](abi-analysis.md).
+
+## Related documentation
+
+- [ABI and x64 compatibility analysis](abi-analysis.md)
+- [Hardware register map](hardware-register-map.md)
