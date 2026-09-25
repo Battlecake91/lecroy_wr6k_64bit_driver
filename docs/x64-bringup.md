@@ -242,3 +242,39 @@ start XStream
 ```
 
 This is safer and much faster than attempting to clone the entire 2008 driver before the first hardware test.
+
+
+## IOCTL trace capture
+
+The prototype driver keeps a fixed-size in-kernel ring buffer containing the
+newest 128 non-debug DeviceIoControl requests. This is intended to capture the
+actual protocol emitted by the original 32-bit XStream stack without requiring
+a kernel debugger.
+
+Each trace entry records:
+
+- sequence number and boot-relative timestamp;
+- caller PID and WOW64 state;
+- IOCTL value and transfer method;
+- input/output buffer lengths;
+- returned information length and NTSTATUS;
+- up to the first 16 bytes of METHOD_BUFFERED input.
+
+Private prototype diagnostic IOCTLs are intentionally excluded from the trace.
+
+Typical capture workflow:
+
+```powershell
+.\lecdiag.exe trace-clear
+# Start XStreamDSO and reproduce the hardware-detection failure.
+.\lecdiag.exe trace
+```
+
+Known Dallas/1-Wire controls are named by `lecdiag`:
+
+- `0x00223080` GET_DALLAS_ID
+- `0x00223084` READ_DALLAS_MEMORY
+- `0x00223088` WRITE_DALLAS_MEMORY
+
+The trace ring is observational only. It does not implement or emulate the
+captured controls.
