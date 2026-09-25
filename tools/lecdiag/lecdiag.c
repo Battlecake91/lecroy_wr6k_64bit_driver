@@ -21,7 +21,7 @@
     ((DWORD)CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS))
 
 #define LECS65_TRACE_CAPACITY 128
-#define LECS65_TRACE_PREVIEW_BYTES 16
+#define LECS65_TRACE_PREVIEW_BYTES 96
 
 #pragma pack(push, 1)
 typedef struct LECS65_REG_READ_EXT {
@@ -79,6 +79,11 @@ typedef struct LECS65_DEBUG_TRACE {
 static const char* ioctl_name(DWORD code)
 {
     switch (code) {
+    case 0x00222C00: return "DELAY_MS";
+    case 0x00222C04: return "SET_FLAG_BYTE";
+    case 0x00223004: return "QUERY_BUFFER_A";
+    case 0x00223040: return "QUERY_BUFFER_B";
+    case 0x00223100: return "SET_THREE_EVENTS";
     case 0x00223080: return "GET_DALLAS_ID";
     case 0x00223084: return "READ_DALLAS_MEMORY";
     case 0x00223088: return "WRITE_DALLAS_MEMORY";
