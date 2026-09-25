@@ -750,3 +750,42 @@ carry the response pointer and length.
 This means the normal `85FB 40 00` response path is now structurally complete.
 The next remaining transport function is `0x1619A`, which performs the
 combined board request/response exchange used by the fetch operation.
+
+
+## Combined request/response transport 0x1619A
+
+Ghidra decompilation of `0x1619A` confirms the synchronous request/response
+transaction used by the normal `85FB 40 00` fetch path.
+
+The function:
+
+1. clears the caller's returned-length field;
+2. uses the transport object at `this + 0x31`;
+3. resets the event object at that same transport-object address;
+4. calls `0x160A8(this, 1)` to arm/enable the receive side;
+5. transmits the request with `0x176E6(..., timeout_scale=1)`;
+6. waits on the transport event with a relative timeout derived from
+   `this + 0x196` seconds;
+7. immediately after constructing the timeout, copies the default/reload value
+   from `this + 0x19A` into `this + 0x196`;
+8. if the event wait succeeds, calls `0x17578` to copy the received payload
+   into the caller buffer and return its actual length.
+
+Thus the legacy response fetch is event-driven rather than pure polling:
+
+```text
+arm RX
+-> transmit FB 85 40 00
+-> wait for transport event
+-> copy RX payload
+```
+
+This also explains why a polling-only x64 approximation is insufficient for
+full behavioural compatibility: the original driver couples the board transport
+to an event signalled by its interrupt/DPC path.
+
+The next transport functions to recover are:
+
+- `0x160A8`: receive-arm / interrupt-enable helper;
+- `0x17578`: RX-buffer extraction helper;
+- the ISR/DPC path that signals the transport event at `this + 0x31`.
