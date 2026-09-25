@@ -651,3 +651,102 @@ Other selectors return the same status-response format with status `2`.
 The next critical function for the normal fetch path is `0x167F4`, which
 decides whether the response comes from the locally generated buffer or from
 the board transport.
+
+
+## CFDC2110 normal 85FB fetch path fully reconstructed
+
+Ghidra decompilation of `0x167F4` and `0x15A08` closes the normal
+A5FB -> board/local response -> 85FB path.
+
+### Status response helper 0x15A08
+
+`0x15A08(record, output, status)` writes the six-byte direct status response:
+
+```text
+DWORD 0
+WORD  status
+```
+
+This is the exact format used by the A5FB family dispatcher.
+
+### Response selector helper 0x167F4
+
+The function uses two independent state bytes:
+
+```text
+this + 0x23  local response buffer available
+this + 0x24  board response pending
+```
+
+and the shared response storage:
+
+```text
+this + 0x1D  response-buffer pointer
+this + 0x21  response-buffer byte length
+```
+
+#### No board response pending (this+0x24 == 0)
+
+If a local response is marked ready (this+0x23 != 0), the helper simply returns
+the existing response pointer and length, then clears the local-ready flag.
+
+If no local response is ready, it allocates and returns the default eight-byte
+response:
+
+```text
+DWORD 0
+WORD  2
+WORD  0x20
+```
+
+and clears both state flags accordingly.
+
+#### Board response pending (this+0x24 != 0)
+
+The caller-provided requested output length is used to allocate a fresh response
+buffer, pre-filled with `0xFF`.
+
+The helper then issues the fixed four-byte board fetch request:
+
+```text
+FB 85 40 00
+```
+
+through `0x1619A`.
+
+The payload destination is:
+
+```text
+response_buffer + 6
+```
+
+and the maximum board payload length is:
+
+```text
+requested_output_length - 6
+```
+
+On successful board transport:
+
+```text
+DWORD +0 = transport return/status
+WORD  +4 = returned payload length
+BYTE  +6 = board payload
+```
+
+On transport failure the response is converted to:
+
+```text
+DWORD +0 = non-zero transport error
+WORD  +4 = 2
+WORD  +6 = 0x20
+```
+
+After either path, both the local-ready and board-pending flags are cleared.
+
+The helper returns success as a boolean-style low byte, while output parameters
+carry the response pointer and length.
+
+This means the normal `85FB 40 00` response path is now structurally complete.
+The next remaining transport function is `0x1619A`, which performs the
+combined board request/response exchange used by the fetch operation.
