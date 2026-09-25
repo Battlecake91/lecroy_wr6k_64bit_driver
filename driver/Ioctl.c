@@ -254,6 +254,31 @@ LecS65DeviceControl(
         status = STATUS_SUCCESS;
         break;
 
+    case LECS65_IOCTL_DEBUG_GET_BARS:
+        if (systemBuffer == NULL ||
+            outputLength < sizeof(LECS65_DEBUG_BARS)) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+        else {
+            PLECS65_DEBUG_BARS bars = (PLECS65_DEBUG_BARS)systemBuffer;
+            ULONG i;
+
+            RtlZeroMemory(bars, sizeof(*bars));
+            bars->Version = 1;
+            bars->Count = LECS65_BAR_COUNT;
+
+            for (i = 0; i < LECS65_BAR_COUNT; ++i) {
+                bars->Entry[i].PhysicalAddress =
+                    (ULONGLONG)devExt->BarPhysical[i].QuadPart;
+                bars->Entry[i].Length = devExt->BarLength[i];
+            }
+
+            information = sizeof(*bars);
+            status = STATUS_SUCCESS;
+        }
+        break;
+
     case LECS65_IOCTL_DEBUG_CLEAR_STATS:
         InterlockedExchange64(&devExt->CreateCount, 0);
         InterlockedExchange64(&devExt->CloseCount, 0);
