@@ -19,6 +19,7 @@
 #define LECS65_ONEWIRE_POLL_LIMIT 100000
 
 /* Recovered legacy IOCTLs used by the first bring-up build. */
+#define LECS65_IOCTL_CFDC2110          ((ULONG)0xCFDC2110)
 #define LECS65_IOCTL_CFDC212C          ((ULONG)0xCFDC212C)
 #define LECS65_IOCTL_CFDC2184          ((ULONG)0xCFDC2184)
 #define LECS65_IOCTL_DELAY_MILLISECONDS  ((ULONG)0x00222C00)
