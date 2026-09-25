@@ -9,6 +9,7 @@
 #define LECS65_DOS_DEVICE_NAME  L"\\DosDevices\\ALADDINAcqDriver0"
 
 #define LECS65_BAR_COUNT 3
+#define LECS65_REGISTER_BAR_LENGTH 0x200
 #define LECS65_INTERFACE_COUNT 4
 
 /* Recovered legacy IOCTLs used by the first bring-up build. */
@@ -73,6 +74,7 @@ typedef struct _LECS65_DEBUG_BARS {
     ULONG Version;
     ULONG Count;
     LECS65_DEBUG_BAR_ENTRY Entry[LECS65_BAR_COUNT];
+    LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS, *PLECS65_DEBUG_BARS;
 
 typedef struct _LECS65_DEVICE_EXTENSION {
@@ -88,6 +90,10 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     PUCHAR Bar[LECS65_BAR_COUNT];
     ULONG BarLength[LECS65_BAR_COUNT];
     PHYSICAL_ADDRESS BarPhysical[LECS65_BAR_COUNT];
+
+    PUCHAR BulkMmio;
+    ULONG BulkMmioLength;
+    PHYSICAL_ADDRESS BulkMmioPhysical;
 
     UNICODE_STRING InterfaceLink[LECS65_INTERFACE_COUNT];
     BOOLEAN InterfaceRegistered[LECS65_INTERFACE_COUNT];
