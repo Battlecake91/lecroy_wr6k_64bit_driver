@@ -28,6 +28,12 @@ CopyFiles=LecS65_CopyFiles
 [LecS65_CopyFiles]
 LecS65AcqDrv.sys
 
+[SourceDisksNames]
+1=%DiskName%,,,
+
+[SourceDisksFiles]
+LecS65AcqDrv.sys=1
+
 [DestinationDirs]
 LecS65_CopyFiles=12
 
@@ -48,3 +54,4 @@ ManufacturerName="LeCroy"
 DeviceDesc="LeCroy Acquisition Device (S65)"
 ServiceDesc="LecS65Driver"
 ClassName="Data Acquisition Devices"
+DiskName="LecS65 x64 Driver Disk"
