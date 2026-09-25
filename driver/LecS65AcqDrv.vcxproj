@@ -80,6 +80,7 @@
       <Driver>Driver</Driver>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateManifest>false</GenerateManifest>
     </Link>
   </ItemDefinitionGroup>
 
