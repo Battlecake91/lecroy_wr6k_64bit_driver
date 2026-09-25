@@ -11,6 +11,8 @@
 #define LECS65_BAR_COUNT 3
 #define LECS65_REGISTER_BAR_LENGTH 0x200
 #define LECS65_INTERFACE_COUNT 4
+#define LECS65_TRACE_CAPACITY 128
+#define LECS65_TRACE_PREVIEW_BYTES 16
 
 /* Recovered legacy IOCTLs used by the first bring-up build. */
 #define LECS65_IOCTL_CFDC212C          ((ULONG)0xCFDC212C)
@@ -28,6 +30,10 @@
     CTL_CODE(0x8000, 0x801, METHOD_BUFFERED, FILE_WRITE_ACCESS)
 #define LECS65_IOCTL_DEBUG_GET_BARS \
     CTL_CODE(0x8000, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS)
+#define LECS65_IOCTL_DEBUG_GET_TRACE \
+    CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS)
+#define LECS65_IOCTL_DEBUG_CLEAR_TRACE \
+    CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS)
 
 #pragma pack(push, 1)
 
@@ -77,6 +83,29 @@ typedef struct _LECS65_DEBUG_BARS {
     LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS, *PLECS65_DEBUG_BARS;
 
+typedef struct _LECS65_DEBUG_TRACE_ENTRY {
+    ULONGLONG Sequence;
+    ULONGLONG Time100ns;
+    ULONGLONG ProcessId;
+    ULONGLONG Information;
+    ULONG Ioctl;
+    ULONG InputLength;
+    ULONG OutputLength;
+    ULONG Status;
+    ULONG InputPreviewLength;
+    UCHAR Method;
+    UCHAR Wow64;
+    USHORT Reserved;
+    UCHAR InputPreview[LECS65_TRACE_PREVIEW_BYTES];
+} LECS65_DEBUG_TRACE_ENTRY, *PLECS65_DEBUG_TRACE_ENTRY;
+
+typedef struct _LECS65_DEBUG_TRACE {
+    ULONG Version;
+    ULONG Count;
+    ULONGLONG TotalSeen;
+    LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
+} LECS65_DEBUG_TRACE, *PLECS65_DEBUG_TRACE;
+
 typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT Self;
     PDEVICE_OBJECT PhysicalDeviceObject;
@@ -104,6 +133,12 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     volatile LONG64 IoctlCount;
     volatile LONG64 UnknownIoctlCount;
     volatile LONG LastIoctl;
+
+    KSPIN_LOCK TraceLock;
+    ULONGLONG TraceNextSequence;
+    ULONG TraceWriteIndex;
+    ULONG TraceCount;
+    LECS65_DEBUG_TRACE_ENTRY Trace[LECS65_TRACE_CAPACITY];
 } LECS65_DEVICE_EXTENSION, *PLECS65_DEVICE_EXTENSION;
 
 extern const GUID g_LecS65InterfaceGuids[LECS65_INTERFACE_COUNT];
