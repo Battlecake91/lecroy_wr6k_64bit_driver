@@ -33,6 +33,8 @@ Documentation:
 - [docs/hardware-register-map.md](docs/hardware-register-map.md)
 - [docs/device-interfaces.md](docs/device-interfaces.md)
 - [docs/legacy-inf-analysis.md](docs/legacy-inf-analysis.md)
+- [docs/reference-system.md](docs/reference-system.md)
+- [docs/user-mode-components.md](docs/user-mode-components.md)
 
 Reusable reconstructed ABI definitions:
 
