@@ -851,3 +851,25 @@ BAR1 + 0x600 + 4*n   -> one 16-bit response word per 32-bit slot
 ```
 
 and confirms that multi-chunk receive completion is interrupt/event driven.
+
+
+## Callback target 0x12EAE identified, semantics still open
+
+The receive-arm helper `0x160A8` registers/passes code location
+`0x12EAE` through the legacy framework object returned by `0x10A88`.
+
+Ghidra shows many cross-references to `0x12EAE`, including from the
+receive-arm helper and several other control/setup routines. The first
+instruction at the target is:
+
+```asm
+CMP dword ptr [ESP + 0x4], 0
+```
+
+This proves that `0x12EAE` is callable code taking at least one stack
+argument, but the currently captured first instruction is not sufficient to
+determine whether it is an ISR/DPC callback, a framework dispatch thunk, or
+another event/interrupt helper.
+
+The full function body beginning at `0x12EAE` must be decompiled before its
+role is assigned.
