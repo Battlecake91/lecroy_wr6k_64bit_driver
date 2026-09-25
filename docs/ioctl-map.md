@@ -491,3 +491,72 @@ Observed routing:
 The family-2 register-wrapper identity at `this + 0x15E` still needs to be
 mapped back to its constructor/register name before it is implemented in the
 x64 driver.
+
+
+## Generic board-message transmitter 0x176E6 confirmed
+
+Ghidra decompilation of `0x176E6` confirms the legacy board-message transmitter.
+
+Inputs:
+
+```text
+param_1 = pointer to 16-bit message words
+param_2 = byte length
+param_3 = timeout scale
+```
+
+The helper rejects odd byte counts. For even lengths it converts the byte count
+to a 16-bit word count and transmits the message in chunks of at most `0x78`
+words.
+
+For each chunk:
+
+1. poll helper `0x17560` until the transport is ready;
+2. if not ready, sleep for `100000` 100-ns units = 10 ms and retry;
+3. allow at most `param_3 * 100` retries, so `param_3` corresponds to an
+   approximately one-second timeout scale;
+4. write each 16-bit source word to a 32-bit-spaced BAR1 TX slot beginning at
+   offset `0x420`;
+5. write the remaining word count through the wrapper object at `this + 0x60`;
+6. write the TX command through the wrapper at `this + 0x10`.
+
+The TX command uses:
+
+```text
+bit 15    start / submit
+bit 14    continuation
+bits 7:0  words in this chunk
+```
+
+For chunks larger than `0x78` words, the command uses `0x4078`; the final
+chunk clears the continuation bit and carries its actual word count.
+
+This confirms that the BAR1 transport reconstruction should preserve the
+legacy 16-bit-word / 32-bit-slot layout and continuation protocol.
+
+## Internal response-buffer builder
+
+Ghidra decompilation of `0x15A88` and `0x15A26` confirms the format and
+lifecycle of a locally generated response.
+
+`0x15A88(status)` creates this eight-byte record:
+
+```text
+DWORD 0x00000000
+WORD  0x0002
+WORD  status
+```
+
+It passes that record to `0x15A26`.
+
+`0x15A26`:
+
+- clears the state byte at `this + 0x24`;
+- frees any previously allocated response buffer at `this + 0x1D`;
+- allocates and copies the new response;
+- stores its byte length at `this + 0x21`;
+- sets the state byte at `this + 0x23` to 1.
+
+Therefore `this + 0x23` is the confirmed "local response buffer available"
+flag. The separate state byte at `this + 0x24` has a different role and must
+not be conflated with the local-response-ready flag.
