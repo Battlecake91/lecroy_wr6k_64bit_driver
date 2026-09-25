@@ -15,13 +15,14 @@ The priority is compatibility with the existing LeCroy user-mode software:
 
 ## Current state
 
-The first two static-analysis passes are complete enough to expose the core shape of the driver:
+The first static-analysis passes now expose most of the driver's outer interface:
 
 - all 27 DeviceControl dispatch values have been recovered;
 - the generic raw register read/write ABI is known;
 - the driver-build query is known;
 - Dallas/1-Wire buffer contracts are known;
 - the named BAR0/BAR1/BAR2 register map has been reconstructed;
+- all four device-interface GUIDs registered by the original driver have been recovered;
 - the legacy `METHOD_NEITHER` transfer path has been identified as the main x64/WOW64 ABI risk.
 
 Documentation:
@@ -30,6 +31,12 @@ Documentation:
 - [docs/ioctl-map.md](docs/ioctl-map.md)
 - [docs/abi-analysis.md](docs/abi-analysis.md)
 - [docs/hardware-register-map.md](docs/hardware-register-map.md)
+- [docs/device-interfaces.md](docs/device-interfaces.md)
+
+Reusable reconstructed ABI definitions:
+
+- [include/LecS65LegacyIoctl.h](include/LecS65LegacyIoctl.h)
+- [include/LecS65LegacyInterfaces.h](include/LecS65LegacyInterfaces.h)
 
 No replacement driver code has been written yet. This is intentional: the externally visible ABI and hardware interface are being reconstructed first.
 
@@ -45,7 +52,7 @@ Size:     64384 bytes
 
 The proprietary reference binary is not stored in this public repository.
 
-## Important current finding
+## Important current findings
 
 The legacy driver exposes generic register access:
 
@@ -55,4 +62,13 @@ The legacy driver exposes generic register access:
 0xCFDC21C8  driver build query -> 1002
 ```
 
-This gives the future x64 driver a very useful incremental bring-up route: BAR mapping and basic hardware access can be validated independently of the acquisition/DMA implementation.
+It also registers four PnP device-interface classes:
+
+```text
+{7AC34BE9-F766-4F15-9E88-854BA5E2146E}
+{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}
+{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}
+{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
+```
+
+Together, those findings give the future x64 driver a useful incremental bring-up route: enumerate the same interfaces, map the PCI BARs, validate raw register access, then move on to Dallas, interrupts and acquisition/DMA.
