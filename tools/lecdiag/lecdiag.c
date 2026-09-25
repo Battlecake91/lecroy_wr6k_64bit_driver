@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LECS65_IOCTL_GET_DRIVER_BUILD ((DWORD)0xCFDC21C8)
-#define LECS65_IOCTL_REGISTER_READ    ((DWORD)0xCFDC21C0)
+#define LECS65_IOCTL_GET_DRIVER_BUILD  ((DWORD)0xCFDC21C8)
+#define LECS65_IOCTL_REGISTER_READ     ((DWORD)0xCFDC21C0)
+#define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
+#define LECS65_IOCTL_READ_DALLAS_MEMORY ((DWORD)0x00223084)
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
     ((DWORD)CTL_CODE(0x8000, 0x800, METHOD_BUFFERED, FILE_READ_ACCESS))
@@ -362,6 +364,76 @@ static int query_trace(HANDLE h)
     return 0;
 }
 
+static int query_dallas_id(HANDLE h)
+{
+    BYTE id[8];
+    DWORD returned = 0;
+    unsigned i;
+
+    ZeroMemory(id, sizeof(id));
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_GET_DALLAS_ID,
+            NULL,
+            0,
+            id,
+            sizeof(id),
+            &returned,
+            NULL)) {
+        print_error("GET_DALLAS_ID");
+        return 1;
+    }
+
+    printf("Dallas ID:");
+    for (i = 0; i < sizeof(id); ++i) {
+        printf(" %02X", id[i]);
+    }
+    printf(" (returned=%lu)\n", (unsigned long)returned);
+    return 0;
+}
+
+static int read_dallas_memory(HANDLE h, unsigned long length)
+{
+    BYTE buffer[0x200];
+    DWORD returned = 0;
+    unsigned long offset;
+
+    if (length == 0 || length > sizeof(buffer)) {
+        fprintf(stderr, "length must be 1..512\n");
+        return 2;
+    }
+
+    ZeroMemory(buffer, sizeof(buffer));
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_READ_DALLAS_MEMORY,
+            NULL,
+            0,
+            buffer,
+            (DWORD)length,
+            &returned,
+            NULL)) {
+        print_error("READ_DALLAS_MEMORY");
+        return 1;
+    }
+
+    printf("Dallas memory: returned=%lu\n", (unsigned long)returned);
+
+    for (offset = 0; offset < returned; offset += 16) {
+        unsigned long i;
+
+        printf("%04lX :", offset);
+        for (i = 0; i < 16 && offset + i < returned; ++i) {
+            printf(" %02X", buffer[offset + i]);
+        }
+        printf("\n");
+    }
+
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -404,6 +476,8 @@ static void usage(const char* exe)
     printf("  %s bars\n", exe);
     printf("  %s trace\n", exe);
     printf("  %s trace-clear\n", exe);
+    printf("  %s dallas-id\n", exe);
+    printf("  %s dallas-read [length 1..512]\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("\nExamples:\n");
     printf("  %s build\n", exe);
@@ -440,6 +514,31 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "trace-clear") == 0) {
         result = clear_trace(h);
+    }
+    else if (_stricmp(argv[1], "dallas-id") == 0) {
+        result = query_dallas_id(h);
+    }
+    else if (_stricmp(argv[1], "dallas-read") == 0) {
+        unsigned long length = 512;
+
+        if (argc == 3) {
+            char* end = NULL;
+            length = strtoul(argv[2], &end, 0);
+            if (end == argv[2] || *end != '\0') {
+                fprintf(stderr, "invalid length\n");
+                result = 2;
+                CloseHandle(h);
+                return result;
+            }
+        }
+        else if (argc != 2) {
+            usage(argv[0]);
+            result = 2;
+            CloseHandle(h);
+            return result;
+        }
+
+        result = read_dallas_memory(h, length);
     }
     else if (_stricmp(argv[1], "read") == 0 && argc == 4) {
         char* end1 = NULL;
