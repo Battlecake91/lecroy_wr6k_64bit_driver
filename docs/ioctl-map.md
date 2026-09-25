@@ -153,3 +153,36 @@ Static analysis of the runtime-loaded `lecaladdinhwaccesspcisvr.dll` shows that 
 These values were not found in the dispatch tree of the captured 2008 `LecS65AcqDrv.sys` build 1002.
 
 They are therefore marked **user-mode observed / kernel support unconfirmed**. The x64 compatibility driver should trace them if XStream sends them, rather than implementing guessed semantics.
+
+
+## Runtime confirmation from x64 XStream bring-up
+
+After implementing the Dallas/1-Wire path, XStream proceeds beyond hardware
+authorization and exercises the following additional controls during startup:
+
+```text
+0x00222400
+0x00222C04
+0x00223004
+0x00223040
+0x00223100
+0xCFDC2110
+0xCFDC2180
+0xCFDC218C
+```
+
+The original 2008 binary confirms the following event/control semantics:
+
+- `0x00222C04`: input exactly one byte; stores a device-level control flag.
+- `0xCFDC2180`: input exactly one 32-bit user event handle, no output.
+- `0xCFDC218C`: input exactly one 32-bit user event handle, no output.
+- `0x00223100`: input exactly three 32-bit user event handles, no output.
+
+The original driver references these event handles with
+`ObReferenceObjectByHandle` using `EVENT_MODIFY_STATE`, clears the referenced
+events immediately, and keeps device-level references for later interrupt/control
+signaling. The x64 compatibility driver now reproduces this behaviour using
+`ULongToHandle` so the 12-byte WOW64 ABI remains byte-for-byte compatible.
+
+`0x00222400` does not appear in the captured 2008 S65 dispatch tree and is
+therefore intentionally left unsupported until evidence proves otherwise.
