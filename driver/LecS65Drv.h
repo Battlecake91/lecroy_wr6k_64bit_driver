@@ -85,7 +85,6 @@ typedef struct _LECS65_DEBUG_BARS {
 
 typedef struct _LECS65_DEBUG_TRACE_ENTRY {
     ULONGLONG Sequence;
-    ULONGLONG Time100ns;
     ULONGLONG ProcessId;
     ULONGLONG Information;
     ULONG Ioctl;
