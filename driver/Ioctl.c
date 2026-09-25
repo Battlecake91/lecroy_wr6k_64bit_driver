@@ -802,6 +802,43 @@ LecS65DeviceControl(
     }
 
     switch (code) {
+    case LECS65_IOCTL_DELAY_MILLISECONDS:
+        if (systemBuffer == NULL ||
+            inputLength < sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+        else {
+            ULONG milliseconds = *(PULONG)systemBuffer;
+            LARGE_INTEGER interval;
+
+            /*
+             * Original handler accepts >=4 bytes and optionally consumes a
+             * fifth control byte.  Its externally visible behaviour includes
+             * a relative millisecond delay.  Reproduce that timing here while
+             * deliberately omitting the old auxiliary hardware toggle until
+             * its necessity is proven.
+             */
+            if (milliseconds != 0) {
+                interval.QuadPart = -((LONGLONG)milliseconds * 10000LL);
+                status = KeDelayExecutionThread(
+                    KernelMode,
+                    FALSE,
+                    &interval);
+            }
+            else {
+                status = STATUS_SUCCESS;
+            }
+
+            information = 0;
+            LecTrace(
+                "legacy 0x00222C00 delay=%lu ms optional=%u -> 0x%08X\n",
+                milliseconds,
+                inputLength == 5 ? (ULONG)((PUCHAR)systemBuffer)[4] : 0UL,
+                status);
+        }
+        break;
+
     case LECS65_IOCTL_SET_FLAG_BYTE:
         if (systemBuffer == NULL ||
             inputLength != sizeof(UCHAR) ||
