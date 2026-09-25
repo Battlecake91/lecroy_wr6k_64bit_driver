@@ -898,3 +898,34 @@ byte of EAX cleared; a non-zero argument forwards to `0x11E46`.
 The previous working hypothesis that `0x12EAE` might directly signal the
 transport event is not supported by the decompilation. The next function that
 must be analysed for the callback path is `0x11E46`.
+
+
+## Global interrupt-mask write helper 0x11E46
+
+Ghidra decompilation shows that `0x11E46` is not an event-signalling routine.
+It conditionally commits the global mask/state value `DAT_0001CE18` to a
+hardware register.
+
+Behaviour:
+
+```text
+if DAT_0001CD08 != -1:
+    DAT_0001CE14 = DAT_0001CE18
+    DAT_0001CE44 = DAT_0001CE18
+    WRITE_REGISTER_ULONG(DAT_0001CE20, DAT_0001CE18)
+    return true-like value
+else:
+    return false-like value
+```
+
+Together with `0x160A8`, this means the receive-arm helper toggles bit 3 in
+the global mask and then invokes `0x11E46` through the `0x12EAE` thunk to
+push the updated mask into hardware.
+
+Therefore `0x160A8(this, 1)` should be interpreted as enabling the relevant
+interrupt/mask bit before the request/response wait, rather than directly
+signalling an event.
+
+The actual event signal path is still elsewhere and should be located by
+finding references to `KeSetEvent` and tracing callers that operate on the
+transport object/event at `this + 0x31`.
