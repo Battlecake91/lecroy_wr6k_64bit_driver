@@ -95,28 +95,16 @@ Both support legacy BAR0-only requests and extended packed requests carrying a B
 This is useful for bring-up because an x64 replacement can be validated register-by-register before higher-level acquisition paths are implemented.
 
 
-## x64 bring-up resource classification
+## Superseded early BAR-size hypothesis
 
-On the first Windows 10 x64 reference system, PnP assigned three translated MMIO
-resources:
+An early bring-up build tried to classify the translated resources by size and
+treated the 0x40000-byte window as a separate bulk region. That hypothesis is
+superseded by the original driver's resource-constructor disassembly and by the
+working Dallas/1-Wire implementation.
 
-- 0x200-byte window at physical 0xF7CBFE00;
-- 0x40000-byte window at physical 0xF7CC0000;
-- 0x200-byte window at physical 0xF7CBFC00.
-
-The initial x64 prototype incorrectly assigned these resources to logical BAR0,
-BAR1 and BAR2 strictly by PnP enumeration order. A read from the resulting
-logical BAR1 (the 0x40000-byte region) froze the system.
-
-The bring-up driver now classifies only 0x200-byte resources as legacy register
-windows. In enumeration order they become logical BAR0 and logical BAR1. The
-0x40000-byte resource is tracked separately as bulk MMIO and is not exposed
-through the generic legacy register-read/write IOCTL. Logical BAR2 remains
-unmapped until its legacy hardware mapping is positively identified.
-
-This classification is intentionally conservative and specific to the observed
-reference hardware. It should not be generalized to other board revisions
-without validating their PCI resource layout.
+The legacy mapping is by memory-resource order: the 0x40000-byte second memory
+resource is BAR1, while the first and third 0x200-byte resources are BAR0 and
+BAR2 respectively. The corrected mapping is described below.
 
 
 ## Recovered Dallas / 1-Wire hardware path
