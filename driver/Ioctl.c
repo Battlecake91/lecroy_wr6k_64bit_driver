@@ -274,6 +274,10 @@ LecS65DeviceControl(
                 bars->Entry[i].Length = devExt->BarLength[i];
             }
 
+            bars->Bulk.PhysicalAddress =
+                (ULONGLONG)devExt->BulkMmioPhysical.QuadPart;
+            bars->Bulk.Length = devExt->BulkMmioLength;
+
             information = sizeof(*bars);
             status = STATUS_SUCCESS;
         }
