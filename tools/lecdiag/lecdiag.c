@@ -10,9 +10,16 @@
 #define LECS65_IOCTL_REGISTER_READ    ((DWORD)0xCFDC21C0)
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
-    CTL_CODE(0x8000, 0x800, METHOD_BUFFERED, FILE_READ_ACCESS)
+    ((DWORD)CTL_CODE(0x8000, 0x800, METHOD_BUFFERED, FILE_READ_ACCESS))
 #define LECS65_IOCTL_DEBUG_GET_BARS \
-    CTL_CODE(0x8000, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS)
+    ((DWORD)CTL_CODE(0x8000, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define LECS65_IOCTL_DEBUG_GET_TRACE \
+    ((DWORD)CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define LECS65_IOCTL_DEBUG_CLEAR_TRACE \
+    ((DWORD)CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS))
+
+#define LECS65_TRACE_CAPACITY 128
+#define LECS65_TRACE_PREVIEW_BYTES 16
 
 #pragma pack(push, 1)
 typedef struct LECS65_REG_READ_EXT {
@@ -44,6 +51,69 @@ typedef struct LECS65_DEBUG_BARS {
     LECS65_DEBUG_BAR_ENTRY Entry[3];
     LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS;
+
+typedef struct LECS65_DEBUG_TRACE_ENTRY {
+    uint64_t Sequence;
+    uint64_t Time100ns;
+    uint64_t ProcessId;
+    uint64_t Information;
+    uint32_t Ioctl;
+    uint32_t InputLength;
+    uint32_t OutputLength;
+    uint32_t Status;
+    uint32_t InputPreviewLength;
+    uint8_t Method;
+    uint8_t Wow64;
+    uint16_t Reserved;
+    uint8_t InputPreview[LECS65_TRACE_PREVIEW_BYTES];
+} LECS65_DEBUG_TRACE_ENTRY;
+
+typedef struct LECS65_DEBUG_TRACE {
+    uint32_t Version;
+    uint32_t Count;
+    uint64_t TotalSeen;
+    LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
+} LECS65_DEBUG_TRACE;
+
+static const char* ioctl_name(DWORD code)
+{
+    switch (code) {
+    case 0x00223080: return "GET_DALLAS_ID";
+    case 0x00223084: return "READ_DALLAS_MEMORY";
+    case 0x00223088: return "WRITE_DALLAS_MEMORY";
+    case 0x00223044: return "DIRECT_REGISTER_READ";
+    case 0xCFDC2110: return "CFDC2110";
+    case 0xCFDC2114: return "CFDC2114";
+    case 0xCFDC2124: return "CFDC2124";
+    case 0xCFDC2128: return "CFDC2128";
+    case 0xCFDC212C: return "CFDC212C_NOT_IMPLEMENTED";
+    case 0xCFDC2130: return "PROG_SERTRIG_FPGA";
+    case 0xCFDC2138: return "CFDC2138";
+    case 0xCFDC2180: return "CFDC2180";
+    case 0xCFDC2184: return "CFDC2184_NOOP";
+    case 0xCFDC218C: return "CFDC218C";
+    case 0xCFDC2190: return "CFDC2190";
+    case 0xCFDC2194: return "CFDC2194";
+    case 0xCFDC21C0: return "REGISTER_READ";
+    case 0xCFDC21C4: return "REGISTER_WRITE";
+    case 0xCFDC21C8: return "GET_DRIVER_BUILD";
+    case 0xCFDC21CC: return "CFDC21CC";
+    case 0xCFDC2400: return "CFDC2400";
+    case 0xCFDD219F: return "CFDD219F_METHOD_NEITHER";
+    default: return "";
+    }
+}
+
+static const char* method_name(unsigned method)
+{
+    switch (method & 3U) {
+    case METHOD_BUFFERED: return "BUF";
+    case METHOD_IN_DIRECT: return "IN";
+    case METHOD_OUT_DIRECT: return "OUT";
+    case METHOD_NEITHER: return "NEITHER";
+    default: return "?";
+    }
+}
 
 static void print_error(const char* what)
 {
@@ -187,6 +257,117 @@ static int query_bars(HANDLE h)
     return 0;
 }
 
+static int clear_trace(HANDLE h)
+{
+    DWORD returned = 0;
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_CLEAR_TRACE,
+            NULL,
+            0,
+            NULL,
+            0,
+            &returned,
+            NULL)) {
+        print_error("DEBUG_CLEAR_TRACE");
+        return 1;
+    }
+
+    printf("trace cleared\n");
+    return 0;
+}
+
+static int query_trace(HANDLE h)
+{
+    LECS65_DEBUG_TRACE* trace;
+    DWORD returned = 0;
+    uint64_t baseTime = 0;
+    uint32_t i;
+
+    trace = (LECS65_DEBUG_TRACE*)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        sizeof(*trace));
+
+    if (trace == NULL) {
+        fprintf(stderr, "HeapAlloc failed\n");
+        return 1;
+    }
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_GET_TRACE,
+            NULL,
+            0,
+            trace,
+            (DWORD)sizeof(*trace),
+            &returned,
+            NULL)) {
+        print_error("DEBUG_GET_TRACE");
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 1;
+    }
+
+    printf("trace version: %lu, entries: %lu, total seen: %llu, returned=%lu\n",
+        (unsigned long)trace->Version,
+        (unsigned long)trace->Count,
+        (unsigned long long)trace->TotalSeen,
+        (unsigned long)returned);
+
+    if (trace->Count == 0) {
+        printf("trace is empty\n");
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 0;
+    }
+
+    baseTime = trace->Entry[0].Time100ns;
+
+    printf("\n");
+    printf("SEQ   +ms       PID     W64 METHOD   IOCTL       IN     OUT    INFO   STATUS      NAME / INPUT PREVIEW\n");
+    printf("----  --------  ------  --- -------- ---------- ------ ------ ------ ----------  --------------------\n");
+
+    for (i = 0; i < trace->Count && i < LECS65_TRACE_CAPACITY; ++i) {
+        const LECS65_DEBUG_TRACE_ENTRY* e = &trace->Entry[i];
+        double ms = (double)(e->Time100ns - baseTime) / 10000.0;
+        uint32_t j;
+
+        printf("%4llu  %8.3f  %6llu  %3s %-8s 0x%08lX %6lu %6lu %6llu 0x%08lX  %s",
+            (unsigned long long)e->Sequence,
+            ms,
+            (unsigned long long)e->ProcessId,
+            e->Wow64 ? "yes" : "no",
+            method_name(e->Method),
+            (unsigned long)e->Ioctl,
+            (unsigned long)e->InputLength,
+            (unsigned long)e->OutputLength,
+            (unsigned long long)e->Information,
+            (unsigned long)e->Status,
+            ioctl_name(e->Ioctl));
+
+        if (e->InputPreviewLength != 0) {
+            printf("  input:");
+            for (j = 0;
+                 j < e->InputPreviewLength &&
+                 j < LECS65_TRACE_PREVIEW_BYTES;
+                 ++j) {
+                printf(" %02X", e->InputPreview[j]);
+            }
+        }
+
+        printf("\n");
+    }
+
+    if (trace->TotalSeen > trace->Count) {
+        printf("\nNote: ring buffer contains the newest %lu of %llu traced IOCTLs.\n",
+            (unsigned long)trace->Count,
+            (unsigned long long)trace->TotalSeen);
+    }
+
+    HeapFree(GetProcessHeap(), 0, trace);
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -227,6 +408,8 @@ static void usage(const char* exe)
     printf("  %s build\n", exe);
     printf("  %s stats\n", exe);
     printf("  %s bars\n", exe);
+    printf("  %s trace\n", exe);
+    printf("  %s trace-clear\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("\nExamples:\n");
     printf("  %s build\n", exe);
@@ -257,6 +440,12 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "bars") == 0) {
         result = query_bars(h);
+    }
+    else if (_stricmp(argv[1], "trace") == 0) {
+        result = query_trace(h);
+    }
+    else if (_stricmp(argv[1], "trace-clear") == 0) {
+        result = clear_trace(h);
     }
     else if (_stricmp(argv[1], "read") == 0 && argc == 4) {
         char* end1 = NULL;
