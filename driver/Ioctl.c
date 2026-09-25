@@ -132,6 +132,305 @@ LecClearTrace(
 }
 
 static
+volatile ULONG*
+LecOneWireRegister(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    if (!DevExt->Started ||
+        DevExt->Bar[2] == NULL ||
+        DevExt->BarLength[2] <
+            LECS65_ONEWIRE_OFFSET + sizeof(ULONG)) {
+        return NULL;
+    }
+
+    return (volatile ULONG*)(
+        DevExt->Bar[2] + LECS65_ONEWIRE_OFFSET);
+}
+
+static
+NTSTATUS
+LecOneWireIssue(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Command,
+    _Out_opt_ PULONG FinalStatus
+    )
+{
+    volatile ULONG* reg = LecOneWireRegister(DevExt);
+    ULONG i;
+    ULONG value = 0;
+
+    if (reg == NULL) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    WRITE_REGISTER_ULONG(reg, Command);
+
+    for (i = 0; i < LECS65_ONEWIRE_POLL_LIMIT; ++i) {
+        value = READ_REGISTER_ULONG(reg);
+
+        if ((value & LECS65_ONEWIRE_BUSY) == 0) {
+            if (FinalStatus != NULL) {
+                *FinalStatus = value;
+            }
+            return STATUS_SUCCESS;
+        }
+    }
+
+    LecTrace(
+        "ONEWIRE timeout: command=%lu last=0x%08lX\n",
+        Command,
+        value);
+
+    return STATUS_IO_TIMEOUT;
+}
+
+static
+NTSTATUS
+LecOneWireReset(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    ULONG status;
+    NTSTATUS ntStatus;
+
+    ntStatus = LecOneWireIssue(DevExt, 0, &status);
+    if (!NT_SUCCESS(ntStatus)) {
+        return ntStatus;
+    }
+
+    /*
+     * Recovered original semantics:
+     * bit0 = controller busy
+     * bit1 = sampled 1-Wire line / presence result.
+     * After reset, bit1 == 0 means a device answered the presence pulse.
+     */
+    status = READ_REGISTER_ULONG(LecOneWireRegister(DevExt));
+
+    if ((status & LECS65_ONEWIRE_DATA) != 0) {
+        LecTrace(
+            "ONEWIRE reset: no presence, status=0x%08lX\n",
+            status);
+        return STATUS_DEVICE_DOES_NOT_EXIST;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecOneWireWriteByte(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ UCHAR Value
+    )
+{
+    ULONG bit;
+    NTSTATUS status;
+
+    for (bit = 0; bit < 8; ++bit) {
+        ULONG command =
+            (Value & 0x01) != 0 ? 2UL : 1UL;
+
+        status = LecOneWireIssue(DevExt, command, NULL);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+
+        Value >>= 1;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecOneWireReadByte(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_ PUCHAR Value
+    )
+{
+    volatile ULONG* reg = LecOneWireRegister(DevExt);
+    UCHAR result = 0;
+    ULONG bit;
+    NTSTATUS status;
+
+    if (reg == NULL || Value == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    for (bit = 0; bit < 8; ++bit) {
+        ULONG sampled;
+
+        status = LecOneWireIssue(DevExt, 3, NULL);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+
+        sampled = READ_REGISTER_ULONG(reg);
+
+        if ((sampled & LECS65_ONEWIRE_DATA) != 0) {
+            result |= (UCHAR)(1U << bit);
+        }
+    }
+
+    *Value = result;
+    return STATUS_SUCCESS;
+}
+
+static
+UCHAR
+LecDallasCrc8(
+    _In_reads_bytes_(Length) const UCHAR* Data,
+    _In_ ULONG Length
+    )
+{
+    UCHAR crc = 0;
+    ULONG i;
+
+    for (i = 0; i < Length; ++i) {
+        UCHAR in = Data[i];
+        ULONG bit;
+
+        for (bit = 0; bit < 8; ++bit) {
+            UCHAR mix = (UCHAR)((crc ^ in) & 0x01);
+
+            crc >>= 1;
+            if (mix != 0) {
+                crc ^= 0x8C;
+            }
+
+            in >>= 1;
+        }
+    }
+
+    return crc;
+}
+
+static
+NTSTATUS
+LecDallasReadId(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_writes_bytes_(8) UCHAR Id[8]
+    )
+{
+    ULONG attempt;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
+    KeWaitForSingleObject(
+        &DevExt->DallasMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    for (attempt = 0; attempt < 10; ++attempt) {
+        ULONG i;
+
+        status = LecOneWireReset(DevExt);
+        if (!NT_SUCCESS(status)) {
+            continue;
+        }
+
+        status = LecOneWireWriteByte(DevExt, 0x33);
+        if (!NT_SUCCESS(status)) {
+            continue;
+        }
+
+        for (i = 0; i < 8; ++i) {
+            status = LecOneWireReadByte(DevExt, &Id[i]);
+            if (!NT_SUCCESS(status)) {
+                break;
+            }
+        }
+
+        if (!NT_SUCCESS(status)) {
+            continue;
+        }
+
+        if (LecDallasCrc8(Id, 7) == Id[7]) {
+            status = STATUS_SUCCESS;
+            break;
+        }
+
+        LecTrace(
+            "DALLAS ID CRC mismatch attempt=%lu id=%02X %02X %02X %02X %02X %02X %02X %02X\n",
+            attempt + 1,
+            Id[0], Id[1], Id[2], Id[3],
+            Id[4], Id[5], Id[6], Id[7]);
+
+        status = STATUS_CRC_ERROR;
+    }
+
+    KeReleaseMutex(&DevExt->DallasMutex, FALSE);
+    return status;
+}
+
+static
+NTSTATUS
+LecDallasReadMemory(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_writes_bytes_(Length) PUCHAR Buffer,
+    _In_ ULONG Length
+    )
+{
+    ULONG i;
+    NTSTATUS status;
+
+    if (Buffer == NULL || Length == 0 || Length > 0x200) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeWaitForSingleObject(
+        &DevExt->DallasMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    status = LecOneWireReset(DevExt);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    /*
+     * Recovered from the 2008 binary:
+     *   0xCC = SKIP ROM
+     *   0xF0 = READ MEMORY
+     *   0x00, 0x00 = start address 0x0000
+     */
+    status = LecOneWireWriteByte(DevExt, 0xCC);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    status = LecOneWireWriteByte(DevExt, 0xF0);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    status = LecOneWireWriteByte(DevExt, 0x00);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    status = LecOneWireWriteByte(DevExt, 0x00);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    for (i = 0; i < Length; ++i) {
+        status = LecOneWireReadByte(DevExt, &Buffer[i]);
+        if (!NT_SUCCESS(status)) {
+            goto Exit;
+        }
+    }
+
+Exit:
+    KeReleaseMutex(&DevExt->DallasMutex, FALSE);
+    return status;
+}
+
+static
 NTSTATUS
 LecResolveRegister(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
@@ -342,6 +641,52 @@ LecS65DeviceControl(
     }
 
     switch (code) {
+    case LECS65_IOCTL_GET_DALLAS_ID:
+        if (systemBuffer == NULL || outputLength != 8) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+
+        status = LecDallasReadId(
+            devExt,
+            (PUCHAR)systemBuffer);
+
+        if (NT_SUCCESS(status)) {
+            information = 8;
+            LecTrace(
+                "GET_DALLAS_ID -> %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                ((PUCHAR)systemBuffer)[0],
+                ((PUCHAR)systemBuffer)[1],
+                ((PUCHAR)systemBuffer)[2],
+                ((PUCHAR)systemBuffer)[3],
+                ((PUCHAR)systemBuffer)[4],
+                ((PUCHAR)systemBuffer)[5],
+                ((PUCHAR)systemBuffer)[6],
+                ((PUCHAR)systemBuffer)[7]);
+        }
+        break;
+
+    case LECS65_IOCTL_READ_DALLAS_MEMORY:
+        if (systemBuffer == NULL ||
+            outputLength == 0 ||
+            outputLength > 0x200) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+
+        status = LecDallasReadMemory(
+            devExt,
+            (PUCHAR)systemBuffer,
+            outputLength);
+
+        if (NT_SUCCESS(status)) {
+            information = outputLength;
+            LecTrace(
+                "READ_DALLAS_MEMORY -> %lu bytes\n",
+                outputLength);
+        }
+        break;
+
     case LECS65_IOCTL_GET_DRIVER_BUILD:
         if (systemBuffer == NULL || outputLength < sizeof(ULONG)) {
             status = STATUS_BUFFER_TOO_SMALL;
