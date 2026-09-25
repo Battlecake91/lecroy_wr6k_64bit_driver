@@ -854,6 +854,216 @@ LecResolveRegister(
 }
 
 static
+USHORT
+LecReadU16(
+    _In_reads_bytes_(sizeof(USHORT)) const UCHAR* Buffer
+    )
+{
+    USHORT value;
+
+    RtlCopyMemory(&value, Buffer, sizeof(value));
+    return value;
+}
+
+static
+VOID
+LecWriteU16(
+    _Out_writes_bytes_(sizeof(USHORT)) UCHAR* Buffer,
+    _In_ USHORT Value
+    )
+{
+    RtlCopyMemory(Buffer, &Value, sizeof(Value));
+}
+
+static
+VOID
+LecWriteU32(
+    _Out_writes_bytes_(sizeof(ULONG)) UCHAR* Buffer,
+    _In_ ULONG Value
+    )
+{
+    RtlCopyMemory(Buffer, &Value, sizeof(Value));
+}
+
+static
+NTSTATUS
+LecResetLegacyInterruptState(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    volatile ULONG* intst;
+    volatile ULONG* errs;
+    volatile ULONG* iimcl;
+    volatile ULONG* clrirq;
+    volatile ULONG* clrerr;
+    ULONG interruptState;
+    NTSTATUS status;
+
+    status = LecResolveRegister(DevExt, 0, 0x080, &intst);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 0, 0x004, &errs);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 0, 0x048, &iimcl);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 1, 0x008, &clrirq);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 1, 0x004, &clrerr);
+    if (!NT_SUCCESS(status)) return status;
+
+    interruptState = READ_REGISTER_ULONG(intst);
+
+    if ((interruptState & 0x01UL) != 0) {
+        WRITE_REGISTER_ULONG(iimcl, 0);
+    }
+
+    if ((interruptState & 0x02UL) != 0) {
+        ULONG errorState = READ_REGISTER_ULONG(errs);
+        ULONG clearMask = 0;
+
+        if ((errorState & 0x0400UL) != 0) clearMask |= 0x01;
+        if ((errorState & 0x0800UL) != 0) clearMask |= 0x02;
+        if ((errorState & 0x1000UL) != 0) clearMask |= 0x04;
+        if ((errorState & 0x2000UL) != 0) clearMask |= 0x08;
+        if ((errorState & 0x4000UL) != 0) clearMask |= 0x10;
+
+        if (clearMask != 0) {
+            WRITE_REGISTER_ULONG(clrerr, clearMask);
+        }
+
+        WRITE_REGISTER_ULONG(errs, errorState);
+    }
+
+    if ((interruptState & 0x04UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 1);
+    }
+
+    if ((interruptState & 0x08UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 2);
+    }
+
+    WRITE_REGISTER_ULONG(intst, interruptState);
+
+    WRITE_REGISTER_ULONG(clrirq, 3);
+    WRITE_REGISTER_ULONG(intst, 0xFFFFFFFFUL);
+    (VOID)READ_REGISTER_ULONG(intst);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecJtagExecute(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(RequestLength) const UCHAR* Request,
+    _In_ ULONG RequestLength,
+    _Out_writes_bytes_(ResponseCapacity) UCHAR* Response,
+    _In_ ULONG ResponseCapacity,
+    _Out_ PULONG ResponseLength
+    )
+{
+    volatile ULONG* jtagNum;
+    volatile ULONG* jtagData;
+    volatile ULONG* jtagIn;
+    ULONG requestedDataBytes;
+    ULONG bitCount;
+    ULONG remainingBits;
+    ULONG inputOffset = 9;
+    ULONG outputOffset = 8;
+    ULONG produced = 0;
+    UCHAR mode;
+    NTSTATUS status;
+
+    if (Request == NULL ||
+        Response == NULL ||
+        ResponseLength == NULL ||
+        RequestLength < 9) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    mode = Request[0];
+    if (mode > 1) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    requestedDataBytes = LecReadU16(Request + 3);
+    bitCount = LecReadU16(Request + 5);
+
+    if (ResponseCapacity < 8 + requestedDataBytes) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_JTAG_NUM,
+        &jtagNum);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_JTAG_DATA,
+        &jtagData);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_JTAG_IN,
+        &jtagIn);
+    if (!NT_SUCCESS(status)) return status;
+
+    RtlZeroMemory(Response, 8 + requestedDataBytes);
+    remainingBits = bitCount;
+
+    while (remainingBits != 0) {
+        ULONG thisBits = min(remainingBits, 16UL);
+        USHORT firstWord;
+        USHORT secondWord;
+        ULONG dataValue;
+        ULONG inputValue;
+        USHORT outputWord;
+
+        if (inputOffset + 4 > RequestLength ||
+            outputOffset + 2 > 8 + requestedDataBytes) {
+            return STATUS_INVALID_BUFFER_SIZE;
+        }
+
+        firstWord = LecReadU16(Request + inputOffset);
+        secondWord = LecReadU16(Request + inputOffset + 2);
+
+        WRITE_REGISTER_ULONG(
+            jtagNum,
+            ((mode != 0) ? 0x100UL : 0UL) |
+            (thisBits & 0x0FUL));
+
+        dataValue =
+            ((ULONG)firstWord << 16) |
+            (ULONG)secondWord;
+        WRITE_REGISTER_ULONG(jtagData, dataValue);
+
+        inputValue = READ_REGISTER_ULONG(jtagIn);
+
+        if (thisBits == 16) {
+            outputWord = (USHORT)(inputValue >> 16);
+        }
+        else {
+            outputWord = (USHORT)(
+                inputValue >> (32 - thisBits));
+        }
+
+        LecWriteU16(Response + outputOffset, outputWord);
+
+        inputOffset += 4;
+        outputOffset += 2;
+        produced += 2;
+        remainingBits -= thisBits;
+    }
+
+    LecWriteU32(Response, 0);
+    LecWriteU16(Response + 4, (USHORT)(produced + 2));
+    LecWriteU16(Response + 6, 0);
+
+    *ResponseLength = 8 + produced;
+    return STATUS_SUCCESS;
+}
+
+static
 NTSTATUS
 LecIoctlRegisterRead(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
