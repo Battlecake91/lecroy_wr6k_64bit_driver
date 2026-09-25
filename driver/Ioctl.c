@@ -1549,12 +1549,22 @@ LecS65DeviceControl(
 
     switch (code) {
     case LECS65_IOCTL_CFDC2110:
-        status = LecIoctlCfDc2110(
-            devExt,
-            (PUCHAR)systemBuffer,
+        /*
+         * Runtime testing showed that the current partial CFDC2110
+         * implementation accepts many still-unknown A5FB subcommands and
+         * returns structurally valid but semantically bogus response buffers.
+         * XStream then proceeds with invalid board state and reports multiple
+         * acquisition/UI errors. Keep the recovered parser/transport code in
+         * tree for continued reverse engineering, but do not execute hardware
+         * side effects until every startup subcommand used by XStream has a
+         * confirmed implementation.
+         */
+        status = STATUS_INVALID_DEVICE_REQUEST;
+        information = 0;
+        LecTrace(
+            "CFDC2110 temporarily trace-only: in=%lu out=%lu\n",
             inputLength,
-            outputLength,
-            &information);
+            outputLength);
         break;
 
     case LECS65_IOCTL_DELAY_MILLISECONDS:
