@@ -789,3 +789,65 @@ The next transport functions to recover are:
 - `0x160A8`: receive-arm / interrupt-enable helper;
 - `0x17578`: RX-buffer extraction helper;
 - the ISR/DPC path that signals the transport event at `this + 0x31`.
+
+
+## Receive-arm and RX extraction helpers
+
+Ghidra decompilation of `0x160A8` and `0x17578` completes most of the
+transport-side receive path.
+
+### Receive arm helper 0x160A8
+
+`0x160A8(this, enabled)` updates global state bit 3 in `DAT_0001CE18`:
+
+```text
+enabled == 0  -> clear bit 3
+enabled != 0  -> set bit 3
+```
+
+It then calls through the legacy framework/object returned by `0x10A88`,
+passing code location `0x12EAE` and the object/state pointer stored at
+`this + 0x19E`.
+
+This is consistent with arming/enabling the receive/interrupt path before the
+request/response wait, but the exact framework-level meaning of the callback
+still needs the `0x12EAE` path to be traced.
+
+### RX extraction helper 0x17578
+
+`0x17578` reads the RX control register through the transport wrapper at
+`this + 0x38`.
+
+The RX control word is interpreted as:
+
+```text
+bit 15    data ready
+bit 14    continuation
+bits 7:0  number of 16-bit words in this chunk
+```
+
+When bit 15 is set and the low byte is non-zero:
+
+1. validate that the chunk word count is below `0x79`;
+2. validate that appending `word_count * 2` bytes does not exceed the caller
+   capacity;
+3. read one 32-bit-spaced slot per word starting at BAR1 offset `0x600`;
+4. keep the low 16 bits of each slot and append them to the caller buffer;
+5. reset the transport event;
+6. acknowledge/clear the RX-ready and count fields through the wrapper at
+   `this + 0x38`.
+
+If bit 14 (continuation) remains set, the helper waits on the transport event
+again with a relative timeout of approximately 5 seconds before reading the
+next chunk.
+
+Odd output capacities and invalid chunk sizes return `STATUS_INVALID_PARAMETER`
+(`0xC000000D`). A continuation wait timeout returns `0x102`.
+
+This confirms the complete RX data layout:
+
+```text
+BAR1 + 0x600 + 4*n   -> one 16-bit response word per 32-bit slot
+```
+
+and confirms that multi-chunk receive completion is interrupt/event driven.
