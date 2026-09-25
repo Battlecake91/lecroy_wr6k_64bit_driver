@@ -873,3 +873,28 @@ another event/interrupt helper.
 
 The full function body beginning at `0x12EAE` must be decompiled before its
 role is assigned.
+
+
+## Callback thunk at 0x12EAE narrowed
+
+Ghidra decompilation shows that `0x12EAE` is only a very small callable
+thunk:
+
+```c
+uint FUN_00012eae(int param_1)
+{
+    if (param_1 == 0) {
+        return in_EAX & 0xffffff00;
+    }
+
+    return FUN_00011e46();
+}
+```
+
+Therefore `0x12EAE` itself is not the interrupt/event-signalling routine.
+It acts as a conditional gate: a zero argument returns immediately with the low
+byte of EAX cleared; a non-zero argument forwards to `0x11E46`.
+
+The previous working hypothesis that `0x12EAE` might directly signal the
+transport event is not supported by the decompilation. The next function that
+must be analysed for the callback path is `0x11E46`.
