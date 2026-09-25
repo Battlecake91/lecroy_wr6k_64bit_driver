@@ -139,3 +139,17 @@ The derived transfer length is bounded to `0x00FFFFFF`. This path is the primary
 
 - [ABI and x64 compatibility analysis](abi-analysis.md)
 - [Hardware register map](hardware-register-map.md)
+
+
+## User-mode ABI additions discovered in the 2017 hardware-access DLL
+
+Static analysis of the runtime-loaded `lecaladdinhwaccesspcisvr.dll` shows that it can issue two additional Aladdin-family control codes:
+
+```text
+0xCFDC2114
+0xCFDC21CC
+```
+
+These values were not found in the dispatch tree of the captured 2008 `LecS65AcqDrv.sys` build 1002.
+
+They are therefore marked **user-mode observed / kernel support unconfirmed**. The x64 compatibility driver should trace them if XStream sends them, rather than implementing guessed semantics.
