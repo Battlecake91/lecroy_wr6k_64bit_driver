@@ -1,6 +1,5 @@
 #include "LecS65Drv.h"
 #include <stdarg.h>
-#include <ntstrsafe.h>
 
 const GUID g_LecS65InterfaceGuids[LECS65_INTERFACE_COUNT] = {
     { 0x7ac34be9, 0xf766, 0x4f15, { 0x9e, 0x88, 0x85, 0x4b, 0xa5, 0xe2, 0x14, 0x6e } },
@@ -33,6 +32,7 @@ LecHexDump(
     _In_ ULONG Length
     )
 {
+    static const CHAR Hex[] = "0123456789ABCDEF";
     ULONG offset;
     ULONG limit;
 
@@ -43,19 +43,27 @@ LecHexDump(
     limit = min(Length, 64UL);
 
     for (offset = 0; offset < limit; offset += 16) {
-        CHAR line[128] = { 0 };
-        SIZE_T used = 0;
+        CHAR line[80];
+        ULONG pos = 0;
         ULONG i;
 
-        (VOID)RtlStringCbPrintfA(line, sizeof(line), "  %04lX :", offset);
-        (VOID)RtlStringCbLengthA(line, sizeof(line), &used);
+        line[pos++] = ' ';
+        line[pos++] = ' ';
+        line[pos++] = Hex[(offset >> 12) & 0x0F];
+        line[pos++] = Hex[(offset >> 8) & 0x0F];
+        line[pos++] = Hex[(offset >> 4) & 0x0F];
+        line[pos++] = Hex[offset & 0x0F];
+        line[pos++] = ' ';
+        line[pos++] = ':';
 
         for (i = 0; i < 16 && (offset + i) < limit; ++i) {
-            CHAR byteText[8];
-            (VOID)RtlStringCbPrintfA(byteText, sizeof(byteText), " %02X", Buffer[offset + i]);
-            (VOID)RtlStringCbCatA(line, sizeof(line), byteText);
+            UCHAR value = Buffer[offset + i];
+            line[pos++] = ' ';
+            line[pos++] = Hex[(value >> 4) & 0x0F];
+            line[pos++] = Hex[value & 0x0F];
         }
 
+        line[pos] = '\0';
         LecTrace("%s\n", line);
     }
 
