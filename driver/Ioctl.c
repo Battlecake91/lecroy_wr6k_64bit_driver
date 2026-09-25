@@ -593,6 +593,237 @@ Exit:
 
 static
 NTSTATUS
+LecGetBar1Register(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Offset,
+    _Out_ volatile ULONG** Register
+    )
+{
+    if (!DevExt->Started ||
+        DevExt->Bar[1] == NULL ||
+        DevExt->BarLength[1] < sizeof(ULONG) ||
+        Offset > DevExt->BarLength[1] - sizeof(ULONG)) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    *Register = (volatile ULONG*)(DevExt->Bar[1] + Offset);
+    return STATUS_SUCCESS;
+}
+
+static
+VOID
+LecDelayOneMillisecond(VOID)
+{
+    LARGE_INTEGER interval;
+
+    interval.QuadPart = -10000LL;
+    (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+}
+
+static
+NTSTATUS
+LecTransportWaitTxIdle(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    volatile ULONG* control;
+    ULONG poll;
+    NTSTATUS status;
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_TX_CONTROL,
+        &control);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    for (poll = 0; poll < LECS65_TRANSFER_TIMEOUT_POLLS; ++poll) {
+        ULONG value = READ_REGISTER_ULONG(control);
+
+        if ((value & 0x8000UL) == 0 &&
+            (value & 0x00FFUL) == 0) {
+            return STATUS_SUCCESS;
+        }
+
+        LecDelayOneMillisecond();
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
+static
+NTSTATUS
+LecTransportSend(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(Length) const UCHAR* Buffer,
+    _In_ ULONG Length
+    )
+{
+    volatile ULONG* control;
+    volatile ULONG* totalCount;
+    ULONG remainingWords;
+    ULONG byteOffset = 0;
+    NTSTATUS status;
+
+    if (Buffer == NULL || Length == 0 || (Length & 1U) != 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_TX_CONTROL,
+        &control);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_TX_COUNT,
+        &totalCount);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    remainingWords = Length / 2;
+
+    while (remainingWords != 0) {
+        ULONG chunkWords = min(remainingWords, 0x78UL);
+        ULONG command = chunkWords;
+        ULONG i;
+
+        status = LecTransportWaitTxIdle(DevExt);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+
+        for (i = 0; i < chunkWords; ++i) {
+            volatile ULONG* slot;
+            USHORT word;
+            ULONG value;
+
+            status = LecGetBar1Register(
+                DevExt,
+                LECS65_BAR1_TX_DATA + i * sizeof(ULONG),
+                &slot);
+            if (!NT_SUCCESS(status)) {
+                return status;
+            }
+
+            RtlCopyMemory(
+                &word,
+                Buffer + byteOffset + i * sizeof(USHORT),
+                sizeof(word));
+            value = word;
+            WRITE_REGISTER_ULONG(slot, value);
+        }
+
+        WRITE_REGISTER_ULONG(totalCount, remainingWords);
+
+        if (remainingWords > chunkWords) {
+            command |= 0x4000UL;
+        }
+
+        command |= 0x8000UL;
+        WRITE_REGISTER_ULONG(control, command);
+
+        byteOffset += chunkWords * sizeof(USHORT);
+        remainingWords -= chunkWords;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecTransportReceive(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_writes_bytes_(Capacity) UCHAR* Buffer,
+    _In_ ULONG Capacity,
+    _Out_ PULONG Received
+    )
+{
+    volatile ULONG* control;
+    ULONG offset = 0;
+    NTSTATUS status;
+
+    if (Buffer == NULL || Received == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *Received = 0;
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_RX_CONTROL,
+        &control);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    for (;;) {
+        ULONG poll;
+        ULONG value = 0;
+        ULONG words;
+        ULONG i;
+
+        for (poll = 0; poll < LECS65_TRANSFER_TIMEOUT_POLLS; ++poll) {
+            value = READ_REGISTER_ULONG(control);
+            if ((value & 0x8000UL) != 0) {
+                break;
+            }
+            LecDelayOneMillisecond();
+        }
+
+        if ((value & 0x8000UL) == 0) {
+            return STATUS_IO_TIMEOUT;
+        }
+
+        words = value & 0x00FFUL;
+        if (words > 0x78UL ||
+            offset + words * sizeof(USHORT) > Capacity) {
+            return STATUS_BUFFER_TOO_SMALL;
+        }
+
+        for (i = 0; i < words; ++i) {
+            volatile ULONG* slot;
+            ULONG raw;
+            USHORT word;
+
+            status = LecGetBar1Register(
+                DevExt,
+                LECS65_BAR1_RX_DATA + i * sizeof(ULONG),
+                &slot);
+            if (!NT_SUCCESS(status)) {
+                return status;
+            }
+
+            raw = READ_REGISTER_ULONG(slot);
+            word = (USHORT)raw;
+            RtlCopyMemory(
+                Buffer + offset + i * sizeof(USHORT),
+                &word,
+                sizeof(word));
+        }
+
+        offset += words * sizeof(USHORT);
+
+        WRITE_REGISTER_ULONG(
+            control,
+            value & ~0x80FFUL);
+
+        if ((value & 0x4000UL) == 0) {
+            break;
+        }
+    }
+
+    *Received = offset;
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
 LecResolveRegister(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ UCHAR Bar,
