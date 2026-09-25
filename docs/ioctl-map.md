@@ -8,7 +8,7 @@ All values below are **confirmed as dispatch values** in the analysed binary.
 
 | IOCTL | Device type | Function | Method | Handler VA | Recovered behaviour |
 |---:|---:|---:|---|---:|---|
-| `0x00222C00` | `0x22` | `0xB00` | BUFFERED | `0x1286E` | input >=4; optional fifth byte |
+| `0x00222C00` | `0x22` | `0xB00` | BUFFERED | `0x1286E` | millisecond delay; input >=4; optional fifth byte |
 | `0x00222C04` | `0x22` | `0xB01` | BUFFERED | `0x128BC` | input exactly 1 byte |
 | `0x00223000` | `0x22` | `0xC00` | BUFFERED | `0x12ADA` | input exactly `0x108` bytes |
 | `0x00223004` | `0x22` | `0xC01` | BUFFERED | `0x12A5E` | variable output / size query |
@@ -186,3 +186,16 @@ signaling. The x64 compatibility driver now reproduces this behaviour using
 
 `0x00222400` does not appear in the captured 2008 S65 dispatch tree and is
 therefore intentionally left unsupported until evidence proves otherwise.
+
+
+### 0x00222C00: millisecond delay
+
+The original handler reads a DWORD millisecond count from the first four input
+bytes and accepts an optional fifth control byte. Internally it converts the
+millisecond value to a negative 100-ns relative interval and calls
+`KeDelayExecutionThread(KernelMode, FALSE, ...)`.
+
+The legacy helper also toggles an auxiliary hardware register around the delay.
+The x64 compatibility implementation intentionally reproduces only the
+externally visible timing behaviour for now. The hardware toggle is deferred
+until runtime evidence shows it is required.
