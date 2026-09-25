@@ -18,6 +18,12 @@
 #define LECS65_ONEWIRE_DATA   0x02
 #define LECS65_ONEWIRE_POLL_LIMIT 100000
 
+#define LECS65_BAR1_TX_CONTROL 0x400
+#define LECS65_BAR1_RX_CONTROL 0x404
+#define LECS65_BAR1_TX_COUNT   0x408
+#define LECS65_BAR1_TX_DATA    0x420
+#define LECS65_BAR1_RX_DATA    0x600
+
 /* Recovered legacy IOCTLs used by the first bring-up build. */
 #define LECS65_IOCTL_CFDC2110          ((ULONG)0xCFDC2110)
 #define LECS65_IOCTL_CFDC212C          ((ULONG)0xCFDC212C)
