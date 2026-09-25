@@ -146,6 +146,7 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     volatile LONG LastIoctl;
 
     KMUTEX DallasMutex;
+    KMUTEX TransferMutex;
 
     PKEVENT LegacyEvent0;
     PKEVENT LegacyEvent1;
