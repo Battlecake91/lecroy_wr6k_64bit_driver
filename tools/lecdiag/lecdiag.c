@@ -42,6 +42,7 @@ typedef struct LECS65_DEBUG_BARS {
     uint32_t Version;
     uint32_t Count;
     LECS65_DEBUG_BAR_ENTRY Entry[3];
+    LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS;
 
 static void print_error(const char* what)
@@ -170,12 +171,18 @@ static int query_bars(HANDLE h)
         (unsigned long)returned);
 
     for (i = 0; i < bars.Count && i < 3; ++i) {
-        printf("slot %u: PA=0x%016llX length=0x%08lX (%lu bytes)\n",
+        printf("logical BAR%u: PA=0x%016llX length=0x%08lX (%lu bytes)%s\n",
             i,
             (unsigned long long)bars.Entry[i].PhysicalAddress,
             (unsigned long)bars.Entry[i].Length,
-            (unsigned long)bars.Entry[i].Length);
+            (unsigned long)bars.Entry[i].Length,
+            bars.Entry[i].Length == 0 ? " [unmapped]" : "");
     }
+
+    printf("bulk MMIO:    PA=0x%016llX length=0x%08lX (%lu bytes)\n",
+        (unsigned long long)bars.Bulk.PhysicalAddress,
+        (unsigned long)bars.Bulk.Length,
+        (unsigned long)bars.Bulk.Length);
 
     return 0;
 }
