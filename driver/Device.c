@@ -70,6 +70,16 @@ LecUnmapBars(
             DevExt->BarPhysical[i].QuadPart = 0;
         }
     }
+
+    if (DevExt->BulkMmio != NULL) {
+        LecTrace("BULK unmap VA=%p length=0x%lX\n",
+            DevExt->BulkMmio, DevExt->BulkMmioLength);
+
+        MmUnmapIoSpace(DevExt->BulkMmio, DevExt->BulkMmioLength);
+        DevExt->BulkMmio = NULL;
+        DevExt->BulkMmioLength = 0;
+        DevExt->BulkMmioPhysical.QuadPart = 0;
+    }
 }
 
 NTSTATUS
@@ -79,7 +89,7 @@ LecHandleStartDevice(
     )
 {
     ULONG listIndex;
-    ULONG barIndex = 0;
+    ULONG registerBarIndex = 0;
 
     LecUnmapBars(DevExt);
 
@@ -107,82 +117,126 @@ LecHandleStartDevice(
         for (descriptorIndex = 0;
              descriptorIndex < partial->Count;
              ++descriptorIndex) {
-            PCM_PARTIAL_RESOURCE_DESCRIPTOR d =
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR resource =
                 &partial->PartialDescriptors[descriptorIndex];
 
-            switch (d->Type) {
+            switch (resource->Type) {
             case CmResourceTypeMemory:
+            {
+                PUCHAR mapped;
+
                 LecTrace(
-                    "  MEM[%lu]: start=%I64X length=0x%lX flags=0x%X%s\n",
+                    "  MEM[%lu]: start=%I64X length=0x%lX flags=0x%X\n",
                     descriptorIndex,
-                    d->u.Memory.Start.QuadPart,
-                    d->u.Memory.Length,
-                    d->Flags,
-                    barIndex < LECS65_BAR_COUNT ? " -> BAR" : "");
+                    resource->u.Memory.Start.QuadPart,
+                    resource->u.Memory.Length,
+                    resource->Flags);
 
-                if (barIndex < LECS65_BAR_COUNT) {
-                    PUCHAR mapped = (PUCHAR)MmMapIoSpace(
-                        d->u.Memory.Start,
-                        d->u.Memory.Length,
-                        MmNonCached);
+                mapped = (PUCHAR)MmMapIoSpace(
+                    resource->u.Memory.Start,
+                    resource->u.Memory.Length,
+                    MmNonCached);
 
-                    if (mapped == NULL) {
-                        LecTrace("  BAR%lu map FAILED\n", barIndex);
-                        LecUnmapBars(DevExt);
-                        return STATUS_INSUFFICIENT_RESOURCES;
-                    }
+                if (mapped == NULL) {
+                    LecTrace("  MEM[%lu] map FAILED\n", descriptorIndex);
+                    LecUnmapBars(DevExt);
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
 
-                    DevExt->Bar[barIndex] = mapped;
-                    DevExt->BarLength[barIndex] = d->u.Memory.Length;
-                    DevExt->BarPhysical[barIndex] = d->u.Memory.Start;
+                if (resource->u.Memory.Length == LECS65_REGISTER_BAR_LENGTH &&
+                    registerBarIndex < 2) {
+                    DevExt->Bar[registerBarIndex] = mapped;
+                    DevExt->BarLength[registerBarIndex] =
+                        resource->u.Memory.Length;
+                    DevExt->BarPhysical[registerBarIndex] =
+                        resource->u.Memory.Start;
 
                     LecTrace(
-                        "  BAR%lu: PA=%I64X VA=%p length=0x%lX\n",
-                        barIndex,
-                        d->u.Memory.Start.QuadPart,
+                        "  MEM[%lu] -> logical BAR%lu: PA=%I64X VA=%p length=0x%lX\n",
+                        descriptorIndex,
+                        registerBarIndex,
+                        resource->u.Memory.Start.QuadPart,
                         mapped,
-                        d->u.Memory.Length);
+                        resource->u.Memory.Length);
 
-                    ++barIndex;
+                    ++registerBarIndex;
+                }
+                else if (resource->u.Memory.Length > LECS65_REGISTER_BAR_LENGTH &&
+                         DevExt->BulkMmio == NULL) {
+                    DevExt->BulkMmio = mapped;
+                    DevExt->BulkMmioLength = resource->u.Memory.Length;
+                    DevExt->BulkMmioPhysical = resource->u.Memory.Start;
+
+                    LecTrace(
+                        "  MEM[%lu] -> BULK: PA=%I64X VA=%p length=0x%lX\n",
+                        descriptorIndex,
+                        resource->u.Memory.Start.QuadPart,
+                        mapped,
+                        resource->u.Memory.Length);
+                }
+                else {
+                    LecTrace(
+                        "  MEM[%lu] unclassified; unmapping PA=%I64X length=0x%lX\n",
+                        descriptorIndex,
+                        resource->u.Memory.Start.QuadPart,
+                        resource->u.Memory.Length);
+
+                    MmUnmapIoSpace(mapped, resource->u.Memory.Length);
                 }
                 break;
+            }
 
             case CmResourceTypeInterrupt:
                 LecTrace(
                     "  IRQ[%lu]: level=%lu vector=%lu affinity=%p flags=0x%X\n",
                     descriptorIndex,
-                    d->u.Interrupt.Level,
-                    d->u.Interrupt.Vector,
-                    (PVOID)d->u.Interrupt.Affinity,
-                    d->Flags);
+                    resource->u.Interrupt.Level,
+                    resource->u.Interrupt.Vector,
+                    (PVOID)resource->u.Interrupt.Affinity,
+                    resource->Flags);
                 break;
 
             case CmResourceTypePort:
                 LecTrace(
                     "  PORT[%lu]: start=%I64X length=0x%lX flags=0x%X\n",
                     descriptorIndex,
-                    d->u.Port.Start.QuadPart,
-                    d->u.Port.Length,
-                    d->Flags);
+                    resource->u.Port.Start.QuadPart,
+                    resource->u.Port.Length,
+                    resource->Flags);
                 break;
 
             default:
                 LecTrace("  RES[%lu]: type=%u share=%u flags=0x%X\n",
                     descriptorIndex,
-                    d->Type,
-                    d->ShareDisposition,
-                    d->Flags);
+                    resource->Type,
+                    resource->ShareDisposition,
+                    resource->Flags);
                 break;
             }
         }
     }
 
-    if (barIndex < LECS65_BAR_COUNT) {
-        LecTrace("START_DEVICE: expected 3 memory BAR resources, found %lu\n",
-            barIndex);
+    if (registerBarIndex < 2) {
+        LecTrace(
+            "START_DEVICE: expected two 0x%X register windows, found %lu\n",
+            LECS65_REGISTER_BAR_LENGTH,
+            registerBarIndex);
         LecUnmapBars(DevExt);
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
+
+    if (DevExt->BulkMmio == NULL) {
+        LecTrace("START_DEVICE: no bulk MMIO resource found\n");
+    }
+
+    LecTrace(
+        "START_DEVICE: logical BAR0=%I64X/0x%lX BAR1=%I64X/0x%lX BAR2=unmapped BULK=%I64X/0x%lX\n",
+        DevExt->BarPhysical[0].QuadPart,
+        DevExt->BarLength[0],
+        DevExt->BarPhysical[1].QuadPart,
+        DevExt->BarLength[1],
+        DevExt->BulkMmioPhysical.QuadPart,
+        DevExt->BulkMmioLength);
 
     return STATUS_SUCCESS;
 }
