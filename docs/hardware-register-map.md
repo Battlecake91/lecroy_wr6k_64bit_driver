@@ -48,6 +48,12 @@ The BAR labels and offsets below are **confirmed** from the binary. The driver s
 | `ACQDIV` | `0x0EC` |
 | `ACQCUM` | `0x0F0` |
 | `PFREG` | `0x0F4` |
+| `SetIRQ` | `0x100` |
+| `TxControl` | `0x400` |
+| `RxControl` | `0x404` |
+| `TxCount` | `0x408` |
+| `RxCount` | `0x40C` |
+| `HWInt` | `0x410` |
 
 ## BAR2
 
@@ -175,3 +181,54 @@ Full memory read:
 
 The ROM CRC byte `0xAC` matches the Dallas/Maxim CRC-8 of the preceding seven
 bytes.
+
+
+## BAR1 message-transport windows
+
+Further disassembly of the legacy `0xCFDC2110` transfer path identifies a
+message transport implemented entirely in BAR1.
+
+Confirmed control registers:
+
+```text
+BAR1 + 0x100  SetIRQ
+BAR1 + 0x400  TxControl
+BAR1 + 0x404  RxControl
+BAR1 + 0x408  TxCount
+BAR1 + 0x40C  RxCount
+BAR1 + 0x410  HWInt
+```
+
+The data windows used by the original driver are:
+
+```text
+BAR1 + 0x420 + 4*n   transmit word slots
+BAR1 + 0x600 + 4*n   receive word slots
+```
+
+Each logical protocol word is 16 bits, but the hardware slots are spaced on
+32-bit boundaries. The legacy driver writes and reads the slots through
+`WRITE_REGISTER_BUFFER_ULONG` and `READ_REGISTER_BUFFER_ULONG`, then consumes
+the low 16 bits of each slot.
+
+The original transmit helper:
+
+1. waits until `TxControl` reports idle;
+2. splits the outgoing byte stream into 16-bit words;
+3. writes up to `0x78` words into the transmit slots;
+4. writes the remaining/total word count through `TxCount`;
+5. starts the transfer by writing `TxControl` with bit 15 set and the chunk
+   word count in the low byte;
+6. repeats for continuation chunks when required.
+
+The receive helper:
+
+1. reads `RxControl`;
+2. treats bit 15 as data-ready;
+3. takes the low byte as the number of available 16-bit words;
+4. reads those words from the receive slots;
+5. clears the ready/count fields in `RxControl`;
+6. repeats when the continuation state is set.
+
+This transport is the hardware endpoint behind the A5FB/85FB protocol used by
+`0xCFDC2110`.
