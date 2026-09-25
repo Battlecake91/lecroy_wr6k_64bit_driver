@@ -1,6 +1,138 @@
 #include "LecS65Drv.h"
 
 static
+BOOLEAN
+LecIsPrivateDebugIoctl(
+    _In_ ULONG Code
+    )
+{
+    switch (Code) {
+    case LECS65_IOCTL_DEBUG_GET_STATS:
+    case LECS65_IOCTL_DEBUG_CLEAR_STATS:
+    case LECS65_IOCTL_DEBUG_GET_BARS:
+    case LECS65_IOCTL_DEBUG_GET_TRACE:
+    case LECS65_IOCTL_DEBUG_CLEAR_TRACE:
+        return TRUE;
+
+    default:
+        return FALSE;
+    }
+}
+
+static
+VOID
+LecRecordIoctlTrace(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Code,
+    _In_ ULONG Method,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _In_ BOOLEAN Wow64,
+    _In_ NTSTATUS Status,
+    _In_ ULONG_PTR Information,
+    _In_reads_bytes_opt_(PreviewLength) const UCHAR* Preview,
+    _In_ ULONG PreviewLength
+    )
+{
+    KIRQL oldIrql;
+    ULONG index;
+    PLECS65_DEBUG_TRACE_ENTRY entry;
+
+    if (LecIsPrivateDebugIoctl(Code)) {
+        return;
+    }
+
+    KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
+
+    index = DevExt->TraceWriteIndex;
+    entry = &DevExt->Trace[index];
+    RtlZeroMemory(entry, sizeof(*entry));
+
+    entry->Sequence = ++DevExt->TraceNextSequence;
+    entry->Time100ns = KeQueryInterruptTime();
+    entry->ProcessId = (ULONGLONG)(ULONG_PTR)PsGetCurrentProcessId();
+    entry->Information = (ULONGLONG)Information;
+    entry->Ioctl = Code;
+    entry->InputLength = InputLength;
+    entry->OutputLength = OutputLength;
+    entry->Status = (ULONG)Status;
+    entry->Method = (UCHAR)Method;
+    entry->Wow64 = Wow64 ? 1 : 0;
+
+    if (Preview != NULL && PreviewLength != 0) {
+        entry->InputPreviewLength = min(
+            PreviewLength,
+            (ULONG)LECS65_TRACE_PREVIEW_BYTES);
+
+        RtlCopyMemory(
+            entry->InputPreview,
+            Preview,
+            entry->InputPreviewLength);
+    }
+
+    DevExt->TraceWriteIndex =
+        (DevExt->TraceWriteIndex + 1) % LECS65_TRACE_CAPACITY;
+
+    if (DevExt->TraceCount < LECS65_TRACE_CAPACITY) {
+        ++DevExt->TraceCount;
+    }
+
+    KeReleaseSpinLock(&DevExt->TraceLock, oldIrql);
+}
+
+static
+VOID
+LecFillTrace(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_ PLECS65_DEBUG_TRACE Trace
+    )
+{
+    KIRQL oldIrql;
+    ULONG count;
+    ULONG start;
+    ULONG i;
+
+    RtlZeroMemory(Trace, sizeof(*Trace));
+    Trace->Version = 1;
+
+    KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
+
+    count = DevExt->TraceCount;
+    Trace->Count = count;
+    Trace->TotalSeen = DevExt->TraceNextSequence;
+
+    start = (DevExt->TraceWriteIndex +
+             LECS65_TRACE_CAPACITY -
+             count) % LECS65_TRACE_CAPACITY;
+
+    for (i = 0; i < count; ++i) {
+        ULONG source =
+            (start + i) % LECS65_TRACE_CAPACITY;
+        Trace->Entry[i] = DevExt->Trace[source];
+    }
+
+    KeReleaseSpinLock(&DevExt->TraceLock, oldIrql);
+}
+
+static
+VOID
+LecClearTrace(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    KIRQL oldIrql;
+
+    KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
+
+    RtlZeroMemory(DevExt->Trace, sizeof(DevExt->Trace));
+    DevExt->TraceNextSequence = 0;
+    DevExt->TraceWriteIndex = 0;
+    DevExt->TraceCount = 0;
+
+    KeReleaseSpinLock(&DevExt->TraceLock, oldIrql);
+}
+
+static
 NTSTATUS
 LecResolveRegister(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
@@ -169,6 +301,10 @@ LecS65DeviceControl(
     NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
     ULONG_PTR information = 0;
     BOOLEAN wow64 = FALSE;
+    UCHAR inputPreview[LECS65_TRACE_PREVIEW_BYTES];
+    ULONG inputPreviewLength = 0;
+
+    RtlZeroMemory(inputPreview, sizeof(inputPreview));
 
     InterlockedIncrement64(&devExt->IoctlCount);
     InterlockedExchange(&devExt->LastIoctl, (LONG)code);
@@ -193,6 +329,15 @@ LecS65DeviceControl(
     if (method == METHOD_BUFFERED &&
         systemBuffer != NULL &&
         inputLength != 0) {
+        inputPreviewLength = min(
+            inputLength,
+            (ULONG)sizeof(inputPreview));
+
+        RtlCopyMemory(
+            inputPreview,
+            systemBuffer,
+            inputPreviewLength);
+
         LecTrace("IOCTL input (first <=64 bytes):\n");
         LecHexDump((const UCHAR*)systemBuffer, inputLength);
     }
@@ -283,6 +428,24 @@ LecS65DeviceControl(
         }
         break;
 
+    case LECS65_IOCTL_DEBUG_GET_TRACE:
+        if (systemBuffer == NULL ||
+            outputLength < sizeof(LECS65_DEBUG_TRACE)) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        LecFillTrace(devExt, (PLECS65_DEBUG_TRACE)systemBuffer);
+        information = sizeof(LECS65_DEBUG_TRACE);
+        status = STATUS_SUCCESS;
+        break;
+
+    case LECS65_IOCTL_DEBUG_CLEAR_TRACE:
+        LecClearTrace(devExt);
+        status = STATUS_SUCCESS;
+        information = 0;
+        break;
+
     case LECS65_IOCTL_DEBUG_CLEAR_STATS:
         InterlockedExchange64(&devExt->CreateCount, 0);
         InterlockedExchange64(&devExt->CloseCount, 0);
@@ -317,6 +480,18 @@ LecS65DeviceControl(
 
     LecTrace("IOCTL done: code=0x%08lX status=0x%08X info=%Iu\n",
         code, status, information);
+
+    LecRecordIoctlTrace(
+        devExt,
+        code,
+        method,
+        inputLength,
+        outputLength,
+        wow64,
+        status,
+        information,
+        inputPreviewLength != 0 ? inputPreview : NULL,
+        inputPreviewLength);
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
