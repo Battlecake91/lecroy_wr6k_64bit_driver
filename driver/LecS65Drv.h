@@ -164,7 +164,8 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     PKEVENT LegacyEvent3;
     PKEVENT LegacyEvent4;
     UCHAR LegacyFlagByte;
-    UCHAR ReservedLegacy[3];
+    UCHAR ReservedLegacy;
+    USHORT LegacyTransferMask;
 
     KSPIN_LOCK TraceLock;
     ULONGLONG TraceNextSequence;
