@@ -263,3 +263,41 @@ The four GUID objects are consecutive in the original image and are passed in fo
 See [device-interfaces.md](device-interfaces.md) for addresses and migration implications.
 
 A PCI vendor/device ID is not present as a readable string in the SYS image. It is expected to be supplied by the original INF, so that remains an external-data item rather than something worth guessing.
+
+
+## PCI hardware IDs
+
+The installed device reports the following hardware IDs in Device Manager:
+
+```text
+PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00
+PCI\VEN_1570&DEV_0005&SUBSYS_00000000
+PCI\VEN_1570&DEV_0005&REV_00
+PCI\VEN_1570&DEV_0005
+PCI\VEN_1570&DEV_0005&CC_0B4000
+PCI\VEN_1570&DEV_0005&CC_0B40
+```
+
+Compatible IDs:
+
+```text
+PCI\VEN_1570&CC_0B4000
+PCI\VEN_1570&CC_0B40
+PCI\VEN_1570
+PCI\CC_0B4000
+PCI\CC_0B40
+```
+
+For the replacement INF, the primary match should therefore be based on:
+
+```text
+PCI\VEN_1570&DEV_0005
+```
+
+The installed INF is published by Windows as:
+
+```text
+oem18.inf
+```
+
+This is the Windows-published name, not necessarily the original vendor filename.
