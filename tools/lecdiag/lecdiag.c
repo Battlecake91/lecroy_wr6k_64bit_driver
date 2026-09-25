@@ -11,6 +11,8 @@
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
     CTL_CODE(0x8000, 0x800, METHOD_BUFFERED, FILE_READ_ACCESS)
+#define LECS65_IOCTL_DEBUG_GET_BARS \
+    CTL_CODE(0x8000, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS)
 
 #pragma pack(push, 1)
 typedef struct LECS65_REG_READ_EXT {
@@ -29,6 +31,18 @@ typedef struct LECS65_DEBUG_STATS {
     uint32_t LastIoctl;
     uint32_t Reserved;
 } LECS65_DEBUG_STATS;
+
+typedef struct LECS65_DEBUG_BAR_ENTRY {
+    uint64_t PhysicalAddress;
+    uint32_t Length;
+    uint32_t Reserved;
+} LECS65_DEBUG_BAR_ENTRY;
+
+typedef struct LECS65_DEBUG_BARS {
+    uint32_t Version;
+    uint32_t Count;
+    LECS65_DEBUG_BAR_ENTRY Entry[3];
+} LECS65_DEBUG_BARS;
 
 static void print_error(const char* what)
 {
@@ -129,6 +143,43 @@ static int query_stats(HANDLE h)
     return 0;
 }
 
+static int query_bars(HANDLE h)
+{
+    LECS65_DEBUG_BARS bars;
+    DWORD returned = 0;
+    unsigned i;
+
+    ZeroMemory(&bars, sizeof(bars));
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_GET_BARS,
+            NULL,
+            0,
+            &bars,
+            sizeof(bars),
+            &returned,
+            NULL)) {
+        print_error("DEBUG_GET_BARS");
+        return 1;
+    }
+
+    printf("bars version: %lu, count: %lu, returned=%lu\n",
+        (unsigned long)bars.Version,
+        (unsigned long)bars.Count,
+        (unsigned long)returned);
+
+    for (i = 0; i < bars.Count && i < 3; ++i) {
+        printf("slot %u: PA=0x%016llX length=0x%08lX (%lu bytes)\n",
+            i,
+            (unsigned long long)bars.Entry[i].PhysicalAddress,
+            (unsigned long)bars.Entry[i].Length,
+            (unsigned long)bars.Entry[i].Length);
+    }
+
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -168,6 +219,7 @@ static void usage(const char* exe)
     printf("Usage:\n");
     printf("  %s build\n", exe);
     printf("  %s stats\n", exe);
+    printf("  %s bars\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("\nExamples:\n");
     printf("  %s build\n", exe);
@@ -195,6 +247,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "stats") == 0) {
         result = query_stats(h);
+    }
+    else if (_stricmp(argv[1], "bars") == 0) {
+        result = query_bars(h);
     }
     else if (_stricmp(argv[1], "read") == 0 && argc == 4) {
         char* end1 = NULL;
