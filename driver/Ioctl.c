@@ -36,7 +36,6 @@ LecRecordIoctlTrace(
 {
     KIRQL oldIrql;
     ULONG index;
-    LARGE_INTEGER systemTime;
     PLECS65_DEBUG_TRACE_ENTRY entry;
 
     if (LecIsPrivateDebugIoctl(Code)) {
@@ -50,8 +49,6 @@ LecRecordIoctlTrace(
     RtlZeroMemory(entry, sizeof(*entry));
 
     entry->Sequence = ++DevExt->TraceNextSequence;
-    KeQuerySystemTime(&systemTime);
-    entry->Time100ns = (ULONGLONG)systemTime.QuadPart;
     entry->ProcessId = (ULONGLONG)(ULONG_PTR)PsGetCurrentProcessId();
     entry->Information = (ULONGLONG)Information;
     entry->Ioctl = Code;
