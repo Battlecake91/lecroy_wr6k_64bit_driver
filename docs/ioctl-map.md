@@ -560,3 +560,94 @@ It passes that record to `0x15A26`.
 Therefore `this + 0x23` is the confirmed "local response buffer available"
 flag. The separate state byte at `this + 0x24` has a different role and must
 not be conflated with the local-response-ready flag.
+
+
+## CFDC2110 transport-ready and 85FB response routing confirmed
+
+Further Ghidra decompilation clarifies the generic board-message send and
+response-fetch paths.
+
+### TX-ready helper 0x17560
+
+`0x17560` reads the transport control register through the wrapper at
+transport-object offset `+0x10` and returns ready only when:
+
+```text
+bit 15 == 0
+low byte == 0
+```
+
+This matches the polling condition reconstructed from the transmitter.
+
+### Family-1 generic send wrapper 0x15DB8
+
+`0x15DB8` calls the generic transmitter at `0x176E6` with:
+
+```text
+buffer = record + 6
+length = record.payload_length + 2
+timeout_scale = caller supplied
+```
+
+If the transmitter reports failure, the wrapper returns protocol status `8`.
+On success it sets the state byte at `this + 0x24` to 1 and returns status 0.
+
+Therefore `this + 0x24` is confirmed as a board-response-pending / transport
+state flag, distinct from the local-response-buffer-ready flag at
+`this + 0x23`.
+
+### Family-0 generic send wrapper 0x16168
+
+`0x16168` also calls `0x176E6` with `record + 6` and
+`payload_length + 2`, using a fixed timeout scale of 1.
+
+The decompiled function does not consume the transmitter return value. Instead,
+its third argument controls whether it returns protocol status 8 or marks
+`this + 0x24` as pending and returns 0. All currently observed callers pass a
+non-zero value. This legacy behaviour should be reproduced only after confirming
+the corresponding call sites and not "corrected" merely because it looks odd.
+
+### 85FB handler 0x169B4
+
+The 85FB handler first requires the byte at record offset `+8` to be `0x40`.
+The byte at `+9` selects the response form.
+
+#### selector 0
+
+The handler calls `0x167F4` to obtain a response-buffer pointer and length.
+If retrieval fails or the returned length is zero, it clears the WORD at output
+offset +4.
+
+Otherwise it copies:
+
+```text
+min(requested_record_output_length, returned_response_length)
+```
+
+bytes from the returned buffer into the CFDC2110 output record.
+
+This is the normal response-fetch path used by the observed `85FB 40 00`
+records.
+
+#### selector 1
+
+The handler constructs a direct state response from driver fields:
+
+```text
+DWORD 0
+WORD  4
+WORD  value at this + 0x0B
+WORD  value at this + 0x09
+```
+
+The resulting response is 10 bytes.
+
+#### selector 2
+
+The handler returns the normal A5FB-style status response with status `0x10`.
+
+Other selectors return the same status-response format with status `2`.
+
+The next critical function for the normal fetch path is `0x167F4`, which
+decides whether the response comes from the locally generated buffer or from
+the board transport.
