@@ -442,6 +442,157 @@ Exit:
 
 static
 NTSTATUS
+LecCaptureLegacyEvent(
+    _Inout_ PKEVENT* Slot,
+    _In_ ULONG HandleValue,
+    _In_ KPROCESSOR_MODE AccessMode
+    )
+{
+    PKEVENT eventObject = NULL;
+    NTSTATUS status;
+
+    status = ObReferenceObjectByHandle(
+        ULongToHandle(HandleValue),
+        EVENT_MODIFY_STATE,
+        *ExEventObjectType,
+        AccessMode,
+        (PVOID*)&eventObject,
+        NULL);
+
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    if (*Slot != NULL) {
+        ObDereferenceObject(*Slot);
+    }
+
+    *Slot = eventObject;
+    KeClearEvent(eventObject);
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecIoctlSetSingleEvent(
+    _Inout_ PKEVENT* Slot,
+    _In_reads_bytes_(InputLength) PVOID SystemBuffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _In_ KPROCESSOR_MODE AccessMode
+    )
+{
+    ULONG handleValue;
+
+    if (SystemBuffer == NULL ||
+        InputLength != sizeof(ULONG) ||
+        OutputLength != 0) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    handleValue = *(PULONG)SystemBuffer;
+    return LecCaptureLegacyEvent(
+        Slot,
+        handleValue,
+        AccessMode);
+}
+
+static
+NTSTATUS
+LecIoctlSetThreeEvents(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(InputLength) PVOID SystemBuffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _In_ KPROCESSOR_MODE AccessMode
+    )
+{
+    PULONG handles;
+    PKEVENT event2 = NULL;
+    PKEVENT event3 = NULL;
+    PKEVENT event4 = NULL;
+    NTSTATUS status;
+
+    if (SystemBuffer == NULL ||
+        InputLength != 3 * sizeof(ULONG) ||
+        OutputLength != 0) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    handles = (PULONG)SystemBuffer;
+
+    status = ObReferenceObjectByHandle(
+        ULongToHandle(handles[0]),
+        EVENT_MODIFY_STATE,
+        *ExEventObjectType,
+        AccessMode,
+        (PVOID*)&event2,
+        NULL);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    status = ObReferenceObjectByHandle(
+        ULongToHandle(handles[1]),
+        EVENT_MODIFY_STATE,
+        *ExEventObjectType,
+        AccessMode,
+        (PVOID*)&event3,
+        NULL);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    status = ObReferenceObjectByHandle(
+        ULongToHandle(handles[2]),
+        EVENT_MODIFY_STATE,
+        *ExEventObjectType,
+        AccessMode,
+        (PVOID*)&event4,
+        NULL);
+    if (!NT_SUCCESS(status)) {
+        goto Exit;
+    }
+
+    if (DevExt->LegacyEvent2 != NULL) {
+        ObDereferenceObject(DevExt->LegacyEvent2);
+    }
+    if (DevExt->LegacyEvent3 != NULL) {
+        ObDereferenceObject(DevExt->LegacyEvent3);
+    }
+    if (DevExt->LegacyEvent4 != NULL) {
+        ObDereferenceObject(DevExt->LegacyEvent4);
+    }
+
+    DevExt->LegacyEvent2 = event2;
+    DevExt->LegacyEvent3 = event3;
+    DevExt->LegacyEvent4 = event4;
+    event2 = NULL;
+    event3 = NULL;
+    event4 = NULL;
+
+    KeClearEvent(DevExt->LegacyEvent2);
+    KeClearEvent(DevExt->LegacyEvent3);
+    KeClearEvent(DevExt->LegacyEvent4);
+
+    status = STATUS_SUCCESS;
+
+Exit:
+    if (event2 != NULL) {
+        ObDereferenceObject(event2);
+    }
+    if (event3 != NULL) {
+        ObDereferenceObject(event3);
+    }
+    if (event4 != NULL) {
+        ObDereferenceObject(event4);
+    }
+
+    return status;
+}
+
+static
+NTSTATUS
 LecResolveRegister(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ UCHAR Bar,
@@ -651,6 +802,52 @@ LecS65DeviceControl(
     }
 
     switch (code) {
+    case LECS65_IOCTL_SET_FLAG_BYTE:
+        if (systemBuffer == NULL ||
+            inputLength != sizeof(UCHAR) ||
+            outputLength != 0) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+
+        devExt->LegacyFlagByte = *(PUCHAR)systemBuffer;
+        status = STATUS_SUCCESS;
+        information = 0;
+        LecTrace(
+            "legacy 0x00222C04 flag <- %u\n",
+            (ULONG)devExt->LegacyFlagByte);
+        break;
+
+    case LECS65_IOCTL_SET_EVENT_0:
+        status = LecIoctlSetSingleEvent(
+            &devExt->LegacyEvent0,
+            systemBuffer,
+            inputLength,
+            outputLength,
+            Irp->RequestorMode);
+        information = 0;
+        break;
+
+    case LECS65_IOCTL_SET_EVENT_1:
+        status = LecIoctlSetSingleEvent(
+            &devExt->LegacyEvent1,
+            systemBuffer,
+            inputLength,
+            outputLength,
+            Irp->RequestorMode);
+        information = 0;
+        break;
+
+    case LECS65_IOCTL_SET_THREE_EVENTS:
+        status = LecIoctlSetThreeEvents(
+            devExt,
+            systemBuffer,
+            inputLength,
+            outputLength,
+            Irp->RequestorMode);
+        information = 0;
+        break;
+
     case LECS65_IOCTL_GET_DALLAS_ID:
         if (systemBuffer == NULL || outputLength != 8) {
             status = STATUS_INVALID_BUFFER_SIZE;
