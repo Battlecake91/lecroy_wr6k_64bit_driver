@@ -245,3 +245,21 @@ Future reverse-engineering notes use:
 - **Unknown**: not yet sufficiently established.
 
 This distinction is deliberate. A plausible guess in a kernel driver is merely a crash with good marketing.
+
+
+## Device interface classes
+
+Further constructor analysis shows that the LeCroy device object registers four interfaces through the DriverWorks wrapper around `IoRegisterDeviceInterface`:
+
+```text
+{7AC34BE9-F766-4F15-9E88-854BA5E2146E}
+{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}
+{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}
+{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
+```
+
+The four GUID objects are consecutive in the original image and are passed in four consecutive interface-registration calls.
+
+See [device-interfaces.md](device-interfaces.md) for addresses and migration implications.
+
+A PCI vendor/device ID is not present as a readable string in the SYS image. It is expected to be supplied by the original INF, so that remains an external-data item rather than something worth guessing.
