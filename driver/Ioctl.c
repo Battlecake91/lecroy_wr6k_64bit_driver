@@ -1065,6 +1065,311 @@ LecJtagExecute(
 
 static
 NTSTATUS
+LecIoctlCfDc2110(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_updates_bytes_(OutputLength) UCHAR* SystemBuffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _Out_ PULONG_PTR Information
+    )
+{
+    UCHAR* inputCopy = NULL;
+    UCHAR* pendingResponse = NULL;
+    ULONG pendingResponseLength = 0;
+    BOOLEAN pendingResponseReady = FALSE;
+    BOOLEAN hardwareResponsePending = FALSE;
+    ULONG inputOffset;
+    ULONG outputOffset;
+    ULONG totalOutput = 0;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (SystemBuffer == NULL || InputLength == 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /*
+     * METHOD_BUFFERED uses the same SystemBuffer for input and output.
+     * The legacy handler first captures/parses the complete record list before
+     * writing responses. Keep a private copy so an early output record cannot
+     * overwrite a later input record.
+     */
+    inputCopy = (UCHAR*)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        InputLength,
+        LECS65_TAG);
+    if (inputCopy == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    pendingResponse = (UCHAR*)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        max(OutputLength, 8UL),
+        LECS65_TAG);
+    if (pendingResponse == NULL) {
+        ExFreePool(inputCopy);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(inputCopy, SystemBuffer, InputLength);
+
+    /* First pass: validate framing and the caller-provided output size. */
+    inputOffset = 0;
+    while (inputOffset < InputLength) {
+        ULONG payloadLength;
+        ULONG recordOutput;
+
+        if (InputLength - inputOffset < 8) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            goto Exit;
+        }
+
+        recordOutput = LecReadU16(inputCopy + inputOffset);
+        payloadLength = LecReadU16(inputCopy + inputOffset + 2);
+
+        if (payloadLength > InputLength - inputOffset - 8) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            goto Exit;
+        }
+
+        if (recordOutput > OutputLength - totalOutput) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            goto Exit;
+        }
+
+        totalOutput += recordOutput;
+        inputOffset += 8 + payloadLength;
+    }
+
+    if (inputOffset != InputLength) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Exit;
+    }
+
+    RtlZeroMemory(SystemBuffer, OutputLength);
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    inputOffset = 0;
+    outputOffset = 0;
+
+    while (inputOffset < InputLength) {
+        const UCHAR* record = inputCopy + inputOffset;
+        ULONG recordOutput = LecReadU16(record);
+        ULONG payloadLength = LecReadU16(record + 2);
+        USHORT type = LecReadU16(record + 4);
+        USHORT signature = LecReadU16(record + 6);
+        const UCHAR* payload = record + 8;
+        UCHAR* recordResult = SystemBuffer + outputOffset;
+
+        if (type != 3) {
+            status = STATUS_NOT_SUPPORTED;
+            break;
+        }
+
+        if (signature == 0xA5FB) {
+            USHORT protocolStatus = 2;
+
+            if (recordOutput < 6 || payloadLength < 3 ||
+                payload[0] != 0x40) {
+                protocolStatus = 2;
+            }
+            else if (payload[1] == 2 && payload[2] == 0x40) {
+                NTSTATUS hwStatus =
+                    LecResetLegacyInterruptState(DevExt);
+                protocolStatus =
+                    NT_SUCCESS(hwStatus) ? 0 : 8;
+            }
+            else if (payload[1] == 1 && payload[2] == 0x99) {
+                NTSTATUS hwStatus = LecTransportSend(
+                    DevExt,
+                    record + 6,
+                    payloadLength + 2);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    hardwareResponsePending = TRUE;
+                    pendingResponseReady = FALSE;
+                    pendingResponseLength = 0;
+                    protocolStatus = 0;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 0 && payload[2] == 0x88) {
+                NTSTATUS hwStatus;
+
+                if (payloadLength >= 6) {
+                    USHORT mask = LecReadU16(payload + 4);
+                    DevExt->LegacyTransferMask &=
+                        (USHORT)~mask;
+                }
+
+                hwStatus = LecTransportSend(
+                    DevExt,
+                    record + 6,
+                    payloadLength + 2);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    hardwareResponsePending = TRUE;
+                    pendingResponseReady = FALSE;
+                    pendingResponseLength = 0;
+                    protocolStatus = 0;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 1 && payload[2] == 0x42) {
+                NTSTATUS hwStatus;
+
+                if (payloadLength < 3) {
+                    hwStatus = STATUS_INVALID_BUFFER_SIZE;
+                }
+                else {
+                    hwStatus = LecJtagExecute(
+                        DevExt,
+                        payload + 3,
+                        payloadLength - 3,
+                        pendingResponse,
+                        max(OutputLength, 8UL),
+                        &pendingResponseLength);
+                }
+
+                if (NT_SUCCESS(hwStatus)) {
+                    pendingResponseReady = TRUE;
+                    hardwareResponsePending = FALSE;
+                    protocolStatus = 0;
+                }
+                else if (hwStatus == STATUS_INVALID_PARAMETER ||
+                         hwStatus == STATUS_INVALID_BUFFER_SIZE) {
+                    protocolStatus = 4;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+            }
+
+            if (recordOutput >= 6) {
+                LecWriteU32(recordResult, 0);
+                LecWriteU16(
+                    recordResult + 4,
+                    protocolStatus);
+            }
+        }
+        else if (signature == 0x85FB) {
+            if (payloadLength < 2 ||
+                payload[0] != 0x40 ||
+                payload[1] != 0) {
+                if (recordOutput >= 6) {
+                    LecWriteU32(recordResult, 0);
+                    LecWriteU16(recordResult + 4, 2);
+                }
+            }
+            else {
+                if (!pendingResponseReady &&
+                    hardwareResponsePending) {
+                    static const UCHAR fetchPacket[4] = {
+                        0xFB, 0x85, 0x40, 0x00
+                    };
+                    ULONG received = 0;
+
+                    status = LecTransportSend(
+                        DevExt,
+                        fetchPacket,
+                        sizeof(fetchPacket));
+                    if (!NT_SUCCESS(status)) {
+                        break;
+                    }
+
+                    status = LecTransportReceive(
+                        DevExt,
+                        pendingResponse,
+                        max(OutputLength, 8UL),
+                        &received);
+                    if (!NT_SUCCESS(status)) {
+                        break;
+                    }
+
+                    pendingResponseLength = received;
+                    pendingResponseReady = TRUE;
+                    hardwareResponsePending = FALSE;
+                }
+
+                if (!pendingResponseReady) {
+                    if (max(OutputLength, 8UL) < 8) {
+                        status = STATUS_BUFFER_TOO_SMALL;
+                        break;
+                    }
+
+                    RtlZeroMemory(pendingResponse, 8);
+                    LecWriteU16(pendingResponse + 4, 2);
+                    LecWriteU16(pendingResponse + 6, 0x20);
+                    pendingResponseLength = 8;
+                    pendingResponseReady = TRUE;
+                }
+
+                if (pendingResponseLength > recordOutput) {
+                    RtlCopyMemory(
+                        recordResult,
+                        pendingResponse,
+                        recordOutput);
+                }
+                else {
+                    RtlCopyMemory(
+                        recordResult,
+                        pendingResponse,
+                        pendingResponseLength);
+                }
+
+                pendingResponseReady = FALSE;
+                pendingResponseLength = 0;
+            }
+        }
+        else if (signature == 0xC5FB) {
+            /*
+             * The third type-3 signature is present in the legacy binary but
+             * has not appeared in the captured XStream startup sequence.
+             */
+            if (recordOutput >= 6) {
+                LecWriteU32(recordResult, 0);
+                LecWriteU16(recordResult + 4, 2);
+            }
+        }
+        else {
+            if (recordOutput >= 6) {
+                LecWriteU32(recordResult, 0);
+                LecWriteU16(recordResult + 4, 2);
+            }
+        }
+
+        outputOffset += recordOutput;
+        inputOffset += 8 + payloadLength;
+    }
+
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+
+    if (NT_SUCCESS(status)) {
+        *Information = totalOutput;
+    }
+
+Exit:
+    if (pendingResponse != NULL) {
+        ExFreePool(pendingResponse);
+    }
+    if (inputCopy != NULL) {
+        ExFreePool(inputCopy);
+    }
+
+    return status;
+}
+
+static
+NTSTATUS
 LecIoctlRegisterRead(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_updates_bytes_(OutputLength) PVOID SystemBuffer,
