@@ -89,7 +89,7 @@ LecHandleStartDevice(
     )
 {
     ULONG listIndex;
-    ULONG registerBarIndex = 0;
+    ULONG memoryIndex = 0;
 
     LecUnmapBars(DevExt);
 
@@ -143,40 +143,45 @@ LecHandleStartDevice(
                     return STATUS_INSUFFICIENT_RESOURCES;
                 }
 
-                if (resource->u.Memory.Length == LECS65_REGISTER_BAR_LENGTH &&
-                    registerBarIndex < 2) {
-                    DevExt->Bar[registerBarIndex] = mapped;
-                    DevExt->BarLength[registerBarIndex] =
+                /*
+                 * The original 2008 driver asks DriverWorks for memory
+                 * resources 0, 1 and 2 in that exact order and binds them to
+                 * BAR0, BAR1 and BAR2 respectively.  Do not classify these by
+                 * size: on the reference hardware BAR1 is the large window
+                 * while BAR0/BAR2 are 0x200-byte register windows.
+                 */
+                if (memoryIndex < LECS65_BAR_COUNT) {
+                    DevExt->Bar[memoryIndex] = mapped;
+                    DevExt->BarLength[memoryIndex] =
                         resource->u.Memory.Length;
-                    DevExt->BarPhysical[registerBarIndex] =
+                    DevExt->BarPhysical[memoryIndex] =
                         resource->u.Memory.Start;
 
                     LecTrace(
                         "  MEM[%lu] -> logical BAR%lu: PA=%I64X VA=%p length=0x%lX\n",
                         descriptorIndex,
-                        registerBarIndex,
+                        memoryIndex,
                         resource->u.Memory.Start.QuadPart,
                         mapped,
                         resource->u.Memory.Length);
 
-                    ++registerBarIndex;
-                }
-                else if (resource->u.Memory.Length > LECS65_REGISTER_BAR_LENGTH &&
-                         DevExt->BulkMmio == NULL) {
-                    DevExt->BulkMmio = mapped;
-                    DevExt->BulkMmioLength = resource->u.Memory.Length;
-                    DevExt->BulkMmioPhysical = resource->u.Memory.Start;
+                    if (resource->u.Memory.Length >
+                        LECS65_REGISTER_BAR_LENGTH) {
+                        /*
+                         * Keep the old BULK diagnostic as metadata only.
+                         * Bar[memoryIndex] owns the actual mapping.
+                         */
+                        DevExt->BulkMmioLength =
+                            resource->u.Memory.Length;
+                        DevExt->BulkMmioPhysical =
+                            resource->u.Memory.Start;
+                    }
 
-                    LecTrace(
-                        "  MEM[%lu] -> BULK: PA=%I64X VA=%p length=0x%lX\n",
-                        descriptorIndex,
-                        resource->u.Memory.Start.QuadPart,
-                        mapped,
-                        resource->u.Memory.Length);
+                    ++memoryIndex;
                 }
                 else {
                     LecTrace(
-                        "  MEM[%lu] unclassified; unmapping PA=%I64X length=0x%lX\n",
+                        "  MEM[%lu] extra resource; unmapping PA=%I64X length=0x%lX\n",
                         descriptorIndex,
                         resource->u.Memory.Start.QuadPart,
                         resource->u.Memory.Length);
@@ -216,25 +221,30 @@ LecHandleStartDevice(
         }
     }
 
-    if (registerBarIndex < 2) {
+    if (memoryIndex < LECS65_BAR_COUNT) {
         LecTrace(
-            "START_DEVICE: expected two 0x%X register windows, found %lu\n",
-            LECS65_REGISTER_BAR_LENGTH,
-            registerBarIndex);
+            "START_DEVICE: expected three memory BARs, found %lu\n",
+            memoryIndex);
         LecUnmapBars(DevExt);
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
-    if (DevExt->BulkMmio == NULL) {
-        LecTrace("START_DEVICE: no bulk MMIO resource found\n");
+    if (DevExt->BarLength[2] < LECS65_ONEWIRE_OFFSET + sizeof(ULONG)) {
+        LecTrace(
+            "START_DEVICE: BAR2 too small for ONEWIRE register: length=0x%lX\n",
+            DevExt->BarLength[2]);
+        LecUnmapBars(DevExt);
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
     LecTrace(
-        "START_DEVICE: logical BAR0=%I64X/0x%lX BAR1=%I64X/0x%lX BAR2=unmapped BULK=%I64X/0x%lX\n",
+        "START_DEVICE: logical BAR0=%I64X/0x%lX BAR1=%I64X/0x%lX BAR2=%I64X/0x%lX BULK=%I64X/0x%lX\n",
         DevExt->BarPhysical[0].QuadPart,
         DevExt->BarLength[0],
         DevExt->BarPhysical[1].QuadPart,
         DevExt->BarLength[1],
+        DevExt->BarPhysical[2].QuadPart,
+        DevExt->BarLength[2],
         DevExt->BulkMmioPhysical.QuadPart,
         DevExt->BulkMmioLength);
 
