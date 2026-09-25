@@ -207,51 +207,7 @@ if (-not $SkipInstall) {
         $infProperty = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_DriverInfPath' -ErrorAction SilentlyContinue
         $infPath = $infProperty.Data
 
-        if ($infPath -and $infPath -match '^oem\d+\.inf
-            Write-Host "Kein gebundenes oem*.inf gefunden."
-        }
-    }
-    else {
-        Write-Host "PCI-Geraet ist aktuell nicht sichtbar. Installation wird trotzdem versucht."
-    }
-
-    Write-Step "Treiber installieren"
-    Invoke-Native "pnputil.exe" "/add-driver" $packageInf "/install"
-    Invoke-Native "pnputil.exe" "/scan-devices"
-    Start-Sleep -Seconds 1
-
-    Write-Step "PnP-Status"
-    $device = Get-LecDevice
-    if (-not $device) {
-        throw "LeCroy PCI-Geraet wurde nach der Installation nicht gefunden."
-    }
-
-    $problemProperty = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_ProblemCode' -ErrorAction SilentlyContinue
-    $problem = $problemProperty.Data
-
-    Write-Host "Status:   $($device.Status)"
-    Write-Host "Instance: $($device.InstanceId)"
-    Write-Host "Problem:  $problem"
-
-    if ($device.Status -ne "OK" -or ($null -ne $problem -and [int]$problem -ne 0)) {
-        throw "Treiber ist installiert, aber das PCI-Geraet ist nicht fehlerfrei gestartet."
-    }
-
-    Write-Step "Treiber-Service"
-    sc.exe query LecS65AcqDrv
-}
-
-if ($RunBars) {
-    Write-Step "Sicherer BAR-Ressourcendump"
-    if (-not (Test-Path $lecdiagExe)) {
-        throw "lecdiag.exe wurde nicht gefunden: $lecdiagExe"
-    }
-    Invoke-Native $lecdiagExe "bars"
-}
-
-Write-Host ""
-Write-Host "Fertig." -ForegroundColor Green
-) {
+        if ($infPath -and $infPath -match '^oem\d+\.inf$') {
             Write-Host "Entferne aktuell gebundenes Paket: $infPath"
 
             & "pnputil.exe" "/delete-driver" $infPath "/uninstall" "/force"
