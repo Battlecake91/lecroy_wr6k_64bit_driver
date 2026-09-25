@@ -1548,6 +1548,15 @@ LecS65DeviceControl(
     }
 
     switch (code) {
+    case LECS65_IOCTL_CFDC2110:
+        status = LecIoctlCfDc2110(
+            devExt,
+            (PUCHAR)systemBuffer,
+            inputLength,
+            outputLength,
+            &information);
+        break;
+
     case LECS65_IOCTL_DELAY_MILLISECONDS:
         if (systemBuffer == NULL ||
             inputLength < sizeof(ULONG)) {
