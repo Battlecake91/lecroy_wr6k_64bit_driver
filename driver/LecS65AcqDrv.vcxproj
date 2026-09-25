@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -16,35 +16,33 @@
     <ProjectGuid>{2D6CDB79-6C5B-4DB0-B79C-5AF3FBE64D36}</ProjectGuid>
     <RootNamespace>LecS65AcqDrv</RootNamespace>
     <ProjectName>LecS65AcqDrv</ProjectName>
-    <MinimumVisualStudioVersion>18.0</MinimumVisualStudioVersion>
-    <TargetVersion>Windows10</TargetVersion>
-    <DriverTargetPlatform>Desktop</DriverTargetPlatform>
     <WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
-  <PropertyGroup Label="Configuration">
-    <ConfigurationType>Driver</ConfigurationType>
-    <DriverType>WDM</DriverType>
-    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
-
-    <!-- Bring-up build: do not require local Spectre libs or signing yet. -->
-    <SpectreMitigation>false</SpectreMitigation>
-    <SignMode>Off</SignMode>
-  </PropertyGroup>
-
-  <PropertyGroup Label="Configuration"
-                 Condition="'$(Configuration)'=='Debug'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
     <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
 
-  <PropertyGroup Label="Configuration"
-                 Condition="'$(Configuration)'=='Release'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
     <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <TargetName>LecS65AcqDrv</TargetName>
+    <TargetExt>.sys</TargetExt>
+    <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\obj\</IntDir>
+  </PropertyGroup>
 
   <ItemDefinitionGroup>
     <ClCompile>
@@ -52,40 +50,61 @@
       <TreatWarningAsError>false</TreatWarningAsError>
       <ExceptionHandling>false</ExceptionHandling>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
-      <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">DBG=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>
+        C:\Program Files (x86)\Windows Kits\10\Include\10.0.28000.0\km;
+        C:\Program Files (x86)\Windows Kits\10\Include\10.0.28000.0\shared;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>
+        _AMD64_;AMD64;_WIN64;WIN64;
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
     </ClCompile>
 
     <Link>
-      <AdditionalDependencies>ntoskrnl.lib;hal.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>
+        C:\Program Files (x86)\Windows Kits\10\Lib\10.0.28000.0\km\x64;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        ntoskrnl.lib;
+        hal.lib;
+        wmilib.lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+      <SubSystem>Native</SubSystem>
+      <Driver>Driver</Driver>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>DBG=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
   </ItemDefinitionGroup>
 
   <ItemGroup>
     <ClInclude Include="LecS65Drv.h" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="Ioctl.c" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Inf Include="LecS65AcqDrv.inf" />
-  </ItemGroup>
-
-  <!--
-    Official WDK NuGet path. NuGet/MSBuild generates the package imports during
-    restore, which supplies WindowsKernelModeDriver10.0 without depending on the
-    machine-wide WDK Visual Studio extension.
-  -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.WDK.x64"
-                      Version="10.0.28000.2526" />
-    <PackageReference Include="Microsoft.Windows.SDK.CPP.x64"
-                      Version="10.0.28000.2526" />
+    <None Include="LecS65AcqDrv.inf" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-
 </Project>
