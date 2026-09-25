@@ -257,3 +257,99 @@ selects a sub-operation in the original `0xA5FB` / `0x85FB` handlers.
 The x64 compatibility driver intentionally does not yet emulate the data-transfer
 side effects. The exact output bytes and hardware effects will be captured from
 the working x86 reference driver before implementing this path.
+
+
+## CFDC2110 reference-driver response captures
+
+Direct replay against the working 32-bit reference driver confirmed the packed
+record parser and the A5FB/85FB request/response relationship.
+
+Important safety note: `0xCFDC2110` is stateful and can perform real hardware
+operations. Replaying arbitrary or malformed requests outside the normal XStream
+sequence can destabilize the acquisition hardware. Further reference-system
+testing should therefore avoid raw replay unless a specific missing fact cannot
+be recovered statically.
+
+Observed reference transactions:
+
+### A5FB RESET command
+
+Input:
+
+```text
+06 00 0A 00 03 00 FB A5
+40 02 40 01 52 45 53 45 54 00
+```
+
+Output, 6 bytes:
+
+```text
+00 00 00 00 00 00
+```
+
+### A5FB command followed by 85FB response fetch, 270-byte output
+
+Input:
+
+```text
+06 00 04 00 03 00 FB A5 40 01 99 00
+08 01 02 00 03 00 FB 85 40 00
+```
+
+Output begins:
+
+```text
+00 00 00 00 00 00
+00 00 00 00 02 00 02 00
+FF FF FF FF ...
+```
+
+The first six bytes are the A5FB command result. The following 264 bytes belong
+to the 85FB record.
+
+### A5FB command followed by 85FB response fetch, 14-byte output
+
+Input:
+
+```text
+06 00 06 00 03 00 FB A5 40 00 88 00 DF FF
+08 00 02 00 03 00 FB 85 40 00
+```
+
+Output:
+
+```text
+00 00 00 00 00 00
+00 00 00 00 02 00 00 00
+```
+
+### A5FB command followed by 85FB response fetch, 46-byte output
+
+Input contains an A5FB record with a 76-byte payload followed by an 85FB
+`40 00` response-fetch record.
+
+Output:
+
+```text
+00 00 00 00 00 00
+00 00 00 00 22 00 00 00 FF FF
+78 DC 06 C0 78 DC 06 C0 78 DC 06 C0 78 E0 06 D0
+78 DC 06 C0 78 DC 06 C0 78 DC 06 C0 78 E0
+```
+
+The values after the 85FB response header are hardware/state dependent and must
+not be treated as universal constants.
+
+### Handler relationship recovered from the original binary
+
+For type-3 records:
+
+- signature `0xA5FB` dispatches to the command side;
+- signature `0x85FB` dispatches to the response side;
+- signature `0xC5FB` dispatches to a third related path.
+
+For the startup traffic captured so far, A5FB commands are followed by an 85FB
+record whose payload is `40 00`. The 85FB handler retrieves data from an
+internal response buffer produced or updated by the preceding command. This
+explains why replaying isolated records is not equivalent to observing the
+normal XStream sequence.
