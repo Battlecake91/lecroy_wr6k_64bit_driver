@@ -353,3 +353,41 @@ record whose payload is `40 00`. The 85FB handler retrieves data from an
 internal response buffer produced or updated by the preceding command. This
 explains why replaying isolated records is not equivalent to observing the
 normal XStream sequence.
+
+
+## CFDC2110 startup routing details
+
+Static disassembly now confirms the routing used by the XStream startup records.
+
+For A5FB records with a payload beginning in `0x40`, `payload[1]` selects
+one of three command families and `payload[2]` is the command opcode.
+
+The A5FB side writes a six-byte direct result consisting of a zero DWORD followed
+by a 16-bit command status. This matches the six zero bytes observed for the
+successful startup commands.
+
+Observed routing:
+
+- `40 02 40 ...`: family 2, opcode `0x40`, board reset / interrupt-cleanup path.
+- `40 01 99 00`: family 1, opcode `0x99`, generic BAR1 message transmit.
+- `40 00 88 00 DF FF`: family 0, opcode `0x88`, status-mask update plus generic BAR1 message transmit.
+- `40 01 42 ...`: family 1, opcode `0x42`, direct JTAG transaction.
+
+For the generic-transmit commands the bytes sent to the board begin at the
+record signature, not at the host-side record header. The observed packets are:
+
+```text
+FB A5 40 01 99 00
+FB A5 40 00 88 00 DF FF
+```
+
+The following 85FB record with payload `40 00` retrieves the pending response.
+When a board reply is needed, the legacy driver sends the fixed fetch packet
+`FB 85 40 00` through the BAR1 message transport and receives the response
+from the BAR1 RX window.
+
+The opcode-`0x42` path is confirmed to use the JTAG registers at BAR1 offsets
+`0x20`, `0x24`, and `0x28`. For the captured 256-bit request it performs
+16 iterations of 16 bits, reads the upper 16 bits of each JTAG input DWORD, and
+builds a response containing 32 data bytes. This explains the observed 40-byte
+85FB response and its `0x22` response-length field.
