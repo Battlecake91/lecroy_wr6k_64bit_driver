@@ -54,7 +54,6 @@ typedef struct LECS65_DEBUG_BARS {
 
 typedef struct LECS65_DEBUG_TRACE_ENTRY {
     uint64_t Sequence;
-    uint64_t Time100ns;
     uint64_t ProcessId;
     uint64_t Information;
     uint32_t Ioctl;
@@ -282,7 +281,6 @@ static int query_trace(HANDLE h)
 {
     LECS65_DEBUG_TRACE* trace;
     DWORD returned = 0;
-    uint64_t baseTime = 0;
     uint32_t i;
 
     trace = (LECS65_DEBUG_TRACE*)HeapAlloc(
@@ -321,20 +319,16 @@ static int query_trace(HANDLE h)
         return 0;
     }
 
-    baseTime = trace->Entry[0].Time100ns;
-
     printf("\n");
-    printf("SEQ   +ms       PID     W64 METHOD   IOCTL       IN     OUT    INFO   STATUS      NAME / INPUT PREVIEW\n");
-    printf("----  --------  ------  --- -------- ---------- ------ ------ ------ ----------  --------------------\n");
+    printf("SEQ   PID     W64 METHOD   IOCTL       IN     OUT    INFO   STATUS      NAME / INPUT PREVIEW\n");
+    printf("----  ------  --- -------- ---------- ------ ------ ------ ----------  --------------------\n");
 
     for (i = 0; i < trace->Count && i < LECS65_TRACE_CAPACITY; ++i) {
         const LECS65_DEBUG_TRACE_ENTRY* e = &trace->Entry[i];
-        double ms = (double)(e->Time100ns - baseTime) / 10000.0;
         uint32_t j;
 
-        printf("%4llu  %8.3f  %6llu  %3s %-8s 0x%08lX %6lu %6lu %6llu 0x%08lX  %s",
+        printf("%4llu  %6llu  %3s %-8s 0x%08lX %6lu %6lu %6llu 0x%08lX  %s",
             (unsigned long long)e->Sequence,
-            ms,
             (unsigned long long)e->ProcessId,
             e->Wow64 ? "yes" : "no",
             method_name(e->Method),
