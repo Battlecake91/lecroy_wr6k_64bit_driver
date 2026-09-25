@@ -205,7 +205,10 @@ if (-not $SkipInstall) {
     if ($device) {
         Write-Host "Geraet: $($device.InstanceId)"
         $infProperty = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_DriverInfPath' -ErrorAction SilentlyContinue
-        $infPath = $infProperty.Data
+        $infPath = $null
+        if ($infProperty -and $infProperty.PSObject.Properties.Name -contains 'Data') {
+            $infPath = $infProperty.Data
+        }
 
         if ($infPath -and $infPath -match '^oem\d+\.inf$') {
             Write-Host "Entferne aktuell gebundenes Paket: $infPath"
@@ -246,7 +249,10 @@ if (-not $SkipInstall) {
     }
 
     $problemProperty = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_ProblemCode' -ErrorAction SilentlyContinue
-    $problem = $problemProperty.Data
+    $problem = $null
+    if ($problemProperty -and $problemProperty.PSObject.Properties.Name -contains 'Data') {
+        $problem = $problemProperty.Data
+    }
 
     Write-Host "Status:   $($device.Status)"
     Write-Host "Instance: $($device.InstanceId)"
