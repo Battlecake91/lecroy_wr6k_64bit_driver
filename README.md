@@ -71,4 +71,6 @@ It also registers four PnP device-interface classes:
 {FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
 ```
 
-Together, those findings give the future x64 driver a useful incremental bring-up route: enumerate the same interfaces, map the PCI BARs, validate raw register access, then move on to Dallas, interrupts and acquisition/DMA.
+The installed device is also confirmed as `PCI\\VEN_1570&DEV_0005` (subsystem `00000000`, revision `00`). Windows currently publishes the legacy driver package as `oem18.inf`.
+
+Together, those findings give the future x64 driver a useful incremental bring-up route: enumerate the same interfaces, bind to the confirmed PCI ID, map the PCI BARs, validate raw register access, then move on to Dallas, interrupts and acquisition/DMA.
