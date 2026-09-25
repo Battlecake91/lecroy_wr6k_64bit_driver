@@ -77,9 +77,10 @@ LecUnmapBars(
 
         MmUnmapIoSpace(DevExt->BulkMmio, DevExt->BulkMmioLength);
         DevExt->BulkMmio = NULL;
-        DevExt->BulkMmioLength = 0;
-        DevExt->BulkMmioPhysical.QuadPart = 0;
     }
+
+    DevExt->BulkMmioLength = 0;
+    DevExt->BulkMmioPhysical.QuadPart = 0;
 }
 
 NTSTATUS
