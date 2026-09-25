@@ -301,3 +301,30 @@ oem18.inf
 ```
 
 This is the Windows-published name, not necessarily the original vendor filename.
+
+
+## Legacy INF identity
+
+The installed INF has now been recovered. Windows publishes it as `oem18.inf`, while its own header identifies the original filename as `LecS65AcqDrv.inf`.
+
+Confirmed package identity:
+
+```text
+Class:       DataAcquisition
+ClassGuid:   {BA5FE95F-EE73-4113-8121-F38CC4FF0095}
+Provider:    LeCroy
+DriverVer:   12/23/2008, 6.1.1.1002
+
+Hardware ID:
+PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00
+
+Service name:   LecS65AcqDrv
+Display name:   LecS65Driver
+ServiceBinary:  %SystemRoot%\System32\Drivers\LecS65AcqDrv.sys
+StartType:      demand
+LoadOrderGroup: Base
+```
+
+The INF also references the legacy custom class-installer DLL `AcqDevClassInstaller.dll`.
+
+See [legacy-inf-analysis.md](legacy-inf-analysis.md) for the complete analysis.
