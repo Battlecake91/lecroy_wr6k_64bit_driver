@@ -199,3 +199,61 @@ The legacy helper also toggles an auxiliary hardware register around the delay.
 The x64 compatibility implementation intentionally reproduces only the
 externally visible timing behaviour for now. The hardware toggle is deferred
 until runtime evidence shows it is required.
+
+
+## 0xCFDC2110 packet-list structure confirmed at runtime
+
+The startup trace with 96-byte input capture confirms that `0xCFDC2110` accepts
+one or more packed records concatenated in the input buffer.
+
+Each record begins with:
+
+```c
+#pragma pack(push, 1)
+typedef struct {
+    uint16_t output_length;
+    uint16_t payload_length;
+    uint16_t type;
+    uint16_t signature;
+    uint8_t  payload[payload_length];
+} LECS65_TRANSFER_RECORD;
+#pragma pack(pop)
+```
+
+The next record starts at `record + 8 + payload_length`.
+
+The original handler sums `output_length` across all records and rejects a
+request if the sum exceeds the DeviceIoControl output-buffer length.
+
+The recovered type dispatch is:
+
+- type `3`: data-transfer record; signatures `0xA5FB`, `0x85FB` and
+  `0xC5FB` are recognized by the original binary;
+- types `1` and `2`: routed through a separate control/programming helper.
+
+Observed x64 XStream startup examples:
+
+```text
+IN=18 OUT=6
+06 00 0A 00 03 00 FB A5
+40 02 40 01 52 45 53 45 54 00
+
+IN=22 OUT=270
+06 00 04 00 03 00 FB A5 40 01 99 00
+08 01 02 00 03 00 FB 85 40 00
+
+IN=24 OUT=14
+06 00 06 00 03 00 FB A5 40 00 88 00 DF FF
+08 00 02 00 03 00 FB 85 40 00
+
+IN=94 OUT=46
+06 00 4C 00 03 00 FB A5 <76-byte payload>
+28 00 02 00 03 00 FB 85 40 00
+```
+
+For the observed records, the first payload byte is `0x40`; the second byte
+selects a sub-operation in the original `0xA5FB` / `0x85FB` handlers.
+
+The x64 compatibility driver intentionally does not yet emulate the data-transfer
+side effects. The exact output bytes and hardware effects will be captured from
+the working x86 reference driver before implementing this path.
