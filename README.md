@@ -32,6 +32,7 @@ Documentation:
 - [docs/abi-analysis.md](docs/abi-analysis.md)
 - [docs/hardware-register-map.md](docs/hardware-register-map.md)
 - [docs/device-interfaces.md](docs/device-interfaces.md)
+- [docs/legacy-inf-analysis.md](docs/legacy-inf-analysis.md)
 
 Reusable reconstructed ABI definitions:
 
@@ -71,6 +72,6 @@ It also registers four PnP device-interface classes:
 {FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
 ```
 
-The installed device is also confirmed as `PCI\\VEN_1570&DEV_0005` (subsystem `00000000`, revision `00`). Windows currently publishes the legacy driver package as `oem18.inf`.
+The installed legacy INF has now been recovered as well. Windows publishes it as `oem18.inf`, while the file identifies itself as the original `LecS65AcqDrv.inf`. It confirms `PCI\\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`, service name `LecS65AcqDrv`, device class `DataAcquisition`, class GUID `{BA5FE95F-EE73-4113-8121-F38CC4FF0095}`, and binary name `LecS65AcqDrv.sys`.
 
 Together, those findings give the future x64 driver a useful incremental bring-up route: enumerate the same interfaces, bind to the confirmed PCI ID, map the PCI BARs, validate raw register access, then move on to Dallas, interrupts and acquisition/DMA.
