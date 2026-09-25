@@ -414,3 +414,80 @@ subcommands used by XStream is decoded.
 
 This is a deliberate safety rollback. Returning a truthful failure is preferable
 to returning structurally valid but semantically wrong board responses.
+
+
+## CFDC2110 family dispatchers confirmed from Ghidra
+
+The decompiled A5FB handler confirms that the byte at record offset +8 must be
+`0x40`, and the byte at +9 selects one of three families:
+
+```text
+family 0 -> 0x16A66
+family 1 -> 0x165A6
+family 2 -> 0x166A8
+```
+
+The command opcode is the byte at record offset +10.
+
+### Family 0 dispatcher (0x16A66)
+
+Observed opcode routing:
+
+- `0x42` -> `0x15ACC`
+- `0x4A`, `0x84`, `0x86`, `0x87`, `0x96`, `0x97`, `0xA1`, `0xA2`
+  -> generic send helper `0x16168`
+- `0x85` -> `0x16962` followed by generic send helper `0x16168`
+- `0x88` -> clears bits in an internal 16-bit mask; special handling for masks
+  `0x0080` and `0x0800`, otherwise falls through to the generic send helper
+- `0x89` and several lower commands -> status/helper `0x16066`
+- `0x90` -> `0x15E80`
+- `0x91` -> `0x15F7C`
+- `0x92` -> `0x1600E`
+- `0xA0` -> `0x15FD8`
+
+The generic helper `0x16168` passes `record + 6` and
+`payload_length + 2` into the transport object at `this + 0x31`. This
+confirms that the board-side packet begins at the A5FB signature and includes
+the complete payload.
+
+### Family 1 dispatcher (0x165A6)
+
+Observed routing:
+
+- `0x42` -> `0x15C7E` (JTAG path)
+- `0x4A`, `0x81`, `0x82`, `0x90`, `0x91`, `0x96`, `0x97`, `0x99`
+  -> `0x15DB8`
+- `0x50`, `0x51` -> `0x160DC`
+- `0x92` -> `0x15DEA`
+- `0xA0` -> `0x15B64`
+- `0xA1` -> `0x15BCE`
+- `0xA2` -> `0x15C26`
+- `0x40`, `0x60`, `0x70`, `0x80`, `0x83`
+  -> helper/status path `0x15A88(..., 0x10)`
+
+`0x15DB8` is confirmed as a generic transmit wrapper: it forwards
+`record + 6` with `payload_length + 2` to the transport object at
+`this + 0x31`; on success it sets the driver's response-pending flag at
+`this + 0x24`.
+
+### Family 2 dispatcher (0x166A8)
+
+Observed routing:
+
+- `0x00` -> `0x1634E`, then falls through to `0x16414`
+- `0x01` -> `0x1621A`
+- `0x02` -> `0x163B2`
+- `0x03` -> generic send helper `0x16168(..., 0x19)`; also writes 10 to
+  driver state at `this + 0x196`
+- `0x04` -> `0x16414`
+- `0x05` -> writes 7 then 3 to the register-wrapper object at
+  `this + 0x15E`
+- `0x06`, `0x07`, `0x08` -> `0x16066`
+- `0x09` -> writes 3 to the same `this + 0x15E` register wrapper
+- `0x0A` -> writes 2 to the same register wrapper
+- `0x10` -> `0x164B8`
+- `0x40` -> `0x16066` followed by `0x16490`
+
+The family-2 register-wrapper identity at `this + 0x15E` still needs to be
+mapped back to its constructor/register name before it is implemented in the
+x64 driver.
