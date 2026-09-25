@@ -21,8 +21,12 @@
 /* Recovered legacy IOCTLs used by the first bring-up build. */
 #define LECS65_IOCTL_CFDC212C          ((ULONG)0xCFDC212C)
 #define LECS65_IOCTL_CFDC2184          ((ULONG)0xCFDC2184)
-#define LECS65_IOCTL_GET_DALLAS_ID      ((ULONG)0x00223080)
-#define LECS65_IOCTL_READ_DALLAS_MEMORY ((ULONG)0x00223084)
+#define LECS65_IOCTL_SET_FLAG_BYTE       ((ULONG)0x00222C04)
+#define LECS65_IOCTL_GET_DALLAS_ID        ((ULONG)0x00223080)
+#define LECS65_IOCTL_READ_DALLAS_MEMORY   ((ULONG)0x00223084)
+#define LECS65_IOCTL_SET_THREE_EVENTS     ((ULONG)0x00223100)
+#define LECS65_IOCTL_SET_EVENT_0          ((ULONG)0xCFDC2180)
+#define LECS65_IOCTL_SET_EVENT_1          ((ULONG)0xCFDC218C)
 #define LECS65_IOCTL_REGISTER_READ     ((ULONG)0xCFDC21C0)
 #define LECS65_IOCTL_REGISTER_WRITE    ((ULONG)0xCFDC21C4)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((ULONG)0xCFDC21C8)
@@ -140,6 +144,15 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     volatile LONG LastIoctl;
 
     KMUTEX DallasMutex;
+
+    PKEVENT LegacyEvent0;
+    PKEVENT LegacyEvent1;
+    PKEVENT LegacyEvent2;
+    PKEVENT LegacyEvent3;
+    PKEVENT LegacyEvent4;
+    UCHAR LegacyFlagByte;
+    UCHAR ReservedLegacy[3];
+
     KSPIN_LOCK TraceLock;
     ULONGLONG TraceNextSequence;
     ULONG TraceWriteIndex;
@@ -181,3 +194,4 @@ NTSTATUS LecHandleStartDevice(
     );
 
 VOID LecDisableInterfaces(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecReleaseLegacyEvents(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
