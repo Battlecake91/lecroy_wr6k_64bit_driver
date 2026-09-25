@@ -42,6 +42,16 @@ LecRecordIoctlTrace(
         return;
     }
 
+    /*
+     * XStream polls the generic register-read IOCTL hundreds of times during
+     * startup. Those successful reads contain no useful protocol payload in
+     * the current trace format and would evict the interesting control calls.
+     */
+    if (Code == LECS65_IOCTL_REGISTER_READ &&
+        NT_SUCCESS(Status)) {
+        return;
+    }
+
     KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
 
     index = DevExt->TraceWriteIndex;
