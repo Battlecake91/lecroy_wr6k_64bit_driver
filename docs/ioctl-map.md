@@ -391,3 +391,26 @@ The opcode-`0x42` path is confirmed to use the JTAG registers at BAR1 offsets
 16 iterations of 16 bits, reads the upper 16 bits of each JTAG input DWORD, and
 builds a response containing 32 data bytes. This explains the observed 40-byte
 85FB response and its `0x22` response-length field.
+
+
+## Runtime correction: partial CFDC2110 execution disabled
+
+A broader XStream run after enabling the first CFDC2110 implementation exposed
+many additional A5FB subcommands beyond the initially decoded startup set,
+including opcodes `0x81`, `0x84`, `0x4A`, `0x92`, and additional
+`0x42` forms.
+
+The partial implementation returned `STATUS_SUCCESS` for these records while
+often producing only placeholder/fallback response bytes. XStream then advanced
+into later initialization and acquisition code with invalid board state,
+resulting in multiple application errors and missing/incorrect acquisition
+traces.
+
+The x64 driver therefore currently keeps the recovered CFDC2110 parser,
+transport helpers, and documentation in-tree but does not execute CFDC2110
+hardware side effects. The IOCTL is temporarily trace-only and returns
+`STATUS_INVALID_DEVICE_REQUEST` until the full set of startup/runtime
+subcommands used by XStream is decoded.
+
+This is a deliberate safety rollback. Returning a truthful failure is preferable
+to returning structurally valid but semantically wrong board responses.
