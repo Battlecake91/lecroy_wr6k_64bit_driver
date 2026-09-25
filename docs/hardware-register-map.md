@@ -111,3 +111,67 @@ unmapped until its legacy hardware mapping is positively identified.
 This classification is intentionally conservative and specific to the observed
 reference hardware. It should not be generalized to other board revisions
 without validating their PCI resource layout.
+
+
+## Recovered Dallas / 1-Wire hardware path
+
+The 2008 reference driver establishes the three memory resources in resource-index
+order and passes them to its register-map constructor as BAR0, BAR1 and BAR2.
+
+On the current reference system the translated resources are therefore:
+
+- BAR0: first memory resource, 0x200 bytes
+- BAR1: second memory resource, 0x40000 bytes
+- BAR2: third memory resource, 0x200 bytes
+
+This corrects the earlier conservative size-based prototype classification.
+
+The Dallas/1-Wire controller register is confirmed at:
+
+```text
+BAR2 + 0x40  ONEWIRE
+```
+
+The original low-level controller protocol is:
+
+- write `0`: 1-Wire reset
+- write `1`: transmit a zero bit
+- write `2`: transmit a one bit
+- write `3`: read a bit
+- read bit 0: controller busy
+- read bit 1: sampled 1-Wire data/presence state
+
+The original driver polls bit 0 until clear. After a reset, bit 1 clear indicates
+a detected presence pulse.
+
+Recovered Dallas transactions:
+
+```text
+GET_DALLAS_ID:
+  reset
+  write 0x33 (READ ROM), LSB first
+  read 8 bytes, LSB first
+  validate Dallas/Maxim CRC-8
+  retry up to 10 times on CRC failure
+
+READ_DALLAS_MEMORY:
+  reset
+  write 0xCC (SKIP ROM)
+  write 0xF0 (READ MEMORY)
+  write 0x00
+  write 0x00
+  read requested 1..0x200 bytes
+```
+
+Reference hardware results captured through the original x86 driver:
+
+```text
+Dallas ROM ID:
+23 F0 47 37 00 00 00 AC
+
+Full memory read:
+512 bytes
+```
+
+The ROM CRC byte `0xAC` matches the Dallas/Maxim CRC-8 of the preceding seven
+bytes.
