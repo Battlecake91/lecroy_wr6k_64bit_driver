@@ -1163,3 +1163,69 @@ transfer object despite falling inside the broad address sweep.
 The next transfer-analysis targets should therefore focus on
 `0x18194`, `0x1807A`, `0x17F8C`, `0x17FD6`, `0x1232A`, and the
 constructor callers around `0x14212`.
+
+
+## Fifth headless export: MDL-backed transfer registration
+
+The transfer registration path is now confirmed to use Windows MDLs and locked
+user pages.
+
+### 0x1807A: MDL chain construction
+
+`FUN_0001807a` validates the requested size (maximum about 0x06000000 bytes),
+optionally probes the caller buffer for write access, then splits the range into
+chunks of at most 0x02000000 bytes.
+
+For each chunk it:
+
+- allocates an MDL with `IoAllocateMdl`;
+- appends the MDL to a linked chain;
+- when operating on user memory, locks the pages with
+  `MmProbeAndLockPages`.
+
+This is direct evidence that the legacy acquisition path is built around
+pinned user buffers rather than only internal kernel buffers.
+
+### 0x17F8C: nonpaged descriptor/table allocation
+
+`FUN_00017f8c` allocates a fixed 0x33000-byte nonpaged buffer, allocates an
+MDL for it, and calls `MmBuildMdlForNonPagedPool`.
+
+This buffer is associated with a transfer-entry object and is likely a hardware
+descriptor/scatter-gather table or staging structure. Its exact format is not
+yet proven.
+
+### 0x18194: page/segment descriptor builder
+
+`FUN_00018194` walks a chain of memory descriptors and emits pairs of
+`{word_count, physical/page-derived address}` into a caller-provided table.
+It advances across 4 KiB page boundaries and groups entries in blocks of 0x200,
+with one slot used for a continuation/page-pointer style value.
+
+The function stops when it reaches the transfer object's configured word count.
+This strongly identifies the 0x33000-byte buffer as a hardware-facing transfer
+descriptor table.
+
+### 0x17FD6: transfer-entry cleanup
+
+`FUN_00017fd6` releases, in order:
+
+- the MDL for the fixed 0x33000-byte buffer;
+- the nonpaged 0x33000-byte buffer itself;
+- another descriptor/MDL chain via `0x17F60`;
+- the 0x40-byte transfer entry.
+
+### 0x1232A: process-registration flag update
+
+`FUN_0001232a` walks a process-related list, matches an entry by process
+identifier/object, and ORs a supplied flag into the matched entry.
+
+### 0x14212: top-level device/object constructor
+
+`FUN_00014212` is a large constructor for the main device object. It invokes
+`0x170FA`, initializes many embedded register-wrapper objects, sets up several
+subsystems, and wires shared pointers between them.
+
+This constructor is an important anchor for mapping object offsets to hardware
+register blocks and for resolving the indirect methods used by the synchronous
+transfer helper.
