@@ -541,3 +541,25 @@ rather than direct System32 copies.
 Inf2Cat 22.9.6 occurred because PowerShell date formatting used the German
 culture's dot separator for `DriverVer`. The package script now uses
 InvariantCulture with literal slashes and prints the generated DriverVer line.
+
+
+## Confirmed PCI configuration on x64 reference system
+
+The passive PCI diagnostic now confirms:
+
+- BDF `4:1.0`
+- VEN/DEV `1570:0005`
+- PCI Command `0x0006`
+- PCI Status `0x0208`
+- BAR0 `0xF7CBFE00`
+- BAR1 `0xF7CC0000`
+- BAR2 `0xF7CBFC00`
+- IRQ line 19, pin 1
+
+PCI Command `0x0006` proves Memory Space Enable and Bus Master Enable are
+active. BAR config values exactly match Windows translated resources. The
+persistent `0xFFFFFFFF` MMIO reads are therefore not currently explained by
+disabled PCI decoding or an obvious BAR mapping error.
+
+Next step: statically close and then reproduce only the confirmed legacy
+`0x12FDE` START/ITMODE startup sequence. Avoid speculative writes.
