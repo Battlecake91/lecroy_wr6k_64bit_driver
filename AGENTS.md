@@ -276,7 +276,8 @@ Do not leave new established findings only in chat.
 
 1. Recover the raw instruction window around `0x1115B` and identify the exact
    IOCTL-dispatch branch that invokes `0x13AE2`.
-2. Map the corresponding dispatch entries for `0x13C84` and `0x13DC6`.
+2. Decode the wrapper details at `0x141DC` and `0x141F8` so the exact buffered
+   vs METHOD_NEITHER acquisition ABI is explicit.
 3. Continue resolving MAM/acquisition control semantics far enough to reproduce
    the x86 behavior safely in the x64 driver.
 4. Keep partial `0xCFDC2110` hardware execution disabled until the full
