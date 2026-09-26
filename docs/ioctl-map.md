@@ -1521,3 +1521,75 @@ also programs ITMODE and invokes another helper at `0x1557C`.
 The next pass should prioritize the undefined caller at `0x1115B` to recover
 the exact IOCTL dispatch branch, plus `0x15710`, `0x15720`, `0x16C14`,
 and `0x1557C` to close the packed-command local path and startup side effects.
+
+
+## Twelfth headless export: packed-record parser and acquisition IOCTL mapping
+
+The latest export confirms the internal structure used by the packed
+`0xCFDC2110` front-end and ties both acquisition front-ends to known dispatch
+handlers.
+
+### 0x153A2 / 0x15364: packed-record iterator
+
+`FUN_000153a2` initializes an iterator over a caller buffer containing
+concatenated records. It walks the stream until the configured end pointer,
+counts records, and accumulates the sum of each record's first WORD
+(`output_length`).
+
+`FUN_00015364` advances exactly by:
+
+```text
+8 + payload_length
+```
+
+using the WORD at record +2. This independently reconfirms the previously
+recovered packed record layout.
+
+### 0x15710 / 0x15720: type routing predicates
+
+`FUN_00015710` returns true only when record type == 3.
+
+`FUN_00015720` returns true only when record type is 1 or 2.
+
+Together with `0x13AE2`, this makes the top-level command split explicit:
+
+```text
+type 3   -> 0x16C14 -> A5FB / 85FB / C5FB signature dispatch
+type 1/2 -> 0x12F30 -> indexed control programming
+other    -> reject malformed/unsupported record stream
+```
+
+### 0x16C14: type-3 signature dispatcher
+
+`FUN_00016c14` directly checks record signature WORD +6:
+
+- `0x85FB` -> `0x169B4`
+- `0xA5FB` -> `0x16BBA`
+- `0xC5FB` -> `0x16594`
+
+This is the compact dispatcher that connects the packed stream parser to the
+three already-decoded type-3 command/response families.
+
+### 0x153xx / 0x154xx output-buffer helpers
+
+The remaining helpers exported in this pass are iterator/buffer plumbing used by
+`0x13AE2` to allocate the response buffer, advance through input records and
+copy the accumulated output back to the caller.
+
+### Acquisition front-ends map to known dispatch handlers
+
+Incoming references now identify the two acquisition front-ends exactly:
+
+- `0x13C84` is called by `0x141DC`, the handler already mapped to
+  `0xCFDC2138`.
+- `0x13DC6` is called by `0x141F8`, the handler already mapped to
+  `0xCFDD219F` (METHOD_NEITHER).
+
+This is an important ABI result: both the buffered structured-transfer IOCTL
+and the METHOD_NEITHER path converge on the same `0x12D6A` acquisition
+orchestrator after different user-buffer/process handling.
+
+The exact dispatch branch invoking `0x13AE2` is still represented only by an
+undefined incoming reference at `0x1115B`. The exporter has therefore been
+extended to emit a raw instruction window when an address is not part of a
+defined Ghidra function.
