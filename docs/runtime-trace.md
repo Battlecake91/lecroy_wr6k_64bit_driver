@@ -363,3 +363,17 @@ a local response without touching JTAG registers. The exact pending-response
 and 85FB fetch behavior must be reproduced before this complete buffer can be
 considered for admission. It therefore remains rejected, with trigger and DMA
 paths unchanged.
+
+
+## Mode-2 response implementation
+
+Static analysis is now sufficient to reproduce the mode-2 request without
+hardware speculation. `FUN_00010380` uses non-zeroing
+`ExAllocatePoolWithTag`, so the legacy 40-byte pending response contains a
+defined 8-byte header followed by 32 undefined pool bytes.
+
+The replacement driver intentionally normalizes that undefined tail to zero.
+The exact captured 94-byte family-1 opcode-`0x42`, mode-2, 256-bit request is
+now admitted. It produces local protocol status 4 and a 40-byte pending
+response; it performs no JTAG MMIO. The next scope capture should determine
+what XStream attempts after this local-error stage.
