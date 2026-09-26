@@ -1069,3 +1069,52 @@ returns the entry whose first DWORD matches the request-supplied identifier.
 derived from the selected object and translates `STATUS_TIMEOUT (0x102)` into
 `0xC00000B5`-style failure. This path remains a strong acquisition/buffer
 candidate and `0x171DE` is the next function to decode.
+
+
+## Third headless export: synchronous transfer engine details
+
+The transfer helper behind family-1 opcode 0x50/0x51 is now substantially clearer.
+
+### 0x171DE synchronous transfer/wait helper
+
+`FUN_000171de(this, param_1, param_2, param_3)`:
+
+1. writes `param_1` through the register wrapper at object offset `+0x58`;
+2. stores `param_2` at `this+0xFC`;
+3. writes a value from the selected object at `this+0x100` through the register
+   wrapper at `+0x80`;
+4. resets the event at `selected_object + 0x24`;
+5. calls the indirect method at vtable offset `+0x14`;
+6. writes the cached register value from `this+0x54` through the register
+   wrapper at `+0x04`;
+7. writes `param_2` either through the wrapper at `+0x2C` or `+0xD0`
+   depending on `param_3`;
+8. waits up to 5 seconds on `selected_object + 0x24`;
+9. calls the indirect method at vtable offset `+0x18`;
+10. translates `STATUS_TIMEOUT (0x102)` to `0xC00000B5`.
+
+This is confirmed to be an event-driven synchronous hardware-transfer operation,
+not a passive buffer lookup. The exact meanings of the programmed registers and
+the two indirect methods remain to be resolved.
+
+### Register-wrapper helper 0x107FE
+
+`FUN_000107fe` caches the written value at wrapper offset `+0x24` and writes
+the same value to the hardware register pointer stored at wrapper offset `+0`.
+
+### Synchronization helper 0x10636
+
+`FUN_00010636` invokes a callback directly when no interrupt object is stored,
+otherwise it uses `KeSynchronizeExecution`. This explains how several
+deferred-path operations are serialized against the ISR.
+
+### Deferred event helpers
+
+`FUN_000176a2` reads a register from object offset `+0xD8`, returns whether
+it was non-zero, and clears it through the register wrapper when set.
+
+`FUN_000176d0` reads the register at object offset `+0x38` and reports
+whether bit `0x8000` is set.
+
+`FUN_000157a6` accumulates selected status bits into a 16-bit field at object
+offset `+9`, masked by the 16-bit field at `+0x0B`.
