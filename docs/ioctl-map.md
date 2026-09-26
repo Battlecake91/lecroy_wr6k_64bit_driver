@@ -1333,3 +1333,58 @@ helpers. They are infrastructure rather than direct DMA execution.
 
 The next analysis set therefore follows the callers of `0x179E2` and related
 initialization helpers instead of continuing broad address sweeps.
+
+
+## Ninth headless export: indexed control programming
+
+The caller-focused export clarified the helper at `0x179E2`.
+
+### 0x17BC8
+
+`FUN_00017bc8` writes an array of 32-bit indexed values through `0x179E2`
+and then commits a compact control word through another register wrapper.
+
+Its only current caller is `0x12F30`, the already-known type-1/type-2
+`CFDC2110` command path. This directly links the indexed-register helper to
+the packed command ABI rather than the MDL acquisition-buffer path.
+
+### 0x17C16
+
+`FUN_00017c16` decomposes three 32-bit arguments into five indexed register
+writes, using index values 0 through 4 in bits 16..23, then commits `0x105`
+through a second register wrapper.
+
+The next caller `0x17D20` is therefore important for identifying the semantic
+meaning of this five-word indexed command.
+
+### 0x17CDC
+
+`FUN_00017cdc` validates a structured object through `0x17B72`, then writes
+an array at object +0x6C through the indexed register helper. It is called by
+`0x12D6A` and `0x17D20`.
+
+### 0x1785B / 0x159E2 wiring
+
+`FUN_000159e2` stores three parent pointers/objects and constructs the BAR1
+message-transport subobject through `0x1785B`. The latter registers named
+TxControl/RxControl/TxCount/RxCount/SetIRQ/HWInt wrappers and an event.
+
+### DMA API symbol check
+
+The legacy image has no exported/imported symbols named
+`MmGetPhysicalAddress`, `IoMapTransfer`, `GetScatterGatherList`, or
+`PutScatterGatherList` in the current Ghidra symbol table.
+
+Combined with the direct PFN-array walk already observed in `0x18194`, this
+supports the conclusion that the driver constructs the board descriptor table
+directly from locked MDLs instead of using the classic Windows scatter/gather
+DMA helper API.
+
+### Generic helpers
+
+`0x17DAC`, `0x17DDC`, and related `0x17Axx` functions are generic
+pool-backed dynamic buffer/array infrastructure and are lower priority than
+their callers.
+
+The next pass follows `0x12F30`, `0x17D20`, `0x12D6A`, `0x17B72`,
+and the large hardware-register initializer `0x14847`.
