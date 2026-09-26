@@ -132,3 +132,41 @@ The next runtime test uses the whitelisted four byte-exact startup request
 forms only. The expected evidence is whether XStream advances beyond the
 previous `STATUS_INVALID_DEVICE_REQUEST` startup barrier and what new
 `0xCFDC2110` shapes, if any, appear afterward.
+
+
+## Second whitelisted startup capture
+
+A second 120-second XStream startup capture was taken with the byte-exact
+startup whitelist enabled.
+
+Results:
+
+- 47 IOCTL entries were captured.
+- 15 calls used `0xCFDC2110`.
+- Four whitelisted requests completed successfully:
+  - RESET;
+  - first family-1 opcode `0x99`;
+  - first family-0 opcode `0x88` with mask `0xFFDF`;
+  - second family-1 opcode `0x99`.
+- Eleven `0xCFDC2110` calls were still rejected with
+  `STATUS_INVALID_DEVICE_REQUEST`.
+
+The newly exposed request is family-0 opcode `0x85`:
+
+```text
+06 00 06 00 03 00 FB A5
+40 00 85 00 A0 00
+08 00 02 00 03 00 FB 85 40 00
+```
+
+It appears five times before the later JTAG stage.
+
+The six later JTAG calls were also rejected, but review of the whitelist found
+a transcription error in the captured 94-byte JTAG packet. That whitelist entry
+has been corrected; the JTAG implementation itself was not the cause of those
+rejections.
+
+Opcode `0x85` is not enabled yet. Static analysis shows that it performs
+additional host-side state changes in `FUN_00016962` before forwarding the
+packet to the board. The two remaining helper calls `0x1573E` and `0x15772`
+must be resolved before widening the runtime gate.
