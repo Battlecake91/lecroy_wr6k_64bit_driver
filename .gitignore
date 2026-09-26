@@ -7,3 +7,6 @@ ghidra_reverse_engineering_lecroy/**/tmp*.ps
 
 # Local Ghidra installation path
 .ghidra-local.ps1
+
+# Local runtime trace captures may contain process pointers/state.
+trace-captures/
