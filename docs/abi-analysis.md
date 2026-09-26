@@ -128,24 +128,42 @@ The internal handler also reads `Irp->UserBuffer`.
 
 ### Recovered request parsing
 
-The input pointer is dereferenced directly. The parser begins with:
+The input pointer is dereferenced directly. Its packed layout is one channel
+count byte, two bytes per channel, then two unaligned DWORDs. The first byte of
+each channel pair is skipped and the second supplies the hardware channel ID:
 
-1. one byte containing a count;
-2. that many one-byte values;
-3. a 32-bit value;
-4. another 32-bit value.
+```c
+#pragma pack(push, 1)
+typedef struct {
+    uint8_t ignored_or_logical;
+    uint8_t channel_id;
+} LECS65_CHANNEL_PAIR;
 
-The routine multiplies the count and the two DWORD values to derive a transfer size and rejects values above `0x00FFFFFF`.
+typedef struct {
+    uint8_t channel_count;
+    LECS65_CHANNEL_PAIR channels[channel_count];
+    uint32_t transfer_factor;
+    uint32_t mam_launch_count;
+} LECS65_NEITHER_CONFIG32;
+#pragma pack(pop)
+```
 
-Additional observed checks include a `0x400` boundary/alignment rule.
+The DMA byte count is
+`channel_count * transfer_factor * mam_launch_count`. It must be at most
+`0x00FFFFFF` and equal `OutputBufferLength - 4`; for launch counts above
+`0x400`, the total must be `0x400`-aligned.
 
-The request is therefore not merely a no-argument control operation. It configures a substantial transfer path and is associated with MDL/locked-buffer handling elsewhere in the driver.
+The handler transiently registers `Irp->UserBuffer`, excluding its final
+four-byte result field from the MDL/DMA range. It performs the acquisition,
+writes the completed byte count to that final DWORD, sets
+`IoStatus.Information = completed + 4`, and unregisters the buffer.
 
 ### x64 implications
 
 The request record seen so far contains fixed-width fields rather than embedded native pointers. That is encouraging.
 
-However, `Type3InputBuffer` and `Irp->UserBuffer` themselves are native user pointers. A replacement x64 driver must:
+However, `Type3InputBuffer` and `Irp->UserBuffer` themselves are native user pointers. The legacy code does not probe/capture `Type3InputBuffer`, and its
+`ProbeForWrite` range excludes the final result DWORD. A replacement x64 driver must:
 
 - treat them as untrusted user addresses;
 - correctly handle 32-bit WOW64 callers;
@@ -154,6 +172,25 @@ However, `Type3InputBuffer` and `Irp->UserBuffer` themselves are native user poi
 - determine whether the LeCroy x64 application emits the same packed request layout.
 
 A compatibility implementation can use `IoIs32bitProcess` if separate 32-bit and 64-bit request layouts turn out to exist.
+
+## Transfer registration tokens: 0xCFDC2124/2128
+
+`0xCFDC2124` consumes a fixed 12-byte structure containing a 32-bit user
+pointer, total byte length, and an unused/reserved DWORD. It subtracts a
+four-byte result field, probes and locks the data range, builds the DMA table,
+and returns the 32-bit kernel address of the transfer entry as its four-byte
+token. `0xCFDC2128` consumes that token and frees the entry.
+
+The original token is therefore neither a Windows handle nor a stable ABI-safe
+pointer type. On x64 it should be represented by a driver-owned opaque 32-bit
+identifier mapped to an internal object. The remove path should additionally
+check the current process, although the x86 original did not.
+
+Create/Close maintain a per-process 16-byte node with process object, open
+reference count, resource flags, and next pointer. Resource flag 1 means the
+process owns transfer entries; flag 2 means it owns referenced events. Last
+Close frees matching transfers and dereferences matching event objects before
+removing the process node.
 
 ## Other fixed-size contracts already recovered
 

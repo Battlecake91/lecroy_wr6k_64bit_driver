@@ -253,6 +253,18 @@ IIMCL start/clear write and completion interrupt machinery.
 MAMRGO and MTTRGO receive engine-specific launch counts, not the IIMTC DWORD
 total. Their precise FPGA units are not exposed by the host driver.
 
+The packed-command paths further establish these MTT controls:
+
+- family-2 opcode `0x02` writes `MTTCTL` as 0 or 1;
+- family-2 opcode `0x04` pulses `MTTCTL` 1 then 0 for a requested count;
+- family-1 opcodes `0x50/0x51` launch a registered DMA buffer through
+  `MTTRGO`;
+- no non-constructor access to `MTTNUM` was found in this driver build.
+
+Other statically identified local command accesses include `ITMODE`, `LEDCTL`,
+`RMIDIV/RMICUM`, `ACQDIV/ACQCUM`, `PFREG`, `FVER`, and `ACQFVER`. Commands that
+enter the generic BAR1 message transmitter remain firmware-defined.
+
 ## DMA descriptor pages
 
 The board-facing table uses 8-byte `{DWORD count, DWORD physical_address}`

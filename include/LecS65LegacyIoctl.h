@@ -76,6 +76,24 @@ typedef struct LECS65_REG_WRITE_EXT {
     uint32_t value;
 } LECS65_REG_WRITE_EXT;
 
+/* 0xCFDC2124: fixed-width x86 transfer-registration contract. */
+typedef struct LECS65_REGISTER_TRANSFER32 {
+    uint32_t user_buffer32;
+    uint32_t total_bytes;
+    uint32_t reserved;
+} LECS65_REGISTER_TRANSFER32;
+
+/* 0xCFDC2128: token returned by LECS65_REGISTER_TRANSFER32. */
+typedef struct LECS65_UNREGISTER_TRANSFER32 {
+    uint32_t transfer_token;
+} LECS65_UNREGISTER_TRANSFER32;
+
+/* Repeated immediately after channel_count in the 0xCFDD219F input. */
+typedef struct LECS65_CHANNEL_PAIR32 {
+    uint8_t ignored_or_logical;
+    uint8_t channel_id;
+} LECS65_CHANNEL_PAIR32;
+
 #pragma pack(pop)
 
 #if defined(__cplusplus)
@@ -83,9 +101,15 @@ static_assert(sizeof(LECS65_REG_READ_LEGACY) == 4, "legacy register-read ABI cha
 static_assert(sizeof(LECS65_REG_READ_EXT) == 5, "extended register-read ABI changed");
 static_assert(sizeof(LECS65_REG_WRITE_LEGACY) == 8, "legacy register-write ABI changed");
 static_assert(sizeof(LECS65_REG_WRITE_EXT) == 9, "extended register-write ABI changed");
+static_assert(sizeof(LECS65_REGISTER_TRANSFER32) == 12, "transfer-registration ABI changed");
+static_assert(sizeof(LECS65_UNREGISTER_TRANSFER32) == 4, "transfer-token ABI changed");
+static_assert(sizeof(LECS65_CHANNEL_PAIR32) == 2, "channel-pair ABI changed");
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(LECS65_REG_READ_LEGACY) == 4, "legacy register-read ABI changed");
 _Static_assert(sizeof(LECS65_REG_READ_EXT) == 5, "extended register-read ABI changed");
 _Static_assert(sizeof(LECS65_REG_WRITE_LEGACY) == 8, "legacy register-write ABI changed");
 _Static_assert(sizeof(LECS65_REG_WRITE_EXT) == 9, "extended register-write ABI changed");
+_Static_assert(sizeof(LECS65_REGISTER_TRANSFER32) == 12, "transfer-registration ABI changed");
+_Static_assert(sizeof(LECS65_UNREGISTER_TRANSFER32) == 4, "transfer-token ABI changed");
+_Static_assert(sizeof(LECS65_CHANNEL_PAIR32) == 2, "channel-pair ABI changed");
 #endif

@@ -968,9 +968,8 @@ The response is stored through `0x15A26`.
 ### Family 2 opcode 0x02 -> 0x163B2
 
 `FUN_000163b2` optionally waits on an object-derived synchronization object at
-`this+0x186`, accepts request byte 0 or 1, and writes that value to register
-offset `+0x80` of the block referenced by `this+0x29`. Invalid values return
-status 4. The exact semantic name of this register/action remains unresolved.
+`this+0x186`, accepts request byte 0 or 1, and writes that value to BAR1
+`MTTCTL` (`+0x80`). Invalid values return status 4.
 
 ### Family 2 opcode 0x04 / opcode 0 fallthrough -> 0x16414
 
@@ -1659,7 +1658,7 @@ The handler requires exactly 12 input bytes. It invokes an indirect main-object 
 
 ### 0xCFDC2128 -> 0x11C36
 
-The handler requires exactly 4 input bytes and forwards that DWORD to the indirect main-object method at vtable offset `+0x08`. This is likely the inverse/unregister side of the `0xCFDC2124` pair, but the exact semantic name remains to be proven from the vtable targets.
+The handler requires exactly 4 input bytes and forwards that token to main-object vtable method `+0x08`, now resolved as `0x172A2`. It removes the matching transfer entry from the list and frees its descriptor MDL/table, source MDL chain, and entry allocation.
 
 ### 0xCFDC212C -> 0x11C5E
 
@@ -2073,3 +2072,159 @@ it by 12, i.e. SGTA receives the physical address of the first table page.
 IIMTC receives the total DWORD count returned by `0x18194`. Registration
 subtracts the trailing four-byte completion/result field before building the
 source MDLs, so the descriptor stream covers only acquisition data.
+
+## Twenty-third headless export: command semantics and WOW64 lifetime
+
+### CFDC2110 local register operations
+
+Register-object wiring from `0x14847` assigns the command-object fields used by
+the A5FB helpers:
+
+| Command-object field | Register/helper |
+|---:|---|
+| `+0x15` | JTAG helper (`JTAGNUM/JTAGDAT/JTAGDIN`) |
+| `+0x19` | SPI helper (`SPICTL/SPIDAT/SPIDIN`) |
+| `+0x15E` | `ITMODE` |
+| `+0x162` | `LEDCTL` |
+| `+0x166/+0x16A` | `RMIDIV/RMICUM` |
+| `+0x16E/+0x172` | `ACQDIV/ACQCUM` |
+| `+0x176` | BAR0 `FVER` |
+| `+0x17A` | `PFREG` |
+| `+0x17E` | `ACQFVER` |
+| `+0x182` | acquisition/transfer object |
+
+This resolves the previously anonymous local opcode helpers:
+
+| Family/opcode | Confirmed host-side action |
+|---|---|
+| family 0 `0x42` | JTAG write transaction |
+| family 0 `0x90` | SPI serial write transaction |
+| family 0 `0x91` | write `RMIDIV` or `ACQDIV` by selector |
+| family 0 `0x92` | direct 32-bit register write through selected BAR block |
+| family 0 `0xA0` | write `PFREG` |
+| family 1 `0x42` | JTAG read transaction and local response |
+| family 1 `0x50/0x51` | registered-buffer DMA launch through `MTTRGO` |
+| family 1 `0x92` | direct 32-bit register read through selected BAR block |
+| family 1 `0xA0` | read `RMICUM` or `ACQCUM` by selector |
+| family 1 `0xA1` | read `ACQFVER` |
+| family 1 `0xA2` | read BAR0 `FVER` |
+| family 2 `0x02` | write `MTTCTL` as 0 or 1 |
+| family 2 `0x04` | pulse `MTTCTL` 1 then 0 for the requested count |
+| family 2 `0x05` | write `ITMODE=7`, then `ITMODE=3` |
+| family 2 `0x09` | write `ITMODE=3` |
+| family 2 `0x0A` | write `ITMODE=2` |
+| family 2 `0x10` | write a two-bit value assembled from two payload booleans to `LEDCTL` |
+| family 2 `0x40` | consume/ack current status, reset interrupt state, return local success |
+
+Family-2 opcode `0x00` first performs the software-timer wait used by `0x1634E`
+and then deliberately falls through to the same repeated `MTTCTL` pulse helper
+as opcode `0x04`. Opcode `0x01` manages the same kernel timer without a direct
+BAR write. Opcodes `0x06/0x07/0x08` produce local protocol status `0x10`.
+
+The SPI helper selects a line/mode through `SPICTL`, emits bit-reversed 32-bit
+words through `SPIDAT`, and restores the selected line afterwards. The JTAG
+helper programs a direction and bit count through `JTAGNUM`, writes packed data
+through `JTAGDAT`, and optionally reads `JTAGDIN`.
+
+### Static boundary of CFDC2110
+
+Many startup/runtime opcodes, including observed `0x4A`, `0x81`, `0x84`,
+`0x96`, `0x97`, and `0x99` forms, intentionally converge on the generic BAR1
+message transmitter. The driver does not interpret their payloads; it forwards
+the A5FB signature and payload verbatim to board firmware and later fetches the
+reply with `FB 85 40 00`.
+
+Consequently their board-level meanings cannot be recovered from this driver
+binary alone. Further static expansion of those wrappers would only repeat the
+already-decoded transport. Normal-sequence passive request/response tracing or
+firmware analysis is required before these commands can be implemented.
+
+### CFDC2124 persistent transfer registration
+
+The main-object vtable resolves `+0x0C` to `0x1731C` and `+0x08` to `0x172A2`.
+The exact 12-byte `0xCFDC2124` input is therefore:
+
+```c
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t user_buffer32;
+    uint32_t total_bytes;
+    uint32_t reserved;       /* not read by this build */
+} LECS65_REGISTER_TRANSFER32;
+#pragma pack(pop)
+```
+
+The buffer and length must be nonzero and `total_bytes <= 0x06000004`.
+Registration subtracts four bytes, probes and locks the remaining data range
+with four-byte alignment, builds the DMA table, records `IoGetCurrentProcess()`,
+and returns the transfer-entry kernel address as a four-byte token. The final
+four bytes are reserved for the transfer result/status and are not described by
+DMA descriptors.
+
+`0xCFDC2128` accepts that four-byte token, finds it in the global transfer list,
+unlinks it, unlocks/frees the MDLs and descriptor table, and frees the entry.
+The legacy remove helper does not compare the entry's owner with the current
+process; ownership is enforced only by token secrecy and process-close cleanup.
+A replacement must not reproduce the kernel-pointer disclosure and should use
+an opaque 32-bit token with an explicit owner check.
+
+### Process ownership and close cleanup
+
+The Create dispatch calls `0x10A8E` with `IoGetCurrentProcess()`. It creates or
+references a 16-byte process node:
+
+```c
+typedef struct PROCESS_NODE32 {
+    uint32_t process_object;
+    uint32_t open_reference_count;
+    uint32_t resource_flags;
+    uint32_t next;
+} PROCESS_NODE32;
+```
+
+Transfer registration ORs flag 1 into this node. Event registration ORs flag
+2. Close dispatch `0x10F30 -> 0x13768` decrements the process-node reference.
+On the last reference, flag 1 invokes `0x12E18` to free every transfer entry
+whose stored owner matches the process; flag 2 invokes `0x12E72`, which releases
+all matching referenced event objects through `0x11B48`. `0x122E2` then removes
+and frees the process node.
+
+### CFDD219F exact METHOD_NEITHER shape
+
+`0x141F8` passes `Type3InputBuffer` directly to `0x13DC6`. The packed input is:
+
+```c
+#pragma pack(push, 1)
+typedef struct {
+    uint8_t ignored_or_logical;
+    uint8_t channel_id;
+} LECS65_CHANNEL_PAIR;
+
+typedef struct {
+    uint8_t channel_count;
+    LECS65_CHANNEL_PAIR channels[channel_count];
+    uint32_t transfer_factor;
+    uint32_t mam_launch_count;
+} LECS65_NEITHER_CONFIG32;
+#pragma pack(pop)
+```
+
+The first byte of each pair is skipped by this binary; the second byte supplies
+the MAMSEQ channel identifier. Total DMA data bytes are:
+
+```text
+channel_count * transfer_factor * mam_launch_count
+```
+
+The total must not exceed `0x00FFFFFF`, must equal
+`OutputBufferLength - 4`, and when `mam_launch_count > 0x400` must be a multiple
+of `0x400`. The handler transiently registers and locks `Irp->UserBuffer`, runs
+the MAM acquisition with only MAMSEQ refreshed, writes the completed byte count
+to the final DWORD of the output buffer, reports that count plus four as
+`IoStatus.Information`, and immediately unregisters the transient transfer.
+
+The legacy code directly dereferences `Type3InputBuffer` without probing or
+capturing it. It probes/locks only the data range of `UserBuffer`, excluding the
+trailing result DWORD that it later writes directly. Both behaviours must be
+replaced with explicit WOW64-aware capture, overflow-safe size validation, and
+full output probing in the x64 driver.

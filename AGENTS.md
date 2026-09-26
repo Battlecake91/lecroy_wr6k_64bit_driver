@@ -272,11 +272,11 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Continue decoding the remaining `0xCFDC2110` startup/runtime command set,
-   especially helper semantics behind family opcodes that currently have only
-   structural routing names.
-2. Finish WOW64-sensitive ownership and capture semantics around
-   `0xCFDC2124/2128` and `0xCFDD219F`.
+1. Obtain passive normal-sequence traces for the `0xCFDC2110` commands that
+   the driver forwards verbatim to board firmware; their payload semantics are
+   not recoverable from this binary alone.
+2. Verify the x64 DMA address-width/coherency requirements and MAM/MTT launch
+   count units without arbitrary register access.
 3. Determine the FPGA-level semantic names and runtime constraints of MAM mode
    1 and the MAM versus MTT engines; their host-side encodings and callers are
    now statically resolved.
@@ -293,14 +293,14 @@ The raw DeviceControl windows through `0x1138D` now recover the entire late disp
 
 The remaining DeviceControl handlers are now substantially decoded:
 
-- `0xCFDC2124`: 12-byte process/object registration-style request, returning a 4-byte identifier/handle.
-- `0xCFDC2128`: 4-byte inverse/unregister-style request through main-object vtable offset `+0x08`.
+- `0xCFDC2124`: persistent user-buffer registration; returns the 32-bit transfer-entry pointer as the legacy token.
+- `0xCFDC2128`: removes and frees the transfer entry selected by that four-byte token.
 - `0xCFDC2130`: serial-trigger FPGA stream bit-banged through BAR1 `GPIODAT` masked field `0xE000`.
 - `0xCFDC2180` / `0xCFDC218C`: event registration tied to current process; the former can signal immediately when status is already active.
 - `0xCFDC2190`: 29-byte error/interrupt mask control; field 2 updates global bit 1 and BAR0 `ERRM`.
 - `0xCFDC2194`: paired 29-byte status readback and clear.
 - `0x00222C00`: auxiliary hardware line is definitively BAR2 `BUZZER`; `0x1557C` asserts it around the delay.
-- `0xCFDC2400`: wrapper around `0x12EDE`, still to decode.
+- `0xCFDC2400`: synchronized global pending-bit update; its final virtual method is a no-op in this build.
 
 Diagnostic helpers `0x10750`, `0x1076E`, and `0x1919A` are logging-only; `0x10798` is the common IRP completion helper.
 
@@ -310,7 +310,8 @@ Diagnostic helpers `0x10750`, `0x1076E`, and `0x1919A` are logging-only; `0x1079
 - `0x11B18` is the shared event-reference helper: `ObReferenceObjectByHandle(..., EVENT_MODIFY_STATE, ExEventObjectType, RequestorMode, ...)`.
 - `0x157B8` returns `pending_bits & enabled_bits`; `0xCFDC2180` can therefore signal a freshly registered event immediately when relevant status is already pending.
 - `0x12EDE` (`0xCFDC2400`) stores a caller DWORD in global `DAT_1CE1C`, performs a synchronized callback, then calls main-object vtable method `+0x24` with `(0,0)`.
-- Exact semantics of `0xCFDC2124`, `0xCFDC2128`, and the final `0xCFDC2400` action now depend mainly on resolving main-object vtable `PTR_FUN_0001C8BC`.
+- The main-object vtable is resolved: `+0x08` removes a transfer entry,
+  `+0x0C` registers one, and `+0x24` is the no-op used by `0xCFDC2400`.
 
 
 ## Latest synchronous transfer hook result
@@ -357,6 +358,27 @@ The sequence is: program `SGTA`, program `IIMTC`, reset the transfer-entry event
   a zero/zero entry terminates the chain.
 - SGTA is the physical address of the first descriptor-table page and IIMTC is
   the total DWORD count returned by `0x18194`.
+
+
+## Current CFDC2110 and WOW64 boundary
+
+- Local A5FB helpers are mapped to JTAG, SPI, divider/cumulative registers,
+  `FVER`, `ACQFVER`, `PFREG`, `ITMODE`, `LEDCTL`, `MTTCTL`, and `MTTRGO`.
+- Remaining startup/runtime commands that use `0x15DB8` or `0x16168` are
+  firmware-defined packets forwarded verbatim over BAR1; static driver analysis
+  cannot assign their payload semantics.
+- `0xCFDC2124` takes `{uint32 user_buffer, uint32 total_bytes, uint32 reserved}`
+  and returns the transfer-entry kernel pointer as a four-byte token.
+- `0xCFDC2128` removes that token. The legacy helper has no current-process
+  ownership check; the x64 driver should use an opaque 32-bit owned token.
+- Create/Close maintain a 16-byte per-process node. Last Close frees owned
+  transfers for flag 1 and dereferences owned events for flag 2.
+- `0xCFDD219F` consumes packed two-byte channel pairs plus two DWORDs from
+  `Type3InputBuffer`, transiently locks `Irp->UserBuffer`, reserves its final
+  DWORD for the completed byte count, and unregisters immediately afterwards.
+- The original does not capture/probe `Type3InputBuffer` and does not include
+  the trailing result DWORD in its `ProbeForWrite` range. The x64 replacement
+  must correct both issues while preserving the external packed ABI.
 
 
 ## Current completion-path result

@@ -24,6 +24,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
 - the acquisition-buffer path is confirmed to use locked user pages, MDL chains and chained 4 KiB descriptor pages built directly from PFNs; descriptor counts are DWORDs and slot 511 links to the next table page;
 - the packed `0xCFDC2110` command parser and all three A5FB command families are substantially decoded;
+- local CFDC2110 operations are now tied to JTAG, SPI, clock/divider, firmware-version, ITMODE/LEDCTL, MTTCTL and MTTRGO actions; the remaining opaque startup commands are those forwarded verbatim to board firmware;
 - the exact DeviceControl branch `0xCFDC2110 -> 0x13AE2` is now confirmed from raw dispatch instructions;
 - the late DeviceControl dispatcher and its common completion/error path are now recovered, including `0xCFDC2190/2194`, raw register I/O, build query, `0xCFDC2400`, and `0xCFDD219F`;
 - serial-trigger FPGA programming is now confirmed to bit-bang BAR1 `GPIODAT`, while `0xCFDC2190/2194` form an error-mask/control status pair;
@@ -33,8 +34,8 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - the synchronous transfer helper is mapped to concrete registers: acquisition IOCTLs launch through `MAMRGO`, while CFDC2110 family-1 opcodes `0x50/0x51` launch through `MTTRGO`; both share `SGTA`, `IIMTC`, `IIMCL`, and the completion wait;
 - the acquisition completion interrupt is now tied end-to-end: interrupt bit 0 is consumed by the DPC branch that signals the selected transfer entry's `+0x24` event, which is exactly what `0x171DE` waits on;
 - the auxiliary side effect of the millisecond-delay IOCTL has been identified as a BAR2 `BUZZER` pulse around the delay;
-- the acquisition front-ends are now mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, both converging on the same acquisition orchestrator and synchronous transfer/wait path;
-- the legacy `METHOD_NEITHER` path remains the main x64/WOW64 ABI risk;
+- the acquisition front-ends are mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, including its packed channel pairs, transient MDL registration, trailing result DWORD and exact size equation;
+- persistent transfer registration/removal and process-close cleanup are decoded; the legacy four-byte token is a leaked kernel pointer and must become an owned opaque ID on x64;
 - a native x64 compatibility driver exists and is being brought up incrementally on `main`; unsafe partial `CFDC2110` execution is intentionally disabled until semantics are complete.
 
 Documentation:

@@ -4,16 +4,13 @@
 # Updated automatically as reverse-engineering work advances.
 # Run scripts/run-ghidra-analysis.ps1; it pulls, exports, commits and pushes.
 
-10a8e
-10e3a
-11b48
-122e2
-12e72
-13768
-asm:10a8e
-asm:10e3a
-asm:11b48
-asm:122e2
-asm:12e72
-asm:13768
-IoGetCurrentProcess
+15db8
+160dc
+16168
+165a6
+166a8
+167f4
+16a66
+171de
+1731c
+18194
