@@ -137,3 +137,7 @@ For the reference test machine, the normal one-command rebuild/reload workflow i
 It builds the x64 driver and `lecdiag`, signs the SYS with the existing
 `CN=LecS65 x64 Test` certificate, reloads the installed service, verifies
 build 1002, and runs the passive `lecdiag pci` diagnostic.
+
+
+The test-machine reload workflow installs updates through the Windows Driver
+Store rather than overwriting `System32\drivers` directly.
