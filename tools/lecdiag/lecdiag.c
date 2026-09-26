@@ -19,6 +19,8 @@
     ((DWORD)CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS))
 #define LECS65_IOCTL_DEBUG_CLEAR_TRACE \
     ((DWORD)CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS))
+#define LECS65_IOCTL_DEBUG_GET_PCI_CONFIG \
+    ((DWORD)CTL_CODE(0x8000, 0x805, METHOD_BUFFERED, FILE_READ_ACCESS))
 
 #define LECS65_TRACE_CAPACITY 256
 #define LECS65_TRACE_PREVIEW_BYTES 256
@@ -54,6 +56,39 @@ typedef struct LECS65_DEBUG_BARS {
     LECS65_DEBUG_BAR_ENTRY Entry[3];
     LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS;
+
+
+typedef struct LECS65_DEBUG_PCI_CONFIG {
+    uint32_t Version;
+    uint32_t BytesRead;
+    uint32_t BusNumber;
+    uint32_t DeviceNumber;
+    uint32_t FunctionNumber;
+    uint16_t VendorId;
+    uint16_t DeviceId;
+    uint16_t Command;
+    uint16_t Status;
+    uint8_t RevisionId;
+    uint8_t ProgIf;
+    uint8_t SubClass;
+    uint8_t BaseClass;
+    uint8_t CacheLineSize;
+    uint8_t LatencyTimer;
+    uint8_t HeaderType;
+    uint8_t Bist;
+    uint32_t Bar[6];
+    uint32_t CardbusCisPointer;
+    uint16_t SubsystemVendorId;
+    uint16_t SubsystemId;
+    uint32_t ExpansionRomBase;
+    uint8_t CapabilitiesPointer;
+    uint8_t Reserved1[3];
+    uint32_t Reserved2;
+    uint8_t InterruptLine;
+    uint8_t InterruptPin;
+    uint8_t MinimumGrant;
+    uint8_t MaximumLatency;
+} LECS65_DEBUG_PCI_CONFIG;
 
 typedef struct LECS65_DEBUG_TRACE_ENTRY {
     uint64_t Sequence;
@@ -461,6 +496,66 @@ static int query_stats(HANDLE h)
     return 0;
 }
 
+
+static int query_pci(HANDLE h)
+{
+    LECS65_DEBUG_PCI_CONFIG p;
+    DWORD returned = 0;
+    unsigned i;
+
+    ZeroMemory(&p, sizeof(p));
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_GET_PCI_CONFIG,
+            NULL,
+            0,
+            &p,
+            sizeof(p),
+            &returned,
+            NULL)) {
+        print_error("DEBUG_GET_PCI_CONFIG");
+        return 1;
+    }
+
+    printf("PCI config version: %lu, bytes read: %lu, returned=%lu\n",
+        (unsigned long)p.Version,
+        (unsigned long)p.BytesRead,
+        (unsigned long)returned);
+    printf("BDF: %lu:%lu.%lu\n",
+        (unsigned long)p.BusNumber,
+        (unsigned long)p.DeviceNumber,
+        (unsigned long)p.FunctionNumber);
+    printf("vendor/device: %04X:%04X  subsystem: %04X:%04X  rev=%02X\n",
+        p.VendorId,
+        p.DeviceId,
+        p.SubsystemVendorId,
+        p.SubsystemId,
+        p.RevisionId);
+    printf("command=0x%04X status=0x%04X\n",
+        p.Command,
+        p.Status);
+    printf("  IO space:      %s\n", (p.Command & 0x0001) ? "enabled" : "disabled");
+    printf("  Memory space:  %s\n", (p.Command & 0x0002) ? "enabled" : "disabled");
+    printf("  Bus master:    %s\n", (p.Command & 0x0004) ? "enabled" : "disabled");
+    printf("  SERR:          %s\n", (p.Command & 0x0100) ? "enabled" : "disabled");
+    printf("  INTx disable:  %s\n", (p.Command & 0x0400) ? "yes" : "no");
+
+    for (i = 0; i < 6; ++i) {
+        printf("BAR%u cfg: 0x%08lX\n", i, (unsigned long)p.Bar[i]);
+    }
+
+    printf("IRQ line=%u pin=%u  header=0x%02X class=%02X:%02X:%02X\n",
+        p.InterruptLine,
+        p.InterruptPin,
+        p.HeaderType,
+        p.BaseClass,
+        p.SubClass,
+        p.ProgIf);
+
+    return 0;
+}
+
 static int query_bars(HANDLE h)
 {
     LECS65_DEBUG_BARS bars;
@@ -730,6 +825,7 @@ static void usage(const char* exe)
     printf("  %s build\n", exe);
     printf("  %s stats\n", exe);
     printf("  %s bars\n", exe);
+    printf("  %s pci\n", exe);
     printf("  %s trace\n", exe);
     printf("  %s trace-save <file.jsonl>\n", exe);
     printf("  %s trace-capture <file.jsonl> [seconds, default 60]\n", exe);
@@ -766,6 +862,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "bars") == 0) {
         result = query_bars(h);
+    }
+    else if (_stricmp(argv[1], "pci") == 0) {
+        result = query_pci(h);
     }
     else if (_stricmp(argv[1], "trace") == 0) {
         result = query_trace(h);
