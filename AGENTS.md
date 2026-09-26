@@ -272,7 +272,12 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Recover the remaining raw DeviceControl window around `0x11200..0x11330` so all late dispatch branches and completion behavior are explicit.
-2. Resolve the exact register behind the delay-helper side effect used by `0x1557C/0x15536` before reproducing it in the x64 driver.
+1. Resolve the exact register behind the delay-helper side effect used by `0x1557C/0x15536` before reproducing it in the x64 driver.
+2. Decode the remaining late handlers `0x13A40`, `0x12BAE`, `0x13A2E`, `0x12B34`, and `0x128F8` to make the full DeviceControl ABI table semantic rather than only structural.
 3. Continue resolving MAM/acquisition control semantics far enough to reproduce the x86 behavior safely in the x64 driver.
 4. Keep partial `0xCFDC2110` hardware execution disabled until the full startup/runtime command set is understood.
+
+
+## Latest dispatch recovery
+
+The raw DeviceControl windows through `0x1138D` now recover the entire late dispatch section and common completion tail. Unknown IOCTLs become `STATUS_INVALID_PARAMETER`; `0xCFDC2184` is inline success with zero information; pending requests bypass normal completion logging. The function ends immediately before `0x11390`, the known deferred/event helper.
