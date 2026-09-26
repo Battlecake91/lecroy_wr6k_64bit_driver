@@ -15,15 +15,18 @@ The priority is compatibility with the existing LeCroy user-mode software:
 
 ## Current state
 
-The first static-analysis passes now expose most of the driver's outer interface:
+The reconstruction has progressed well beyond the initial outer-interface pass:
 
 - all 27 DeviceControl dispatch values have been recovered;
-- the generic raw register read/write ABI is known;
-- the driver-build query is known;
-- Dallas/1-Wire buffer contracts are known;
-- the named BAR0/BAR1/BAR2 register map has been reconstructed;
-- all four device-interface GUIDs registered by the original driver have been recovered;
-- the legacy `METHOD_NEITHER` transfer path has been identified as the main x64/WOW64 ABI risk.
+- the generic raw register read/write ABI and build query are known;
+- Dallas/1-Wire buffer contracts and low-level access paths are known;
+- the named BAR0/BAR1/BAR2 register map has been reconstructed and cross-checked against the register-object initializer;
+- interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
+- the acquisition-buffer path is confirmed to use locked user pages, MDL chains and a board-facing descriptor table built directly from PFNs;
+- the packed `0xCFDC2110` command parser and all three A5FB command families are substantially decoded;
+- two IOCTL-near acquisition front-ends and the synchronous transfer/wait path are connected end-to-end;
+- the legacy `METHOD_NEITHER` path remains the main x64/WOW64 ABI risk;
+- a native x64 compatibility driver exists and is being brought up incrementally on `main`; unsafe partial `CFDC2110` execution is intentionally disabled until semantics are complete.
 
 Documentation:
 
@@ -35,13 +38,14 @@ Documentation:
 - [docs/legacy-inf-analysis.md](docs/legacy-inf-analysis.md)
 - [docs/reference-system.md](docs/reference-system.md)
 - [docs/user-mode-components.md](docs/user-mode-components.md)
+- [AGENTS.md](AGENTS.md) - current operating rules and hand-off state for future agents/chats
 
 Reusable reconstructed ABI definitions:
 
 - [include/LecS65LegacyIoctl.h](include/LecS65LegacyIoctl.h)
 - [include/LecS65LegacyInterfaces.h](include/LecS65LegacyInterfaces.h)
 
-No replacement driver code has been written yet. This is intentional: the externally visible ABI and hardware interface are being reconstructed first.
+A native x64 replacement prototype is in-tree and development now happens on `main`. Bring-up currently covers the recovered PCI/PnP surface, BAR mapping, selected legacy IOCTLs, Dallas/1-Wire access, event registration and extensive tracing. The remaining high-risk work is acquisition/DMA compatibility, the packed command semantics and WOW64-sensitive pointer paths.
 
 ## Reference binary
 
@@ -81,8 +85,8 @@ Together, those findings give the future x64 driver a useful incremental bring-u
 
 ## Native x64 bring-up prototype
 
-Development has started on branch `prototype/x64-bringup`.
+Development originally started on `prototype/x64-bringup`, but that work has been merged and active development now happens on `main`.
 
-The first prototype implements PCI/PnP bring-up, the recovered legacy DOS device path, BAR mapping, build query, raw register access and detailed IOCTL tracing. It intentionally leaves DMA, interrupts and unsafe METHOD_NEITHER handling for later iterations.
+The x64 prototype implements PCI/PnP bring-up, the recovered legacy DOS device path, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility and detailed IOCTL tracing. Interrupt and acquisition behaviour are being reconstructed from the original x86 driver before more hardware execution is enabled.
 
 See [docs/x64-bringup.md](docs/x64-bringup.md).
