@@ -273,9 +273,9 @@ Do not leave new established findings only in chat.
 ## Current priority
 
 1. Build/install the updated x64 driver and `lecdiag` on the reference system.
-2. Capture a normal XStream startup with
-   `scripts/capture-xstream-trace.ps1` and analyze the JSONL sequence,
-   especially firmware-forwarded `0xCFDC2110` requests.
+2. Capture another normal XStream startup with
+   `scripts/capture-xstream-trace.ps1` and identify the first request after
+   the newly admitted family-1 opcode-`0x42`, mode-1, 256-bit JTAG stage.
 3. Verify whether Windows supplies all source and descriptor-table pages below
    4 GiB; the current x64 transfer registration deliberately rejects addresses
    that do not fit the proven legacy 32-bit descriptor ABI.
@@ -739,3 +739,45 @@ trace ABI being version 3. Commit
 
 Next scope action: pull, build/sign/load, capture XStream startup again. No
 Ghidra work is needed for this step.
+
+
+## Latest staged trace: 2026-09-26 23:50
+
+The raw capture `xstream_trace_20260926_235015.jsonl` remains outside Git.
+
+Observed totals:
+
+- 38 IOCTL records.
+- 21 `0xCFDC2110` calls.
+- 10 CFDC2110 successes.
+- 11 CFDC2110 rejections.
+
+The corrected 54-byte family-1 opcode-`0x42`, mode-0, 83-bit JTAG request now
+succeeds. This confirms that its previous rejection was solely a whitelist
+transcription error.
+
+The only newly rejected request is an exact 94-byte family-1 opcode-`0x42`,
+mode-1, 256-bit JTAG form. It repeats 11 times. It is identical to the already
+admitted 256-bit mode-0 request except for the mode byte at the JTAG request
+payload changing from `0x00` to `0x01`.
+
+This form is safe to admit byte-exactly because:
+
+- `LecJtagExecute` already accepts modes 0 and 1;
+- mode 1 is already exercised by the admitted 58-bit startup JTAG transaction;
+- mode 1 only adds bit `0x100` to BAR1 `JTAGNUM` in the reconstructed
+  implementation;
+- all data words, bit-count handling, and response handling otherwise use the
+  same decoded JTAG path.
+
+The 94-byte mode-1 256-bit request is therefore now added to the byte-exact
+startup whitelist. Do not generalize this to arbitrary opcode-`0x42` or
+arbitrary JTAG packets.
+
+After the rejected block, the capture still reaches the known opcode-`0x90`
+transport request and the known mode-1 58-bit JTAG transaction. No new opcode
+family is present.
+
+Next step: rebuild/reload on the scope, capture another 120-second XStream
+startup, and inspect what appears after the newly admitted mode-1 256-bit JTAG
+stage. Do not change trigger or DMA paths yet.
