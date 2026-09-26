@@ -1083,6 +1083,62 @@ LecJtagExecute(
     return STATUS_SUCCESS;
 }
 
+
+static
+BOOLEAN
+LecIsCapturedStartupCfDc2110(
+    _In_reads_bytes_(InputLength) const UCHAR* Buffer,
+    _In_ ULONG InputLength
+    )
+{
+    static const UCHAR resetPacket[] = {
+        0x06,0x00,0x0A,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x02,0x40,0x01,0x52,0x45,0x53,0x45,0x54,0x00
+    };
+    static const UCHAR opcode99Packet[] = {
+        0x06,0x00,0x04,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x01,0x99,0x00,
+        0x08,0x01,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
+    };
+    static const UCHAR opcode88Packet[] = {
+        0x06,0x00,0x06,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x00,0x88,0x00,0xDF,0xFF,
+        0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
+    };
+    static const UCHAR jtag42Packet[] = {
+        0x06,0x00,0x4C,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x01,0x42,0x00,0x00,0x20,0x00,0x00,
+        0x01,0x00,0x00,0xFF,0x0B,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x28,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
+    };
+
+    if (Buffer == NULL) {
+        return FALSE;
+    }
+
+#define LECS65_MATCH_CAPTURED_PACKET(packet) \
+    (InputLength == sizeof(packet) && \
+     RtlCompareMemory(Buffer, (packet), sizeof(packet)) == sizeof(packet))
+
+    if (LECS65_MATCH_CAPTURED_PACKET(resetPacket) ||
+        LECS65_MATCH_CAPTURED_PACKET(opcode99Packet) ||
+        LECS65_MATCH_CAPTURED_PACKET(opcode88Packet) ||
+        LECS65_MATCH_CAPTURED_PACKET(jtag42Packet)) {
+        return TRUE;
+    }
+
+#undef LECS65_MATCH_CAPTURED_PACKET
+    return FALSE;
+}
+
 static
 NTSTATUS
 LecIoctlCfDc2110(
@@ -1599,21 +1655,33 @@ LecS65DeviceControl(
     switch (code) {
     case LECS65_IOCTL_CFDC2110:
         /*
-         * Runtime testing showed that the current partial CFDC2110
-         * implementation accepts many still-unknown A5FB subcommands and
-         * returns structurally valid but semantically bogus response buffers.
-         * XStream then proceeds with invalid board state and reports multiple
-         * acquisition/UI errors. Keep the recovered parser/transport code in
-         * tree for continued reverse engineering, but do not execute hardware
-         * side effects until every startup subcommand used by XStream has a
-         * confirmed implementation.
+         * Execute only the four byte-exact request shapes observed in the
+         * first real XStream startup capture. Anything else remains trace-only
+         * and is rejected before any CFDC2110 hardware side effect.
          */
-        status = STATUS_INVALID_DEVICE_REQUEST;
-        information = 0;
-        LecTrace(
-            "CFDC2110 temporarily trace-only: in=%lu out=%lu\n",
-            inputLength,
-            outputLength);
+        if (systemBuffer != NULL &&
+            LecIsCapturedStartupCfDc2110(
+                (const UCHAR*)systemBuffer,
+                inputLength)) {
+            status = LecIoctlCfDc2110(
+                devExt,
+                (UCHAR*)systemBuffer,
+                inputLength,
+                outputLength,
+                &information);
+            LecTrace(
+                "CFDC2110 captured-startup whitelist -> 0x%08X info=%Iu\n",
+                status,
+                information);
+        }
+        else {
+            status = STATUS_INVALID_DEVICE_REQUEST;
+            information = 0;
+            LecTrace(
+                "CFDC2110 rejected outside captured-startup whitelist: in=%lu out=%lu\n",
+                inputLength,
+                outputLength);
+        }
         break;
 
     case LECS65_IOCTL_DELAY_MILLISECONDS:
