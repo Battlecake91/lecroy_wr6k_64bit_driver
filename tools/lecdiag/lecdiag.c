@@ -303,7 +303,7 @@ static int trace_capture(HANDLE h, const char* path, unsigned seconds)
     fprintf(
         out,
         "{\"type\":\"lecdiag_trace\","
-        "\"format_version\":2,"
+        "\"format_version\":3,"
         "\"mode\":\"capture\","
         "\"duration_seconds\":%u}\n",
         seconds);
