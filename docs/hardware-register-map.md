@@ -220,3 +220,44 @@ The receive helper:
 
 This transport is the hardware endpoint behind the A5FB/85FB protocol used by
 `0xCFDC2110`.
+
+
+## Buzzer behavior and proposed x64-driver modes
+
+The legacy driver controls the on-board piezo through:
+
+```text
+BAR2 + 0x000  BUZZER
+```
+
+The recovered helper only writes logical on/off values:
+
+```text
+WRITE_REGISTER_ULONG(BUZZER, 1)
+delay
+WRITE_REGISTER_ULONG(BUZZER, 0)
+```
+
+The original initialization path uses this helper for the audible startup
+beeps. There is currently no static evidence in the legacy driver for a
+dedicated buzzer-frequency or divider register.
+
+This means three replacement-driver startup modes are feasible without
+inventing unknown hardware semantics:
+
+- `Standard`: reproduce the original startup beep pattern.
+- `Off`: suppress startup buzzer writes.
+- `Melody`: use a distinctive custom-driver pattern.
+
+For `Melody`, two implementation levels must be distinguished:
+
+1. **Rhythm-only melody (confirmed feasible):** use the known BUZZER gate with
+   different on/off durations. Pitch remains whatever the hardware generates.
+2. **Variable-pitch melody (not yet proven):** only possible if the piezo is
+   passive and the BUZZER register can be toggled fast enough in software, or
+   if another FPGA/divider register controls its oscillator. The legacy driver
+   provides no evidence for such a frequency control.
+
+Therefore the safe first implementation should treat `Melody` as a unique
+rhythmic signature using the existing on/off gate. Frequency control should be
+added only after the electrical/FPGA behavior has been verified.
