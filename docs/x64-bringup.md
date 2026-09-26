@@ -468,3 +468,14 @@ a monotonically newer staged `DriverVer`, installs the package with
 
 This is the preferred update path because it uses the Windows Driver Store and
 PnP installation machinery instead of bypassing file protection.
+
+
+### Inf2Cat DriverVer formatting
+
+On the German reference system, PowerShell's
+`$now.ToString("MM/dd/yyyy")` substituted the local date separator and
+generated `DriverVer` with dots instead of the INF-required slash form.
+`Inf2Cat` then reported error 22.9.6.
+
+The package script now formats the date with invariant culture and literal
+slashes and prints the generated `DriverVer=` line before running Inf2Cat.
