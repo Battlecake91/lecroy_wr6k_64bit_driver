@@ -897,3 +897,21 @@ as well. These packets remain local protocol-error paths with no JTAG MMIO.
 Mode 5 is the next rejected exact packet and remains blocked pending a separate
 decision. Do not generalize the runtime gate to arbitrary `mode >= 2`
 requests.
+
+## Latest staged trace: 2026-09-27 01:53
+
+This run used a clean `main` checkout at
+`9b8cf11555b88ee49d65ab94fd08f5c1a4fb4ca6`. The signed package SYS and the
+installed driver matched exactly:
+`085AF5586FEA3D56215B4FA6FFE3AC2CE57F7B74CE63FDB1C052248382493CF4`.
+
+Trace `xstream_trace_20260927_015327.jsonl` contains 92 IOCTL records and 71
+CFDC2110 calls: 60 success and 11 rejected. Modes 2, 3 and 4 of the 94-byte
+family-1 opcode-`0x42` 256-bit shape each succeed 16 times with the local
+status-4 response. The only rejected shape is the same request with mode 5,
+repeated 11 times. No acquisition-launch IOCTL appears.
+
+Mode 5 is now admitted as one exact observed 94-byte packet. It follows the
+already proven legacy `mode > 1` local-error path and therefore performs no
+JTAG MMIO. Do not replace the exact packet gate with a broad mode rule. Next
+scope run should identify the request immediately after mode 5.
