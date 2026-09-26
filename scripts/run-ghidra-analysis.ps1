@@ -10,6 +10,16 @@ $localConfig = Join-Path $repo ".ghidra-local.ps1"
 
 Set-Location $repo
 
+# Ghidra rotates its internal database snapshots. They are required by the
+# checked-in project, but local headless runs must not make Git treat those
+# rotations as source changes.
+$trackedGhidraDb = git ls-files "ghidra_reverse_engineering_lecroy/**/~*.db/*"
+foreach ($path in $trackedGhidraDb) {
+    if ($path) {
+        git update-index --skip-worktree -- $path
+    }
+}
+
 if (Test-Path $localConfig) {
     . $localConfig
 }
