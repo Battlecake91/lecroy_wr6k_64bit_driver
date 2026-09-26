@@ -2335,6 +2335,25 @@ adds bit `0x100` to each BAR1 `JTAGNUM` value; the bit-count loop, JTAG data
 writes and response reads are otherwise identical. The already admitted
 mode-1 58-bit and 256-bit requests exercise that same behavior.
 
-The new complete buffer is therefore a candidate for byte-exact admission,
-not for an opcode-, family- or mode-wide rule. It remains rejected by the
-current runtime gate pending that separate decision.
+The complete buffer was subsequently admitted byte-exactly and completed
+successfully on the reference scope. No opcode-, family- or mode-wide rule was
+introduced.
+
+
+## Newly observed mode-2 256-bit JTAG form
+
+The next startup capture exposes a 94-byte family-1 opcode-`0x42` request with
+mode 2, 32 requested response bytes and a bit count of 256. It differs from the
+admitted mode-1, 256-bit request only at byte offset 11 (`0x01` to `0x02`).
+
+Existing static analysis already establishes an important safety boundary in
+legacy `FUN_00015C7E`: only mode values below 2 enter the JTAG register loop.
+For mode 2 the handler performs no `JTAGNUM`, `JTAGDAT` or `JTAGDIN` access,
+returns protocol status 4, and installs a local pending response through
+`FUN_00015A26` for the following 85FB fetch record.
+
+The current x64 helper also rejects modes above 1 before register access, but
+its fallback fetch response is not yet a proven byte-exact reconstruction of
+the legacy pending response. The new complete input buffer therefore remains
+outside the runtime gate. It must not be treated as a third executable JTAG
+mode or admitted through a broader opcode/mode rule.

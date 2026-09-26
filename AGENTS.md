@@ -272,10 +272,11 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Review the newly observed exact family-1 opcode-`0x42`, mode-1, 83-bit
-   JTAG buffer for a separate byte-exact admission; do not generalize the gate.
-2. After any explicit byte-exact admission, rebuild/reload and capture another
-   normal XStream startup with `scripts/capture-xstream-trace.ps1`.
+1. Close the exact legacy pending-response semantics for the newly observed
+   family-1 opcode-`0x42`, mode-2, 256-bit buffer. Do not treat mode 2 as an
+   executable JTAG hardware mode.
+2. Only after the local protocol-status-4 and 85FB fetch response are proven,
+   consider a byte-exact admission and another XStream startup capture.
 3. Verify whether Windows supplies all source and descriptor-table pages below
    4 GiB; the current x64 transfer registration deliberately rejects addresses
    that do not fit the proven legacy 32-bit descriptor ABI.
@@ -813,3 +814,28 @@ This exact buffer may therefore be proposed for a future byte-exact admission,
 but it remains rejected after this analysis round. Do not replace the gate with
 an opcode-, family- or mode-wide rule. No acquisition launch appears in the
 trace, and trigger/DMA paths remain unchanged.
+
+
+## Latest staged trace: 2026-09-27 00:59
+
+The raw capture `xstream_trace_20260927_005905.jsonl` remains outside Git.
+
+Observed totals:
+
+- 46 IOCTL records.
+- 23 `0xCFDC2110` calls.
+- 12 CFDC2110 successes.
+- 11 CFDC2110 rejections.
+
+The newly admitted exact 54-byte family-1 opcode-`0x42`, mode-1, 83-bit
+request succeeds on hardware. The first and only newly rejected request shape
+is a 94-byte family-1 opcode-`0x42`, mode-2, 256-bit form, repeated 11 times.
+It differs from the admitted mode-1, 256-bit request only at byte offset 11
+(`0x01` to `0x02`).
+
+Legacy `FUN_00015C7E` enters the JTAG register loop only for modes 0 and 1.
+Mode 2 produces local protocol status 4 and installs a pending response through
+`FUN_00015A26` without JTAG hardware access. The current x64 helper also blocks
+mode 2 before register access, but its following 85FB fetch response is not yet
+proven byte-exact. Keep this packet rejected until that response path is closed.
+Do not change trigger or DMA paths.

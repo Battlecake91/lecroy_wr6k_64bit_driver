@@ -318,3 +318,48 @@ transactions. These facts support proposing this one complete buffer for a
 future byte-exact admission, but this analysis round does not modify the gate.
 Unknown packets therefore continue to be rejected before hardware side
 effects. Trigger and DMA behavior remain unchanged.
+
+
+## Seventh staged startup capture
+
+The 2026-09-27 00:59 capture contains 46 IOCTL entries and 23
+`0xCFDC2110` calls.
+
+Results:
+
+- 12 CFDC2110 calls completed successfully.
+- 11 calls were rejected with `STATUS_INVALID_DEVICE_REQUEST` by the
+  byte-exact safety gate.
+- The newly admitted 54-byte family-1 opcode-`0x42`, mode-1, 83-bit JTAG
+  request completed successfully, proving the exact new gate entry on hardware.
+- The first and only newly rejected request shape is a 94-byte family-1
+  opcode-`0x42`, mode-2, 256-bit form. It repeats 11 times.
+- XStream subsequently still reaches the admitted opcode-`0x90` transport
+  request and two mode-1, 58-bit JTAG requests. No acquisition-launch IOCTL
+  appears in the capture.
+
+The exact newly rejected request is:
+
+```text
+06 00 4C 00 03 00 FB A5
+40 01 42 02 00 00 20 00
+00 01 00 00 FF 0B 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00
+28 00 02 00 03 00 FB 85 40 00
+```
+
+It differs from the admitted mode-1, 256-bit request only at byte offset 11,
+where the mode changes from `0x01` to `0x02`. This is not another already
+implemented JTAG hardware mode. Legacy `FUN_00015C7E` accepts only modes 0 and
+1 for register execution; for mode 2 it returns protocol status 4 and prepares
+a local response without touching JTAG registers. The exact pending-response
+and 85FB fetch behavior must be reproduced before this complete buffer can be
+considered for admission. It therefore remains rejected, with trigger and DMA
+paths unchanged.
