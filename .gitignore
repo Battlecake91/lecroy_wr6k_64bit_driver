@@ -1,0 +1,6 @@
+# Ghidra local/transient project database artifacts
+# Keep the project, but ignore rotating database snapshots and lock files.
+ghidra_reverse_engineering_lecroy/**/*.lock
+ghidra_reverse_engineering_lecroy/**/*.lock~
+ghidra_reverse_engineering_lecroy/**/~*.db/
+ghidra_reverse_engineering_lecroy/**/tmp*.ps
