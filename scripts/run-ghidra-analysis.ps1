@@ -6,6 +6,8 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 $targetFile = Join-Path $repo "ghidra_scripts\targets.txt"
+$exportDir = Join-Path $repo "ghidra_exports\selected"
+$manifestFile = Join-Path $exportDir "EXPORT_MANIFEST.txt"
 $localConfig = Join-Path $repo ".ghidra-local.ps1"
 
 Set-Location $repo
@@ -61,13 +63,18 @@ if ($targets.Count -eq 0) {
     throw "No targets configured in $targetFile"
 }
 
+$baseCommit = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $baseCommit) {
+    throw "Unable to determine current Git commit."
+}
+
 $args = @(
     (Join-Path $repo "ghidra_reverse_engineering_lecroy"),
     "LeCroy_Alladin_Driver",
     "-process", "LecS65AcqDrv.sys",
     "-scriptPath", (Join-Path $repo "ghidra_scripts"),
     "-postScript", "ExportSelected.java",
-    (Join-Path $repo "ghidra_exports\selected")
+    $exportDir
 )
 $args += $targets
 $args += "-noanalysis"
@@ -81,6 +88,31 @@ Write-Host ""
 if ($LASTEXITCODE -ne 0) {
     throw "Ghidra headless export failed with exit code $LASTEXITCODE."
 }
+
+if (-not (Test-Path $exportDir)) {
+    throw "Expected export directory was not created: $exportDir"
+}
+
+$exportedFiles = Get-ChildItem -Path $exportDir -File |
+    Where-Object { $_.Name -ne "EXPORT_MANIFEST.txt" } |
+    Sort-Object Name |
+    ForEach-Object { $_.Name }
+
+$manifest = @(
+    "LeCroy Ghidra selected export manifest"
+    "Source commit: $baseCommit"
+    "Program: LecS65AcqDrv.sys"
+    ""
+    "Targets:"
+)
+$manifest += $targets | ForEach-Object { "  $_" }
+$manifest += @(
+    ""
+    "Exported files:"
+)
+$manifest += $exportedFiles | ForEach-Object { "  $_" }
+
+Set-Content -Path $manifestFile -Encoding UTF8 -Value $manifest
 
 git add ghidra_exports/selected
 
@@ -102,6 +134,30 @@ if ($LASTEXITCODE -ne 0) {
     throw "git push failed."
 }
 
+$shareCommit = (git rev-parse HEAD).Trim()
+$remoteUrl = (git remote get-url origin).Trim()
+$shareUrl = $null
+if ($remoteUrl -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?
+) {
+    $shareUrl = "https://github.com/$($Matches[1])/$($Matches[2])/commit/$shareCommit"
+}
+elseif ($remoteUrl -match '^git@github\.com:([^/]+)/(.+?)(?:\.git)?
+) {
+    $shareUrl = "https://github.com/$($Matches[1])/$($Matches[2])/commit/$shareCommit"
+}
+
 Write-Host ""
 Write-Host "Done."
+Write-Host "Ghidra export commit: $shareCommit"
+if ($shareUrl) {
+    Write-Host "Share this commit:"
+    Write-Host "  $shareUrl"
+}
+else {
+    Write-Host "Share the commit SHA above. Remote URL could not be converted automatically."
+}
+Write-Host ""
+Write-Host "Manifest:"
+Write-Host "  $manifestFile"
+Write-Host ""
 git status --short
