@@ -563,3 +563,33 @@ disabled PCI decoding or an obvious BAR mapping error.
 
 Next step: statically close and then reproduce only the confirmed legacy
 `0x12FDE` START/ITMODE startup sequence. Avoid speculative writes.
+
+
+## Scope/PC role split
+
+Keep the two machines distinct in instructions:
+
+- **Scope**: Windows scope machine, user `LeCroyUser`, contains the installed
+  x64 driver and the working checkout used for build/sign/load and runtime
+  `lecdiag` tests. Current repo path:
+  `C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver`.
+- **PC**: development/reverse-engineering PC, contains Ghidra and the Git
+  checkout used for `scripts\run-ghidra-analysis.ps1`. Do not give Ghidra
+  commands as if they run on the scope.
+
+The two checkouts synchronize through GitHub.
+
+
+## FUN_00012FDE exact startup sequence
+
+The existing Ghidra export confirms the legacy startup probe exactly:
+
+- BAR0 START <- 1
+- wait 100 us
+- read START bit 0
+- clear -> 1200 ms buzzer pulse and STATUS_UNSUCCESSFUL
+- set -> 300 ms buzzer pulse, ITMODE=7, wait 500 us, 300 ms buzzer pulse,
+  ITMODE=3, STATUS_SUCCESS
+
+The x64 driver now reproduces only this confirmed sequence during PnP start.
+Do not expand it with guessed initialization writes.
