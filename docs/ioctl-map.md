@@ -1770,3 +1770,51 @@ This is the process teardown cleanup path for registered acquisition buffers.
 ### 0x170EE
 
 The base-object vtable entry at `+0x04` adjusts `this` by `+0x100` and jumps to `0x1829A`; this is an adapter/thunk into a helper operating on the transfer-list subobject. The target `0x1829A` remains to be decoded.
+
+
+## Nineteenth headless export: transfer register programming mapped
+
+The synchronous acquisition helper `0x171DE` can now be tied to concrete hardware registers by combining its writes with the register-wrapper wiring from `0x14847`.
+
+The relevant embedded wrappers/fields are:
+
+```text
+transfer object +0x04 -> BAR0 IIMCL  (offset 0x048)
+transfer object +0x2C -> BAR1 MAMRGO (offset 0x064)
+transfer object +0x58 -> BAR0 SGTA   (offset 0x040)
+transfer object +0x80 -> BAR0 IIMTC  (offset 0x044)
+transfer object +0xD0 -> BAR1 MTTRGO (offset 0x084)
+transfer object +0x54 -> constant/cached value 1 used for IIMCL
+```
+
+This makes the `0x171DE` sequence substantially more concrete:
+
+```text
+1. SGTA  <- param_1
+2. cache transfer length/count in object +0xFC
+3. IIMTC <- selected transfer entry +0x18
+4. reset selected transfer-entry event
+5. enable global transfer mask bit 0 (0x13914)
+6. IIMCL <- 1
+7. MAMRGO <- transfer length/count when param_3 != 0
+   or
+   MTTRGO <- transfer length/count when param_3 == 0
+8. wait up to 5 s for selected transfer-entry event
+9. disable global transfer mask bit 0 (0x13934)
+```
+
+`0x17478` supplies `SGTA` from the selected transfer entry's descriptor-table MDL/page-derived address (`entry +0x14 -> MDL`, then MDL PFN-like field at +0x1C, shifted by 12). The descriptor builder at `0x18194` stores the hardware word count/result at transfer-entry `+0x18`, which is then programmed into `IIMTC`.
+
+This now strongly identifies the two `0x171DE` modes as two hardware launch paths sharing the same descriptor table and interrupt machinery: one launched through `MAMRGO`, the other through `MTTRGO`.
+
+### 0x1829A: transfer-list teardown
+
+The thunk at `0x170EE` enters the transfer-list subobject at `this+0x100` and jumps to `0x1829A`. That helper walks all remaining transfer entries, destroys each through `0x17FD6`, and clears the list head. It is therefore a transfer-manager cleanup/destructor helper, not execution logic.
+
+### Register-wrapper initialization helper
+
+`0x11962` is the generic register-wrapper constructor. It initializes the register pointer/cache metadata and default access/type fields; the actual hardware addresses are wired later by `0x119BC` and direct assignments in `0x14847`.
+
+### Interrupt-mask commit path reconfirmed
+
+`0x11E46` mirrors `DAT_1CE18` into the active mask globals and writes the value to BAR0 `INTEN` through `DAT_1CE20`. `0x12EAE` is the synchronized callback wrapper around that commit.
