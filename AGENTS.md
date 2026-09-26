@@ -499,3 +499,10 @@ The historical test-machine workflow also used command-line service/package
 operations (`pnputil`, `sc.exe`) after signing. Do not assume a newly built
 SYS is loadable until the test-signing/catalog state matches the installed
 package.
+
+
+## Build toolset
+
+The x64 driver project currently targets `PlatformToolset=v143` for Visual
+Studio 2022. A temporary `v145` setting caused MSB8020 on the reference build
+machine and has been removed.
