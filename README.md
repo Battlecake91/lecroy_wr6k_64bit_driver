@@ -40,7 +40,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - active MAMRGO/MTTRGO acquisition launch remains deliberately gated until the 32-bit DMA-address constraint and launch-count units are validated on hardware;
 - passive tracing now has a JSONL live-capture workflow with timestamps, WOW64 state, bounded input previews, METHOD_NEITHER input capture and buffered output previews;
 - on the current x64 reference bring-up, the driver loads and the PCI device binds correctly, but all three tested MMIO regions currently read as `0xFFFFFFFF`; passive PCI diagnostics now confirm `PCI Command = 0x0006`, so both Memory Space Enable and Bus Master Enable are active, and the BAR config-space values exactly match the translated Windows resources;
-- the confirmed legacy START/ITMODE startup probe from `FUN_00012FDE` is now reproduced during x64 PnP start, including its exact 100 us / 500 us timing and buzzer pattern;
+- the confirmed legacy START/ITMODE startup probe from `FUN_00012FDE` is now reproduced during x64 PnP start, including its exact 100 us / 500 us timing and buzzer pattern; on the reference scope this fixes the previous all-ones MMIO state, yielding FVER = `0x00000002`, ACQFVER = `0x00000003`, ONEWIRE = `0x00000000`, and a valid Dallas ID `23 F0 47 37 00 00 00 AC` with the expected two-beep startup pattern;
 - unsafe partial `CFDC2110` execution remains intentionally disabled until the firmware-defined command semantics are captured from a normal sequence.
 
 Documentation:
