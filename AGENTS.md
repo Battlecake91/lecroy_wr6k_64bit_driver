@@ -639,3 +639,20 @@ observed startup packets.
 A sanitized fixture is committed under
 `testdata/traces/xstream_startup_20260926_cfcd2110_sanitized.jsonl`.
 The raw trace stays local/private.
+
+
+## Byte-exact CFDC2110 runtime gate
+
+Commit `ab70d0a920712b780cdb0dc15792d03a62e54091` enables hardware execution
+only for the four complete `CFDC2110` input buffers observed in the first
+XStream startup trace. Every other buffer remains rejected before hardware side
+effects.
+
+Next test on the scope:
+
+1. pull latest main;
+2. run `scripts/build-sign-load-driver.ps1`;
+3. start a fresh `capture-xstream-trace.ps1` capture;
+4. launch XStream normally;
+5. preserve the new raw JSONL locally and analyze new packet shapes before
+   widening the whitelist.
