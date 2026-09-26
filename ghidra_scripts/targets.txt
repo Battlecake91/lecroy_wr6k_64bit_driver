@@ -4,18 +4,18 @@
 # Updated automatically as reverse-engineering work advances.
 # Run scripts/run-ghidra-analysis.ps1; it pulls, exports, commits and pushes.
 
-1085e
-10872
-10886
-1089a
-108ae
-108c2
-10636
-11515
+115c4
+114f2
+1151e
 field:2e0
 KeInitializeDpc
-KeInsertQueueDpc
-1381e
-14212
-14847
-171de
+10872
+11dc2
+11dd8
+11dee
+11e04
+11e1a
+11e30
+10636
+11390
+108d6
