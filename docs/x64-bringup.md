@@ -479,3 +479,37 @@ generated `DriverVer` with dots instead of the INF-required slash form.
 
 The package script now formats the date with invariant culture and literal
 slashes and prints the generated `DriverVer=` line before running Inf2Cat.
+
+
+### Confirmed PCI decode state
+
+The reference x64 system now reports a valid PCI configuration header:
+
+```text
+BDF:             4:1.0
+vendor/device:   1570:0005
+subsystem:       0000:0000
+revision:        00
+PCI Command:     0x0006
+PCI Status:      0x0208
+BAR0 config:     0xF7CBFE00
+BAR1 config:     0xF7CC0000
+BAR2 config:     0xF7CBFC00
+IRQ line/pin:    19 / 1
+class:           0B:40:00
+```
+
+`PCI Command = 0x0006` means:
+
+- Memory Space Enable is set;
+- Bus Master Enable is set;
+- I/O Space Enable is clear, consistent with memory BARs.
+
+The BAR values in PCI configuration space match the translated resources exactly.
+Therefore the current all-ones MMIO state is not explained by disabled PCI memory
+decode or by an obvious BAR-address mismatch.
+
+The next controlled investigation should focus on the legacy early startup path,
+especially `FUN_00012FDE` and its START/ITMODE initialization sequence. Do not
+add arbitrary register writes; reproduce only statically confirmed legacy startup
+operations.
