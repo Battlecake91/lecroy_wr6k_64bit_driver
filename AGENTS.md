@@ -486,3 +486,16 @@ and the x64 driver when the private IOCTL ABI changes. A stale `lecdiag.exe`
 is immediately visible because its usage text lacks newly added commands such
 as `pci`. Use `scripts/build-lecdiag.ps1` after pulling tool changes, then
 rebuild/reload the driver before exercising a new private diagnostic IOCTL.
+
+
+## Command-line build workflow
+
+Use `scripts/build-driver.ps1` as the normal driver build entry point. It
+locates MSBuild through Visual Studio/vswhere and builds `Debug|x64` by
+default. Add `-BuildLecdiag` to rebuild the user-mode diagnostic tool in the
+same step.
+
+The historical test-machine workflow also used command-line service/package
+operations (`pnputil`, `sc.exe`) after signing. Do not assume a newly built
+SYS is loadable until the test-signing/catalog state matches the installed
+package.
