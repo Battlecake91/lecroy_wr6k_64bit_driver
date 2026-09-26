@@ -1,0 +1,137 @@
+FUNCTION_ASM 00018194 FUN_00018194
+00018194  PUSH EBP
+00018195  MOV EBP,ESP
+00018197  SUB ESP,0x1c
+0001819a  MOV EAX,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+0001819d  XOR EDX,EDX
+0001819f  CMP EAX,EDX
+000181a1  PUSH EBX
+000181a2  MOV EBX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+000181a5  PUSH ESI
+000181a6  MOV ESI,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+000181a9  MOV dword ptr [EBP + -0x1c],ECX
+    -> Stack[-0x20]
+000181ac  MOV dword ptr [EBP + -0xc],EDX
+    -> Stack[-0x10]
+000181af  MOV dword ptr [EBP + -0x10],EDX
+    -> Stack[-0x14]
+000181b2  MOV dword ptr [EBP + -0x4],EDX
+    -> Stack[-0x8]
+000181b5  JZ 0x00018287
+    -> 00018287
+000181bb  PUSH EDI
+000181bc  MOV ECX,dword ptr [EAX + 0x14]
+000181bf  TEST ECX,ECX
+000181c1  MOV EDX,dword ptr [EAX + 0x18]
+000181c4  LEA EDI,[EAX + 0x1c]
+000181c7  MOV dword ptr [EBP + -0x8],ECX
+    -> Stack[-0xc]
+000181ca  JZ 0x00018277
+    -> 00018277
+000181d0  MOV EAX,dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+000181d3  SHL EAX,0x9
+000181d6  MOV dword ptr [EBP + -0x18],EAX
+    -> Stack[-0x1c]
+000181d9  MOV dword ptr [EBP + -0x14],EDI
+    -> Stack[-0x18]
+000181dc  JMP 0x000181e1
+    -> 000181e1
+000181de  MOV EAX,dword ptr [EBP + -0x18]
+    -> Stack[-0x1c]
+000181e1  MOV ECX,dword ptr [EBP + -0x14]
+    -> Stack[-0x18]
+000181e4  MOV EDI,dword ptr [ECX]
+000181e6  SHL EDI,0xc
+000181e9  MOV ECX,0x1000
+000181ee  SUB ECX,EDX
+000181f0  ADD EDI,EDX
+000181f2  CMP dword ptr [EBP + -0x8],ECX
+    -> Stack[-0xc]
+000181f5  JNC 0x000181fa
+    -> 000181fa
+000181f7  MOV ECX,dword ptr [EBP + -0x8]
+    -> Stack[-0xc]
+000181fa  MOV EDX,dword ptr [EBP + -0x10]
+    -> Stack[-0x14]
+000181fd  CMP EDX,0x1ff
+00018203  LEA ESI,[EAX + EDX*0x1]
+00018206  JNZ 0x0001822e
+    -> 0001822e
+00018208  AND dword ptr [EBP + -0x10],0x0
+    -> Stack[-0x14]
+0001820c  LEA EDX,[EBX + ESI*0x8]
+0001820f  AND dword ptr [EDX],0x0
+00018212  INC dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+00018215  MOV EBX,dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+00018218  ADD EAX,0x200
+0001821d  MOV dword ptr [EBP + -0x18],EAX
+    -> Stack[-0x1c]
+00018220  MOV EAX,dword ptr [EBP + 0xc]
+    -> Stack[0x8]
+00018223  MOV EAX,dword ptr [EAX + EBX*0x4 + 0x1c]
+00018227  SHL EAX,0xc
+0001822a  MOV dword ptr [EDX + 0x4],EAX
+0001822d  INC ESI
+0001822e  MOV EAX,dword ptr [EBP + -0x1c]
+    -> Stack[-0x20]
+00018231  MOV EBX,dword ptr [EAX + 0xc]
+00018234  MOV EAX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00018237  MOV EDX,ECX
+00018239  SHR EDX,0x2
+0001823c  ADD EAX,EDX
+0001823e  CMP EAX,EBX
+00018240  JC 0x00018247
+    -> 00018247
+00018242  SUB EBX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00018245  MOV EDX,EBX
+00018247  MOV EBX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+0001824a  ADD dword ptr [EBP + -0x4],EDX
+    -> Stack[-0x8]
+0001824d  MOV EAX,dword ptr [EBP + -0x1c]
+    -> Stack[-0x20]
+00018250  INC dword ptr [EBP + -0x10]
+    -> Stack[-0x14]
+00018253  MOV dword ptr [EBX + ESI*0x8],EDX
+00018256  MOV EDX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00018259  MOV dword ptr [EBX + ESI*0x8 + 0x4],EDI
+0001825d  CMP EDX,dword ptr [EAX + 0xc]
+00018260  JZ 0x00018274
+    -> 00018274
+00018262  SUB dword ptr [EBP + -0x8],ECX
+    -> Stack[-0xc]
+00018265  ADD dword ptr [EBP + -0x14],0x4
+    -> Stack[-0x18]
+00018269  XOR EDX,EDX
+0001826b  CMP dword ptr [EBP + -0x8],EDX
+    -> Stack[-0xc]
+0001826e  JNZ 0x000181de
+    -> 000181de
+00018274  MOV EAX,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+00018277  MOV EAX,dword ptr [EAX]
+00018279  TEST EAX,EAX
+0001827b  MOV dword ptr [EBP + 0x10],EAX
+    -> Stack[0xc]
+0001827e  JNZ 0x000181bc
+    -> 000181bc
+00018284  XOR EDX,EDX
+00018286  POP EDI
+00018287  MOV EAX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+0001828a  LEA ECX,[EBX + ESI*0x8 + 0x8]
+0001828e  POP ESI
+0001828f  MOV dword ptr [ECX],EDX
+00018291  MOV dword ptr [ECX + 0x4],EDX
+00018294  POP EBX
+00018295  LEAVE
+00018296  RET 0xc

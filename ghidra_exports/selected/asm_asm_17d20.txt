@@ -1,0 +1,81 @@
+FUNCTION_ASM 00017d20 FUN_00017d20
+00017d20  PUSH EBP
+00017d21  MOV EBP,ESP
+00017d23  SUB ESP,0x14
+00017d26  PUSH EBX
+00017d27  MOV EBX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00017d2a  TEST EBX,EBX
+00017d2c  PUSH ESI
+00017d2d  PUSH EDI
+00017d2e  MOV dword ptr [EBP + -0x4],ECX
+    -> Stack[-0x8]
+00017d31  JNZ 0x00017d3e
+    -> 00017d3e
+00017d33  XOR ECX,ECX
+00017d35  CALL 0x00017b72
+    -> 00017b72 FUN_00017b72
+00017d3a  TEST AL,AL
+00017d3c  JZ 0x00017da5
+    -> 00017da5
+00017d3e  MOVZX ESI,byte ptr [EBX + 0x78]
+00017d42  MOV EAX,dword ptr [EBP + 0xc]
+    -> Stack[0x8]
+00017d45  XOR EDX,EDX
+00017d47  DIV ESI
+00017d49  MOV ECX,0x400
+00017d4e  MOV dword ptr [EBP + -0x8],ESI
+    -> Stack[-0xc]
+00017d51  CMP EAX,ECX
+00017d53  JNC 0x00017d57
+    -> 00017d57
+00017d55  MOV ECX,EAX
+00017d57  AND byte ptr [EBP + 0xb],0x0
+    -> Stack[0x7]
+00017d5b  TEST ESI,ESI
+00017d5d  JBE 0x00017d9c
+    -> 00017d9c
+00017d5f  MOV word ptr [EBP + -0x14],0xa5fb
+    -> Stack[-0x18]
+00017d65  XOR EAX,EAX
+00017d67  MOV byte ptr [EBP + -0x11],0xe
+    -> Stack[-0x15]
+00017d6b  MOV dword ptr [EBP + -0xc],ECX
+    -> Stack[-0x10]
+00017d6e  MOV ECX,dword ptr [EBX + 0x18]
+00017d71  MOV AL,byte ptr [EAX + ECX*0x1]
+00017d74  MOV ECX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00017d77  MOV byte ptr [EBP + -0x12],AL
+    -> Stack[-0x16]
+00017d7a  MOV EAX,dword ptr [EBX + 0x4]
+00017d7d  SUB ESP,0xc
+00017d80  MOV dword ptr [EBP + -0x10],EAX
+    -> Stack[-0x14]
+00017d83  MOV EDI,ESP
+00017d85  LEA ESI,[EBP + -0x14]
+    -> Stack[-0x18]
+00017d88  MOVSD ES:EDI,ESI
+00017d89  MOVSD ES:EDI,ESI
+00017d8a  MOVSD ES:EDI,ESI
+00017d8b  CALL 0x00017c16
+    -> 00017c16 FUN_00017c16
+00017d90  INC byte ptr [EBP + 0xb]
+    -> Stack[0x7]
+00017d93  MOVZX EAX,byte ptr [EBP + 0xb]
+    -> Stack[0x7]
+00017d97  CMP EAX,dword ptr [EBP + -0x8]
+    -> Stack[-0xc]
+00017d9a  JC 0x00017d6e
+    -> 00017d6e
+00017d9c  MOV ECX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00017d9f  PUSH EBX
+00017da0  CALL 0x00017cdc
+    -> 00017cdc FUN_00017cdc
+00017da5  POP EDI
+    -> Stack[-0x24]
+00017da6  POP ESI
+00017da7  POP EBX
+00017da8  LEAVE
+00017da9  RET 0x8
