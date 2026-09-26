@@ -25,7 +25,7 @@ if (-not $GhidraHome) {
     }
 
     $escaped = $GhidraHome.Replace("'","''")
-    Set-Content -Path $localConfig -Encoding UTF8 -Value ("$GhidraHome = '" + $escaped + "'")
+    Set-Content -Path $localConfig -Encoding UTF8 -Value ("`$GhidraHome = '" + $escaped + "'")
     Write-Host "Saved local Ghidra path to $localConfig"
 }
 
