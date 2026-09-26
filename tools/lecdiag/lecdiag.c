@@ -20,8 +20,9 @@
 #define LECS65_IOCTL_DEBUG_CLEAR_TRACE \
     ((DWORD)CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS))
 
-#define LECS65_TRACE_CAPACITY 128
-#define LECS65_TRACE_PREVIEW_BYTES 96
+#define LECS65_TRACE_CAPACITY 256
+#define LECS65_TRACE_PREVIEW_BYTES 256
+#define LECS65_TRACE_OUTPUT_PREVIEW_BYTES 128
 
 #pragma pack(push, 1)
 typedef struct LECS65_REG_READ_EXT {
@@ -56,17 +57,22 @@ typedef struct LECS65_DEBUG_BARS {
 
 typedef struct LECS65_DEBUG_TRACE_ENTRY {
     uint64_t Sequence;
+    uint64_t Timestamp100ns;
     uint64_t ProcessId;
     uint64_t Information;
+    uint64_t Type3InputBuffer;
+    uint64_t UserBuffer;
     uint32_t Ioctl;
     uint32_t InputLength;
     uint32_t OutputLength;
     uint32_t Status;
     uint32_t InputPreviewLength;
+    uint32_t OutputPreviewLength;
     uint8_t Method;
     uint8_t Wow64;
     uint16_t Reserved;
     uint8_t InputPreview[LECS65_TRACE_PREVIEW_BYTES];
+    uint8_t OutputPreview[LECS65_TRACE_OUTPUT_PREVIEW_BYTES];
 } LECS65_DEBUG_TRACE_ENTRY;
 
 typedef struct LECS65_DEBUG_TRACE {
@@ -75,6 +81,237 @@ typedef struct LECS65_DEBUG_TRACE {
     uint64_t TotalSeen;
     LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
 } LECS65_DEBUG_TRACE;
+
+static int get_trace_snapshot(HANDLE h, LECS65_DEBUG_TRACE* trace)
+{
+    DWORD returned = 0;
+
+    ZeroMemory(trace, sizeof(*trace));
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_GET_TRACE,
+            NULL,
+            0,
+            trace,
+            (DWORD)sizeof(*trace),
+            &returned,
+            NULL)) {
+        print_error("DEBUG_GET_TRACE");
+        return 1;
+    }
+
+    return 0;
+}
+
+static void write_hex_json(FILE* out, const uint8_t* data, uint32_t length)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    uint32_t i;
+
+    fputc('"', out);
+    for (i = 0; i < length; ++i) {
+        fputc(hex[(data[i] >> 4) & 0x0F], out);
+        fputc(hex[data[i] & 0x0F], out);
+    }
+    fputc('"', out);
+}
+
+static void write_trace_entry_jsonl(
+    FILE* out,
+    const LECS65_DEBUG_TRACE_ENTRY* e)
+{
+    fprintf(
+        out,
+        "{\"type\":\"ioctl\","
+        "\"seq\":%llu,"
+        "\"timestamp_100ns\":%llu,"
+        "\"pid\":%llu,"
+        "\"wow64\":%u,"
+        "\"method\":%u,"
+        "\"method_name\":\"%s\","
+        "\"ioctl\":\"0x%08lX\","
+        "\"name\":\"%s\","
+        "\"input_length\":%lu,"
+        "\"output_length\":%lu,"
+        "\"information\":%llu,"
+        "\"status\":\"0x%08lX\","
+        "\"type3_input_buffer\":\"0x%016llX\","
+        "\"user_buffer\":\"0x%016llX\","
+        "\"input_hex\":",
+        (unsigned long long)e->Sequence,
+        (unsigned long long)e->Timestamp100ns,
+        (unsigned long long)e->ProcessId,
+        (unsigned)e->Wow64,
+        (unsigned)e->Method,
+        method_name(e->Method),
+        (unsigned long)e->Ioctl,
+        ioctl_name(e->Ioctl),
+        (unsigned long)e->InputLength,
+        (unsigned long)e->OutputLength,
+        (unsigned long long)e->Information,
+        (unsigned long)e->Status,
+        (unsigned long long)e->Type3InputBuffer,
+        (unsigned long long)e->UserBuffer);
+
+    write_hex_json(
+        out,
+        e->InputPreview,
+        e->InputPreviewLength < LECS65_TRACE_PREVIEW_BYTES
+            ? e->InputPreviewLength
+            : LECS65_TRACE_PREVIEW_BYTES);
+
+    fprintf(out, ",\"output_hex\":");
+    write_hex_json(
+        out,
+        e->OutputPreview,
+        e->OutputPreviewLength < LECS65_TRACE_OUTPUT_PREVIEW_BYTES
+            ? e->OutputPreviewLength
+            : LECS65_TRACE_OUTPUT_PREVIEW_BYTES);
+
+    fprintf(out, "}\n");
+}
+
+static int trace_save(HANDLE h, const char* path)
+{
+    LECS65_DEBUG_TRACE* trace;
+    FILE* out;
+    uint32_t i;
+
+    trace = (LECS65_DEBUG_TRACE*)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        sizeof(*trace));
+    if (trace == NULL) {
+        fprintf(stderr, "HeapAlloc failed\n");
+        return 1;
+    }
+
+    if (get_trace_snapshot(h, trace) != 0) {
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 1;
+    }
+
+    out = fopen(path, "wb");
+    if (out == NULL) {
+        perror("fopen");
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 1;
+    }
+
+    fprintf(
+        out,
+        "{\"type\":\"lecdiag_trace\","
+        "\"format_version\":2,"
+        "\"entries\":%lu,"
+        "\"total_seen\":%llu}\n",
+        (unsigned long)trace->Count,
+        (unsigned long long)trace->TotalSeen);
+
+    for (i = 0; i < trace->Count && i < LECS65_TRACE_CAPACITY; ++i) {
+        write_trace_entry_jsonl(out, &trace->Entry[i]);
+    }
+
+    fclose(out);
+    printf(
+        "saved %lu trace entries to %s\n",
+        (unsigned long)trace->Count,
+        path);
+
+    HeapFree(GetProcessHeap(), 0, trace);
+    return 0;
+}
+
+static int trace_capture(HANDLE h, const char* path, unsigned seconds)
+{
+    LECS65_DEBUG_TRACE* trace;
+    FILE* out;
+    uint64_t lastSequence = 0;
+    ULONGLONG deadline;
+    DWORD returned = 0;
+    unsigned long written = 0;
+
+    trace = (LECS65_DEBUG_TRACE*)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        sizeof(*trace));
+    if (trace == NULL) {
+        fprintf(stderr, "HeapAlloc failed\n");
+        return 1;
+    }
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_DEBUG_CLEAR_TRACE,
+            NULL,
+            0,
+            NULL,
+            0,
+            &returned,
+            NULL)) {
+        print_error("DEBUG_CLEAR_TRACE");
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 1;
+    }
+
+    out = fopen(path, "wb");
+    if (out == NULL) {
+        perror("fopen");
+        HeapFree(GetProcessHeap(), 0, trace);
+        return 1;
+    }
+
+    fprintf(
+        out,
+        "{\"type\":\"lecdiag_trace\","
+        "\"format_version\":2,"
+        "\"mode\":\"capture\","
+        "\"duration_seconds\":%u}\n",
+        seconds);
+    fflush(out);
+
+    printf(
+        "capturing IOCTL trace for %u seconds -> %s\n"
+        "Start XStream now. Press Ctrl+C to stop the process early.\n",
+        seconds,
+        path);
+
+    deadline = GetTickCount64() + ((ULONGLONG)seconds * 1000ULL);
+
+    while (GetTickCount64() < deadline) {
+        uint32_t i;
+
+        if (get_trace_snapshot(h, trace) != 0) {
+            fclose(out);
+            HeapFree(GetProcessHeap(), 0, trace);
+            return 1;
+        }
+
+        for (i = 0; i < trace->Count && i < LECS65_TRACE_CAPACITY; ++i) {
+            const LECS65_DEBUG_TRACE_ENTRY* e = &trace->Entry[i];
+
+            if (e->Sequence <= lastSequence) {
+                continue;
+            }
+
+            write_trace_entry_jsonl(out, e);
+            lastSequence = e->Sequence;
+            ++written;
+        }
+
+        fflush(out);
+        Sleep(250);
+    }
+
+    fclose(out);
+    HeapFree(GetProcessHeap(), 0, trace);
+
+    printf(
+        "capture complete: %lu entries written to %s\n",
+        written,
+        path);
+    return 0;
+}
 
 static const char* ioctl_name(DWORD code)
 {
@@ -356,6 +593,16 @@ static int query_trace(HANDLE h)
             }
         }
 
+        if (e->OutputPreviewLength != 0) {
+            printf("  output:");
+            for (j = 0;
+                 j < e->OutputPreviewLength &&
+                 j < LECS65_TRACE_OUTPUT_PREVIEW_BYTES;
+                 ++j) {
+                printf(" %02X", e->OutputPreview[j]);
+            }
+        }
+
         printf("\n");
     }
 
@@ -480,6 +727,8 @@ static void usage(const char* exe)
     printf("  %s stats\n", exe);
     printf("  %s bars\n", exe);
     printf("  %s trace\n", exe);
+    printf("  %s trace-save <file.jsonl>\n", exe);
+    printf("  %s trace-capture <file.jsonl> [seconds, default 60]\n", exe);
     printf("  %s trace-clear\n", exe);
     printf("  %s dallas-id\n", exe);
     printf("  %s dallas-read [length 1..512]\n", exe);
@@ -516,6 +765,27 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "trace") == 0) {
         result = query_trace(h);
+    }
+    else if (_stricmp(argv[1], "trace-save") == 0 && argc == 3) {
+        result = trace_save(h, argv[2]);
+    }
+    else if (_stricmp(argv[1], "trace-capture") == 0 &&
+             (argc == 3 || argc == 4)) {
+        unsigned seconds = 60;
+
+        if (argc == 4) {
+            char* end = NULL;
+            unsigned long parsed = strtoul(argv[3], &end, 0);
+            if (end == argv[3] || *end != '\0' ||
+                parsed == 0 || parsed > 3600) {
+                fprintf(stderr, "seconds must be 1..3600\n");
+                CloseHandle(h);
+                return 2;
+            }
+            seconds = (unsigned)parsed;
+        }
+
+        result = trace_capture(h, argv[2], seconds);
     }
     else if (_stricmp(argv[1], "trace-clear") == 0) {
         result = clear_trace(h);
