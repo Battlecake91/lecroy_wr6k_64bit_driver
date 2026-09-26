@@ -272,10 +272,15 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Resolve main-object vtable `PTR_FUN_0001C8BC`, especially slots `+0x08`, `+0x0C`, `+0x14`, `+0x18`, and `+0x24`, to close registration, synchronous transfer and `0xCFDC2400` semantics.
-2. Trace the exact process-registration object lifetime around `0xCFDC2124/2128` and event ownership.
-3. Continue resolving MAM/acquisition control semantics far enough to reproduce the x86 behavior safely in the x64 driver.
-4. Keep partial `0xCFDC2110` hardware execution disabled until the full startup/runtime command set is understood.
+1. Continue resolving MAM/MTT acquisition-control semantics, especially the
+   configuration builders around `0x17D20`, `0x17CDC`, `0x17DAC`,
+   `0x17BC8`, and their effect on `MAMDAT/MAMPGO/MAMSEQ/MAMRGO`.
+2. Refine the descriptor-table format emitted by `0x18194`, including exact
+   word-count units and chain-entry semantics.
+3. Continue decoding the remaining `0xCFDC2110` startup/runtime command set
+   before any partial hardware execution is re-enabled.
+4. Keep resolving WOW64-sensitive ownership/lifetime details around
+   `0xCFDC2124/2128` and `0xCFDD219F`.
 
 
 ## Latest dispatch recovery
@@ -334,6 +339,18 @@ The sequence is: program `SGTA`, program `IIMTC`, reset the transfer-entry event
 `0x1829A` is transfer-list cleanup reached via the base-object thunk at `0x170EE`; it is not transfer execution logic.
 
 
-## Current completion-path evidence
+## Current completion-path result
 
-`0x108D6` is the ISR and `0x11390` the deferred/DPC dispatcher. The DPC callback associated with `0x10872` conditionally executes `KeSetEvent(*(main+0x2E0)+0x24)`. Transfer entries created by `0x1731C` place their completion event at `entry+0x24`, and `0x171DE` resets/waits on exactly that event offset. This is strong evidence that the `0x10872` branch is acquisition-transfer completion, but the pointer stored at main-object `+0x2E0` must still be tied directly to the selected transfer entry before calling it fully proven.
+`0x108D6` is the ISR and `0x11390` the deferred/DPC dispatcher. `0x115C4`
+initializes the DPC with DeferredContext equal to the main device object. The
+`0x10872` callback calls `0x11DC2`, which consumes pending interrupt bit 0
+from `DAT_1CE10`; if set, `0x11390` executes
+`KeSetEvent(*(main+0x2E0)+0x24)`.
+
+`main+0x2E0` is now tied to the selected transfer entry: acquisition handlers
+run on the acquisition subobject at `main+0x1E0`, and both `0x13C84` and
+`0x13DC6` store the `0x18168`-resolved transfer entry at subobject `+0x100`.
+Since `(main+0x1E0)+0x100 == main+0x2E0`, the DPC signals the same
+`entry+0x24` event that `0x171DE` resets and waits on. The acquisition-transfer
+completion interrupt source is therefore confirmed as interrupt bit 0, gated by
+the transfer mask enable/disable methods `0x13914` and `0x13934`.

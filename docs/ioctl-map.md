@@ -1851,7 +1851,8 @@ KeSetEvent(*(main + 0x2E0) + 0x24, ...)
 
 A transfer entry created by `0x1731C` contains its completion event at entry offset `+0x24`, exactly the event reset and waited on by `0x171DE`. This is therefore the strongest completion-path match yet: one DPC source directly signals an event at `selected_object + 0x24`.
 
-The remaining missing proof is the assignment/lifetime of main-object field `+0x2E0`. Until that field is tied directly to the selected transfer entry, the `0x10872` branch should be described as the likely acquisition-transfer completion callback rather than treated as fully proven.
+The remaining missing proof at this stage was the assignment/lifetime of
+main-object field `+0x2E0`. That is closed by the next export below.
 
 ### Other DPC sources
 
@@ -1869,4 +1870,89 @@ pending |= enabled & new_bits
 
 This matches the previously decoded event-registration behavior where `0x157B8` tests `pending & enabled` for immediate notification.
 
-The next pass should decode the six callback predicates and identify every write to main-object field `+0x2E0`, which should settle the exact acquisition-completion interrupt source.
+The next pass should decode the DPC-context setup and the six callback
+predicates, then tie `main + 0x2E0` back to the selected transfer entry.
+
+
+## Twenty-first headless export: acquisition completion event proven
+
+The DPC context and callback predicates now close the acquisition completion
+chain.
+
+### DPC context
+
+`FUN_000115c4` initializes the DPC as:
+
+```text
+KeInitializeDpc(main + 0x1515, 0x1151E, main)
+```
+
+The raw thunk at `0x1151E` forwards the DeferredContext argument directly to
+`FUN_00011390`, so the `param_1`/`ESI` value inside `0x11390` is the main
+device object, not the DPC object.
+
+The apparent `0x14847` decompiler line involving `this + 0x2E0` is therefore
+not a competing write to this field. The new `field:2e0` instruction scan finds
+only the DPC read at `0x113CB`:
+
+```text
+MOV EAX, dword ptr [ESI + 0x2E0]
+```
+
+### `main + 0x2E0` is the selected transfer entry
+
+The acquisition subobject starts at `main + 0x1E0`. Both acquisition front-ends
+operate on that subobject:
+
+- DeviceControl dispatch calls handlers with `ECX = main + 0x1E0`.
+- `0x13C84` (`0xCFDC2138`) sets `*(this + 0x100)` to the transfer entry found
+  by `0x18168`.
+- `0x13DC6` (`0xCFDD219F`) performs the same assignment after resolving the
+  caller/process transfer identifier.
+- `0x171DE` resets and waits on `(*(this + 0x100) + 0x24)`.
+
+Since `(main + 0x1E0) + 0x100 == main + 0x2E0`, the DPC branch:
+
+```text
+KeSetEvent(*(main + 0x2E0) + 0x24, ...)
+```
+
+signals the same selected transfer-entry event that the synchronous transfer
+helper reset and waited on. The acquisition-transfer completion path is
+therefore confirmed:
+
+```text
+front-end selects transfer entry at acquisition-subobject +0x100
+ -> 0x171DE programs SGTA/IIMTC/IIMCL and launches MAMRGO/MTTRGO
+ -> 0x171DE waits on selected entry +0x24
+ -> ISR 0x108D6 records interrupt bit 0 in DAT_1CE10 and queues DPC
+ -> DPC 0x11390 callback 0x10872 / 0x11DC2 consumes bit 0
+ -> KeSetEvent(selected entry +0x24)
+ -> 0x171DE resumes and disables transfer mask bit 0
+```
+
+### DPC predicate bits
+
+The six synchronized callbacks are tiny global-pending-bit consumers:
+
+| DPC callback | Predicate helper | Consumed bit in `DAT_1CE10` | DPC action |
+|---:|---:|---:|---|
+| `0x1085E` | `0x11DD8` | `0x02` | signal device event at `main + 0x12EE` |
+| `0x10872` | `0x11DC2` | `0x01` | signal selected transfer-entry event |
+| `0x10886` | `0x11DEE` | `0x04` | accumulate status `0x80`, signal status event |
+| `0x1089A` | `0x11E04` | `0x10` | accumulate status `0x800`, signal status event |
+| `0x108AE` | `0x11E1A` | `0x20` | accumulate status `0x100`, signal status event |
+| `0x108C2` | `0x11E30` | `0x08` | service BAR1 transport/status event path |
+
+This proves that the transfer-completion interrupt source is legacy interrupt
+bit 0 as recorded in `DAT_1CE10`, gated by the already-decoded transfer mask
+enable/disable methods `0x13914` and `0x13934`.
+
+### Remaining acquisition uncertainty
+
+The completion event ownership and interrupt source are now confirmed. The
+remaining acquisition questions are lower-level register semantics and exact
+descriptor interpretation: the detailed MAM/MTT command meaning, the precise
+unit semantics of the descriptor word counts emitted by `0x18194`, and any
+runtime constraints imposed by the board firmware after `MAMRGO` versus
+`MTTRGO`.
