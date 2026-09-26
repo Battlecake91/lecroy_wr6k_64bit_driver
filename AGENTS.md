@@ -696,3 +696,25 @@ and accepts only the exact byte sequence seen in the trace.
 
 Next scope test: pull, build/sign/load, capture XStream startup again, and
 inspect the next rejected CFDC2110 packet before widening the whitelist.
+
+
+## Third staged XStream trace
+
+The latest capture contains 109 IOCTLs and 62 CFDC2110 calls:
+
+- 21 success;
+- 41 rejected by the exact runtime gate;
+- startup repeats three times after later rejections, matching the observed
+  XStream startup exceptions/errors;
+- the heavy retry is a family-1 opcode-`0x42`, mode-0 83-bit JTAG request
+  (33 rejected calls);
+- two more new exact forms appear: family-1 opcode-`0x90` and a mode-1
+  58-bit opcode-`0x42` JTAG request.
+
+Commit `4b33b22e656ca6c008b56203c2b756c68df9e3b1` admits those three exact
+buffers. `0x90` uses the already-decoded generic transport path; both new
+`0x42` packets use the existing JTAG implementation.
+
+The reported Auto-trigger failure is not yet evidence of an acquisition-path
+bug because the trace never gets past repeated startup retries. Re-test startup
+first after this commit before touching acquisition or trigger/DMA code.
