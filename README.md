@@ -36,7 +36,10 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - the auxiliary side effect of the millisecond-delay IOCTL has been identified as a BAR2 `BUZZER` pulse around the delay;
 - the acquisition front-ends are mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, including its packed channel pairs, transient MDL registration, trailing result DWORD and exact size equation;
 - persistent transfer registration/removal and process-close cleanup are decoded; the legacy four-byte token is a leaked kernel pointer and must become an owned opaque ID on x64;
-- a native x64 compatibility driver exists and is being brought up incrementally on `main`; unsafe partial `CFDC2110` execution is intentionally disabled until semantics are complete.
+- the native x64 compatibility driver now includes owner-checked 32-bit transfer tokens, MDL locking, chained legacy DMA descriptor construction, recovered interrupt/DPC plumbing and process-close transfer cleanup;
+- active MAMRGO/MTTRGO acquisition launch remains deliberately gated until the 32-bit DMA-address constraint and launch-count units are validated on hardware;
+- passive tracing now has a JSONL live-capture workflow with timestamps, WOW64 state, bounded input previews, METHOD_NEITHER input capture and buffered output previews;
+- unsafe partial `CFDC2110` execution remains intentionally disabled until the firmware-defined command semantics are captured from a normal sequence.
 
 Documentation:
 
@@ -99,4 +102,11 @@ Development originally started on `prototype/x64-bringup`, but that work has bee
 
 The x64 prototype implements PCI/PnP bring-up, the recovered legacy DOS device path, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility and detailed IOCTL tracing. Interrupt and acquisition behaviour are being reconstructed from the original x86 driver before more hardware execution is enabled.
 
-See [docs/x64-bringup.md](docs/x64-bringup.md).
+See [docs/x64-bringup.md](docs/x64-bringup.md) and
+[docs/runtime-trace.md](docs/runtime-trace.md).
+
+Recommended passive XStream capture:
+
+```powershell
+.\scripts\capture-xstream-trace.ps1
+```
