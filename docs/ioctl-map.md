@@ -1725,3 +1725,48 @@ The concrete semantic name of this operation is still unresolved because the mai
 `FUN_00014212` confirms the main object uses vtable `PTR_FUN_0001C8BC` and initializes the event slots at `+0x10FE` and `+0x110E`, the MAM helper at `+0x1086`, delay/buzzer helper at `+0x10F2`, process/transfer subsystems, tracing, and register lists.
 
 The next step is to decode the main-object vtable itself so `0xCFDC2124`, `0xCFDC2128`, and `0xCFDC2400` can be assigned exact semantic method targets instead of inferred registration/control roles.
+
+
+## Eighteenth headless export: synchronous transfer start/stop hooks decoded
+
+The raw windows around `0x13914` and `0x13934` resolve the two virtual methods used by `0x171DE` before and after the synchronous acquisition transfer.
+
+### 0x13914: enable transfer interrupt/mask bit 0
+
+`0x13914` sets bit 0 in global mask `DAT_1CE18`, then commits the new mask through the synchronized `0x12EAE -> 0x11E46` path.
+
+### 0x13934: disable transfer interrupt/mask bit 0
+
+`0x13934` clears bit 0 in the same global mask and commits it through the identical synchronized path.
+
+This means the `0x171DE` sequence is now clearer:
+
+```text
+program transfer registers / reset completion event
+-> enable mask bit 0 through 0x13914
+-> start/program transfer register path
+-> wait on transfer-entry event
+-> disable mask bit 0 through 0x13934
+```
+
+The virtual hooks are therefore transfer-interrupt enable/disable hooks rather than opaque DMA start/stop methods.
+
+### 0x104A0: no-op virtual method
+
+The method-table entry at `+0x24`, used after the synchronized `0xCFDC2400` state update, resolves to `XOR EAX,EAX; RET`. In this legacy build the virtual method is therefore an intentional no-op that returns success/zero.
+
+This closes `0xCFDC2400`: the externally meaningful action is the synchronized OR of the caller-supplied DWORD into `DAT_1CE10`; the subsequent virtual call has no hardware side effect in this derived device class.
+
+### 0x12E18: process-owned transfer cleanup
+
+`FUN_00012e18` walks the transfer-entry list rooted at object `+0x104`, removes every entry whose stored process pointer at `+0x34` matches the supplied process, and destroys each entry through `0x17FD6`.
+
+This is the process teardown cleanup path for registered acquisition buffers.
+
+### 0x14122 / 0x134F6: main-object destruction
+
+`0x14122` is the deleting-destructor wrapper. `0x134F6` tears down the main device object, including event references, transfer/configuration helpers, register wrappers, tracing objects and the base transfer manager.
+
+### 0x170EE
+
+The base-object vtable entry at `+0x04` adjusts `this` by `+0x100` and jumps to `0x1829A`; this is an adapter/thunk into a helper operating on the transfer-list subobject. The target `0x1829A` remains to be decoded.
