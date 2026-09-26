@@ -458,3 +458,22 @@ Next safe diagnostics are limited to already-known non-destructive reads:
 Do not compensate by inventing writes. If ONEWIRE bit 0 is already set while
 idle, investigate missing legacy startup/FPGA initialization before changing
 the Dallas transaction semantics.
+
+
+## Current MMIO bring-up blocker
+
+All three tested safe MMIO reads currently return `0xFFFFFFFF` on the x64
+reference system, despite correct PnP binding and BAR resource assignment:
+
+- BAR0 FVER
+- BAR1 ACQFVER
+- BAR2 ONEWIRE
+
+The service is RUNNING, the PnP device reports OK, and the build query returns
+1002, so this is not a driver-load or DOS-link problem.
+
+A private passive `lecdiag pci` diagnostic now reads the PCI configuration
+header and reports PCI Command/Status, BDF, BAR config values and IRQ metadata.
+Use that before considering any startup-register write. If Memory Space Enable
+is clear, fix PCI decode first. If it is set while MMIO remains all ones,
+investigate the recovered legacy START/ITMODE/FPGA initialization path.
