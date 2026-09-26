@@ -534,3 +534,10 @@ The maintained `build-sign-load-driver.ps1` therefore stages a fresh INF/SYS,
 generates/signs a CAT, gives the staged INF a newer DriverVer, installs through
 `pnputil /add-driver /install`, and restarts the device. Use the Driver Store
 rather than direct System32 copies.
+
+
+## Inf2Cat locale trap
+
+Inf2Cat 22.9.6 occurred because PowerShell date formatting used the German
+culture's dot separator for `DriverVer`. The package script now uses
+InvariantCulture with literal slashes and prints the generated DriverVer line.
