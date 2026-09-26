@@ -355,3 +355,18 @@ interrupt line/pin. In particular, inspect:
 - PCI Command bit 10: INTx Disable
 
 Do not add speculative BAR writes while the device still reads all ones.
+
+
+### Rebuild requirement for new diagnostics
+
+The `pci` command is implemented in both the user-mode tool and the private
+driver IOCTL. After pulling a commit that adds or changes a private diagnostic,
+both sides must be rebuilt before testing it:
+
+```powershell
+.\scripts\build-lecdiag.ps1
+```
+
+Then rebuild the x64 driver solution and reload/reinstall the resulting
+`LecS65AcqDrv.sys`. Running an older `lecdiag.exe` against new source will
+show the old usage text and will not recognize commands such as `pci`.
