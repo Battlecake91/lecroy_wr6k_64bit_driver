@@ -1010,3 +1010,62 @@ The compact symbol-XREF export identified concrete next-stage functions:
 These are now the primary targets for reconstructing the ISR/DPC/event
 completion path. The earlier `0x12EAE -> 0x11E46` path is confirmed to be an
 interrupt-mask commit path, not the event-signal path itself.
+
+
+## Second headless export: interrupt/DPC path and supporting helpers
+
+The second compact export confirmed the primary interrupt pipeline and several
+supporting helpers.
+
+### ISR / DPC path
+
+`FUN_000108d6` is the interrupt service routine candidate. It reads an
+interrupt/status register at object offset `+0x390`, filters it through the
+global masks `DAT_0001CE44` and `DAT_0001CE14`, acknowledges individual
+sources, captures secondary status from `+0x340`, and finally queues the DPC
+at object offset `+0x1515` via `KeInsertQueueDpc`.
+
+`FUN_0001860e` is a thin `IoConnectInterrupt` wrapper that forwards the
+stored interrupt object/configuration fields.
+
+`FUN_00011390` is part of the deferred/event-completion path. It dispatches
+multiple callback conditions, signals registered kernel events, and includes
+the transport-event path around object offset `+0x10B9`.
+
+`FUN_00010816` is a small helper that signals the event in `param_1[0]`
+when `param_1[2] == 1`.
+
+This confirms that the legacy driver follows the expected sequence:
+
+```text
+hardware interrupt -> ISR status/ack -> KeInsertQueueDpc -> deferred callback
+processing -> KeSetEvent -> waiting request/response path resumes
+```
+
+### Global mask bit 2
+
+`FUN_00016074(this, enable)` controls bit 2 (`0x04`) of
+`DAT_0001CE18` and commits the mask through the previously decoded
+`0x12EAE -> 0x11E46` path.
+
+### Family 2 opcode 0x40 tail helpers
+
+`FUN_0001260e` reads and acknowledges interrupt/status state from the object
+at `this+0x19E`, including secondary status bits `0x400..0x4000`.
+
+`FUN_000126ee` writes command/state value 3, then clears/enables the associated
+status register with `0xFFFFFFFF` and performs a readback.
+
+Together, the family-2 opcode-0x40 tail is an interrupt/status reset or
+reinitialization sequence, though the exact hardware semantic name remains
+unproven.
+
+### Family 1 opcode 0x50/0x51 support
+
+`FUN_00018168` walks a linked list using next pointer offset `+0x3C` and
+returns the entry whose first DWORD matches the request-supplied identifier.
+
+`FUN_00017478` delegates to `FUN_000171DE` using a size/address quantity
+derived from the selected object and translates `STATUS_TIMEOUT (0x102)` into
+`0xC00000B5`-style failure. This path remains a strong acquisition/buffer
+candidate and `0x171DE` is the next function to decode.
