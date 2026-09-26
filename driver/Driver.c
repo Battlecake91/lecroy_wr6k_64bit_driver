@@ -134,6 +134,10 @@ LecS65AddDevice(
     RtlZeroMemory(devExt, sizeof(*devExt));
     KeInitializeMutex(&devExt->DallasMutex, 0);
     KeInitializeMutex(&devExt->TransferMutex, 0);
+    InitializeListHead(&devExt->TransferList);
+    devExt->NextTransferToken = 0;
+    devExt->CurrentTransfer = NULL;
+    KeInitializeDpc(&devExt->InterruptDpc, LecInterruptDpc, devExt);
     KeInitializeSpinLock(&devExt->TraceLock);
 
     devExt->Self = deviceObject;
@@ -248,6 +252,13 @@ LecS65Close(
     LONGLONG count = InterlockedIncrement64(&devExt->CloseCount);
 
     LecTrace("CLOSE: pid=%p count=%lld\n", PsGetCurrentProcessId(), count);
+
+    /*
+     * The x86 driver releases process-owned registered transfers on the last
+     * process close. The x64 replacement uses opaque tokens rather than
+     * leaking kernel pointers, and always enforces owner identity.
+     */
+    LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
