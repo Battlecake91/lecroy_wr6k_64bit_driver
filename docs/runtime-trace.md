@@ -226,3 +226,53 @@ input. No JTAG semantics were changed.
 
 The capture header still reported `format_version: 2`; the remaining capture
 header literal in `lecdiag` has also been corrected to version 3.
+
+
+## Fifth staged startup capture
+
+The 2026-09-26 23:50 capture contains 38 IOCTL entries and 21
+`0xCFDC2110` calls.
+
+Results:
+
+- 10 CFDC2110 calls completed successfully.
+- 11 calls were rejected by the byte-exact safety gate.
+- The corrected family-1 opcode-`0x42`, mode-0, 83-bit JTAG request now
+  completes successfully, confirming that the previous failure was only the
+  whitelist transcription error.
+- The newly exposed request is a family-1 opcode-`0x42`, mode-1, 256-bit JTAG
+  transaction. It is byte-for-byte identical to the already admitted 256-bit
+  mode-0 request except for the JTAG mode byte changing from `0x00` to
+  `0x01`.
+- That new 94-byte request was rejected 11 times. No other new command shape
+  appears in this capture.
+- After those rejections, XStream still reaches the already admitted
+  family-1 opcode-`0x90` transport request and the known mode-1 58-bit JTAG
+  request.
+
+The existing `LecJtagExecute` implementation already supports both JTAG
+modes. Mode 1 sets bit `0x100` in BAR1 `JTAGNUM`; the data path and bit
+count handling are otherwise shared with mode 0. Because mode-1 operation was
+already exercised by the admitted 58-bit startup transaction, the newly
+observed 256-bit form is admitted as one additional byte-exact captured packet.
+No broader opcode or mode whitelist has been introduced.
+
+The exact newly admitted request is:
+
+```text
+06 00 4C 00 03 00 FB A5
+40 01 42 01 00 00 20 00
+00 01 00 00 FF 0B 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00
+00 00 00 00
+28 00 02 00 03 00 FB 85 40 00
+```
+
+The next hardware run should therefore capture what XStream attempts after this
+mode-1 256-bit JTAG stage. Trigger and DMA behavior remain unchanged.
