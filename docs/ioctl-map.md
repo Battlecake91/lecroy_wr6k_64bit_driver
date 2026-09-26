@@ -1229,3 +1229,49 @@ subsystems, and wires shared pointers between them.
 This constructor is an important anchor for mapping object offsets to hardware
 register blocks and for resolving the indirect methods used by the synchronous
 transfer helper.
+
+
+## Sixth headless export: MDL cleanup and main-object wiring
+
+The latest export further confirms the transfer-memory model.
+
+### 0x17F60: MDL-chain teardown
+
+`FUN_00017f60` walks an MDL chain using the MDL next pointer. For each entry it
+optionally calls `MmUnlockPages` and then `IoFreeMdl`.
+
+Together with `0x1807A`, this closes the lifetime of the pinned user-buffer
+MDL chain: allocate MDLs, optionally probe/lock user pages, use them for the
+transfer, then unlock/free the chain.
+
+### 0x18194 uses the 32-bit MDL layout directly
+
+The fields accessed by `FUN_00018194` match the legacy 32-bit MDL layout:
+the function consumes ByteCount/ByteOffset and then walks the PFN array that
+starts immediately after the MDL header. It converts those PFNs plus the page
+offset into hardware-facing address/length pairs.
+
+This is strong evidence that `0x18194` is the descriptor-table builder for the
+board DMA engine.
+
+### 0x11A88 / 0x11AD2: subsystem pointer wiring
+
+`FUN_00011a88` copies one shared subsystem pointer into several fields of the
+main object.
+
+`FUN_00011ad2` stores another shared pointer into two fields and forwards it
+into an embedded subobject through `0x15348`.
+
+These functions are object-wiring helpers, not transfer execution themselves.
+
+### 0x14142 / 0x1329E / 0x13434
+
+`FUN_00014142` resets the global interrupt masks and initializes several
+trace/register-list entries.
+
+`FUN_0001329e` constructs the `CKeTraceControl` subsystem.
+
+`FUN_00013434` constructs the `CKeRegisterList` subsystem.
+
+These are useful for object-layout reconstruction but are not part of the
+high-priority DMA execution path.
