@@ -1118,3 +1118,48 @@ whether bit `0x8000` is set.
 
 `FUN_000157a6` accumulates selected status bits into a 16-bit field at object
 offset `+9`, masked by the 16-bit field at `+0x0B`.
+
+
+## Fourth headless export: transfer-object implementation clues
+
+Commit `c900441` added several functions around the transfer-object
+implementation.
+
+### 0x170FA constructor-like initializer
+
+`FUN_000170fa` initializes a large object with several embedded helper objects
+via `FUN_00011962`, assigns small configuration values (2 or 4) to the
+embedded blocks, initializes another subobject through `FUN_00017f4e`, and
+initializes a tail object through `FUN_000170ba`.
+
+This strongly indicates a constructor/initializer for the transfer/acquisition
+manager object used by the synchronous path.
+
+### 0x1731C transfer-entry allocation
+
+`FUN_0001731c` validates an input descriptor, allocates a 0x40-byte entry from
+nonpaged pool with tag `'Wdm '` in little-endian form, zeroes it, copies
+descriptor fields, performs additional setup through `0x1807A`, `0x17F8C`,
+and `0x18194`, appends the entry to the linked list rooted at object
+`+0x104`, initializes an event in the entry, and stores the current process.
+
+If a mode flag is set it additionally calls `0x1232A` with the caller-supplied
+object and current process.
+
+This is now a high-priority acquisition/buffer registration path.
+
+### 0x172A2 transfer-entry removal
+
+`FUN_000172a2` looks up a list entry through `0x18168`, rejects entries with
+bit 0 set in field `+0x0C`, unlinks the entry from the linked list rooted at
+`this+0x104`, then calls `0x17FD6`.
+
+### 0x16FAC
+
+`FUN_00016fac` is the already-known Dallas/1-Wire ID read path (reset,
+`0x33`, read eight bytes, CRC validation with retries) and is unrelated to the
+transfer object despite falling inside the broad address sweep.
+
+The next transfer-analysis targets should therefore focus on
+`0x18194`, `0x1807A`, `0x17F8C`, `0x17FD6`, `0x1232A`, and the
+constructor callers around `0x14212`.
