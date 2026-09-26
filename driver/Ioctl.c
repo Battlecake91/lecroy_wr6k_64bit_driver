@@ -1166,6 +1166,20 @@ LecIsCapturedStartupCfDc2110(
         0x00,0x00,0x00,0x00,
         0x28,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
     };
+    static const UCHAR jtag42Mode2LongPacket[] = {
+        0x06,0x00,0x4C,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x01,0x42,0x02,0x00,0x00,0x20,0x00,
+        0x00,0x01,0x00,0x00,0xFF,0x0B,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,
+        0x28,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
+    };
     static const UCHAR jtag42ShortPacket[] = {
         0x06,0x00,0x24,0x00,0x03,0x00,0xFB,0xA5,
         0x40,0x01,0x42,0x00,0x00,0x00,0x0C,0x00,
@@ -1211,6 +1225,7 @@ LecIsCapturedStartupCfDc2110(
         LECS65_MATCH_CAPTURED_PACKET(opcode85Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode1LongPacket) ||
+        LECS65_MATCH_CAPTURED_PACKET(jtag42Mode2LongPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42ShortPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode1ShortPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(opcode90Packet) ||
@@ -1476,6 +1491,35 @@ LecIoctlCfDc2110(
                 }
                 else if (hwStatus == STATUS_INVALID_PARAMETER ||
                          hwStatus == STATUS_INVALID_BUFFER_SIZE) {
+                    /*
+                     * Legacy FUN_00015C7E treats JTAG modes >= 2 as a local
+                     * protocol error. It does not touch JTAG hardware. For the
+                     * captured mode-2 request it installs a response buffer of
+                     * requestedDataBytes + 8 bytes with a defined header:
+                     *   DWORD 0, WORD length=2, WORD status=4.
+                     * The legacy allocator leaves the remaining bytes
+                     * uninitialized. Zero them here rather than reproducing a
+                     * kernel-pool information leak.
+                     */
+                    if (payloadLength >= 9 &&
+                        payload[3] >= 2) {
+                        ULONG requestedDataBytes = LecReadU16(payload + 6);
+                        ULONG legacyResponseLength =
+                            8UL + requestedDataBytes;
+
+                        if (legacyResponseLength <= max(OutputLength, 8UL)) {
+                            RtlZeroMemory(
+                                pendingResponse,
+                                legacyResponseLength);
+                            LecWriteU16(pendingResponse + 4, 2);
+                            LecWriteU16(pendingResponse + 6, 4);
+                            pendingResponseLength =
+                                legacyResponseLength;
+                            pendingResponseReady = TRUE;
+                            hardwareResponsePending = FALSE;
+                        }
+                    }
+
                     protocolStatus = 4;
                 }
                 else {
