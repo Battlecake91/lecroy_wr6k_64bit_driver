@@ -1818,3 +1818,55 @@ The thunk at `0x170EE` enters the transfer-list subobject at `this+0x100` and ju
 ### Interrupt-mask commit path reconfirmed
 
 `0x11E46` mirrors `DAT_1CE18` into the active mask globals and writes the value to BAR0 `INTEN` through `DAT_1CE20`. `0x12EAE` is the synchronized callback wrapper around that commit.
+
+
+## Twentieth headless export: transfer completion path narrowed to DPC callbacks
+
+The latest ISR/DPC export makes the acquisition completion path much more concrete.
+
+### ISR 0x108D6
+
+`FUN_000108d6` reads the interrupt-status register, filters it through the active interrupt masks, acknowledges the individual interrupt sources, records secondary status when interrupt bit 1 is present, and queues the DPC at object offset `+0x1515`.
+
+The ISR records pending bits in `DAT_1CE10` and uses the synchronized mask state `DAT_1CE14` / `DAT_1CE44`, matching the transfer-mask logic already reconstructed around `0x171DE`.
+
+### DPC 0x11390
+
+`FUN_00011390` evaluates six synchronized callback predicates:
+
+```text
+0x1085E
+0x10872
+0x10886
+0x1089A
+0x108AE
+0x108C2
+```
+
+The most important newly visible branch is the `0x10872` callback. When it reports true and the pointer at main-object offset `+0x2E0` is non-null, the DPC executes:
+
+```text
+KeSetEvent(*(main + 0x2E0) + 0x24, ...)
+```
+
+A transfer entry created by `0x1731C` contains its completion event at entry offset `+0x24`, exactly the event reset and waited on by `0x171DE`. This is therefore the strongest completion-path match yet: one DPC source directly signals an event at `selected_object + 0x24`.
+
+The remaining missing proof is the assignment/lifetime of main-object field `+0x2E0`. Until that field is tied directly to the selected transfer entry, the `0x10872` branch should be described as the likely acquisition-transfer completion callback rather than treated as fully proven.
+
+### Other DPC sources
+
+- `0x10886` and `0x1089A` accumulate status bits `0x80` and `0x800` respectively, signal the shared status event, and may clear a related register when no event listener consumes the status.
+- `0x108AE` accumulates status bit `0x100` and signals the same status event.
+- `0x108C2` services the BAR1 transport/event object around main-object `+0x10B9`; it clears a register when needed and signals its event when `0x176D0` observes bit `0x8000`.
+
+### Status accumulator 0x157A6
+
+`FUN_000157a6` ORs only enabled bits into the object's pending-status field:
+
+```text
+pending |= enabled & new_bits
+```
+
+This matches the previously decoded event-registration behavior where `0x157B8` tests `pending & enabled` for immediate notification.
+
+The next pass should decode the six callback predicates and identify every write to main-object field `+0x2E0`, which should settle the exact acquisition-completion interrupt source.
