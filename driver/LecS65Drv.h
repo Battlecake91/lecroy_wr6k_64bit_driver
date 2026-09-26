@@ -11,8 +11,12 @@
 #define LECS65_BAR_COUNT 3
 #define LECS65_REGISTER_BAR_LENGTH 0x200
 #define LECS65_INTERFACE_COUNT 4
-#define LECS65_TRACE_CAPACITY 128
-#define LECS65_TRACE_PREVIEW_BYTES 96
+#define LECS65_TRACE_CAPACITY 256
+#define LECS65_TRACE_PREVIEW_BYTES 256
+#define LECS65_TRACE_OUTPUT_PREVIEW_BYTES 128
+#define LECS65_DMA_TABLE_BYTES 0x33000
+#define LECS65_DMA_MAX_TRANSFER_BYTES 0x06000000
+#define LECS65_DMA_MDL_CHUNK_BYTES 0x02000000
 #define LECS65_ONEWIRE_OFFSET 0x40
 #define LECS65_ONEWIRE_BUSY   0x01
 #define LECS65_ONEWIRE_DATA   0x02
@@ -30,6 +34,10 @@
 
 /* Recovered legacy IOCTLs used by the first bring-up build. */
 #define LECS65_IOCTL_CFDC2110          ((ULONG)0xCFDC2110)
+#define LECS65_IOCTL_REGISTER_TRANSFER ((ULONG)0xCFDC2124)
+#define LECS65_IOCTL_UNREGISTER_TRANSFER ((ULONG)0xCFDC2128)
+#define LECS65_IOCTL_ACQUIRE_BUFFERED   ((ULONG)0xCFDC2138)
+#define LECS65_IOCTL_ACQUIRE_NEITHER    ((ULONG)0xCFDD219F)
 #define LECS65_IOCTL_CFDC212C          ((ULONG)0xCFDC212C)
 #define LECS65_IOCTL_CFDC2184          ((ULONG)0xCFDC2184)
 #define LECS65_IOCTL_DELAY_MILLISECONDS  ((ULONG)0x00222C00)
@@ -107,17 +115,22 @@ typedef struct _LECS65_DEBUG_BARS {
 
 typedef struct _LECS65_DEBUG_TRACE_ENTRY {
     ULONGLONG Sequence;
+    ULONGLONG Timestamp100ns;
     ULONGLONG ProcessId;
     ULONGLONG Information;
+    ULONGLONG Type3InputBuffer;
+    ULONGLONG UserBuffer;
     ULONG Ioctl;
     ULONG InputLength;
     ULONG OutputLength;
     ULONG Status;
     ULONG InputPreviewLength;
+    ULONG OutputPreviewLength;
     UCHAR Method;
     UCHAR Wow64;
     USHORT Reserved;
     UCHAR InputPreview[LECS65_TRACE_PREVIEW_BYTES];
+    UCHAR OutputPreview[LECS65_TRACE_OUTPUT_PREVIEW_BYTES];
 } LECS65_DEBUG_TRACE_ENTRY, *PLECS65_DEBUG_TRACE_ENTRY;
 
 typedef struct _LECS65_DEBUG_TRACE {
@@ -126,6 +139,27 @@ typedef struct _LECS65_DEBUG_TRACE {
     ULONGLONG TotalSeen;
     LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
 } LECS65_DEBUG_TRACE, *PLECS65_DEBUG_TRACE;
+
+
+typedef struct _LECS65_DMA_DESCRIPTOR {
+    ULONG CountDwords;
+    ULONG PhysicalAddress;
+} LECS65_DMA_DESCRIPTOR, *PLECS65_DMA_DESCRIPTOR;
+
+typedef struct _LECS65_TRANSFER {
+    LIST_ENTRY Link;
+    ULONG Token;
+    HANDLE OwnerProcessId;
+    PVOID UserBuffer;
+    ULONG TotalBytes;
+    ULONG DataBytes;
+    PMDL SourceMdlChain;
+    PVOID DescriptorBuffer;
+    PMDL DescriptorMdl;
+    ULONG DescriptorTablePhysical;
+    ULONG TotalDwords;
+    KEVENT CompletionEvent;
+} LECS65_TRANSFER, *PLECS65_TRANSFER;
 
 typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT Self;
@@ -157,6 +191,21 @@ typedef struct _LECS65_DEVICE_EXTENSION {
 
     KMUTEX DallasMutex;
     KMUTEX TransferMutex;
+    LIST_ENTRY TransferList;
+    ULONG NextTransferToken;
+    volatile PLECS65_TRANSFER CurrentTransfer;
+
+    PKINTERRUPT InterruptObject;
+    ULONG InterruptVector;
+    KIRQL InterruptIrql;
+    KIRQL InterruptSynchronizeIrql;
+    KAFFINITY InterruptAffinity;
+    KINTERRUPT_MODE InterruptMode;
+    BOOLEAN InterruptShareVector;
+    BOOLEAN InterruptConnected;
+    USHORT ReservedInterrupt;
+    volatile ULONG InterruptEnableShadow;
+    KDPC InterruptDpc;
 
     PKEVENT LegacyEvent0;
     PKEVENT LegacyEvent1;
@@ -209,3 +258,31 @@ NTSTATUS LecHandleStartDevice(
 
 VOID LecDisableInterfaces(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecReleaseLegacyEvents(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+
+NTSTATUS LecConnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecDisconnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+BOOLEAN LecInterruptService(_In_ PKINTERRUPT Interrupt, _In_ PVOID Context);
+VOID LecInterruptDpc(
+    _In_ PKDPC Dpc,
+    _In_opt_ PVOID DeferredContext,
+    _In_opt_ PVOID SystemArgument1,
+    _In_opt_ PVOID SystemArgument2);
+
+NTSTATUS LecRegisterTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ PVOID UserBuffer,
+    _In_ ULONG TotalBytes,
+    _In_ KPROCESSOR_MODE AccessMode,
+    _Out_ PULONG Token);
+NTSTATUS LecUnregisterTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Token,
+    _In_ HANDLE OwnerProcessId);
+VOID LecReleaseTransfersForProcess(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ HANDLE OwnerProcessId);
+VOID LecReleaseAllTransfers(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+PLECS65_TRANSFER LecFindTransferOwned(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Token,
+    _In_ HANDLE OwnerProcessId);
