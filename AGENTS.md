@@ -272,8 +272,8 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Resolve the exact register behind the delay-helper side effect used by `0x1557C/0x15536` before reproducing it in the x64 driver.
-2. Decode the remaining late handlers `0x13A40`, `0x12BAE`, `0x13A2E`, `0x12B34`, and `0x128F8` to make the full DeviceControl ABI table semantic rather than only structural.
+1. Decode `0x12EDE` behind `0xCFDC2400` and the vtable targets used by `0xCFDC2124/2128` so their registration semantics are exact.
+2. Decode `0x11B18` and `0x157B8` to finish the event-registration ABI for `0xCFDC2180/218C`.
 3. Continue resolving MAM/acquisition control semantics far enough to reproduce the x86 behavior safely in the x64 driver.
 4. Keep partial `0xCFDC2110` hardware execution disabled until the full startup/runtime command set is understood.
 
@@ -281,3 +281,19 @@ Do not leave new established findings only in chat.
 ## Latest dispatch recovery
 
 The raw DeviceControl windows through `0x1138D` now recover the entire late dispatch section and common completion tail. Unknown IOCTLs become `STATUS_INVALID_PARAMETER`; `0xCFDC2184` is inline success with zero information; pending requests bypass normal completion logging. The function ends immediately before `0x11390`, the known deferred/event helper.
+
+
+## Latest handler semantics
+
+The remaining DeviceControl handlers are now substantially decoded:
+
+- `0xCFDC2124`: 12-byte process/object registration-style request, returning a 4-byte identifier/handle.
+- `0xCFDC2128`: 4-byte inverse/unregister-style request through main-object vtable offset `+0x08`.
+- `0xCFDC2130`: serial-trigger FPGA stream bit-banged through BAR1 `GPIODAT` masked field `0xE000`.
+- `0xCFDC2180` / `0xCFDC218C`: event registration tied to current process; the former can signal immediately when status is already active.
+- `0xCFDC2190`: 29-byte error/interrupt mask control; field 2 updates global bit 1 and BAR0 `ERRM`.
+- `0xCFDC2194`: paired 29-byte status readback and clear.
+- `0x00222C00`: auxiliary hardware line is definitively BAR2 `BUZZER`; `0x1557C` asserts it around the delay.
+- `0xCFDC2400`: wrapper around `0x12EDE`, still to decode.
+
+Diagnostic helpers `0x10750`, `0x1076E`, and `0x1919A` are logging-only; `0x10798` is the common IRP completion helper.
