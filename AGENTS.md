@@ -272,16 +272,17 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Obtain passive normal-sequence traces for the `0xCFDC2110` commands that
-   the driver forwards verbatim to board firmware; their payload semantics are
-   not recoverable from this binary alone.
-2. Verify the x64 DMA address-width/coherency requirements and MAM/MTT launch
-   count units without arbitrary register access.
-3. Determine the FPGA-level semantic names and runtime constraints of MAM mode
-   1 and the MAM versus MTT engines; their host-side encodings and callers are
-   now statically resolved.
-4. Keep partial `0xCFDC2110` hardware execution disabled until the full set
-   is understood.
+1. Build/install the updated x64 driver and `lecdiag` on the reference system.
+2. Capture a normal XStream startup with
+   `scripts/capture-xstream-trace.ps1` and analyze the JSONL sequence,
+   especially firmware-forwarded `0xCFDC2110` requests.
+3. Verify whether Windows supplies all source and descriptor-table pages below
+   4 GiB; the current x64 transfer registration deliberately rejects addresses
+   that do not fit the proven legacy 32-bit descriptor ABI.
+4. Determine MAM/MTT launch-count units from passive normal operation before
+   enabling `0xCFDC2138` or `0xCFDD219F` acquisition launch.
+5. Keep partial `0xCFDC2110` hardware execution disabled until the observed
+   startup/runtime packets have confirmed semantics.
 
 
 ## Latest dispatch recovery
@@ -396,3 +397,41 @@ Since `(main+0x1E0)+0x100 == main+0x2E0`, the DPC signals the same
 `entry+0x24` event that `0x171DE` resets and waits on. The acquisition-transfer
 completion interrupt source is therefore confirmed as interrupt bit 0, gated by
 the transfer mask enable/disable methods `0x13914` and `0x13934`.
+
+
+## Current x64 implementation state
+
+The native x64 driver has been advanced beyond the original bring-up prototype:
+
+- `0xCFDC2124` persistent transfer registration is implemented with an
+  owner-checked opaque 32-bit token instead of exposing a kernel pointer.
+- `0xCFDC2128` unregisters only a token owned by the current process.
+- registered data buffers are probed/locked through MDLs;
+- board-facing 8-byte `{count_dwords, physical_address}` descriptors are built
+  into chained 4 KiB table pages with the legacy slot-511 link format;
+- the x64 implementation rejects table/source physical addresses above 4 GiB
+  rather than truncating them into the legacy 32-bit descriptor format;
+- process Close and PnP stop/remove release registered transfers;
+- line-interrupt connection, ISR acknowledgement for explicitly owned sources,
+  DPC dispatch and transfer completion-event signalling are implemented;
+- the interrupt path is passive until `InterruptEnableShadow` explicitly owns
+  a source. Active acquisition launch is still gated.
+- `0xCFDC2138` and `0xCFDD219F` are currently trace-visible but return
+  `STATUS_NOT_SUPPORTED`; do not enable MAMRGO/MTTRGO launch until DMA
+  address-width and launch-count units have been validated.
+- `0xCFDC2110` remains trace-only for safety.
+
+Passive runtime tracing has been upgraded:
+
+- 256-entry kernel ring;
+- boot-relative 100 ns timestamps;
+- PID/WOW64/method/status/information;
+- Type3InputBuffer and UserBuffer pointer values for correlation;
+- up to 256 input bytes;
+- up to 128 METHOD_BUFFERED output bytes;
+- bounded probed METHOD_NEITHER input preview;
+- live JSONL collection every 250 ms through
+  `scripts/capture-xstream-trace.ps1`.
+
+Trace files are written below ignored `trace-captures/` and are designed to
+be handed back to an analysis chat directly. See `docs/runtime-trace.md`.
