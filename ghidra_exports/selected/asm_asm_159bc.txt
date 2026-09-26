@@ -1,0 +1,14 @@
+FUNCTION_ASM 000159bc FUN_000159bc
+000159bc  PUSH ESI
+000159bd  MOV ESI,ECX
+000159bf  LEA ECX,[ESI + 0x13a]
+000159c5  CALL 0x0001530e
+    -> 0001530e FUN_0001530e
+000159ca  MOV EAX,dword ptr [ESP + 0xc]
+    -> Stack[0x8]
+000159ce  MOV dword ptr [ESI + 0x182],EAX
+000159d4  MOV EAX,dword ptr [ESP + 0x8]
+    -> Stack[0x4]
+000159d8  MOV dword ptr [ESI + 0x19e],EAX
+000159de  POP ESI
+000159df  RET 0x8

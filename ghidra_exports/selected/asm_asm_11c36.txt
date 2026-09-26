@@ -1,0 +1,19 @@
+FUNCTION_ASM 00011c36 FUN_00011c36
+00011c36  PUSH ESI
+00011c37  MOV ESI,dword ptr [ESP + 0x8]
+    -> Stack[0x4]
+00011c3b  MOV EDX,dword ptr [ESI + 0x60]
+00011c3e  CMP dword ptr [EDX + 0x8],0x4
+00011c42  MOV EAX,dword ptr [ESI + 0xc]
+00011c45  JZ 0x00011c51
+    -> 00011c51
+00011c47  MOV EAX,0xc000000d
+00011c4c  MOV dword ptr [ESI + 0x18],EAX
+00011c4f  JMP 0x00011c5a
+    -> 00011c5a
+00011c51  MOV EDX,dword ptr [ECX]
+00011c53  PUSH EAX
+00011c54  CALL dword ptr [EDX + 0x8]
+00011c57  MOV dword ptr [ESI + 0x18],EAX
+00011c5a  POP ESI
+00011c5b  RET 0x4

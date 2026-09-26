@@ -1,0 +1,38 @@
+FUNCTION_ASM 00011bdc FUN_00011bdc
+00011bdc  PUSH ESI
+00011bdd  MOV ESI,dword ptr [ESP + 0x8]
+    -> Stack[0x4]
+00011be1  MOV EAX,dword ptr [ESI + 0x60]
+00011be4  CMP dword ptr [EAX + 0x8],0xc
+00011be8  JZ 0x00011bf4
+    -> 00011bf4
+00011bea  MOV EAX,0xc000000d
+00011bef  MOV dword ptr [ESI + 0x18],EAX
+00011bf2  JMP 0x00011c31
+    -> 00011c31
+00011bf4  MOV EAX,dword ptr [ESI + 0xc]
+00011bf7  MOV EDX,dword ptr [ECX]
+00011bf9  PUSH EDI
+00011bfa  PUSH 0x1
+00011bfc  PUSH 0x1
+00011bfe  LEA EDI,[ECX + 0xe98]
+00011c04  PUSH EDI
+00011c05  PUSH EAX
+00011c06  CALL dword ptr [EDX + 0xc]
+00011c09  XOR ECX,ECX
+00011c0b  CMP EAX,ECX
+00011c0d  POP EDI
+00011c0e  JZ 0x00011c21
+    -> 00011c21
+00011c10  MOV EDX,dword ptr [ESI + 0xc]
+00011c13  MOV dword ptr [EDX],EAX
+00011c15  MOV dword ptr [ESI + 0x1c],0x4
+00011c1c  MOV dword ptr [ESI + 0x18],ECX
+00011c1f  JMP 0x00011c2e
+    -> 00011c2e
+00011c21  MOV dword ptr [ESI + 0xc],ECX
+00011c24  MOV dword ptr [ESI + 0x1c],ECX
+00011c27  MOV dword ptr [ESI + 0x18],0xc0000001
+00011c2e  MOV EAX,dword ptr [ESI + 0x18]
+00011c31  POP ESI
+00011c32  RET 0x4

@@ -1,0 +1,182 @@
+FUNCTION_ASM 00013dc6 FUN_00013dc6
+00013dc6  PUSH EBP
+00013dc7  LEA EBP,[ESP + -0x70]
+    -> Stack[-0x74]
+00013dcb  SUB ESP,0x94
+00013dd1  CMP dword ptr [0x0001cd08],0x0
+    -> 0001cd08
+00013dd8  PUSH ESI
+00013dd9  MOV ESI,ECX
+00013ddb  JZ 0x00013de7
+    -> 00013de7
+00013ddd  MOV EAX,0xc00000a3
+00013de2  JMP 0x00013f34
+    -> 00013f34
+00013de7  PUSH EBX
+00013de8  MOV EBX,dword ptr [EBP + 0x78]
+    -> Stack[0x4]
+00013deb  PUSH EDI
+00013dec  MOV dword ptr [0x0001cd08],0x11
+    -> 0001cd08
+00013df6  MOV EAX,dword ptr [EBX + 0x3c]
+00013df9  PUSH 0x1
+00013dfb  MOV dword ptr [EBP + 0x58],EAX
+    -> Stack[-0x1c]
+00013dfe  MOV EAX,dword ptr [EBX + 0x60]
+00013e01  MOV EAX,dword ptr [EAX + 0x4]
+00013e04  PUSH 0x1
+00013e06  LEA ECX,[ESI + 0xe98]
+00013e0c  PUSH ECX
+00013e0d  LEA ECX,[EBP + 0x58]
+    -> Stack[-0x1c]
+00013e10  MOV dword ptr [EBP + 0x5c],EAX
+    -> Stack[-0x18]
+00013e13  MOV EAX,dword ptr [ESI]
+00013e15  PUSH ECX
+00013e16  MOV ECX,ESI
+00013e18  CALL dword ptr [EAX + 0xc]
+00013e1b  LEA EDI,[ESI + 0x100]
+00013e21  PUSH 0x0
+00013e23  PUSH EAX
+00013e24  MOV ECX,EDI
+00013e26  MOV dword ptr [EBP + 0x64],EAX
+    -> Stack[-0x10]
+00013e29  MOV dword ptr [EBP + 0x68],EDI
+    -> Stack[-0xc]
+00013e2c  CALL 0x00018168
+    -> 00018168 FUN_00018168
+00013e31  TEST EAX,EAX
+00013e33  MOV dword ptr [EDI],EAX
+00013e35  JNZ 0x00013e47
+    -> 00013e47
+00013e37  AND dword ptr [0x0001cd08],EAX
+    -> 0001cd08
+00013e3d  MOV EAX,0xc000000d
+00013e42  JMP 0x00013f32
+    -> 00013f32
+00013e47  MOV EDI,dword ptr [EBP + 0x7c]
+    -> Stack[0x8]
+00013e4a  MOV AL,byte ptr [EDI]
+00013e4c  MOV byte ptr [EBP + 0x7b],AL
+    -> Stack[0x7]
+00013e4f  MOVZX EAX,AL
+00013e52  PUSH EAX
+00013e53  LEA ECX,[EBP + -0x24]
+    -> Stack[-0x98]
+00013e56  INC EDI
+00013e57  MOV dword ptr [EBP + 0x7c],EAX
+    -> Stack[0x8]
+00013e5a  CALL 0x00017ddc
+    -> 00017ddc FUN_00017ddc
+00013e5f  LEA ECX,[EBP + -0x24]
+    -> Stack[-0x98]
+00013e62  CALL 0x00017b72
+    -> 00017b72 FUN_00017b72
+00013e67  TEST AL,AL
+00013e69  JNZ 0x00013e75
+    -> 00013e75
+00013e6b  MOV ESI,0xc000009a
+00013e70  JMP 0x00013f21
+    -> 00013f21
+00013e75  CMP byte ptr [EBP + 0x7b],0x0
+    -> Stack[0x7]
+00013e79  JBE 0x00013ea9
+    -> 00013ea9
+00013e7b  MOV EAX,dword ptr [EBP + 0x7c]
+    -> Stack[0x8]
+00013e7e  MOV dword ptr [EBP + 0x78],0x1
+    -> Stack[0x4]
+00013e85  MOV dword ptr [EBP + 0x6c],EAX
+    -> Stack[-0x8]
+00013e88  MOV EAX,dword ptr [EBP + 0x7c]
+    -> Stack[0x8]
+00013e8b  INC EDI
+00013e8c  CMP dword ptr [EBP + 0x78],EAX
+    -> Stack[0x4]
+00013e8f  LEA ECX,[EBP + -0x24]
+    -> Stack[-0x98]
+00013e92  SETZ AL
+00013e95  PUSH EAX
+00013e96  XOR EAX,EAX
+00013e98  MOV AL,byte ptr [EDI]
+00013e9a  PUSH EAX
+00013e9b  CALL 0x00017ee0
+    -> 00017ee0 FUN_00017ee0
+00013ea0  INC EDI
+00013ea1  INC dword ptr [EBP + 0x78]
+    -> Stack[0x4]
+00013ea4  DEC dword ptr [EBP + 0x6c]
+    -> Stack[-0x8]
+00013ea7  JNZ 0x00013e88
+    -> 00013e88
+00013ea9  MOV EAX,dword ptr [EDI]
+00013eab  IMUL EAX,dword ptr [EBP + 0x7c]
+    -> Stack[0x8]
+00013eaf  MOV ECX,dword ptr [EDI + 0x4]
+00013eb2  IMUL EAX,ECX
+00013eb5  CMP ECX,0x400
+00013ebb  JBE 0x00013eca
+    -> 00013eca
+00013ebd  TEST AX,0x3ff
+00013ec1  JZ 0x00013eca
+    -> 00013eca
+00013ec3  MOV ESI,0xc000000d
+00013ec8  JMP 0x00013f21
+    -> 00013f21
+00013eca  CMP EAX,0xffffff
+00013ecf  JA 0x00013ec3
+    -> 00013ec3
+00013ed1  MOV EDX,dword ptr [EBP + 0x68]
+    -> Stack[-0xc]
+00013ed4  MOV EDX,dword ptr [EDX]
+00013ed6  CMP EAX,dword ptr [EDX + 0x4]
+00013ed9  JZ 0x00013ee2
+    -> 00013ee2
+00013edb  MOV ESI,0xc0000206
+00013ee0  JMP 0x00013f21
+    -> 00013f21
+00013ee2  MOV EDX,dword ptr [EBX + 0x60]
+00013ee5  MOV EDX,dword ptr [EDX + 0x4]
+00013ee8  MOV EDI,dword ptr [EBP + 0x58]
+    -> Stack[-0x1c]
+00013eeb  PUSH ECX
+00013eec  PUSH 0x0
+00013eee  LEA EDI,[EDX + EDI*0x1 + -0x4]
+00013ef2  AND dword ptr [EDI],0x0
+00013ef5  PUSH EDI
+00013ef6  PUSH EAX
+00013ef7  LEA EAX,[EBP + -0x24]
+    -> Stack[-0x98]
+00013efa  PUSH EAX
+00013efb  MOV ECX,ESI
+00013efd  CALL 0x00012d6a
+    -> 00012d6a FUN_00012d6a
+00013f02  MOV dword ptr [EBP + 0x78],EAX
+    -> Stack[0x4]
+00013f05  MOV EAX,dword ptr [EDI]
+00013f07  ADD EAX,0x4
+00013f0a  LEA ECX,[EBP + 0x64]
+    -> Stack[-0x10]
+00013f0d  MOV dword ptr [EBX + 0x1c],EAX
+00013f10  MOV EAX,dword ptr [ESI]
+00013f12  PUSH ECX
+00013f13  MOV ECX,ESI
+00013f15  CALL dword ptr [EAX + 0x8]
+00013f18  MOV EAX,dword ptr [EBP + 0x68]
+    -> Stack[-0xc]
+00013f1b  AND dword ptr [EAX],0x0
+00013f1e  MOV ESI,dword ptr [EBP + 0x78]
+    -> Stack[0x4]
+00013f21  AND dword ptr [0x0001cd08],0x0
+    -> 0001cd08
+00013f28  LEA ECX,[EBP + -0x24]
+    -> Stack[-0x98]
+00013f2b  CALL 0x00017e58
+    -> 00017e58 FUN_00017e58
+00013f30  MOV EAX,ESI
+00013f32  POP EDI
+00013f33  POP EBX
+00013f34  POP ESI
+00013f35  ADD EBP,0x70
+00013f38  LEAVE
+00013f39  RET 0x8
