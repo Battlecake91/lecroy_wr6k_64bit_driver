@@ -4,10 +4,12 @@
 // Usage from analyzeHeadless:
 //   -postScript ExportSelected.java <output-dir> <target> [<target> ...]
 //
-// Targets may be addresses (for example 0x1619a or 1619a) or symbol names
-// (for example KeSetEvent). Address targets export decompiled C plus compact
-// incoming/outgoing function references. Symbol targets export references and
-// the containing caller function names.
+// Targets may be addresses (for example 0x1619a or 1619a), symbol names
+// (for example KeSetEvent), or field displacement scans such as field:2e0.
+// Address targets export decompiled C plus compact incoming/outgoing function
+// references. Symbol targets export references and the containing caller
+// function names. Field scans export every instruction text containing the
+// selected displacement.
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -63,7 +65,10 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (addr != null) {
+                if (target.toLowerCase().startsWith("field:")) {
+                    writeFieldScan(target.substring("field:".length()));
+                }
+                else if (addr != null) {
                     Function f = fm.getFunctionAt(addr);
                     if (f == null) {
                         f = fm.getFunctionContaining(addr);
@@ -275,6 +280,56 @@ public class ExportSelected extends GhidraScript {
 
         if (!found) {
             printerr("Symbol not found: " + name);
+        }
+    }
+
+    private void writeFieldScan(String displacementText) throws Exception {
+        String normalized = displacementText.toLowerCase();
+        if (normalized.startsWith("0x")) {
+            normalized = normalized.substring(2);
+        }
+        long value = Long.parseUnsignedLong(normalized, 16);
+        String hex = "0x" + Long.toHexString(value);
+        String decimal = Long.toString(value);
+
+        File sfile = new File(outDir, "field_" + sanitize(hex) + ".refs.txt");
+        try (PrintWriter pw = new PrintWriter(sfile, "UTF-8")) {
+            pw.println("FIELD_SCAN " + hex + " (" + decimal + ")");
+            pw.println("MATCHES");
+
+            InstructionIterator ins =
+                currentProgram.getListing().getInstructions(true);
+            Set<String> seen = new HashSet<>();
+            while (ins.hasNext()) {
+                Instruction inst = ins.next();
+                String text = inst.toString().toLowerCase();
+                boolean match =
+                    text.contains(hex) ||
+                    text.contains("+ " + decimal) ||
+                    text.contains("+0x" + Long.toHexString(value)) ||
+                    text.contains("+ 0x" + Long.toHexString(value));
+                if (!match) {
+                    continue;
+                }
+
+                Function cf = functionAtOrContaining(inst.getAddress());
+                String line = inst.getAddress() + " " +
+                    (cf != null ? cf.getName() : "<no-function>") +
+                    "  " + inst.toString();
+                if (seen.add(line)) {
+                    pw.println(line);
+                    for (Reference r : inst.getReferencesFrom()) {
+                        Function tf = fm.getFunctionAt(r.getToAddress());
+                        pw.print("    -> ");
+                        pw.print(r.getToAddress());
+                        if (tf != null) {
+                            pw.print(" ");
+                            pw.print(tf.getName());
+                        }
+                        pw.println();
+                    }
+                }
+            }
         }
     }
 }

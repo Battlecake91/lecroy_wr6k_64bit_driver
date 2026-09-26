@@ -10,6 +10,11 @@
 1089a
 108ae
 108c2
+10636
+11515
+field:2e0
+KeInitializeDpc
+KeInsertQueueDpc
 1381e
 14212
 14847
