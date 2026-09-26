@@ -2258,3 +2258,24 @@ The current x64 driver deliberately returns
 `STATUS_INVALID_DEVICE_REQUEST` for all `0xCFDC2110` calls, so this trace
 does not yet provide real board responses. It does, however, reduce the active
 startup command surface to these four request forms.
+
+
+## Observed family-0 opcode 0x85
+
+The second whitelisted startup trace exposes a new request after the first
+successful opcode-`0x88` exchange:
+
+```text
+A5FB payload: 40 00 85 00 A0 00
+followed by:  85FB payload 40 00
+```
+
+This request appears five times in the captured startup.
+
+The legacy family-0 dispatcher routes opcode `0x85` through
+`FUN_00016962` and then through the generic board-message transmitter.
+`FUN_00016962` stores the request WORD, updates internal/global state via
+`FUN_00016074`, and calls `FUN_0001573E` and `FUN_00015772`.
+
+The latter two helpers are now explicit Ghidra targets. Opcode `0x85` remains
+blocked in the x64 runtime gate until those side effects are fully decoded.
