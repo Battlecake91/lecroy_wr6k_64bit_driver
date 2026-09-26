@@ -126,3 +126,14 @@ Build the driver and `lecdiag` together with:
 ```powershell
 .\scripts\build-driver.ps1 -BuildLecdiag
 ```
+
+
+For the reference test machine, the normal one-command rebuild/reload workflow is:
+
+```powershell
+.\scripts\build-sign-load-driver.ps1
+```
+
+It builds the x64 driver and `lecdiag`, signs the SYS with the existing
+`CN=LecS65 x64 Test` certificate, reloads the installed service, verifies
+build 1002, and runs the passive `lecdiag pci` diagnostic.
