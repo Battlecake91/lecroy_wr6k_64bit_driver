@@ -137,13 +137,21 @@ if ($LASTEXITCODE -ne 0) {
 $shareCommit = (git rev-parse HEAD).Trim()
 $remoteUrl = (git remote get-url origin).Trim()
 $shareUrl = $null
-if ($remoteUrl -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?
-) {
-    $shareUrl = "https://github.com/$($Matches[1])/$($Matches[2])/commit/$shareCommit"
+$repoPath = $null
+
+if ($remoteUrl.StartsWith("https://github.com/")) {
+    $repoPath = $remoteUrl.Substring("https://github.com/".Length)
 }
-elseif ($remoteUrl -match '^git@github\.com:([^/]+)/(.+?)(?:\.git)?
-) {
-    $shareUrl = "https://github.com/$($Matches[1])/$($Matches[2])/commit/$shareCommit"
+elseif ($remoteUrl.StartsWith("git@github.com:")) {
+    $repoPath = $remoteUrl.Substring("git@github.com:".Length)
+}
+
+if ($repoPath) {
+    if ($repoPath.EndsWith(".git")) {
+        $repoPath = $repoPath.Substring(0, $repoPath.Length - 4)
+    }
+
+    $shareUrl = "https://github.com/$repoPath/commit/$shareCommit"
 }
 
 Write-Host ""
