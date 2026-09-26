@@ -24,6 +24,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
 - the acquisition-buffer path is confirmed to use locked user pages, MDL chains and a board-facing descriptor table built directly from PFNs;
 - the packed `0xCFDC2110` command parser and all three A5FB command families are substantially decoded;
+- the exact DeviceControl branch `0xCFDC2110 -> 0x13AE2` is now confirmed from raw dispatch instructions;
 - the acquisition front-ends are now mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, both converging on the same acquisition orchestrator and synchronous transfer/wait path;
 - the legacy `METHOD_NEITHER` path remains the main x64/WOW64 ABI risk;
 - a native x64 compatibility driver exists and is being brought up incrementally on `main`; unsafe partial `CFDC2110` execution is intentionally disabled until semantics are complete.
