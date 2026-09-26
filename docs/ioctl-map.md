@@ -1388,3 +1388,70 @@ their callers.
 
 The next pass follows `0x12F30`, `0x17D20`, `0x12D6A`, `0x17B72`,
 and the large hardware-register initializer `0x14847`.
+
+
+## Tenth headless export: acquisition request programming path
+
+The latest caller-focused export finally ties several previously separate
+pieces together.
+
+### 0x12D6A: acquisition transfer orchestration
+
+`FUN_00012d6a` is a high-value acquisition path:
+
+1. derives a chunk/transfer count from the requested byte count;
+2. prepares the indexed hardware-control structure through either
+   `0x17CDC` or `0x17D20`;
+3. calls `0x17478`, which leads into the event-driven synchronous transfer
+   helper `0x171DE`;
+4. clears pending interrupt/status state through the BAR0 IIM status/clear
+   registers;
+5. returns the requested byte count through the caller-provided result pointer.
+
+This is now a strong bridge between the user-facing acquisition request,
+indexed register programming, and the synchronous hardware transfer/wait path.
+
+### 0x17D20 / 0x17C16: per-channel indexed programming
+
+`FUN_00017d20` walks a channel/configuration list. For each entry it builds a
+command beginning with the known `A5FB` signature and opcode-like value
+`0x0A/0xE0` in the low bytes, then calls `0x17C16`.
+
+`FUN_00017c16` splits three 32-bit arguments into five indexed writes
+(indices 0..4) through `0x179E2`, then commits `0x105` through another
+register wrapper.
+
+This appears to be board-side acquisition/channel setup rather than the BAR1
+message transport.
+
+### 0x13C84 / 0x13DC6: two acquisition request front-ends
+
+Both functions:
+
+- resolve a registered transfer entry through `0x18168`;
+- construct a temporary 0x7C-byte channel/configuration object;
+- validate the channel count and total byte size;
+- require the requested size to match the registered transfer-entry size;
+- call `0x12D6A`;
+- tear the temporary object down afterwards.
+
+`0x13C84` receives the transfer identifier directly. `0x13DC6` first maps
+caller/process state through indirect methods on the main device object.
+
+These are likely close to the actual IOCTL-facing acquisition read/write
+handlers and are high-priority for mapping the public ABI.
+
+### 0x14847: authoritative BAR/register initialization
+
+`FUN_00014847` is the authoritative register-object initializer. It confirms
+the BAR0/BAR1/BAR2 offsets already reconstructed elsewhere, including START,
+INTST, INTEN, IIMTC/IIMCL/IIMST, MAM*, JTAG*, SPI*, MTT*, GPIO*, clock/divider
+registers, SetIRQ/HWInt transport registers, and ONEWIRE/BUZZER.
+
+It also wires the indexed-control object at main-object offset `+0x1086` to
+the MAM register group, strongly suggesting the indexed writes above program
+the acquisition-memory engine.
+
+The next pass should therefore trace `0x13AE2` (caller of `0x12F30`),
+the IOCTL dispatch callers of `0x13C84`/`0x13DC6`, and the MAM helper
+`0x17BA6` plus its immediate callees.
