@@ -1647,3 +1647,52 @@ Unrecognized IOCTLs fall through to a logging path and are completed with `STATU
 After the selected handler returns, the dispatcher releases its mutex and distinguishes `STATUS_PENDING (0x103)` from completed requests. Non-pending requests are logged on failure and then completed through the common IRP-completion helper. This explains why `0x13AE2`, `0x141DC`, and `0x141F8` branch slightly differently before converging on the same completion tail.
 
 The raw window also shows the next recognized function at `0x11390`, confirming the DeviceControl function ends immediately before the already-decoded deferred/DPC helper.
+
+
+## Fifteenth headless export: remaining DeviceControl handler semantics
+
+This pass resolves most of the handlers that were previously known only by dispatch address.
+
+### 0xCFDC2124 -> 0x11BDC
+
+The handler requires exactly 12 input bytes. It invokes an indirect main-object method at vtable offset `+0x0C` with the caller buffer plus the process/registration subsystem at `this+0xE98`. On success it replaces the first DWORD of the system buffer with the returned identifier/handle and reports 4 output bytes. This is strongly consistent with creating/registering a process-scoped object used by later acquisition paths.
+
+### 0xCFDC2128 -> 0x11C36
+
+The handler requires exactly 4 input bytes and forwards that DWORD to the indirect main-object method at vtable offset `+0x08`. This is likely the inverse/unregister side of the `0xCFDC2124` pair, but the exact semantic name remains to be proven from the vtable targets.
+
+### 0xCFDC212C -> 0x11C5E
+
+Confirmed again as a trivial `STATUS_NOT_IMPLEMENTED` handler.
+
+### 0xCFDC2130 -> 0x11CFF
+
+The serial-trigger FPGA handler validates a non-null, non-empty input stream, reads BAR1 `GPIODAT` through the register wrapper at main-object offset `+0x318`, and for each input byte replaces the masked `0xE000` field before writing the register back. This confirms that the programming stream is bit-banged through the GPIO register rather than sent through the BAR1 message transport.
+
+### 0xCFDC2180 and 0xCFDC218C
+
+`0x128F8` and `0x12B34` are parallel event-registration handlers. Both require a four-byte input handle and zero output bytes, reference/associate the event with the current process, clear the event, and set a device-level pending/enable flag. `0x128F8` additionally checks current hardware/status state through `0x157B8` and may immediately signal the event through `0x10816`.
+
+### 0xCFDC2190 -> 0x13A40
+
+This 29-byte input path is now identifiable as an interrupt/error-mask control request. It requires structure field 1 to equal 2. Structure field 2 controls global mask bit 1 and is inverted before being written to BAR0 `ERRM` at offset `0x008`; the updated interrupt/mask state is then committed through the synchronized `0x12EAE` path.
+
+### 0xCFDC2194 -> 0x12BAE
+
+This is the paired 29-byte output/status request. It returns a zeroed 29-byte structure with field 1 set to 2 and field 2 populated from device state at `this+0x116A`, then clears that stored state.
+
+### 0xCFDC2400 -> 0x13A2E
+
+This handler is only a wrapper around `0x12EDE`; the latter is the next semantic target.
+
+### DeviceControl completion helpers
+
+`0x10798` writes the completion status into the IRP, calls the internal IRP bookkeeping helper `0x1955A`, and completes the request with `IofCompleteRequest`.
+
+`0x10750`, `0x1076E`, and `0x1919A` are diagnostic/logging helpers rather than hardware logic.
+
+### 0x00222C00 hardware side effect identified
+
+The delay helper object at main-object offset `+0x10F2` is initialized in `0x14847` with the BAR2 `BUZZER` register wrapper at offset `0x000`. Therefore the previously observed `0x1557C -> 0x15536` side effect is now identified exactly: the legacy delay IOCTL asserts the buzzer register before sleeping and deasserts it afterwards when the helper is enabled.
+
+This removes the ambiguity around the auxiliary hardware toggle. Reproducing that buzzer pulse in the x64 driver remains a compatibility choice rather than an unknown register hazard.
