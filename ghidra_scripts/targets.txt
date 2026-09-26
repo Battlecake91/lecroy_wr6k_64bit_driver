@@ -1,0 +1,22 @@
+# One target per line. Hex addresses are interpreted as function addresses.
+# Symbol/import names are also supported.
+#
+# This file is intentionally updated by reverse-engineering work so the local
+# operator can always run the same helper script.
+
+159e2
+17bc8
+17c16
+17cdc
+17dac
+17ddc
+17e1c
+17e2c
+17e39
+17e45
+13fa6
+15348
+MmGetPhysicalAddress
+IoMapTransfer
+GetScatterGatherList
+PutScatterGatherList
