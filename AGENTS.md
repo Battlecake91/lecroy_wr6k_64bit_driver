@@ -524,3 +524,13 @@ driver and lecdiag, signs the SYS with `CN=LecS65 x64 Test`, stops the
 service, replaces the installed SYS, restarts it, verifies build 1002, and runs
 `lecdiag pci`. This mirrors the earlier command-line test-signing workflow and
 avoids accidentally testing a stale loaded driver.
+
+
+## Driver reload through Driver Store
+
+The reference system denies direct replacement of
+`System32\drivers\LecS65AcqDrv.sys` even after the PCI device is disabled.
+The maintained `build-sign-load-driver.ps1` therefore stages a fresh INF/SYS,
+generates/signs a CAT, gives the staged INF a newer DriverVer, installs through
+`pnputil /add-driver /install`, and restarts the device. Use the Driver Store
+rather than direct System32 copies.
