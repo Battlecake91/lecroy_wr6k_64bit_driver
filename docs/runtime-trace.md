@@ -400,9 +400,16 @@ Results:
   request and the known mode-1 / 58-bit JTAG request.
 - No acquisition-launch IOCTL appears in this capture.
 
-Important runtime/source discrepancy: current `main` contains byte-exact gate
-entries through mode 2 only. Modes 3 and 4 should therefore be rejected by
-`LecIsCapturedStartupCfDc2110`, yet this capture records them as successful.
-The successful output is consistent with the local `mode >= 2` protocol-error
-implementation, not with JTAG execution. Do not admit mode 5 until the exact
-driver binary/source state used for this capture is identified.
+The apparent runtime/source discrepancy was subsequently resolved. The scope
+checkout was still at commit
+`f119e4df0df5a1906016ec7a1a56fcb8a78a2705` with local uncommitted
+`driver/Ioctl.c` changes. Those local changes already contained exact
+mode-2, mode-3 and mode-4 long-packet whitelist entries and a local
+`mode > 1` status-4 response implementation. The SHA-256 of the signed
+package SYS matched the installed
+`C:\Windows\System32\drivers\LecS65AcqDrv.sys`, proving the trace came
+from that dirty local build.
+
+The exact observed mode-3 and mode-4 packets are now carried on `main` as
+byte-exact entries. They remain local protocol-error paths and do not touch
+JTAG registers. Mode 5 is the next rejected packet and remains blocked.
