@@ -1,0 +1,12 @@
+{"type":"lecdiag_trace_fixture","format_version":1,"source":"xstream startup 2026-09-26","notes":"Sanitized: process IDs, handles, pointers, Dallas contents and unrelated runtime state removed."}
+{"seq":7,"ioctl":"0xCFDC2110","input_length":18,"output_length":6,"status":"0xC0000010","input_hex":"06000A000300FBA540024001524553455400"}
+{"seq":8,"ioctl":"0xCFDC2110","input_length":22,"output_length":270,"status":"0xC0000010","input_hex":"060004000300FBA540019900080102000300FB854000"}
+{"seq":12,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
+{"seq":15,"ioctl":"0xCFDC2110","input_length":22,"output_length":270,"status":"0xC0000010","input_hex":"060004000300FBA540019900080102000300FB854000"}
+{"seq":16,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
+{"seq":17,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
+{"seq":18,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
+{"seq":19,"ioctl":"0xCFDC2110","input_length":94,"output_length":46,"status":"0xC0000010","input_hex":"06004C000300FBA5400142000000200000010000FF0B0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000280002000300FB854000"}
+{"seq":20,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
+{"seq":21,"ioctl":"0xCFDC2110","input_length":94,"output_length":46,"status":"0xC0000010","input_hex":"06004C000300FBA5400142000000200000010000FF0B0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000280002000300FB854000"}
+{"seq":22,"ioctl":"0xCFDC2110","input_length":24,"output_length":14,"status":"0xC0000010","input_hex":"060006000300FBA540008800DFFF080002000300FB854000"}
