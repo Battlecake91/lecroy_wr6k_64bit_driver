@@ -656,3 +656,26 @@ Next test on the scope:
 4. launch XStream normally;
 5. preserve the new raw JSONL locally and analyze new packet shapes before
    widening the whitelist.
+
+
+## Second whitelisted XStream trace
+
+The staged runtime gate now proves that RESET, family-1 `0x99`, and family-0
+`0x88` execute successfully on the reference scope.
+
+The next new startup packet is:
+
+```text
+A5FB 40 00 85 00 A0 00
++ 85FB 40 00 fetch
+```
+
+It occurs five times.
+
+Do not enable opcode `0x85` yet. Legacy `FUN_00016962` performs host-side
+state changes before generic transmit. Ghidra targets `1573e` and `15772`
+were added to close those remaining side effects.
+
+The captured 94-byte family-1 opcode-`0x42` JTAG whitelist entry had a manual
+byte-transcription error. Commit
+`bdfc91a969981de464b1430ac700b43972b1ccbb` corrects the exact packet match.
