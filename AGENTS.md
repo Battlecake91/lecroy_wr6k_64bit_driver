@@ -867,3 +867,26 @@ this to arbitrary mode-2 requests.
 Next step: scope pull/build/sign/load and capture another 120-second XStream
 startup. Inspect the first request after the mode-2 local-response stage before
 touching acquisition, trigger, or DMA launch.
+
+## Latest staged trace: 2026-09-27 01:35
+
+Raw capture `xstream_trace_20260927_013513.jsonl` remains outside Git.
+
+Observed:
+
+- 93 IOCTL records total;
+- 71 `CFDC2110`;
+- 60 successful, 11 rejected;
+- mode-2 / 256-bit local-response path succeeds;
+- mode 3 and mode 4 variants of the same 94-byte packet each succeed 16 times;
+- mode 5 is the first rejected variant and repeats 11 times;
+- modes 2/3/4 return the same status-4 local response and do not imply JTAG
+  hardware execution;
+- no acquisition-launch IOCTL is present.
+
+Safety note: repository `main` currently has a byte-exact runtime-gate entry
+for the captured mode-2 packet but no corresponding mode-3 or mode-4 entries.
+Their success in the trace therefore indicates a runtime/source mismatch or
+uncommitted test-machine modification. Resolve that discrepancy before adding
+mode 5 or widening the gate. Do not infer from this trace that arbitrary
+`mode >= 2` requests are approved.
