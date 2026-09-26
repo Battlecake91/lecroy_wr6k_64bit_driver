@@ -92,7 +92,7 @@ typedef struct LECS65_DEBUG_PCI_CONFIG {
 
 typedef struct LECS65_DEBUG_TRACE_ENTRY {
     uint64_t Sequence;
-    uint64_t Timestamp100ns;
+    uint64_t TimestampTicks;
     uint64_t ProcessId;
     uint64_t Information;
     uint64_t Type3InputBuffer;
@@ -164,7 +164,7 @@ static void write_trace_entry_jsonl(
         out,
         "{\"type\":\"ioctl\","
         "\"seq\":%llu,"
-        "\"timestamp_100ns\":%llu,"
+        "\"timestamp_ticks\":%llu,"
         "\"pid\":%llu,"
         "\"wow64\":%u,"
         "\"method\":%u,"
@@ -179,7 +179,7 @@ static void write_trace_entry_jsonl(
         "\"user_buffer\":\"0x%016llX\","
         "\"input_hex\":",
         (unsigned long long)e->Sequence,
-        (unsigned long long)e->Timestamp100ns,
+        (unsigned long long)e->TimestampTicks,
         (unsigned long long)e->ProcessId,
         (unsigned)e->Wow64,
         (unsigned)e->Method,
@@ -241,7 +241,7 @@ static int trace_save(HANDLE h, const char* path)
     fprintf(
         out,
         "{\"type\":\"lecdiag_trace\","
-        "\"format_version\":2,"
+        "\"format_version\":3,"
         "\"entries\":%lu,"
         "\"total_seen\":%llu}\n",
         (unsigned long)trace->Count,
