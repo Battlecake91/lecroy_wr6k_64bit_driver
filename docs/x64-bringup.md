@@ -387,3 +387,13 @@ A build failure introduced by the richer trace path used
 project. The trace timestamp now uses the supported `KeQuerySystemTime`
 kernel API and remains a 100 ns value. The new acquisition allocations were
 also migrated from deprecated `ExAllocatePoolWithTag` to `ExAllocatePool2`.
+
+
+### Visual Studio toolset compatibility
+
+The project briefly referenced `PlatformToolset=v145`, which is not available
+in the current Visual Studio 2022 Community installation used on the reference
+system. The project now targets the standard Visual Studio 2022 `v143`
+toolset. If a future machine has a different installed toolset, prefer updating
+the project deliberately rather than installing an obsolete toolset solely to
+satisfy the project file.
