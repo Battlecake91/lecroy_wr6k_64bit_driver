@@ -514,3 +514,13 @@ The trace ABI version 3 uses `KeQueryPerformanceCounter` and exposes
 `timestamp_ticks`. Do not switch back to `KeQuerySystemTime` or
 `KeQueryInterruptTime` without first verifying declaration and linkage in the
 actual WDK project; both caused build/link failures on the reference system.
+
+
+## Reference-machine reload script
+
+For the already-installed test driver, use
+`scripts/build-sign-load-driver.ps1` from elevated PowerShell. It builds the
+driver and lecdiag, signs the SYS with `CN=LecS65 x64 Test`, stops the
+service, replaces the installed SYS, restarts it, verifies build 1002, and runs
+`lecdiag pci`. This mirrors the earlier command-line test-signing workflow and
+avoids accidentally testing a stale loaded driver.
