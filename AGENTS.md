@@ -317,3 +317,18 @@ The main-device virtual methods used by `0x171DE` are now decoded:
 - `0x12E18`: process-owned transfer cleanup. It removes all registered transfer entries belonging to a supplied process and frees them through `0x17FD6`.
 - `0x14122` / `0x134F6`: deleting destructor / main-object teardown.
 - `0x170EE`: thunk into subobject helper `0x1829A`, still unresolved.
+
+
+## Current transfer register map
+
+The synchronous acquisition helper `0x171DE` is now tied to concrete registers:
+
+- object `+0x04` -> BAR0 `IIMCL` (`0x048`)
+- object `+0x2C` -> BAR1 `MAMRGO` (`0x064`)
+- object `+0x58` -> BAR0 `SGTA` (`0x040`)
+- object `+0x80` -> BAR0 `IIMTC` (`0x044`)
+- object `+0xD0` -> BAR1 `MTTRGO` (`0x084`)
+
+The sequence is: program `SGTA`, program `IIMTC`, reset the transfer-entry event, enable global mask bit 0, write `IIMCL=1`, launch through `MAMRGO` or `MTTRGO`, wait up to five seconds, then disable mask bit 0.
+
+`0x1829A` is transfer-list cleanup reached via the base-object thunk at `0x170EE`; it is not transfer execution logic.
