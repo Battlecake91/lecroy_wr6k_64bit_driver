@@ -929,3 +929,84 @@ signalling an event.
 The actual event signal path is still elsewhere and should be located by
 finding references to `KeSetEvent` and tracing callers that operate on the
 transport object/event at `this + 0x31`.
+
+
+## Selected headless-export findings
+
+The first compact headless export closed several previously open handler details.
+
+### Family 0 opcode 0x92 -> 0x1600E
+
+`FUN_0001600e` selects one of three register blocks from object offsets
+`+0x25`, `+0x29`, or `+0x2D` using request byte 0/1/2. It then writes a
+32-bit value from request offset +3 to:
+
+```text
+selected_block->register_base(+0x10) + request_u16(+1)
+```
+
+Invalid selector values return status 4. A local status response is generated
+through `0x15A88`.
+
+### Family 1 opcode 0x92 -> 0x15DEA
+
+`FUN_00015dea` is the corresponding 32-bit register-read operation. It uses the
+same selector mapping (0/1/2 -> object offsets +0x25/+0x29/+0x2D) and the same
+16-bit register offset from request +1.
+
+Its local response is 12 bytes:
+
+```text
+DWORD +0 = 0
+WORD  +4 = 6
+WORD  +6 = status
+DWORD +8 = register value
+```
+
+The response is stored through `0x15A26`.
+
+### Family 2 opcode 0x02 -> 0x163B2
+
+`FUN_000163b2` optionally waits on an object-derived synchronization object at
+`this+0x186`, accepts request byte 0 or 1, and writes that value to register
+offset `+0x80` of the block referenced by `this+0x29`. Invalid values return
+status 4. The exact semantic name of this register/action remains unresolved.
+
+### Family 2 opcode 0x04 / opcode 0 fallthrough -> 0x16414
+
+`FUN_00016414` temporarily disables the state controlled through
+`FUN_00016074(this, 0)`, pulses register offset `+0x80` in the
+`this+0x29` block by alternating writes of 1 then 0 for the requested 16-bit
+count, and restores the state if it had previously been enabled.
+
+This is a pulse-generation/reset-style helper, but the hardware-level meaning
+of the pulse is not yet proven.
+
+### Family 2 opcode 0x40 tail -> 0x16490
+
+`FUN_00016490` calls helpers `0x1260E` and `0x126EE` on the object at
+`this+0x19E`, then generates a local success response through `0x15A88`.
+The two helper semantics remain to be decoded.
+
+### Family 1 opcode 0x50/0x51 -> 0x160DC
+
+`FUN_000160dc` operates on the object referenced by `this+0x182`. It calls
+`0x18168` with a request-supplied 32-bit value, validates a returned object's
+size against a request-supplied bit/byte count, then calls `0x17478`.
+On success it stores an 8-byte local response through `0x15A26`.
+
+The operation is clearly buffer/object-management related, but its acquisition
+or DMA semantics are not yet proven.
+
+## Interrupt-path targets identified by headless XREF export
+
+The compact symbol-XREF export identified concrete next-stage functions:
+
+- `KeSetEvent` callers: `0x10816`, `0x1955A`, `0x19966`, `0x11390`
+  plus references outside currently defined functions.
+- `KeInsertQueueDpc` caller: `0x108D6` plus one undefined-function reference.
+- `IoConnectInterrupt` caller: `0x1860E` plus one undefined-function reference.
+
+These are now the primary targets for reconstructing the ISR/DPC/event
+completion path. The earlier `0x12EAE -> 0x11E46` path is confirmed to be an
+interrupt-mask commit path, not the event-signal path itself.
