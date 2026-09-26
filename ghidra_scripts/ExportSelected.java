@@ -61,7 +61,7 @@ public class ExportSelected extends GhidraScript {
         try {
             for (int i = 1; i < args.length; i++) {
                 String target = args[i];
-                Address addr = parseAddress(target);
+                Address addr = parseTargetAddress(target);
 
                 if (addr != null) {
                     Function f = fm.getFunctionAt(addr);
@@ -92,7 +92,7 @@ public class ExportSelected extends GhidraScript {
         return s.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
-    private Address parseAddress(String s) {
+    private Address parseTargetAddress(String s) {
         String t = s.toLowerCase();
         try {
             long value;
