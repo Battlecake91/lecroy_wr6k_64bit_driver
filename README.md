@@ -42,7 +42,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - on the current x64 reference bring-up, the driver loads and the PCI device binds correctly, but all three tested MMIO regions currently read as `0xFFFFFFFF`; passive PCI diagnostics now confirm `PCI Command = 0x0006`, so both Memory Space Enable and Bus Master Enable are active, and the BAR config-space values exactly match the translated Windows resources;
 - the confirmed legacy START/ITMODE startup probe from `FUN_00012FDE` is now reproduced during x64 PnP start, including its exact 100 us / 500 us timing and buzzer pattern; on the reference scope this fixes the previous all-ones MMIO state, yielding FVER = `0x00000002`, ACQFVER = `0x00000003`, ONEWIRE = `0x00000000`, and a valid Dallas ID `23 F0 47 37 00 00 00 AC` with the expected two-beep startup pattern;
 - the first real XStream startup trace has now been captured on working hardware; early startup uses only four distinct `CFDC2110` request shapes: RESET, family-1/opcode-`0x99`, family-0/opcode-`0x88`, and family-1/opcode-`0x42` JTAG, with no C5FB record observed;
-- `CFDC2110` hardware execution is now enabled only for the four byte-exact startup packet shapes captured from XStream; every other packet remains rejected before hardware side effects.
+- `CFDC2110` hardware execution is enabled only for byte-exact captured startup packets; the second staged run successfully passed RESET, opcode-`0x99`, and opcode-`0x88`, then exposed a new family-0/opcode-`0x85` request whose host-side state updates are still being decoded; every unconfirmed packet remains rejected before hardware side effects.
 
 Documentation:
 
