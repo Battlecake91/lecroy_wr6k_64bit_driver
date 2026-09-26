@@ -2228,3 +2228,33 @@ capturing it. It probes/locks only the data range of `UserBuffer`, excluding the
 trailing result DWORD that it later writes directly. Both behaviours must be
 replaced with explicit WOW64-aware capture, overflow-safe size validation, and
 full output probing in the x64 driver.
+
+
+## Runtime XStream startup packet set
+
+The first real startup trace from the reference scope confirms that XStream
+uses only the already identified type-3 A5FB/85FB families during this early
+phase.
+
+Observed requests:
+
+```text
+A5FB payload 40 02 40 01 "RESET\0"
+A5FB payload 40 01 99 00
+A5FB payload 40 00 88 00 DF FF
+A5FB payload 40 01 42 00 ...
+85FB payload 40 00
+```
+
+Multiplicity in the 120-second capture:
+
+- RESET: 1
+- family-1 / opcode `0x99`: 2
+- family-0 / opcode `0x88`: 6
+- family-1 / opcode `0x42`: 2
+- matching 85FB fetch records are appended to all non-RESET requests
+
+The current x64 driver deliberately returns
+`STATUS_INVALID_DEVICE_REQUEST` for all `0xCFDC2110` calls, so this trace
+does not yet provide real board responses. It does, however, reduce the active
+startup command surface to these four request forms.
