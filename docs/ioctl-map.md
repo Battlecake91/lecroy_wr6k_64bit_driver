@@ -1618,3 +1618,32 @@ This confirms the two front-ends share the same acquisition semantics but differ
 ### Delay-helper hardware side effect
 
 `FUN_00015536` writes a boolean through the register wrapper stored in the delay-helper object. Therefore `FUN_0001557C` asserts a hardware line before `KeDelayExecutionThread` and deasserts it afterwards. The exact named register should be resolved before reproducing this side effect in the x64 driver.
+
+
+## Fourteenth headless export: late DeviceControl dispatch and completion semantics
+
+The raw windows from `0x11200..0x1138D` now recover the late half of the DeviceControl dispatcher and the common completion epilogue.
+
+Confirmed direct branches:
+
+- `0xCFDC218C` -> `0x12B34`
+- `0xCFDC2184` -> inline success with `IoStatus.Status = 0` and `Information = 0`
+- `0xCFDC2180` -> `0x128F8`
+- `0xCFDC2138` -> `0x141DC`
+- `0xCFDC2130` -> `0x11CFF`
+- `0xCFDC212C` -> `0x11C5E`
+- `0xCFDC2190` -> `0x13A40`
+- `0xCFDC2194` -> `0x12BAE`
+- `0xCFDC21C0` -> `0x13954`
+- `0xCFDC21C4` -> `0x1272A`
+- `0xCFDC21C8` -> `0x12832`
+- `0xCFDC2400` -> `0x13A2E`
+- `0xCFDD219F` -> `0x141F8`
+
+Unrecognized IOCTLs fall through to a logging path and are completed with `STATUS_INVALID_PARAMETER (0xC000000D)` and zero information.
+
+### Common DeviceControl completion
+
+After the selected handler returns, the dispatcher releases its mutex and distinguishes `STATUS_PENDING (0x103)` from completed requests. Non-pending requests are logged on failure and then completed through the common IRP-completion helper. This explains why `0x13AE2`, `0x141DC`, and `0x141F8` branch slightly differently before converging on the same completion tail.
+
+The raw window also shows the next recognized function at `0x11390`, confirming the DeviceControl function ends immediately before the already-decoded deferred/DPC helper.
