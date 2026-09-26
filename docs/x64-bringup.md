@@ -66,19 +66,27 @@ Do not start the first test with XStream automatically launching at login. The d
 
 ## Build
 
-Open:
+Preferred command-line build:
 
-```text
-LecS65AcqDrv.sln
+```powershell
+.\scripts\build-driver.ps1
 ```
 
-Select:
+To build both the driver and diagnostic tool:
 
-```text
-Debug | x64
+```powershell
+.\scripts\build-driver.ps1 -BuildLecdiag
 ```
 
-Build the solution.
+The script locates MSBuild through Visual Studio/vswhere and builds
+`Debug | x64` by default. Release builds use:
+
+```powershell
+.\scripts\build-driver.ps1 -Configuration Release
+```
+
+Visual Studio remains optional: open `LecS65AcqDrv.sln`, select
+`Debug | x64`, and build the solution.
 
 Expected primary output:
 
@@ -370,3 +378,12 @@ both sides must be rebuilt before testing it:
 Then rebuild the x64 driver solution and reload/reinstall the resulting
 `LecS65AcqDrv.sys`. Running an older `lecdiag.exe` against new source will
 show the old usage text and will not recognize commands such as `pci`.
+
+
+### Build fix: trace timestamp API
+
+A build failure introduced by the richer trace path used
+`KeQueryInterruptTime` without a linkable declaration in the current WDK
+project. The trace timestamp now uses the supported `KeQuerySystemTime`
+kernel API and remains a 100 ns value. The new acquisition allocations were
+also migrated from deprecated `ExAllocatePoolWithTag` to `ExAllocatePool2`.
