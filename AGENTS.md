@@ -305,3 +305,15 @@ Diagnostic helpers `0x10750`, `0x1076E`, and `0x1919A` are logging-only; `0x1079
 - `0x157B8` returns `pending_bits & enabled_bits`; `0xCFDC2180` can therefore signal a freshly registered event immediately when relevant status is already pending.
 - `0x12EDE` (`0xCFDC2400`) stores a caller DWORD in global `DAT_1CE1C`, performs a synchronized callback, then calls main-object vtable method `+0x24` with `(0,0)`.
 - Exact semantics of `0xCFDC2124`, `0xCFDC2128`, and the final `0xCFDC2400` action now depend mainly on resolving main-object vtable `PTR_FUN_0001C8BC`.
+
+
+## Latest synchronous transfer hook result
+
+The main-device virtual methods used by `0x171DE` are now decoded:
+
+- `0x13914`: set global transfer/interrupt mask bit 0, then commit through the synchronized `0x12EAE -> 0x11E46` path.
+- `0x13934`: clear the same bit and commit it identically.
+- `0x104A0`: no-op method returning zero. Therefore the final virtual call made by `0xCFDC2400` has no hardware side effect in this build.
+- `0x12E18`: process-owned transfer cleanup. It removes all registered transfer entries belonging to a supplied process and frees them through `0x17FD6`.
+- `0x14122` / `0x134F6`: deleting destructor / main-object teardown.
+- `0x170EE`: thunk into subobject helper `0x1829A`, still unresolved.
