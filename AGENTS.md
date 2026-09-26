@@ -477,3 +477,12 @@ header and reports PCI Command/Status, BDF, BAR config values and IRQ metadata.
 Use that before considering any startup-register write. If Memory Space Enable
 is clear, fix PCI decode first. If it is set while MMIO remains all ones,
 investigate the recovered legacy START/ITMODE/FPGA initialization path.
+
+
+## Diagnostic build workflow note
+
+Private diagnostic changes require rebuilding both the user-mode `lecdiag.exe`
+and the x64 driver when the private IOCTL ABI changes. A stale `lecdiag.exe`
+is immediately visible because its usage text lacks newly added commands such
+as `pci`. Use `scripts/build-lecdiag.ps1` after pulling tool changes, then
+rebuild/reload the driver before exercising a new private diagnostic IOCTL.
