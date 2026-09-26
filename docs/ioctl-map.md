@@ -2279,3 +2279,27 @@ The legacy family-0 dispatcher routes opcode `0x85` through
 
 The latter two helpers are now explicit Ghidra targets. Opcode `0x85` remains
 blocked in the x64 runtime gate until those side effects are fully decoded.
+
+
+## Opcode 0x85 side effects closed
+
+The two remaining helpers called by legacy `FUN_00016962` are now decoded:
+
+- `FUN_0001573E(this, enable)` toggles global mask bit `0x10` and commits
+  the global mask to BAR0 `INTEN`.
+- `FUN_00015772(this, enable)` toggles global mask bit `0x20` and commits
+  the global mask to BAR0 `INTEN`.
+
+Together with the already decoded `FUN_00016074`, family-0 opcode `0x85`
+interprets its control WORD as follows:
+
+- low-byte bit 7 controls INTEN bit `0x04`;
+- high-byte bit 3 controls INTEN bit `0x10`;
+- high-byte bit 0 controls INTEN bit `0x20`.
+
+The captured startup request uses control WORD `0x00A0`, therefore it sets
+INTEN bit `0x04` and clears INTEN bits `0x10` and `0x20`, then forwards
+the original A5FB packet to the generic BAR1 board-message transport.
+
+The x64 driver now implements these confirmed side effects and adds this exact
+captured opcode-`0x85` packet to the byte-exact runtime whitelist.
