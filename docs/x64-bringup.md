@@ -591,3 +591,27 @@ the four request shapes captured during the first real XStream startup:
 Any other `0xCFDC2110` buffer is rejected with
 `STATUS_INVALID_DEVICE_REQUEST` before hardware side effects. This is the
 current safety boundary for runtime testing.
+
+
+### Next staged CFDC2110 step
+
+Family-0 opcode `0x85` is now enabled only for the exact packet observed in
+the second XStream startup trace:
+
+```text
+06 00 06 00 03 00 FB A5
+40 00 85 00 A0 00
+08 00 02 00 03 00 FB 85 40 00
+```
+
+Static analysis proves the host-side control word `0x00A0` updates BAR0
+`INTEN` before the packet is forwarded to board firmware:
+
+```text
+INTEN bit 0x04 <- 1
+INTEN bit 0x10 <- 0
+INTEN bit 0x20 <- 0
+```
+
+All other mask bits are preserved. No broader opcode-`0x85` acceptance is
+enabled.
