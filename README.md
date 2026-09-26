@@ -29,6 +29,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - serial-trigger FPGA programming is now confirmed to bit-bang BAR1 `GPIODAT`, while `0xCFDC2190/2194` form an error-mask/control status pair;
 - kernel event handles are now confirmed to be referenced with `EVENT_MODIFY_STATE`, tied to process registration, and immediately signalled when an enabled status bit is already pending;
 - transfer registration and removal calls are now tied directly to `0x1731C` and `0x172A2`; the synchronous transfer hooks are now decoded as enable/disable of global transfer mask bit 0 via the synchronized interrupt-mask commit path;
+- the synchronous acquisition helper is now mapped to concrete registers: `SGTA`, `IIMTC`, `IIMCL`, and either `MAMRGO` or `MTTRGO`, followed by an event wait;
 - the auxiliary side effect of the millisecond-delay IOCTL has been identified as a BAR2 `BUZZER` pulse around the delay;
 - the acquisition front-ends are now mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, both converging on the same acquisition orchestrator and synchronous transfer/wait path;
 - the legacy `METHOD_NEITHER` path remains the main x64/WOW64 ABI risk;
