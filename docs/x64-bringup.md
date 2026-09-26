@@ -575,3 +575,19 @@ normal register access.
 The next runtime milestone is a passive XStream startup capture using the
 working x64 driver so the remaining firmware-defined `0xCFDC2110` traffic can
 be analyzed from a normal licensed startup.
+
+
+### Byte-exact startup whitelist for CFDC2110
+
+The first controlled hardware re-enable is intentionally narrow. The driver now
+executes `0xCFDC2110` only when the entire input buffer exactly matches one of
+the four request shapes captured during the first real XStream startup:
+
+- RESET packet;
+- family-1 opcode `0x99` plus 85FB fetch;
+- family-0 opcode `0x88` with mask `0xFFDF` plus 85FB fetch;
+- the captured family-1 opcode `0x42` JTAG request plus 85FB fetch.
+
+Any other `0xCFDC2110` buffer is rejected with
+`STATUS_INVALID_DEVICE_REQUEST` before hardware side effects. This is the
+current safety boundary for runtime testing.
