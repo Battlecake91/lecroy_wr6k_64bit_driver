@@ -679,3 +679,20 @@ were added to close those remaining side effects.
 The captured 94-byte family-1 opcode-`0x42` JTAG whitelist entry had a manual
 byte-transcription error. Commit
 `bdfc91a969981de464b1430ac700b43972b1ccbb` corrects the exact packet match.
+
+
+## Opcode 0x85 implementation complete
+
+Ghidra commit `c4800ac03da8d1cc510ce89deeaaa47a8d7db0c6` resolves the two remaining
+helpers behind family-0 opcode `0x85`:
+
+- `0x1573E`: toggle global INTEN bit `0x10`, then commit;
+- `0x15772`: toggle global INTEN bit `0x20`, then commit.
+
+Together with `0x16074` (INTEN bit `0x04`), captured control WORD
+`0x00A0` yields mask updates `+0x04, -0x10, -0x20`. The x64 driver now
+applies those exact changes, writes BAR0 INTEN, forwards the captured request,
+and accepts only the exact byte sequence seen in the trace.
+
+Next scope test: pull, build/sign/load, capture XStream startup again, and
+inspect the next rejected CFDC2110 packet before widening the whitelist.
