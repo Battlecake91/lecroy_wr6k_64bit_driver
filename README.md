@@ -39,6 +39,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - the native x64 compatibility driver now includes owner-checked 32-bit transfer tokens, MDL locking, chained legacy DMA descriptor construction, recovered interrupt/DPC plumbing and process-close transfer cleanup;
 - active MAMRGO/MTTRGO acquisition launch remains deliberately gated until the 32-bit DMA-address constraint and launch-count units are validated on hardware;
 - passive tracing now has a JSONL live-capture workflow with timestamps, WOW64 state, bounded input previews, METHOD_NEITHER input capture and buffered output previews;
+- on the current x64 reference bring-up, the driver loads and the PCI device binds correctly, but all three tested MMIO regions currently read as `0xFFFFFFFF`; a passive PCI configuration-space diagnostic has been added to distinguish PCI decode/bus-master state from missing FPGA startup initialization;
 - unsafe partial `CFDC2110` execution remains intentionally disabled until the firmware-defined command semantics are captured from a normal sequence.
 
 Documentation:
