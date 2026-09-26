@@ -8,9 +8,35 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 $lecdiag = Join-Path $repo "tools\lecdiag\build\lecdiag.exe"
+$lecdiagSource = Join-Path $repo "tools\lecdiag\lecdiag.c"
+$buildHelper = Join-Path $PSScriptRoot "build-lecdiag.ps1"
+
+$needsBuild = -not (Test-Path $lecdiag)
+
+if (-not $needsBuild -and (Test-Path $lecdiagSource)) {
+    $needsBuild = (Get-Item $lecdiagSource).LastWriteTimeUtc -gt (Get-Item $lecdiag).LastWriteTimeUtc
+}
+
+if ($needsBuild) {
+    Write-Host "lecdiag is missing or older than its source. Rebuilding..."
+    & $buildHelper
+    if ($LASTEXITCODE -ne 0) {
+        throw "lecdiag rebuild failed with exit code $LASTEXITCODE."
+    }
+}
 
 if (-not (Test-Path $lecdiag)) {
-    throw "lecdiag.exe not found at $lecdiag. Build tools\lecdiag first."
+    throw "lecdiag.exe not found at $lecdiag after rebuild."
+}
+
+# Guard against a stale binary copied from an older checkout.
+$help = & $lecdiag 2>&1 | Out-String
+if ($help -notmatch 'trace-capture') {
+    Write-Host "lecdiag binary does not support trace-capture. Rebuilding..."
+    & $buildHelper
+    if ($LASTEXITCODE -ne 0) {
+        throw "lecdiag rebuild failed with exit code $LASTEXITCODE."
+    }
 }
 
 if (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
