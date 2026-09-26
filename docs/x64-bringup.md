@@ -513,3 +513,35 @@ The next controlled investigation should focus on the legacy early startup path,
 especially `FUN_00012FDE` and its START/ITMODE initialization sequence. Do not
 add arbitrary register writes; reproduce only statically confirmed legacy startup
 operations.
+
+
+### Legacy START/ITMODE startup probe
+
+The Ghidra export for `FUN_00012FDE` closes the early startup sequence exactly:
+
+```text
+BAR0 START <- 1
+wait 100 us
+read START bit 0
+
+if bit0 == 0:
+    buzzer on for 1200 ms, then off
+    return STATUS_UNSUCCESSFUL
+
+if bit0 == 1:
+    buzzer on for 300 ms, then off
+    BAR1 ITMODE <- 7
+    wait 500 us
+    buzzer on for 300 ms, then off
+    BAR1 ITMODE <- 3
+    return STATUS_SUCCESS
+```
+
+The x64 driver now reproduces this exact host-side sequence during
+`IRP_MN_START_DEVICE` after BAR mapping and before interface enablement. No
+additional speculative startup writes are enabled.
+
+The current all-ones MMIO state makes this probe especially diagnostic: if the
+START write wakes the FPGA/register fabric, subsequent reads should stop
+returning `0xFFFFFFFF`. If START still reads all ones and ITMODE writes have no
+effect, the remaining blocker is below this host-side initialization sequence.
