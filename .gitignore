@@ -19,3 +19,9 @@ tools/lecdiag/build/
 # Visual Studio / package-manager caches
 .vs/
 packages/
+
+# Per-user Visual Studio project state
+*.vcxproj.user
+
+# Local compiler object files
+*.obj
