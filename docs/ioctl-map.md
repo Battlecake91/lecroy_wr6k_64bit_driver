@@ -1455,3 +1455,69 @@ the acquisition-memory engine.
 The next pass should therefore trace `0x13AE2` (caller of `0x12F30`),
 the IOCTL dispatch callers of `0x13C84`/`0x13DC6`, and the MAM helper
 `0x17BA6` plus its immediate callees.
+
+
+## Eleventh headless export: IOCTL-side command and acquisition validation
+
+The latest export closes several important gaps around the user-facing command
+and acquisition paths.
+
+### 0x13AE2: IOCTL-side packed command processor
+
+`FUN_00013ae2` parses an input stream into records, iterates over them, and
+routes each record either through the local/Dallas path (`0x16C14`) or through
+`0x12F30` for the type-1/type-2 indexed command path. It accumulates the
+returned byte count and copies the generated response stream back to the caller.
+
+Its only incoming reference is from an as-yet undefined function at
+`0x1115B`, making that address a strong candidate for the actual IOCTL
+dispatch branch for the packed command request.
+
+### 0x13C84 / 0x13DC6 acquisition front-ends
+
+Both acquisition front-ends now clearly show the request validation contract:
+
+- a transfer entry is resolved through `0x18168`;
+- a temporary channel/configuration object is built;
+- the requested byte count must equal the registered transfer-entry size;
+- invalid channel/count/size combinations return parameter or length errors;
+- the validated request is handed to `0x12D6A`;
+- the temporary structure is then released with `0x17E58`.
+
+`0x13DC6` additionally resolves/matches caller process state through indirect
+main-object methods before the transfer lookup.
+
+### 0x17EE0 channel descriptor encoding
+
+`FUN_00017ee0` appends a channel/configuration byte to an internal dynamic
+array, then builds a compact encoded value containing:
+
+- the low 6 bits of the channel/config value;
+- a 9-bit index shifted into the upper field;
+- a final-entry flag.
+
+That encoded value is inserted into another internal register/configuration
+collection through `0x13F3C`.
+
+### 0x17BA6 MAM object wiring
+
+`FUN_00017ba6` simply wires four register wrappers into the MAM helper object:
+MAMDAT, MAMPGO, MAMSEQ and MAMRGO, and marks the helper enabled.
+
+This confirms that the indexed control path at main-object +0x1086 is backed by
+the MAM register group.
+
+### 0x120DC
+
+`FUN_000120dc` clears bit 16 in the BAR1 GPIODAT register before both the
+packed type-1/type-2 command path and the acquisition-transfer path.
+
+### 0x12FDE startup/probe behavior
+
+`FUN_00012fde` writes START=1, waits briefly, reads START back, and selects one
+of two initialization sequences depending on whether the bit remains set. It
+also programs ITMODE and invokes another helper at `0x1557C`.
+
+The next pass should prioritize the undefined caller at `0x1115B` to recover
+the exact IOCTL dispatch branch, plus `0x15710`, `0x15720`, `0x16C14`,
+and `0x1557C` to close the packed-command local path and startup side effects.
