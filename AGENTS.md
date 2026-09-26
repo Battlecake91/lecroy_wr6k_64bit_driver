@@ -332,3 +332,8 @@ The synchronous acquisition helper `0x171DE` is now tied to concrete registers:
 The sequence is: program `SGTA`, program `IIMTC`, reset the transfer-entry event, enable global mask bit 0, write `IIMCL=1`, launch through `MAMRGO` or `MTTRGO`, wait up to five seconds, then disable mask bit 0.
 
 `0x1829A` is transfer-list cleanup reached via the base-object thunk at `0x170EE`; it is not transfer execution logic.
+
+
+## Current completion-path evidence
+
+`0x108D6` is the ISR and `0x11390` the deferred/DPC dispatcher. The DPC callback associated with `0x10872` conditionally executes `KeSetEvent(*(main+0x2E0)+0x24)`. Transfer entries created by `0x1731C` place their completion event at `entry+0x24`, and `0x171DE` resets/waits on exactly that event offset. This is strong evidence that the `0x10872` branch is acquisition-transfer completion, but the pointer stored at main-object `+0x2E0` must still be tied directly to the selected transfer entry before calling it fully proven.
