@@ -1696,3 +1696,32 @@ This handler is only a wrapper around `0x12EDE`; the latter is the next semantic
 The delay helper object at main-object offset `+0x10F2` is initialized in `0x14847` with the BAR2 `BUZZER` register wrapper at offset `0x000`. Therefore the previously observed `0x1557C -> 0x15536` side effect is now identified exactly: the legacy delay IOCTL asserts the buzzer register before sleeping and deasserts it afterwards when the helper is enabled.
 
 This removes the ambiguity around the auxiliary hardware toggle. Reproducing that buzzer pulse in the x64 driver remains a compatibility choice rather than an unknown register hazard.
+
+
+## Sixteenth headless export: event objects and CFDC2400 core helper
+
+### 0x11B18: kernel-event handle referencing
+
+`FUN_00011b18` is the common event-reference helper used by `0xCFDC2180`, `0xCFDC218C`, and the three-handle `0x00223100` path. It calls `ObReferenceObjectByHandle` with desired access `2` (`EVENT_MODIFY_STATE`), `ExEventObjectType`, and the caller requestor mode. On success it retains the referenced event object in the helper state and increments its reference/registration count.
+
+This closes the essential event-registration ABI: user-mode passes 32-bit event handles; the legacy driver converts them into referenced kernel event objects and associates them with the current process.
+
+### 0x157B8: pending status predicate
+
+`FUN_000157b8` returns the bitwise intersection of two 16-bit state fields at offsets `+9` and `+0x0B` of the associated status object. `0xCFDC2180` uses this result immediately after registering/clearing the event; if any enabled status bit is already pending, the event is signalled immediately through `0x10816`.
+
+### 0xCFDC2400 -> 0x12EDE
+
+`FUN_00012ede` requires a non-null four-byte input buffer. It copies the input DWORD to global `DAT_0001CE1C`, executes `LAB_00012EC2` under the driver's interrupt-synchronization helper returned by `0x10A88`, and then invokes main-object virtual method `+0x24` with `(0, 0)`.
+
+The concrete semantic name of this operation is still unresolved because the main-object vtable target at `+0x24` has not yet been mapped. However, the handler is now known to be a synchronized global-control update rather than a passive query.
+
+### Process-registration bookkeeping
+
+`FUN_0001232a` walks the process-registration list, matches the current process, and ORs a supplied flag into that process entry. The event registration handlers pass flag `2`, linking event ownership/status tracking to the process-scoped registration subsystem.
+
+### Main object construction
+
+`FUN_00014212` confirms the main object uses vtable `PTR_FUN_0001C8BC` and initializes the event slots at `+0x10FE` and `+0x110E`, the MAM helper at `+0x1086`, delay/buzzer helper at `+0x10F2`, process/transfer subsystems, tracing, and register lists.
+
+The next step is to decode the main-object vtable itself so `0xCFDC2124`, `0xCFDC2128`, and `0xCFDC2400` can be assigned exact semantic method targets instead of inferred registration/control roles.
