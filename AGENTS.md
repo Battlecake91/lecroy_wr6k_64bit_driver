@@ -884,9 +884,16 @@ Observed:
   hardware execution;
 - no acquisition-launch IOCTL is present.
 
-Safety note: repository `main` currently has a byte-exact runtime-gate entry
-for the captured mode-2 packet but no corresponding mode-3 or mode-4 entries.
-Their success in the trace therefore indicates a runtime/source mismatch or
-uncommitted test-machine modification. Resolve that discrepancy before adding
-mode 5 or widening the gate. Do not infer from this trace that arbitrary
-`mode >= 2` requests are approved.
+The earlier apparent runtime/source mismatch is resolved. The scope checkout
+was at commit `f119e4df0df5a1906016ec7a1a56fcb8a78a2705` with local,
+uncommitted `driver/Ioctl.c` changes that already contained exact mode-2,
+mode-3 and mode-4 long-packet whitelist entries plus the local
+`mode > 1` status-4 response path. The signed package SYS hash matched the
+installed `System32\drivers\LecS65AcqDrv.sys` exactly, so the trace reflects
+that dirty local build.
+
+Main now contains the exact observed mode-3 and mode-4 94-byte packet entries
+as well. These packets remain local protocol-error paths with no JTAG MMIO.
+Mode 5 is the next rejected exact packet and remains blocked pending a separate
+decision. Do not generalize the runtime gate to arbitrary `mode >= 2`
+requests.
