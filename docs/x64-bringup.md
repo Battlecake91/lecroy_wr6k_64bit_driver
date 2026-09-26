@@ -28,11 +28,21 @@ Not implemented yet:
 
 - interrupts;
 - DPC handling;
-- Dallas / 1-Wire;
-- FPGA programming;
-- acquisition DMA / MDL path;
-- legacy `METHOD_NEITHER` transfer implementation;
-- other legacy IOCTLs.
+- active acquisition launch through MAMRGO / MTTRGO;
+- active execution of partially understood `0xCFDC2110` firmware packets;
+- serial-trigger FPGA programming;
+- final `METHOD_NEITHER` acquisition execution;
+- remaining low-value legacy IOCTLs.
+
+Implemented since the original prototype:
+- Dallas / 1-Wire access;
+- legacy event registration;
+- decoded BAR1 message-transport helpers, kept gated where command semantics are incomplete;
+- x64 transfer registration for `0xCFDC2124/2128` using opaque owner-checked 32-bit tokens;
+- MDL locking and board-facing chained DMA descriptor-table construction;
+- explicit rejection when a source/table physical address exceeds the legacy 32-bit descriptor format;
+- recovered interrupt/DPC infrastructure and completion-event plumbing;
+- richer passive IOCTL tracing including METHOD_NEITHER input previews and buffered output previews.
 
 Unknown controls intentionally return `STATUS_INVALID_DEVICE_REQUEST`.
 
@@ -246,35 +256,46 @@ This is safer and much faster than attempting to clone the entire 2008 driver be
 
 ## IOCTL trace capture
 
-The prototype driver keeps a fixed-size in-kernel ring buffer containing the
-newest 128 non-debug DeviceIoControl requests. This is intended to capture the
-actual protocol emitted by the original 32-bit XStream stack without requiring
-a kernel debugger.
+The preferred capture format is now JSON Lines so traces can be processed
+directly by analysis tooling.
 
-Each trace entry records:
-
-- sequence number and boot-relative timestamp;
-- caller PID and WOW64 state;
-- IOCTL value and transfer method;
-- input/output buffer lengths;
-- returned information length and NTSTATUS;
-- up to the first 16 bytes of METHOD_BUFFERED input.
-
-Private prototype diagnostic IOCTLs are intentionally excluded from the trace.
-
-Typical capture workflow:
+Build `tools\lecdiag` and run:
 
 ```powershell
-.\lecdiag.exe trace-clear
-# Start XStreamDSO and reproduce the hardware-detection failure.
-.\lecdiag.exe trace
+.\scripts\capture-xstream-trace.ps1
 ```
 
-Known Dallas/1-Wire controls are named by `lecdiag`:
+The script clears the trace and captures for 90 seconds by default:
 
-- `0x00223080` GET_DALLAS_ID
-- `0x00223084` READ_DALLAS_MEMORY
-- `0x00223088` WRITE_DALLAS_MEMORY
+```text
+trace-captures/xstream_trace_YYYYMMDD_HHMMSS.jsonl
+```
 
-The trace ring is observational only. It does not implement or emulate the
-captured controls.
+For a longer startup/session:
+
+```powershell
+.\scripts\capture-xstream-trace.ps1 -DurationSeconds 180
+```
+
+The live collector polls every 250 ms and appends new sequence numbers, so a
+long XStream startup is not limited to the 256-entry in-kernel snapshot.
+
+Each entry contains:
+
+- boot-relative timestamp;
+- PID and WOW64 state;
+- IOCTL value and transfer method;
+- input/output lengths;
+- completion NTSTATUS and `IoStatus.Information`;
+- Type3InputBuffer/UserBuffer pointer values for correlation;
+- up to 256 bytes of input;
+- up to 128 bytes of METHOD_BUFFERED output.
+
+For METHOD_NEITHER the tracer probes only the bounded input preview. It does not
+blindly dereference arbitrary output user buffers.
+
+Successful generic register-read polling remains suppressed to preserve useful
+protocol history.
+
+See [runtime-trace.md](runtime-trace.md) for the exact JSONL schema and manual
+`lecdiag trace-save` / `trace-capture` commands.
