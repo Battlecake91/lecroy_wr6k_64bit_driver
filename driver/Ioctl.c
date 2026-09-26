@@ -64,7 +64,11 @@ LecRecordIoctlTrace(
     RtlZeroMemory(entry, sizeof(*entry));
 
     entry->Sequence = ++DevExt->TraceNextSequence;
-    entry->Timestamp100ns = KeQueryInterruptTime();
+    {
+        LARGE_INTEGER now;
+        KeQuerySystemTime(&now);
+        entry->Timestamp100ns = (ULONGLONG)now.QuadPart;
+    }
     entry->ProcessId = (ULONGLONG)(ULONG_PTR)PsGetCurrentProcessId();
     entry->Information = (ULONGLONG)Information;
     entry->Type3InputBuffer = (ULONGLONG)(ULONG_PTR)Type3InputBuffer;
