@@ -70,7 +70,7 @@ public class ExportSelected extends GhidraScript {
                     }
 
                     if (f == null) {
-                        printerr("No function at/containing: " + target);
+                        writeAddressWindow(addr, target);
                     }
                     else {
                         writeFunction(f);
@@ -172,6 +172,54 @@ public class ExportSelected extends GhidraScript {
                 }
             }
         }
+    }
+
+    private void writeAddressWindow(Address center, String target) throws Exception {
+        String stem = "raw_" + sanitize(target);
+        File rfile = new File(outDir, stem + ".asm.txt");
+
+        long window = 0x80;
+        Address start = center.subtract(window);
+        Address end = center.add(window);
+
+        try (PrintWriter pw = new PrintWriter(rfile, "UTF-8")) {
+            pw.println("RAW WINDOW around " + center);
+            pw.println("START " + start + " END " + end);
+
+            InstructionIterator ins =
+                currentProgram.getListing().getInstructions(start, true);
+
+            while (ins.hasNext()) {
+                Instruction inst = ins.next();
+                if (inst.getAddress().compareTo(end) > 0) {
+                    break;
+                }
+
+                Function cf = functionAtOrContaining(inst.getAddress());
+                pw.print(inst.getAddress());
+                pw.print("  ");
+                pw.print(inst.toString());
+                if (cf != null) {
+                    pw.print("    ; ");
+                    pw.print(cf.getName());
+                }
+                pw.println();
+
+                for (Reference r : inst.getReferencesFrom()) {
+                    Function tf = fm.getFunctionAt(r.getToAddress());
+                    pw.print("    -> ");
+                    pw.print(r.getToAddress());
+                    if (tf != null) {
+                        pw.print(" ");
+                        pw.print(tf.getName());
+                    }
+                    pw.println();
+                }
+            }
+        }
+
+        printerr("No function at/containing: " + target +
+            "; exported raw instruction window instead");
     }
 
     private void writeSymbol(String name) throws Exception {
