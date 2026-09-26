@@ -404,3 +404,32 @@ The reference build showed that `KeQuerySystemTime` was not declared/exported
 through the current project headers/libraries and failed with LNK2019. The trace
 timestamp was therefore changed to `KeQueryPerformanceCounter`, and the trace
 ABI was advanced to version 3 with `timestamp_ticks`.
+
+
+### Reference-machine build/sign/load workflow
+
+The reference machine already uses the test certificate:
+
+```text
+CN=LecS65 x64 Test
+```
+
+The preferred rebuild/reload command is now:
+
+```powershell
+.\scripts\build-sign-load-driver.ps1
+```
+
+Run it from an elevated PowerShell window. The script:
+
+1. builds `Debug|x64` and `lecdiag`;
+2. signs the generated SYS with the existing LocalMachine\My test certificate;
+3. stops `LecS65AcqDrv`;
+4. copies the freshly signed SYS to `%SystemRoot%\System32\drivers`;
+5. starts the service again;
+6. verifies the build query;
+7. runs the passive PCI config diagnostic.
+
+This is the normal development-machine update path for an already installed
+test package. First-time package installation still uses the signed INF/CAT
+workflow.
