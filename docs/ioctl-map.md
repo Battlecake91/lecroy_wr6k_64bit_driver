@@ -2357,3 +2357,31 @@ its fallback fetch response is not yet a proven byte-exact reconstruction of
 the legacy pending response. The new complete input buffer therefore remains
 outside the runtime gate. It must not be treated as a third executable JTAG
 mode or admitted through a broader opcode/mode rule.
+
+
+## Mode-2 JTAG pending response closed
+
+A follow-up Ghidra export of `FUN_00010380` confirms that the legacy temporary
+response allocator is a thin wrapper around
+`ExAllocatePoolWithTag(NonPagedPool, size, 'Wdm ')`. It does not zero the
+allocation.
+
+For family-1 opcode `0x42`, mode 2, `FUN_00015C7E` therefore creates a
+`requestedDataBytes + 8` byte pending response without touching JTAG
+registers. The defined bytes are:
+
+```text
+DWORD 0x00000000
+WORD  0x0002
+WORD  0x0004
+```
+
+For the captured 256-bit request, `requestedDataBytes = 0x20`, so the pending
+response allocation is 40 bytes. The remaining 32 bytes are uninitialized pool
+contents in the legacy driver and are not protocol-defined data.
+
+The x64 implementation now reproduces the defined 40-byte response shape but
+zero-fills the undefined tail instead of leaking kernel-pool contents. The
+captured 94-byte mode-2 request is admitted byte-exactly. Mode 2 remains a
+local protocol-error path and never reaches `JTAGNUM`, `JTAGDAT`, or
+`JTAGDIN`.
