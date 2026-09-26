@@ -1,7 +1,7 @@
-SYMBOL KeInsertQueueDpc EXTERNAL:00000004
+SYMBOL KeInitializeDpc EXTERNAL:00000003
 REFERENCES
-0001c320 <no-function>
-00010a79 FUN_000108d6
+0001c31c <no-function>
+0001187d FUN_000115c4
 POINTER_DWORDS
 +0x00 <unreadable>
 +0x04 <unreadable>
