@@ -251,6 +251,25 @@ public class ExportSelected extends GhidraScript {
                         pw.println(line);
                     }
                 }
+
+                pw.println("POINTER_DWORDS");
+                for (int off = 0; off <= 0x40; off += 4) {
+                    try {
+                        Address paddr = addr.add(off);
+                        int raw = getInt(paddr);
+                        long unsigned = raw & 0xffffffffL;
+                        Address target = toAddr(unsigned);
+                        Function tf = fm.getFunctionAt(target);
+                        pw.print(String.format("+0x%02X 0x%08X", off, unsigned));
+                        if (tf != null) {
+                            pw.print(" " + tf.getName());
+                        }
+                        pw.println();
+                    }
+                    catch (Exception ignored) {
+                        pw.println(String.format("+0x%02X <unreadable>", off));
+                    }
+                }
             }
         }
 
