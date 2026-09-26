@@ -234,7 +234,10 @@ cd C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_dr
 ```
 
 The runner pulls, executes headless Ghidra, stages exported results, commits and
-pushes them. The local Ghidra installation path is stored in ignored
+pushes them. It also writes `ghidra_exports/selected/EXPORT_MANIFEST.txt`
+containing the source commit, requested targets and exported file list, then
+prints the resulting export commit SHA and a GitHub commit URL that can be
+shared directly. The local Ghidra installation path is stored in ignored
 `.ghidra-local.ps1`.
 
 `ExportSelected.java` now exports a raw instruction window when an address is
