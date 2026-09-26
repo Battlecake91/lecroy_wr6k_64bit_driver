@@ -593,3 +593,25 @@ The existing Ghidra export confirms the legacy startup probe exactly:
 
 The x64 driver now reproduces only this confirmed sequence during PnP start.
 Do not expand it with guessed initialization writes.
+
+
+## Startup probe confirmed on hardware
+
+The x64 reproduction of legacy `FUN_00012FDE` is confirmed on the reference
+scope and fixes the prior all-ones MMIO state.
+
+Runtime after driver reload:
+
+- two startup beeps, matching the legacy success branch;
+- BAR0 FVER = `0x00000002`;
+- BAR1 ACQFVER = `0x00000003`;
+- BAR2 ONEWIRE = `0x00000000`;
+- Dallas ID succeeds: `23 F0 47 37 00 00 00 AC`.
+
+Conclusion: PCI configuration and BAR mapping were already correct. The FPGA /
+register fabric required the exact START/ITMODE startup sequence before normal
+MMIO access.
+
+Next step: capture a normal XStream startup with
+`scripts/capture-xstream-trace.ps1` on the scope and analyze the resulting
+JSONL, especially remaining firmware-forwarded `0xCFDC2110` records.
