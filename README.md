@@ -111,3 +111,18 @@ Recommended passive XStream capture:
 ```powershell
 .\scripts\capture-xstream-trace.ps1
 ```
+
+
+## Command-line build
+
+The native x64 driver can be built without opening Visual Studio:
+
+```powershell
+.\scripts\build-driver.ps1
+```
+
+Build the driver and `lecdiag` together with:
+
+```powershell
+.\scripts\build-driver.ps1 -BuildLecdiag
+```
