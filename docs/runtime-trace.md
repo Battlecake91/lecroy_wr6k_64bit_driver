@@ -413,3 +413,27 @@ from that dirty local build.
 The exact observed mode-3 and mode-4 packets are now carried on `main` as
 byte-exact entries. They remain local protocol-error paths and do not touch
 JTAG registers. Mode 5 is the next rejected packet and remains blocked.
+
+## Ninth staged startup capture
+
+The 2026-09-27 01:53 capture was taken from a clean checkout at
+`9b8cf11555b88ee49d65ab94fd08f5c1a4fb4ca6`. The freshly signed package SYS
+and the installed `System32\drivers\LecS65AcqDrv.sys` had identical SHA-256
+`085AF5586FEA3D56215B4FA6FFE3AC2CE57F7B74CE63FDB1C052248382493CF4`.
+
+The capture contains 92 IOCTL records, including 71 `0xCFDC2110` calls:
+
+- 60 CFDC2110 calls completed successfully;
+- 11 were rejected by the byte-exact gate;
+- mode-2, mode-3 and mode-4 256-bit local-error packets each completed 16 times;
+- all three returned the deterministic 40-byte status-4 pending-response form;
+- the first and only rejected CFDC2110 shape is the corresponding mode-5
+  94-byte packet, repeated 11 times;
+- XStream then still reaches the admitted opcode-`0x90` request and the known
+  mode-1 / 58-bit JTAG requests;
+- no acquisition-launch IOCTL appears.
+
+Because legacy `FUN_00015C7E` treats every mode value above 1 as the same
+local protocol-error path without JTAG MMIO, and this exact mode-5 request is
+now captured, the byte-exact runtime gate adds only this complete 94-byte
+packet. No general `mode >= 2` admission rule is introduced.
