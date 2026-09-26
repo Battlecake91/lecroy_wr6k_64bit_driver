@@ -506,3 +506,11 @@ package.
 The x64 driver project currently targets `PlatformToolset=v143` for Visual
 Studio 2022. A temporary `v145` setting caused MSB8020 on the reference build
 machine and has been removed.
+
+
+## Trace timestamp build fix
+
+The trace ABI version 3 uses `KeQueryPerformanceCounter` and exposes
+`timestamp_ticks`. Do not switch back to `KeQuerySystemTime` or
+`KeQueryInterruptTime` without first verifying declaration and linkage in the
+actual WDK project; both caused build/link failures on the reference system.
