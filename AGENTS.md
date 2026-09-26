@@ -718,3 +718,24 @@ buffers. `0x90` uses the already-decoded generic transport path; both new
 The reported Auto-trigger failure is not yet evidence of an acquisition-path
 bug because the trace never gets past repeated startup retries. Re-test startup
 first after this commit before touching acquisition or trigger/DMA code.
+
+
+## Fourth staged XStream trace
+
+Latest capture: 46 IOCTLs, 21 CFDC2110 calls.
+
+All 15 rejected CFDC2110 calls are the same already-known family-1 opcode
+`0x42`, mode-0, 83-bit JTAG request. No new opcode appears.
+
+Root cause: the manually entered whitelist array was 52 bytes, but the actual
+XStream request is 54 bytes. Two zero bytes before the `C0 00 00 07` tail
+were missing/misplaced. Commit
+`9f49a04d298c087c5f9c934dcb18f55d8816c50d` replaces the entry with the exact
+54-byte captured buffer.
+
+Also, `lecdiag` capture mode still emitted trace header version 2 despite the
+trace ABI being version 3. Commit
+`58592348770215d80ede4041b5e66f3666eef0b2` fixes the remaining literal.
+
+Next scope action: pull, build/sign/load, capture XStream startup again. No
+Ghidra work is needed for this step.
