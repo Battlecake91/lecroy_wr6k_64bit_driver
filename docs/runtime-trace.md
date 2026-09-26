@@ -86,3 +86,43 @@ The timestamp field is now `timestamp_ticks` and comes from
 `KeQueryPerformanceCounter`. This avoids relying on a kernel time-query export
 that was not available in the current WDK/link environment. The value is
 monotonic and is intended for ordering and relative timing inside a capture.
+
+
+## First real XStream startup capture
+
+A 120-second startup capture from the reference scope was collected after the
+legacy START/ITMODE initialization had restored normal MMIO access.
+
+The capture contains 35 traced IOCTLs from a 32-bit XStream process. Relevant
+counts are:
+
+- 11 x `0xCFDC2110`
+- 9 x `0x00222C00` delay
+- 3 x `0xCFDC21C4` register write
+- 3 x `0x00222C04` flag-byte set
+- 2 x `0x00223100` three-event registration
+- one Dallas ID read and one 512-byte Dallas memory read
+
+Because `0xCFDC2110` is intentionally trace-only in the current x64 driver,
+all 11 calls complete with `STATUS_INVALID_DEVICE_REQUEST (0xC0000010)`.
+Despite that, the capture is valuable because it shows the exact command stream
+XStream attempts during startup.
+
+Only four distinct `0xCFDC2110` packet shapes occur:
+
+1. one A5FB family-2/opcode-0x40 RESET packet;
+2. two A5FB family-1/opcode-0x99 requests followed by 85FB fetch records;
+3. six A5FB family-0/opcode-0x88 requests with mask `0xFFDF`, each followed by
+   an 85FB fetch record;
+4. two A5FB family-1/opcode-0x42 JTAG requests, each followed by an 85FB fetch
+   record.
+
+No C5FB record appears in this startup capture.
+
+A sanitized public fixture containing only these `0xCFDC2110` records is kept
+at:
+
+`testdata/traces/xstream_startup_20260926_cfcd2110_sanitized.jsonl`
+
+The raw capture remains local/private because it also contains process IDs,
+handles, pointers and device-specific Dallas contents.
