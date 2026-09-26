@@ -170,3 +170,32 @@ Opcode `0x85` is not enabled yet. Static analysis shows that it performs
 additional host-side state changes in `FUN_00016962` before forwarding the
 packet to the board. The two remaining helper calls `0x1573E` and `0x15772`
 must be resolved before widening the runtime gate.
+
+
+## Third staged startup capture
+
+The next 120-second trace contains 109 IOCTL entries, including 62
+`0xCFDC2110` calls.
+
+Results:
+
+- 21 CFDC2110 calls completed successfully.
+- 41 were rejected by the byte-exact safety gate.
+- The startup sequence now passes RESET, opcode `0x99`, opcode `0x88`,
+  opcode `0x85`, and the first 256-bit family-1 opcode-`0x42` JTAG form.
+- XStream repeats the startup sequence three times after later rejected
+  requests, matching the observed startup exceptions/errors.
+
+Three additional exact request shapes were exposed:
+
+1. family-1 opcode `0x42`, mode 0, 83-bit JTAG transaction, 12-byte response;
+2. family-1 opcode `0x90`, generic board-message transmit plus 85FB fetch;
+3. family-1 opcode `0x42`, mode 1, 58-bit JTAG transaction, 8-byte response.
+
+The short mode-0 JTAG request is retried heavily: 33 rejected calls in the
+trace. This is consistent with XStream repeatedly attempting the same startup
+stage rather than progressing to acquisition.
+
+The exact three newly observed packet buffers are now admitted by the runtime
+gate. Opcode `0x90` uses the already-decoded family-1 generic transport path;
+both opcode-`0x42` forms use the existing JTAG implementation.
