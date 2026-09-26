@@ -384,8 +384,7 @@ show the old usage text and will not recognize commands such as `pci`.
 
 A build failure introduced by the richer trace path used
 `KeQueryInterruptTime` without a linkable declaration in the current WDK
-project. The trace timestamp now uses the supported `KeQuerySystemTime`
-kernel API and remains a 100 ns value. The new acquisition allocations were
+project. The trace timestamp now uses `KeQueryPerformanceCounter`, which is available in the current WDK/link environment. The JSONL field is `timestamp_ticks` and is intended for monotonic ordering/relative timing. The new acquisition allocations were
 also migrated from deprecated `ExAllocatePoolWithTag` to `ExAllocatePool2`.
 
 
@@ -397,3 +396,11 @@ system. The project now targets the standard Visual Studio 2022 `v143`
 toolset. If a future machine has a different installed toolset, prefer updating
 the project deliberately rather than installing an obsolete toolset solely to
 satisfy the project file.
+
+
+### KeQuerySystemTime linker failure
+
+The reference build showed that `KeQuerySystemTime` was not declared/exported
+through the current project headers/libraries and failed with LNK2019. The trace
+timestamp was therefore changed to `KeQueryPerformanceCounter`, and the trace
+ABI was advanced to version 3 with `timestamp_ticks`.
