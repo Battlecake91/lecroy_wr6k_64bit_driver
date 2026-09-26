@@ -4,3 +4,6 @@ ghidra_reverse_engineering_lecroy/**/*.lock
 ghidra_reverse_engineering_lecroy/**/*.lock~
 ghidra_reverse_engineering_lecroy/**/~*.db/
 ghidra_reverse_engineering_lecroy/**/tmp*.ps
+
+# Local Ghidra installation path
+.ghidra-local.ps1
