@@ -64,11 +64,8 @@ LecRecordIoctlTrace(
     RtlZeroMemory(entry, sizeof(*entry));
 
     entry->Sequence = ++DevExt->TraceNextSequence;
-    {
-        LARGE_INTEGER now;
-        KeQuerySystemTime(&now);
-        entry->Timestamp100ns = (ULONGLONG)now.QuadPart;
-    }
+    entry->TimestampTicks =
+        (ULONGLONG)KeQueryPerformanceCounter(NULL).QuadPart;
     entry->ProcessId = (ULONGLONG)(ULONG_PTR)PsGetCurrentProcessId();
     entry->Information = (ULONGLONG)Information;
     entry->Type3InputBuffer = (ULONGLONG)(ULONG_PTR)Type3InputBuffer;
@@ -125,7 +122,7 @@ LecFillTrace(
     ULONG i;
 
     RtlZeroMemory(Trace, sizeof(*Trace));
-    Trace->Version = 2;
+    Trace->Version = 3;
 
     KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
 
