@@ -64,6 +64,8 @@
     CTL_CODE(0x8000, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS)
 #define LECS65_IOCTL_DEBUG_CLEAR_TRACE \
     CTL_CODE(0x8000, 0x804, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+#define LECS65_IOCTL_DEBUG_GET_PCI_CONFIG \
+    CTL_CODE(0x8000, 0x805, METHOD_BUFFERED, FILE_READ_ACCESS)
 
 #pragma pack(push, 1)
 
@@ -112,6 +114,36 @@ typedef struct _LECS65_DEBUG_BARS {
     LECS65_DEBUG_BAR_ENTRY Entry[LECS65_BAR_COUNT];
     LECS65_DEBUG_BAR_ENTRY Bulk;
 } LECS65_DEBUG_BARS, *PLECS65_DEBUG_BARS;
+
+
+typedef struct _LECS65_DEBUG_PCI_CONFIG {
+    ULONG Version;
+    ULONG BytesRead;
+    USHORT VendorId;
+    USHORT DeviceId;
+    USHORT Command;
+    USHORT Status;
+    UCHAR RevisionId;
+    UCHAR ProgIf;
+    UCHAR SubClass;
+    UCHAR BaseClass;
+    UCHAR CacheLineSize;
+    UCHAR LatencyTimer;
+    UCHAR HeaderType;
+    UCHAR Bist;
+    ULONG Bar[6];
+    ULONG CardbusCisPointer;
+    USHORT SubsystemVendorId;
+    USHORT SubsystemId;
+    ULONG ExpansionRomBase;
+    UCHAR CapabilitiesPointer;
+    UCHAR Reserved1[3];
+    ULONG Reserved2;
+    UCHAR InterruptLine;
+    UCHAR InterruptPin;
+    UCHAR MinimumGrant;
+    UCHAR MaximumLatency;
+} LECS65_DEBUG_PCI_CONFIG, *PLECS65_DEBUG_PCI_CONFIG;
 
 typedef struct _LECS65_DEBUG_TRACE_ENTRY {
     ULONGLONG Sequence;
@@ -258,6 +290,10 @@ NTSTATUS LecHandleStartDevice(
 
 VOID LecDisableInterfaces(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecReleaseLegacyEvents(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+
+NTSTATUS LecReadPciConfig(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_ PLECS65_DEBUG_PCI_CONFIG Config);
 
 NTSTATUS LecConnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecDisconnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
