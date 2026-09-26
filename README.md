@@ -22,14 +22,15 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - Dallas/1-Wire buffer contracts and low-level access paths are known;
 - the named BAR0/BAR1/BAR2 register map has been reconstructed and cross-checked against the register-object initializer;
 - interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
-- the acquisition-buffer path is confirmed to use locked user pages, MDL chains and a board-facing descriptor table built directly from PFNs;
+- the acquisition-buffer path is confirmed to use locked user pages, MDL chains and chained 4 KiB descriptor pages built directly from PFNs; descriptor counts are DWORDs and slot 511 links to the next table page;
 - the packed `0xCFDC2110` command parser and all three A5FB command families are substantially decoded;
 - the exact DeviceControl branch `0xCFDC2110 -> 0x13AE2` is now confirmed from raw dispatch instructions;
 - the late DeviceControl dispatcher and its common completion/error path are now recovered, including `0xCFDC2190/2194`, raw register I/O, build query, `0xCFDC2400`, and `0xCFDD219F`;
 - serial-trigger FPGA programming is now confirmed to bit-bang BAR1 `GPIODAT`, while `0xCFDC2190/2194` form an error-mask/control status pair;
 - kernel event handles are now confirmed to be referenced with `EVENT_MODIFY_STATE`, tied to process registration, and immediately signalled when an enabled status bit is already pending;
 - transfer registration and removal calls are now tied directly to `0x1731C` and `0x172A2`; the synchronous transfer hooks are now decoded as enable/disable of global transfer mask bit 0 via the synchronized interrupt-mask commit path;
-- the synchronous acquisition helper is now mapped to concrete registers: `SGTA`, `IIMTC`, `IIMCL`, and either `MAMRGO` or `MTTRGO`, followed by an event wait;
+- the indexed MAM protocol is decoded at the host side, including the five per-channel fields, MAMSEQ channel encoding, and `0x105` as mode 1 plus five words;
+- the synchronous transfer helper is mapped to concrete registers: acquisition IOCTLs launch through `MAMRGO`, while CFDC2110 family-1 opcodes `0x50/0x51` launch through `MTTRGO`; both share `SGTA`, `IIMTC`, `IIMCL`, and the completion wait;
 - the acquisition completion interrupt is now tied end-to-end: interrupt bit 0 is consumed by the DPC branch that signals the selected transfer entry's `+0x24` event, which is exactly what `0x171DE` waits on;
 - the auxiliary side effect of the millisecond-delay IOCTL has been identified as a BAR2 `BUZZER` pulse around the delay;
 - the acquisition front-ends are now mapped to `0xCFDC2138` and the WOW64-sensitive `0xCFDD219F` METHOD_NEITHER path, both converging on the same acquisition orchestrator and synchronous transfer/wait path;

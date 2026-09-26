@@ -221,6 +221,50 @@ The receive helper:
 This transport is the hardware endpoint behind the A5FB/85FB protocol used by
 `0xCFDC2110`.
 
+## MAM/MTT acquisition controls
+
+The MAM helper writes indexed 16-bit values to MAMDAT. Bits 23:16 select the
+index and bits 15:0 carry the value. MAMPGO then receives:
+
+```text
+bits 9:8  mode (two bits)
+bits 7:0  number of indexed words
+```
+
+The acquisition setup uses `MAMPGO=0x105`, meaning mode 1 with five indexed
+words. The type-1/type-2 packed-command path uses the same mode with a variable
+word count. The hardware-level name of mode 1 is not present in the driver.
+
+MAMSEQ entries encode a 9-bit sequence index in bits 24:16, an end-of-sequence
+flag in bit 6, and a six-bit channel identifier in bits 5:0.
+
+The common synchronous transfer helper selects its final launch register as
+follows:
+
+```text
+MAMRGO  acquisition IOCTL paths through 0x12D6A
+MTTRGO  CFDC2110 family-1 opcodes 0x50/0x51 through 0x160DC
+```
+
+Both paths first program SGTA with the physical address of the first DMA-table
+page and IIMTC with the total transfer length in DWORDs. They share the same
+IIMCL start/clear write and completion interrupt machinery.
+
+MAMRGO and MTTRGO receive engine-specific launch counts, not the IIMTC DWORD
+total. Their precise FPGA units are not exposed by the host driver.
+
+## DMA descriptor pages
+
+The board-facing table uses 8-byte `{DWORD count, DWORD physical_address}`
+entries. Count units are DWORDs. A descriptor never crosses a source 4 KiB
+page. Each 4 KiB table page contains 512 entries; slot 511 is reserved for a
+zero-count link to the next table page. A zero/zero entry terminates the chain.
+
+The allocated table is `0x33000` bytes (51 pages). The associated
+`0x065CD000` constructor constant is exactly `51 * 511 * 4096` bytes of nominal
+source-page coverage. The driver's lower `0x06000000`-byte registration limit
+keeps real transfers within the table capacity.
+
 
 ## Buzzer behavior and proposed x64-driver modes
 

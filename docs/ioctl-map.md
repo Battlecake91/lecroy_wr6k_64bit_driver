@@ -1948,11 +1948,128 @@ This proves that the transfer-completion interrupt source is legacy interrupt
 bit 0 as recorded in `DAT_1CE10`, gated by the already-decoded transfer mask
 enable/disable methods `0x13914` and `0x13934`.
 
-### Remaining acquisition uncertainty
+## Twenty-second headless export: MAM/MTT and DMA descriptors
 
-The completion event ownership and interrupt source are now confirmed. The
-remaining acquisition questions are lower-level register semantics and exact
-descriptor interpretation: the detailed MAM/MTT command meaning, the precise
-unit semantics of the descriptor word counts emitted by `0x18194`, and any
-runtime constraints imposed by the board firmware after `MAMRGO` versus
-`MTTRGO`.
+This pass resolves the host-side MAM encoding, the descriptor-table layout,
+and the static selection of the two transfer launch registers. Hardware-side
+meanings that are not represented in the driver remain explicitly unknown.
+
+### Indexed MAMDAT/MAMPGO protocol
+
+`0x179E2` treats a MAMDAT write as an indexed 16-bit value:
+
+```text
+bits 23:16  register/value index
+bits 15:0   16-bit value
+```
+
+It caches the low 16-bit value independently for each 8-bit index and suppresses
+unchanged writes. `0x17BC8`, used by the type-1/type-2 `0xCFDC2110` path, emits
+the caller's WORD array as indices `0..count-1`, then writes MAMPGO as:
+
+```text
+((mode & 3) << 8) | count
+```
+
+Its only caller supplies mode 1. Consequently `0x105` in `0x17C16` is exactly
+mode 1 plus five indexed words, not an opaque magic constant. The driver's
+static code does not reveal the board-level name of mode 1.
+
+For each acquisition channel, `0x17D20 -> 0x17C16` emits:
+
+| Index | 16-bit MAMDAT value | Host-side meaning |
+|---:|---:|---|
+| 0 | `0x0E00 | channel_byte` | per-channel command/header |
+| 1 | `config_dword & 0xFFFF` | configuration low half |
+| 2 | `config_dword >> 16` | configuration high half |
+| 3 | `channel_span & 0xFFFF` | per-channel span/count low half |
+| 4 | `channel_span >> 16` | per-channel span/count high half |
+
+`channel_span` is `min(0x400, total_transfer_bytes / channel_count)`. It is
+derived directly from a byte length, but the driver does not expose whether
+the FPGA names this field as bytes, samples, or another acquisition unit. The
+temporary `0xA5FB` WORD adjacent to the index-0 value is stack-packing residue
+from the source structure; instruction-level analysis confirms that `0x17C16`
+consumes only the upper WORD (`0x0E00 | channel_byte`) of that first DWORD.
+
+### MAMSEQ channel entries
+
+`0x17DDC` creates the temporary 0x7C-byte channel configuration. `0x17EE0`
+appends each channel byte and emits one 32-bit MAMSEQ value:
+
+```text
+bits 24:16  zero-based sequence index (9-bit source value)
+bit  6      final channel entry
+bits 5:0    channel identifier
+```
+
+`0x17CDC` writes those values to MAMSEQ in order. The channel count at temporary
+object `+0x78` is the highest inserted sequence index plus one. In the buffered
+acquisition path, `0x17D20` first sends the five-word per-channel MAM command
+and then writes MAMSEQ. The METHOD_NEITHER acquisition path calls `0x17CDC`
+directly, so it refreshes MAMSEQ without repeating the five-word channel setup.
+
+### MAMRGO versus MTTRGO
+
+`0x171DE` selects the launch wrapper solely from its third argument:
+
+```text
+nonzero -> MAMRGO
+zero    -> MTTRGO
+```
+
+The two acquisition IOCTL front-ends converge on `0x12D6A`, which always calls
+`0x17478(..., 1)` and therefore always launches through MAMRGO. MTTRGO is not
+dormant: family-1 A5FB opcodes `0x50` and `0x51` call `0x160DC`, which resolves
+a registered transfer entry and calls `0x17478(..., 0)`. Those commands launch
+through MTTRGO while sharing the same SGTA/IIMTC descriptor setup, completion
+event, interrupt bit, and timeout path.
+
+The value written to MAMRGO is a launch count, not IIMTC's total transfer
+length. For the buffered path `0x12D6A` derives it as
+`total_bytes / min(0x400, total_bytes)`; the METHOD_NEITHER path supplies it
+explicitly from its second trailing DWORD. `0x160DC` writes its request WORD at
+offset `+5` to MTTRGO. The precise FPGA unit of either launch count is not
+identifiable from host code alone.
+
+The exact FPGA distinction between the MAM and MTT engines still requires
+firmware documentation or passive runtime observation. Statically, their
+callers and launch-register selection are now exact.
+
+### Descriptor-table format produced by 0x18194
+
+The descriptor table is a chain of 4 KiB pages. Every entry is eight bytes:
+
+```c
+typedef struct {
+    uint32_t count_dwords;
+    uint32_t physical_address;
+} LECS65_DMA_DESCRIPTOR;
+```
+
+Data descriptors are generated directly from each source MDL PFN. They never
+cross a 4 KiB source-page boundary. The first descriptor of an MDL includes
+`MDL.ByteOffset`; later descriptors begin at page offset zero. The count is the
+covered byte count shifted right by two, so its unit is definitively 32-bit
+words. The returned sum is stored at transfer entry `+0x18` and programmed into
+BAR0 IIMTC.
+
+Each table page contains 512 descriptor slots. Slots `0..510` are data slots.
+When another table page is needed, slot 511 is a chain descriptor:
+
+```text
+count_dwords     = 0
+physical_address = physical address of next descriptor-table page
+```
+
+After the last data descriptor the builder writes a zero/zero terminator. The
+fixed `0x33000` allocation is 51 table pages. Its constructor constant
+`0x065CD000` equals `51 * 511 * 4096`, the byte coverage represented by 51
+pages with 511 data descriptors per page. The public registration limit is
+lower (`0x06000000` bytes), so the descriptor table has sufficient capacity.
+
+`0x17478` obtains SGTA from the first PFN of the descriptor-table MDL and shifts
+it by 12, i.e. SGTA receives the physical address of the first table page.
+IIMTC receives the total DWORD count returned by `0x18194`. Registration
+subtracts the trailing four-byte completion/result field before building the
+source MDLs, so the descriptor stream covers only acquisition data.

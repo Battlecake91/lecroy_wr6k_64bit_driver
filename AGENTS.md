@@ -272,15 +272,16 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Continue resolving MAM/MTT acquisition-control semantics, especially the
-   configuration builders around `0x17D20`, `0x17CDC`, `0x17DAC`,
-   `0x17BC8`, and their effect on `MAMDAT/MAMPGO/MAMSEQ/MAMRGO`.
-2. Refine the descriptor-table format emitted by `0x18194`, including exact
-   word-count units and chain-entry semantics.
-3. Continue decoding the remaining `0xCFDC2110` startup/runtime command set
-   before any partial hardware execution is re-enabled.
-4. Keep resolving WOW64-sensitive ownership/lifetime details around
+1. Continue decoding the remaining `0xCFDC2110` startup/runtime command set,
+   especially helper semantics behind family opcodes that currently have only
+   structural routing names.
+2. Finish WOW64-sensitive ownership and capture semantics around
    `0xCFDC2124/2128` and `0xCFDD219F`.
+3. Determine the FPGA-level semantic names and runtime constraints of MAM mode
+   1 and the MAM versus MTT engines; their host-side encodings and callers are
+   now statically resolved.
+4. Keep partial `0xCFDC2110` hardware execution disabled until the full set
+   is understood.
 
 
 ## Latest dispatch recovery
@@ -337,6 +338,25 @@ The synchronous acquisition helper `0x171DE` is now tied to concrete registers:
 The sequence is: program `SGTA`, program `IIMTC`, reset the transfer-entry event, enable global mask bit 0, write `IIMCL=1`, launch through `MAMRGO` or `MTTRGO`, wait up to five seconds, then disable mask bit 0.
 
 `0x1829A` is transfer-list cleanup reached via the base-object thunk at `0x170EE`; it is not transfer execution logic.
+
+
+## Current MAM/MTT and descriptor result
+
+- MAMDAT uses bits 23:16 as an 8-bit index and bits 15:0 as the value.
+- MAMPGO encodes a two-bit mode at bits 9:8 and a WORD count at bits 7:0;
+  `0x105` is mode 1 with five words.
+- The five per-channel words are `0x0E00 | channel`, configuration low/high,
+  and low/high halves of `min(0x400, total_bytes/channel_count)`; the FPGA unit
+  of the last field is not statically named.
+- MAMSEQ encodes sequence index in bits 24:16, final-entry in bit 6, and
+  channel identifier in bits 5:0.
+- Acquisition IOCTLs always launch through MAMRGO. CFDC2110 family-1 opcodes
+  `0x50/0x51` use MTTRGO through `0x160DC`.
+- DMA entries are `{DWORD count_dwords, DWORD physical_address}`. Table pages
+  have 512 entries, with slot 511 linking to the next page using count zero;
+  a zero/zero entry terminates the chain.
+- SGTA is the physical address of the first descriptor-table page and IIMTC is
+  the total DWORD count returned by `0x18194`.
 
 
 ## Current completion-path result
