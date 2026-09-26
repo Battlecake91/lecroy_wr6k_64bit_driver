@@ -120,7 +120,7 @@ LecFillTrace(
     ULONG i;
 
     RtlZeroMemory(Trace, sizeof(*Trace));
-    Trace->Version = 1;
+    Trace->Version = 2;
 
     KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
 
