@@ -907,6 +907,34 @@ LecWriteU32(
 
 static
 NTSTATUS
+LecCommitLegacyInterruptMask(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG NewMask
+    )
+{
+    volatile ULONG* inten;
+    NTSTATUS status;
+
+    status = LecResolveRegister(DevExt, 0, 0x084, &inten);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    InterlockedExchange(
+        (volatile LONG*)&DevExt->InterruptEnableShadow,
+        (LONG)NewMask);
+
+    WRITE_REGISTER_ULONG(inten, NewMask);
+
+    LecTrace(
+        "CFDC2110 legacy INTEN shadow <- 0x%08lX\n",
+        NewMask);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
 LecResetLegacyInterruptState(
     _In_ PLECS65_DEVICE_EXTENSION DevExt
     )
@@ -1105,6 +1133,11 @@ LecIsCapturedStartupCfDc2110(
         0x40,0x00,0x88,0x00,0xDF,0xFF,
         0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
     };
+    static const UCHAR opcode85Packet[] = {
+        0x06,0x00,0x06,0x00,0x03,0x00,0xFB,0xA5,
+        0x40,0x00,0x85,0x00,0xA0,0x00,
+        0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
+    };
     static const UCHAR jtag42Packet[] = {
         0x06,0x00,0x4C,0x00,0x03,0x00,0xFB,0xA5,
         0x40,0x01,0x42,0x00,0x00,0x00,0x20,0x00,
@@ -1131,6 +1164,7 @@ LecIsCapturedStartupCfDc2110(
     if (LECS65_MATCH_CAPTURED_PACKET(resetPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(opcode99Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(opcode88Packet) ||
+        LECS65_MATCH_CAPTURED_PACKET(opcode85Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Packet)) {
         return TRUE;
     }
@@ -1289,6 +1323,75 @@ LecIoctlCfDc2110(
                     DevExt,
                     record + 6,
                     payloadLength + 2);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    hardwareResponsePending = TRUE;
+                    pendingResponseReady = FALSE;
+                    pendingResponseLength = 0;
+                    protocolStatus = 0;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 0 && payload[2] == 0x85) {
+                NTSTATUS hwStatus;
+                USHORT controlWord;
+
+                if (payloadLength < 6) {
+                    hwStatus = STATUS_INVALID_BUFFER_SIZE;
+                }
+                else {
+                    ULONG newMask;
+
+                    controlWord = LecReadU16(payload + 4);
+
+                    /*
+                     * Legacy FUN_00016962 interprets the captured control word
+                     * 0x00A0 as:
+                     *   bit 7 of low byte -> global INTEN bit 2 (0x04)
+                     *   bit 3 of high byte -> global INTEN bit 4 (0x10)
+                     *   bit 0 of high byte -> global INTEN bit 5 (0x20)
+                     *
+                     * Preserve all other mask bits exactly as the legacy
+                     * helpers do, then commit the resulting value to BAR0
+                     * INTEN before forwarding the command to board firmware.
+                     */
+                    newMask = DevExt->InterruptEnableShadow;
+
+                    if ((controlWord & 0x0080U) != 0) {
+                        newMask |= 0x04UL;
+                    }
+                    else {
+                        newMask &= ~0x04UL;
+                    }
+
+                    if ((controlWord & 0x0800U) != 0) {
+                        newMask |= 0x10UL;
+                    }
+                    else {
+                        newMask &= ~0x10UL;
+                    }
+
+                    if ((controlWord & 0x0100U) != 0) {
+                        newMask |= 0x20UL;
+                    }
+                    else {
+                        newMask &= ~0x20UL;
+                    }
+
+                    hwStatus =
+                        LecCommitLegacyInterruptMask(
+                            DevExt,
+                            newMask);
+                }
+
+                if (NT_SUCCESS(hwStatus)) {
+                    hwStatus = LecTransportSend(
+                        DevExt,
+                        record + 6,
+                        payloadLength + 2);
+                }
 
                 if (NT_SUCCESS(hwStatus)) {
                     hardwareResponsePending = TRUE;
