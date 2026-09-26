@@ -1903,6 +1903,21 @@ LecS65DeviceControl(
         }
         break;
 
+    case LECS65_IOCTL_DEBUG_GET_PCI_CONFIG:
+        if (systemBuffer == NULL ||
+            outputLength < sizeof(LECS65_DEBUG_PCI_CONFIG)) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        status = LecReadPciConfig(
+            devExt,
+            (PLECS65_DEBUG_PCI_CONFIG)systemBuffer);
+        if (NT_SUCCESS(status)) {
+            information = sizeof(LECS65_DEBUG_PCI_CONFIG);
+        }
+        break;
+
     case LECS65_IOCTL_DEBUG_GET_TRACE:
         if (systemBuffer == NULL ||
             outputLength < sizeof(LECS65_DEBUG_TRACE)) {
