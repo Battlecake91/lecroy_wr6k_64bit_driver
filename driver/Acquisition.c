@@ -119,8 +119,8 @@ LecBuildDescriptorTable(
     ULONG totalDwords = 0;
     PMDL sourceMdl;
 
-    Transfer->DescriptorBuffer = ExAllocatePoolWithTag(
-        NonPagedPoolNx,
+    Transfer->DescriptorBuffer = ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
         LECS65_DMA_TABLE_BYTES,
         LECS65_TAG);
     if (Transfer->DescriptorBuffer == NULL) {
@@ -274,8 +274,8 @@ LecRegisterTransfer(
         return STATUS_DATATYPE_MISALIGNMENT;
     }
 
-    transfer = (PLECS65_TRANSFER)ExAllocatePoolWithTag(
-        NonPagedPoolNx,
+    transfer = (PLECS65_TRANSFER)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
         sizeof(*transfer),
         LECS65_TAG);
     if (transfer == NULL) {
