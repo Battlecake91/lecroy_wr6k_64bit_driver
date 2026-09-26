@@ -435,3 +435,26 @@ Passive runtime tracing has been upgraded:
 
 Trace files are written below ignored `trace-captures/` and are designed to
 be handed back to an analysis chat directly. See `docs/runtime-trace.md`.
+
+
+## Dallas runtime timeout on x64
+
+On the reference x64 system the replacement service is RUNNING, the PnP device
+is present as `LeCroy Acquisition Device (S65)`, and `lecdiag build`
+successfully returns legacy build 1002. The first direct Dallas test currently
+fails with Win32 error 121, corresponding to the driver's
+`STATUS_IO_TIMEOUT` from the ONEWIRE polling loop.
+
+This means the driver is loaded and reachable; the immediate bring-up problem
+is the BAR2 ONEWIRE controller path, not service installation or device binding.
+
+Next safe diagnostics are limited to already-known non-destructive reads:
+
+- `lecdiag bars`
+- `lecdiag read 2 0x40` (ONEWIRE idle state)
+- `lecdiag read 0 0x0` (FVER)
+- `lecdiag read 1 0x0C` (ACQFVER)
+
+Do not compensate by inventing writes. If ONEWIRE bit 0 is already set while
+idle, investigate missing legacy startup/FPGA initialization before changing
+the Dallas transaction semantics.
