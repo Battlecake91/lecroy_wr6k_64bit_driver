@@ -433,3 +433,22 @@ Run it from an elevated PowerShell window. The script:
 This is the normal development-machine update path for an already installed
 test package. First-time package installation still uses the signed INF/CAT
 workflow.
+
+
+### PnP reload correction
+
+The S65 driver is a Plug-and-Play PCI function driver. On the reference system
+`sc.exe stop LecS65AcqDrv` returns error 1052 because this service cannot be
+stopped through the SCM control path while bound to the PCI device. Attempting
+to overwrite the loaded SYS then fails with access denied.
+
+The reload script now uses the device instance itself:
+
+```text
+pnputil /disable-device <PCI instance> /force
+copy freshly signed SYS
+pnputil /enable-device <PCI instance>
+```
+
+This unloads/reloads the PnP function driver without requiring a reboot and is
+the preferred development-machine update path.
