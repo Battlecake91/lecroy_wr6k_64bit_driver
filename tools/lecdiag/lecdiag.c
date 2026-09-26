@@ -82,6 +82,10 @@ typedef struct LECS65_DEBUG_TRACE {
     LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
 } LECS65_DEBUG_TRACE;
 
+static const char* ioctl_name(DWORD code);
+static const char* method_name(unsigned method);
+static void print_error(const char* what);
+
 static int get_trace_snapshot(HANDLE h, LECS65_DEBUG_TRACE* trace)
 {
     DWORD returned = 0;
