@@ -5,7 +5,9 @@
 //   -postScript ExportSelected.java <output-dir> <target> [<target> ...]
 //
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
-// (for example KeSetEvent), or field displacement scans such as field:2e0.
+// (for example KeSetEvent), field displacement scans such as field:2e0,
+// full function instruction exports such as asm:18194, or arbitrary address
+// reference scans such as xref:1c8bc.
 // Address targets export decompiled C plus compact incoming/outgoing function
 // references. Symbol targets export references and the containing caller
 // function names. Field scans export every instruction text containing the
@@ -67,6 +69,26 @@ public class ExportSelected extends GhidraScript {
 
                 if (target.toLowerCase().startsWith("field:")) {
                     writeFieldScan(target.substring("field:".length()));
+                }
+                else if (target.toLowerCase().startsWith("asm:")) {
+                    Address asmAddr = parseTargetAddress(
+                        target.substring("asm:".length()));
+                    if (asmAddr == null) {
+                        printerr("Invalid asm target: " + target);
+                    }
+                    else {
+                        writeFunctionInstructions(asmAddr, target);
+                    }
+                }
+                else if (target.toLowerCase().startsWith("xref:")) {
+                    Address xrefAddr = parseTargetAddress(
+                        target.substring("xref:".length()));
+                    if (xrefAddr == null) {
+                        printerr("Invalid xref target: " + target);
+                    }
+                    else {
+                        writeAddressReferences(xrefAddr, target);
+                    }
                 }
                 else if (addr != null) {
                     Function f = fm.getFunctionAt(addr);
@@ -225,6 +247,53 @@ public class ExportSelected extends GhidraScript {
 
         printerr("No function at/containing: " + target +
             "; exported raw instruction window instead");
+    }
+
+    private void writeFunctionInstructions(Address addr, String target) throws Exception {
+        Function f = functionAtOrContaining(addr);
+        if (f == null) {
+            writeAddressWindow(addr, target);
+            return;
+        }
+
+        File afile = new File(outDir, "asm_" + sanitize(target) + ".txt");
+        try (PrintWriter pw = new PrintWriter(afile, "UTF-8")) {
+            pw.println("FUNCTION_ASM " + f.getEntryPoint() + " " + f.getName());
+            InstructionIterator ins =
+                currentProgram.getListing().getInstructions(f.getBody(), true);
+            while (ins.hasNext()) {
+                Instruction inst = ins.next();
+                pw.println(inst.getAddress() + "  " + inst.toString());
+                for (Reference r : inst.getReferencesFrom()) {
+                    Function tf = fm.getFunctionAt(r.getToAddress());
+                    pw.print("    -> " + r.getToAddress());
+                    if (tf != null) {
+                        pw.print(" " + tf.getName());
+                    }
+                    pw.println();
+                }
+            }
+        }
+    }
+
+    private void writeAddressReferences(Address addr, String target) throws Exception {
+        File rfile = new File(outDir, "xref_" + sanitize(target) + ".txt");
+        try (PrintWriter pw = new PrintWriter(rfile, "UTF-8")) {
+            pw.println("ADDRESS_XREF " + addr);
+            pw.println("REFERENCES");
+            Set<String> seen = new HashSet<>();
+            ReferenceIterator refsTo = rm.getReferencesTo(addr);
+            while (refsTo.hasNext()) {
+                Reference r = refsTo.next();
+                Function cf = functionAtOrContaining(r.getFromAddress());
+                String line = r.getFromAddress() + " " +
+                    (cf != null ? cf.getName() : "<no-function>") + " " +
+                    r.getReferenceType();
+                if (seen.add(line)) {
+                    pw.println(line);
+                }
+            }
+        }
     }
 
     private void writeSymbol(String name) throws Exception {
