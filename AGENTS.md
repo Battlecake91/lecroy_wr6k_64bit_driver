@@ -210,9 +210,7 @@ Latest helper results:
 - `0x15422` and related 0x153xx/0x154xx helpers manage the temporary output
   buffer used by `0x13AE2`.
 
-The incoming reference to `0x13AE2` is at undefined address `0x1115B`.
-This remains a high-priority target for recovering the exact IOCTL-dispatch
-branch.
+The raw instruction window around `0x1115B` now confirms the exact dispatch `0xCFDC2110 -> 0x13AE2`. The surrounding DeviceControl tree also reconfirms neighboring Dallas and control IOCTL branches.
 
 ## Ghidra workflow
 
@@ -274,11 +272,7 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Recover the raw instruction window around `0x1115B` and identify the exact
-   IOCTL-dispatch branch that invokes `0x13AE2`.
-2. Decode the wrapper details at `0x141DC` and `0x141F8` so the exact buffered
-   vs METHOD_NEITHER acquisition ABI is explicit.
-3. Continue resolving MAM/acquisition control semantics far enough to reproduce
-   the x86 behavior safely in the x64 driver.
-4. Keep partial `0xCFDC2110` hardware execution disabled until the full
-   startup/runtime command set is understood.
+1. Recover the remaining raw DeviceControl window around `0x11200..0x11330` so all late dispatch branches and completion behavior are explicit.
+2. Resolve the exact register behind the delay-helper side effect used by `0x1557C/0x15536` before reproducing it in the x64 driver.
+3. Continue resolving MAM/acquisition control semantics far enough to reproduce the x86 behavior safely in the x64 driver.
+4. Keep partial `0xCFDC2110` hardware execution disabled until the full startup/runtime command set is understood.
