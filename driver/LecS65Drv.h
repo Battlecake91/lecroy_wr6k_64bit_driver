@@ -150,7 +150,7 @@ typedef struct _LECS65_DEBUG_PCI_CONFIG {
 
 typedef struct _LECS65_DEBUG_TRACE_ENTRY {
     ULONGLONG Sequence;
-    ULONGLONG Timestamp100ns;
+    ULONGLONG TimestampTicks;
     ULONGLONG ProcessId;
     ULONGLONG Information;
     ULONGLONG Type3InputBuffer;
