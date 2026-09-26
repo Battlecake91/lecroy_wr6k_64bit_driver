@@ -480,6 +480,12 @@ generated `DriverVer` with dots instead of the INF-required slash form.
 The package script now formats the date with invariant culture and literal
 slashes and prints the generated `DriverVer=` line before running Inf2Cat.
 
+Inf2Cat also evaluates the `DriverVer` date against the current UTC calendar
+date. Near midnight in a positive UTC offset, using the local date produced
+error 22.9.7 because the package appeared postdated. The script therefore uses
+the UTC date for the `DriverVer` date field while retaining the local build
+timestamp in the numeric version so successive scope builds remain ordered.
+
 
 ### Confirmed PCI decode state
 

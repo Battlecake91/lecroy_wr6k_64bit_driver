@@ -272,10 +272,10 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Build/install the updated x64 driver and `lecdiag` on the reference system.
-2. Capture another normal XStream startup with
-   `scripts/capture-xstream-trace.ps1` and identify the first request after
-   the newly admitted family-1 opcode-`0x42`, mode-1, 256-bit JTAG stage.
+1. Review the newly observed exact family-1 opcode-`0x42`, mode-1, 83-bit
+   JTAG buffer for a separate byte-exact admission; do not generalize the gate.
+2. After any explicit byte-exact admission, rebuild/reload and capture another
+   normal XStream startup with `scripts/capture-xstream-trace.ps1`.
 3. Verify whether Windows supplies all source and descriptor-table pages below
    4 GiB; the current x64 transfer registration deliberately rejects addresses
    that do not fit the proven legacy 32-bit descriptor ABI.
@@ -536,11 +536,16 @@ generates/signs a CAT, gives the staged INF a newer DriverVer, installs through
 rather than direct System32 copies.
 
 
-## Inf2Cat locale trap
+## Inf2Cat DriverVer traps
 
 Inf2Cat 22.9.6 occurred because PowerShell date formatting used the German
 culture's dot separator for `DriverVer`. The package script now uses
 InvariantCulture with literal slashes and prints the generated DriverVer line.
+
+Inf2Cat 22.9.7 also occurred shortly after local midnight because the local
+calendar date was one day ahead of UTC and therefore appeared postdated. The
+package script now uses the UTC calendar date for the DriverVer date field but
+keeps the local build timestamp in the numeric version for monotonic ordering.
 
 
 ## Confirmed PCI configuration on x64 reference system
@@ -781,3 +786,30 @@ family is present.
 Next step: rebuild/reload on the scope, capture another 120-second XStream
 startup, and inspect what appears after the newly admitted mode-1 256-bit JTAG
 stage. Do not change trigger or DMA paths yet.
+
+
+## Latest staged trace: 2026-09-27 00:49
+
+The raw capture `xstream_trace_20260927_004923.jsonl` remains outside Git.
+
+Observed totals:
+
+- 40 IOCTL records.
+- 23 `0xCFDC2110` calls.
+- 12 CFDC2110 successes.
+- 11 CFDC2110 rejections.
+
+The admitted 94-byte family-1 opcode-`0x42`, mode-1, 256-bit request now
+succeeds, so startup progressed beyond the previous byte-exact gate.
+
+The first and only newly rejected request shape is an exact 54-byte family-1
+opcode-`0x42`, mode-1, 83-bit JTAG form. It repeats 11 times and differs from
+the admitted mode-0, 83-bit request at exactly byte offset 11 (`0x00` to
+`0x01`). The existing `LecJtagExecute` implementation supports both modes;
+mode 1 only adds bit `0x100` to BAR1 `JTAGNUM`, and mode 1 is already exercised
+by the admitted 58-bit and 256-bit requests.
+
+This exact buffer may therefore be proposed for a future byte-exact admission,
+but it remains rejected after this analysis round. Do not replace the gate with
+an opcode-, family- or mode-wide rule. No acquisition launch appears in the
+trace, and trigger/DMA paths remain unchanged.

@@ -42,7 +42,7 @@ The reconstruction has progressed well beyond the initial outer-interface pass:
 - on the current x64 reference bring-up, the driver loads and the PCI device binds correctly, but all three tested MMIO regions currently read as `0xFFFFFFFF`; passive PCI diagnostics now confirm `PCI Command = 0x0006`, so both Memory Space Enable and Bus Master Enable are active, and the BAR config-space values exactly match the translated Windows resources;
 - the confirmed legacy START/ITMODE startup probe from `FUN_00012FDE` is now reproduced during x64 PnP start, including its exact 100 us / 500 us timing and buzzer pattern; on the reference scope this fixes the previous all-ones MMIO state, yielding FVER = `0x00000002`, ACQFVER = `0x00000003`, ONEWIRE = `0x00000000`, and a valid Dallas ID `23 F0 47 37 00 00 00 AC` with the expected two-beep startup pattern;
 - the first real XStream startup trace has now been captured on working hardware; early startup uses only four distinct `CFDC2110` request shapes: RESET, family-1/opcode-`0x99`, family-0/opcode-`0x88`, and family-1/opcode-`0x42` JTAG, with no C5FB record observed;
-- `CFDC2110` hardware execution remains byte-exact and trace-driven; RESET, opcodes `0x99`, `0x88`, `0x85`, the first JTAG form, and the next family-1 startup forms (`0x42` mode 0 / 83-bit, `0x90`, `0x42` mode 1 / 58-bit, and the newly observed `0x42` mode 1 / 256-bit form) are now admitted, while every unconfirmed packet remains rejected before hardware side effects.
+- `CFDC2110` hardware execution remains byte-exact and trace-driven; RESET, opcodes `0x99`, `0x88`, `0x85`, the first JTAG form, and the next family-1 startup forms (`0x42` mode 0 / 83-bit, `0x90`, `0x42` mode 1 / 58-bit, and `0x42` mode 1 / 256-bit) are admitted, while the newly exposed exact mode-1 / 83-bit form and every other unconfirmed packet remain rejected before hardware side effects.
 
 Documentation:
 
@@ -143,6 +143,13 @@ build 1002, and runs the passive `lecdiag pci` diagnostic.
 
 The test-machine reload workflow installs updates through the Windows Driver
 Store rather than overwriting `System32\drivers` directly.
+Its generated `DriverVer` uses the UTC calendar date so Inf2Cat does not reject
+builds made shortly after local midnight as postdated packages.
 
 
-Current staged-runtime note: the corrected 83-bit JTAG request now succeeds. The next exposed request is a 94-byte family-1 opcode `0x42`, mode-1, 256-bit JTAG transaction. It differs from the already proven 256-bit mode-0 form only in the mode byte and is now admitted as one additional byte-exact captured startup packet. No broader JTAG or opcode whitelist has been enabled.
+Current staged-runtime note: the admitted 94-byte mode-1 / 256-bit JTAG
+transaction now succeeds. The next exposed request is an exact 54-byte
+family-1 opcode `0x42`, mode-1, 83-bit transaction. It differs from the
+admitted mode-0 / 83-bit buffer only at the mode byte and remains rejected
+pending a separate byte-exact admission decision. No broader JTAG or opcode
+whitelist has been enabled.

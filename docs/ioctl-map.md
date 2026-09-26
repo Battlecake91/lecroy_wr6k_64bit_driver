@@ -2320,3 +2320,21 @@ These fit already recovered legacy routing:
 
 No new handler semantics were needed. The x64 runtime gate was extended only
 with the exact input buffers observed in the trace.
+
+
+## Newly observed mode-1 83-bit JTAG form
+
+After the admitted mode-1, 256-bit JTAG packet completed on the reference
+scope, XStream issued a 54-byte family-1 opcode-`0x42` request with mode 1,
+12 requested response bytes and a bit count of 83. The complete input buffer
+differs from the admitted mode-0, 83-bit request only at byte offset 11, where
+the mode changes from `0x00` to `0x01`.
+
+The existing `LecJtagExecute` path treats this byte as the JTAG mode. Mode 1
+adds bit `0x100` to each BAR1 `JTAGNUM` value; the bit-count loop, JTAG data
+writes and response reads are otherwise identical. The already admitted
+mode-1 58-bit and 256-bit requests exercise that same behavior.
+
+The new complete buffer is therefore a candidate for byte-exact admission,
+not for an opcode-, family- or mode-wide rule. It remains rejected by the
+current runtime gate pending that separate decision.

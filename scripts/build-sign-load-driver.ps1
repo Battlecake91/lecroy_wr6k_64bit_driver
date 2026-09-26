@@ -96,9 +96,10 @@ Remove-Item -Force -ErrorAction SilentlyContinue $packageInf, $packageSys, $pack
 Copy-Item -Force $driver $packageSys
 
 $infText = Get-Content -Raw $infSource
-$now = Get-Date
-$version = "0.{0}.{1}.{2}" -f $now.Year, ([int]$now.ToString("MMdd")), ([int]$now.ToString("HHmm"))
-$driverDate = $now.ToString(
+$localNow = Get-Date
+$utcNow = $localNow.ToUniversalTime()
+$version = "0.{0}.{1}.{2}" -f $localNow.Year, ([int]$localNow.ToString("MMdd")), ([int]$localNow.ToString("HHmm"))
+$driverDate = $utcNow.ToString(
     "MM'/'dd'/'yyyy",
     [System.Globalization.CultureInfo]::InvariantCulture)
 $driverVer = "{0},{1}" -f $driverDate, $version
