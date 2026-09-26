@@ -322,3 +322,36 @@ BAR2+0x40 is the confirmed ONEWIRE register. Bit 0 is the controller-busy bit
 and should be clear while idle. If it is already stuck high before issuing a
 Dallas command, the likely missing piece is board/startup initialization rather
 than the recovered 1-Wire ROM command sequence.
+
+
+### All-ones MMIO state
+
+A later reference-system check confirmed that the replacement driver is loaded,
+the S65 PCI device is bound, and the DOS interface answers the build query, but
+all three known-safe MMIO reads currently return `0xFFFFFFFF`:
+
+```text
+BAR0 + 0x000  FVER      -> 0xFFFFFFFF
+BAR1 + 0x00C  ACQFVER   -> 0xFFFFFFFF
+BAR2 + 0x040  ONEWIRE   -> 0xFFFFFFFF
+```
+
+The BAR physical addresses and lengths match the known reference resources, so
+the immediate question is whether PCI memory decoding/bus mastering is enabled
+or whether the FPGA/register fabric still requires legacy startup
+initialization.
+
+The driver now exposes a passive PCI config-space diagnostic:
+
+```powershell
+.\tools\lecdiag\build\lecdiag.exe pci
+```
+
+This reports vendor/device IDs, BDF, PCI command/status, BAR config values and
+interrupt line/pin. In particular, inspect:
+
+- PCI Command bit 1: Memory Space Enable
+- PCI Command bit 2: Bus Master Enable
+- PCI Command bit 10: INTx Disable
+
+Do not add speculative BAR writes while the device still reads all ones.
