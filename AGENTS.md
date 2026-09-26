@@ -272,8 +272,8 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Decode `0x12EDE` behind `0xCFDC2400` and the vtable targets used by `0xCFDC2124/2128` so their registration semantics are exact.
-2. Decode `0x11B18` and `0x157B8` to finish the event-registration ABI for `0xCFDC2180/218C`.
+1. Resolve main-object vtable `PTR_FUN_0001C8BC`, especially slots `+0x08`, `+0x0C`, `+0x14`, `+0x18`, and `+0x24`, to close registration, synchronous transfer and `0xCFDC2400` semantics.
+2. Trace the exact process-registration object lifetime around `0xCFDC2124/2128` and event ownership.
 3. Continue resolving MAM/acquisition control semantics far enough to reproduce the x86 behavior safely in the x64 driver.
 4. Keep partial `0xCFDC2110` hardware execution disabled until the full startup/runtime command set is understood.
 
@@ -297,3 +297,11 @@ The remaining DeviceControl handlers are now substantially decoded:
 - `0xCFDC2400`: wrapper around `0x12EDE`, still to decode.
 
 Diagnostic helpers `0x10750`, `0x1076E`, and `0x1919A` are logging-only; `0x10798` is the common IRP completion helper.
+
+
+## Latest event/control findings
+
+- `0x11B18` is the shared event-reference helper: `ObReferenceObjectByHandle(..., EVENT_MODIFY_STATE, ExEventObjectType, RequestorMode, ...)`.
+- `0x157B8` returns `pending_bits & enabled_bits`; `0xCFDC2180` can therefore signal a freshly registered event immediately when relevant status is already pending.
+- `0x12EDE` (`0xCFDC2400`) stores a caller DWORD in global `DAT_1CE1C`, performs a synchronized callback, then calls main-object vtable method `+0x24` with `(0,0)`.
+- Exact semantics of `0xCFDC2124`, `0xCFDC2128`, and the final `0xCFDC2400` action now depend mainly on resolving main-object vtable `PTR_FUN_0001C8BC`.
