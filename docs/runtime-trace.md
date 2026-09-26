@@ -36,13 +36,13 @@ The first line is capture metadata. Every following line is one IOCTL record.
 Example shape:
 
 ```json
-{"type":"ioctl","seq":12,"timestamp_100ns":123456789,"pid":1234,"wow64":1,"method":0,"method_name":"BUF","ioctl":"0xCFDC2110","name":"CFDC2110","input_length":24,"output_length":8,"information":0,"status":"0xC0000010","type3_input_buffer":"0x0000000000000000","user_buffer":"0x0000000000000000","input_hex":"...","output_hex":""}
+{"type":"ioctl","seq":12,"timestamp_ticks":123456789,"pid":1234,"wow64":1,"method":0,"method_name":"BUF","ioctl":"0xCFDC2110","name":"CFDC2110","input_length":24,"output_length":8,"information":0,"status":"0xC0000010","type3_input_buffer":"0x0000000000000000","user_buffer":"0x0000000000000000","input_hex":"...","output_hex":""}
 ```
 
 Fields:
 
 - `seq`: monotonically increasing trace sequence after the trace is cleared;
-- `timestamp_100ns`: boot-relative interrupt time in 100 ns units;
+- `timestamp_ticks`: monotonic kernel performance-counter ticks;
 - `pid`: caller process ID;
 - `wow64`: whether the request came from a 32-bit process;
 - `method`: IOCTL transfer method;
@@ -78,3 +78,11 @@ control protocol that is relevant to reverse engineering.
 Runtime captures are ignored by Git by default because they contain process
 IDs and pointer values. Share a selected trace explicitly when analysis is
 needed; do not commit raw captures to the public repository by accident.
+
+
+## Trace format version 3
+
+The timestamp field is now `timestamp_ticks` and comes from
+`KeQueryPerformanceCounter`. This avoids relying on a kernel time-query export
+that was not available in the current WDK/link environment. The value is
+monotonic and is intended for ordering and relative timing inside a capture.
