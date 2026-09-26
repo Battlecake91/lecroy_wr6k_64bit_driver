@@ -299,3 +299,26 @@ protocol history.
 
 See [runtime-trace.md](runtime-trace.md) for the exact JSONL schema and manual
 `lecdiag trace-save` / `trace-capture` commands.
+
+
+### Dallas timeout triage
+
+A confirmed reference-system x64 run currently reaches the replacement driver
+successfully and returns build 1002, but `lecdiag dallas-id` returns Win32
+error 121. In this driver that maps to `STATUS_IO_TIMEOUT` from the ONEWIRE
+busy-bit polling loop.
+
+This distinguishes the failure from installation/PnP problems. Use only these
+known safe reads to triage the controller state:
+
+```powershell
+.\tools\lecdiag\build\lecdiag.exe bars
+.\tools\lecdiag\build\lecdiag.exe read 2 0x40
+.\tools\lecdiag\build\lecdiag.exe read 0 0x0
+.\tools\lecdiag\build\lecdiag.exe read 1 0x0C
+```
+
+BAR2+0x40 is the confirmed ONEWIRE register. Bit 0 is the controller-busy bit
+and should be clear while idle. If it is already stuck high before issuing a
+Dallas command, the likely missing piece is board/startup initialization rather
+than the recovered 1-Wire ROM command sequence.
