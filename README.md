@@ -143,3 +143,8 @@ build 1002, and runs the passive `lecdiag pci` diagnostic.
 
 The test-machine reload workflow installs updates through the Windows Driver
 Store rather than overwriting `System32\drivers` directly.
+
+
+Current staged-runtime note: the remaining startup rejection in the latest
+capture was not a new command. It was a byte-count/transcription error in the
+83-bit JTAG whitelist entry. The exact 54-byte captured request is now used.
