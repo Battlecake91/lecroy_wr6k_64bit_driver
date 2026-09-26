@@ -119,6 +119,9 @@ typedef struct _LECS65_DEBUG_BARS {
 typedef struct _LECS65_DEBUG_PCI_CONFIG {
     ULONG Version;
     ULONG BytesRead;
+    ULONG BusNumber;
+    ULONG DeviceNumber;
+    ULONG FunctionNumber;
     USHORT VendorId;
     USHORT DeviceId;
     USHORT Command;
