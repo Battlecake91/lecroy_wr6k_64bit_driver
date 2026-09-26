@@ -1275,3 +1275,23 @@ trace/register-list entries.
 
 These are useful for object-layout reconstruction but are not part of the
 high-priority DMA execution path.
+
+
+## Seventh headless export: broad 0x17380-0x17740 sweep
+
+The broad sweep did not reveal a new DMA-programming routine. It mainly
+rediscovered the already-decoded board-message transport:
+
+- `0x17578`: RX extraction from BAR1 + 0x600 with continuation/event wait.
+- `0x176E6`: TX chunking into BAR1 + 0x420 with TxCount/TxControl submission.
+- `0x17F4E`: initializes two constants in an embedded transfer-related object.
+
+The useful conclusion is negative but important: the board DMA execution path
+is not located in this contiguous address range. Further work should follow the
+transfer-entry fields and vtable/call references rather than continue blind
+address sweeps.
+
+In particular, `0x1731C` creates a 0x40-byte transfer entry whose +0x10
+buffer and +0x14 MDL are used by `0x18194` to build the chained hardware
+descriptor table. The next target is to find every function that consumes those
+transfer-entry fields or the descriptor-count/result stored at entry +0x18.
