@@ -126,3 +126,9 @@ at:
 
 The raw capture remains local/private because it also contains process IDs,
 handles, pointers and device-specific Dallas contents.
+
+
+The next runtime test uses the whitelisted four byte-exact startup request
+forms only. The expected evidence is whether XStream advances beyond the
+previous `STATUS_INVALID_DEVICE_REQUEST` startup barrier and what new
+`0xCFDC2110` shapes, if any, appear afterward.
