@@ -842,3 +842,28 @@ Mode 2 produces local protocol status 4 and installs a pending response through
 mode 2 before register access, but its following 85FB fetch response is not yet
 proven byte-exact. Keep this packet rejected until that response path is closed.
 Do not change trigger or DMA paths.
+
+
+## Mode-2 JTAG response closed
+
+Ghidra export commit `5cd684608217d7371f32bc93b3e1ab9efd7865dc`
+resolves `FUN_00010380` as a non-zeroing
+`ExAllocatePoolWithTag(NonPagedPool, size, 'Wdm ')` wrapper.
+
+For the captured family-1 opcode-`0x42`, mode-2, 256-bit request, legacy
+`FUN_00015C7E` does not access JTAG hardware. It allocates 40 bytes and
+defines only the first 8 bytes as:
+
+```text
+00 00 00 00 02 00 04 00
+```
+
+The remaining 32 bytes are undefined legacy pool contents. The x64 replacement
+zero-fills those bytes deliberately rather than reproducing a kernel memory
+disclosure, while preserving the 40-byte response length and protocol status 4.
+The exact observed 94-byte request is admitted byte-for-byte. Do not generalize
+this to arbitrary mode-2 requests.
+
+Next step: scope pull/build/sign/load and capture another 120-second XStream
+startup. Inspect the first request after the mode-2 local-response stage before
+touching acquisition, trigger, or DMA launch.
