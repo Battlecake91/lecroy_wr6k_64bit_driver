@@ -105,6 +105,118 @@ LecUnmapBars(
     DevExt->BulkMmioPhysical.QuadPart = 0;
 }
 
+
+static
+VOID
+LecLegacyBuzzerPulse(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG DurationMs
+    )
+{
+    volatile ULONG* buzzer;
+    LARGE_INTEGER interval;
+
+    if (DevExt->Bar[2] == NULL ||
+        DevExt->BarLength[2] <
+            LECS65_BAR2_BUZZER_OFFSET + sizeof(ULONG)) {
+        return;
+    }
+
+    buzzer = (volatile ULONG*)(
+        DevExt->Bar[2] + LECS65_BAR2_BUZZER_OFFSET);
+
+    WRITE_REGISTER_ULONG(buzzer, 1);
+
+    interval.QuadPart = -((LONGLONG)DurationMs * 10000LL);
+    (VOID)KeDelayExecutionThread(
+        KernelMode,
+        FALSE,
+        &interval);
+
+    WRITE_REGISTER_ULONG(buzzer, 0);
+}
+
+static
+NTSTATUS
+LecRunLegacyStartupProbe(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    volatile ULONG* start;
+    volatile ULONG* itmode;
+    LARGE_INTEGER interval;
+    ULONG raw;
+    ULONG bit0;
+
+    if (DevExt->Bar[0] == NULL ||
+        DevExt->Bar[1] == NULL ||
+        DevExt->Bar[2] == NULL ||
+        DevExt->BarLength[0] <
+            LECS65_BAR0_START_OFFSET + sizeof(ULONG) ||
+        DevExt->BarLength[1] <
+            LECS65_BAR1_ITMODE_OFFSET + sizeof(ULONG) ||
+        DevExt->BarLength[2] <
+            LECS65_BAR2_BUZZER_OFFSET + sizeof(ULONG)) {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    start = (volatile ULONG*)(
+        DevExt->Bar[0] + LECS65_BAR0_START_OFFSET);
+    itmode = (volatile ULONG*)(
+        DevExt->Bar[1] + LECS65_BAR1_ITMODE_OFFSET);
+
+    /*
+     * Exact host-side startup sequence recovered from legacy FUN_00012FDE:
+     *   START <- 1
+     *   wait 100 us
+     *   read START bit 0
+     *
+     * A clear bit is legacy failure and produces one 1200 ms buzzer pulse.
+     * A set bit is legacy success and produces two 300 ms pulses around
+     * ITMODE 7 -> 3 with a 500 us delay.
+     */
+    WRITE_REGISTER_ULONG(start, 1);
+
+    interval.QuadPart = -1000LL; /* 100 us */
+    (VOID)KeDelayExecutionThread(
+        KernelMode,
+        FALSE,
+        &interval);
+
+    raw = READ_REGISTER_ULONG(start);
+    bit0 = raw & 1UL;
+
+    LecTrace(
+        "LEGACY_START: START readback=0x%08lX bit0=%lu\n",
+        raw,
+        bit0);
+
+    if (bit0 == 0) {
+        LecLegacyBuzzerPulse(DevExt, 1200);
+        LecTrace(
+            "LEGACY_START: legacy probe failed (START bit0 clear)\n");
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    LecLegacyBuzzerPulse(DevExt, 300);
+
+    WRITE_REGISTER_ULONG(itmode, 7);
+    LecTrace("LEGACY_START: ITMODE <- 7\n");
+
+    interval.QuadPart = -5000LL; /* 500 us */
+    (VOID)KeDelayExecutionThread(
+        KernelMode,
+        FALSE,
+        &interval);
+
+    LecLegacyBuzzerPulse(DevExt, 300);
+
+    WRITE_REGISTER_ULONG(itmode, 3);
+    LecTrace("LEGACY_START: ITMODE <- 3\n");
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 LecHandleStartDevice(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
@@ -286,6 +398,19 @@ LecHandleStartDevice(
         DevExt->BarLength[2],
         DevExt->BulkMmioPhysical.QuadPart,
         DevExt->BulkMmioLength);
+
+    {
+        NTSTATUS startupStatus =
+            LecRunLegacyStartupProbe(DevExt);
+
+        if (!NT_SUCCESS(startupStatus)) {
+            LecTrace(
+                "START_DEVICE: legacy startup probe failed 0x%08X\n",
+                startupStatus);
+            LecUnmapBars(DevExt);
+            return startupStatus;
+        }
+    }
 
     return STATUS_SUCCESS;
 }
