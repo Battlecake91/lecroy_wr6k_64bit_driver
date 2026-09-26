@@ -1295,3 +1295,41 @@ In particular, `0x1731C` creates a 0x40-byte transfer entry whose +0x10
 buffer and +0x14 MDL are used by `0x18194` to build the chained hardware
 descriptor table. The next target is to find every function that consumes those
 transfer-entry fields or the descriptor-count/result stored at entry +0x18.
+
+
+## Eighth headless export: transfer-adjacent register objects
+
+The transfer-entry consumer sweep exposed several support objects around the
+board transport and register abstraction.
+
+### 0x1785B: board-message transport register map
+
+`FUN_0001785b` initializes register wrappers for the BAR1 transport block:
+
+- TxControl at +0x400
+- RxControl at +0x404
+- TxCount at +0x408
+- RxCount at +0x40C
+- SetIRQ at +0x100
+- HWInt at +0x410
+
+It also stores the parent register block at object +0x100 and initializes an
+event in the transport object itself.
+
+### 0x179E2: indexed cached register write
+
+`FUN_000179e2` caches 16-bit values selected by bits 16..23 of the requested
+32-bit value and writes the full value only when the cached 16-bit value
+changes.
+
+Its callers (`0x17BC8`, `0x17C16`, `0x17CDC`) are now high-priority
+targets because they are likely to expose the semantics of the indexed control
+register programmed through this helper.
+
+### 0x17A36 / 0x17A98 / 0x17B00
+
+These functions implement generic dynamically-sized pool-backed array/buffer
+helpers. They are infrastructure rather than direct DMA execution.
+
+The next analysis set therefore follows the callers of `0x179E2` and related
+initialization helpers instead of continuing broad address sweeps.
