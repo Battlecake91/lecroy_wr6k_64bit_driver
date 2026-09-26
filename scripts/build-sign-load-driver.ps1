@@ -98,12 +98,22 @@ Copy-Item -Force $driver $packageSys
 $infText = Get-Content -Raw $infSource
 $now = Get-Date
 $version = "0.{0}.{1}.{2}" -f $now.Year, ([int]$now.ToString("MMdd")), ([int]$now.ToString("HHmm"))
-$driverVer = "{0},{1}" -f $now.ToString("MM/dd/yyyy"), $version
+$driverDate = $now.ToString(
+    "MM'/'dd'/'yyyy",
+    [System.Globalization.CultureInfo]::InvariantCulture)
+$driverVer = "{0},{1}" -f $driverDate, $version
 $infText = [regex]::Replace(
     $infText,
     '(?m)^DriverVer=.*$',
     "DriverVer=$driverVer")
 Set-Content -Path $packageInf -Value $infText -Encoding Ascii
+
+$generatedDriverVer = Select-String -Path $packageInf -Pattern '^DriverVer=' |
+    Select-Object -First 1
+if (-not $generatedDriverVer) {
+    throw "Generated package INF does not contain DriverVer."
+}
+Write-Host "Generated $($generatedDriverVer.Line)"
 
 $signtool = Find-SignTool
 $inf2cat = Find-Inf2Cat
