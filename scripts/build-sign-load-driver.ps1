@@ -70,17 +70,36 @@ if ($LASTEXITCODE -ne 0) {
     throw "signtool failed with exit code $LASTEXITCODE."
 }
 
-Write-Host "Stopping LecS65AcqDrv..."
-& sc.exe stop LecS65AcqDrv | Out-Host
-Start-Sleep -Milliseconds 700
+$device = Get-PnpDevice | Where-Object {
+    $_.InstanceId -like 'PCI\VEN_1570&DEV_0005*'
+} | Select-Object -First 1
+
+if (-not $device) {
+    throw "LeCroy PCI device PCI\VEN_1570&DEV_0005* was not found."
+}
+
+$instanceId = $device.InstanceId
+
+Write-Host "Disabling PnP device to unload the driver..."
+Write-Host "  $instanceId"
+& pnputil.exe /disable-device "$instanceId" /force | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "pnputil /disable-device failed with exit code $LASTEXITCODE."
+}
+
+Start-Sleep -Seconds 1
 
 Write-Host "Installing freshly built SYS:"
 Write-Host "  $systemDriver"
 Copy-Item -Force $driver $systemDriver
 
-Write-Host "Starting LecS65AcqDrv..."
-& sc.exe start LecS65AcqDrv | Out-Host
-Start-Sleep -Milliseconds 700
+Write-Host "Re-enabling PnP device..."
+& pnputil.exe /enable-device "$instanceId" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "pnputil /enable-device failed with exit code $LASTEXITCODE."
+}
+
+Start-Sleep -Seconds 2
 
 Write-Host ""
 Write-Host "Verifying driver build..."
