@@ -4,9 +4,9 @@ This workflow keeps reverse-engineering review compact and repeatable. Instead o
 
 ## Script
 
-`ghidra_scripts/ExportSelected.py`
+`ghidra_scripts/ExportSelected.java`
 
-The script accepts:
+The Java script is used because standard `analyzeHeadless` does not load PyGhidra Python scripts by default. It accepts:
 
 ```text
 <output-dir> <target> [<target> ...]
@@ -29,7 +29,7 @@ $ghidra = "<GHIDRA_HOME>"
   "LeCroy_Alladin_Driver" `
   -process "LecS65AcqDrv.sys" `
   -scriptPath "$repo\\ghidra_scripts" `
-  -postScript ExportSelected.py `
+  -postScript ExportSelected.java `
     "$repo\\ghidra_exports\\selected" `
     KeSetEvent `
     KeInsertQueueDpc `
@@ -44,6 +44,8 @@ $ghidra = "<GHIDRA_HOME>"
 ```
 
 `-noanalysis` is intentional because the project has already been analyzed.
+
+If you see `Ghidra was not started with PyGhidra. Python is not available`, you are still invoking the obsolete Python script. Pull the latest `main` and use `ExportSelected.java`.
 
 After export:
 
