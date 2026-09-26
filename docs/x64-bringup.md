@@ -545,3 +545,33 @@ The current all-ones MMIO state makes this probe especially diagnostic: if the
 START write wakes the FPGA/register fabric, subsequent reads should stop
 returning `0xFFFFFFFF`. If START still reads all ones and ITMODE writes have no
 effect, the remaining blocker is below this host-side initialization sequence.
+
+
+### Startup probe runtime confirmation
+
+The reference scope confirms that reproducing `FUN_00012FDE` is the missing
+early hardware-init step.
+
+Before the legacy START/ITMODE sequence, all tested MMIO reads returned
+`0xFFFFFFFF`. After installing the updated driver, the card emitted the
+expected two startup beeps and the same safe reads became:
+
+```text
+BAR0 + 0x000  FVER      = 0x00000002
+BAR1 + 0x00C  ACQFVER   = 0x00000003
+BAR2 + 0x040  ONEWIRE   = 0x00000000
+```
+
+The Dallas ROM read then succeeded:
+
+```text
+23 F0 47 37 00 00 00 AC
+```
+
+This establishes that the previous all-ones MMIO state was not a PCI decode
+problem. The FPGA/register fabric required the legacy startup sequence before
+normal register access.
+
+The next runtime milestone is a passive XStream startup capture using the
+working x64 driver so the remaining firmware-defined `0xCFDC2110` traffic can
+be analyzed from a normal licensed startup.
