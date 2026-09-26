@@ -36,11 +36,37 @@ function Find-SignTool {
     return $candidate
 }
 
+function Find-Inf2Cat {
+    $cmd = Get-Command Inf2Cat.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+    if (-not (Test-Path $kits)) {
+        throw "Windows Kits bin directory not found: $kits"
+    }
+
+    $candidate = Get-ChildItem $kits -Directory |
+        Sort-Object Name -Descending |
+        ForEach-Object { Join-Path $_.FullName "x86\Inf2Cat.exe" } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+
+    if (-not $candidate) {
+        throw "Inf2Cat.exe was not found in the Windows Kits installation."
+    }
+
+    return $candidate
+}
+
 Assert-Administrator
 
 $repo = Split-Path -Parent $PSScriptRoot
 $driver = Join-Path $repo ("x64\{0}\LecS65AcqDrv.sys" -f $Configuration)
-$systemDriver = Join-Path $env:SystemRoot "System32\drivers\LecS65AcqDrv.sys"
+$infSource = Join-Path $repo "driver\LecS65AcqDrv.inf"
+$packageDir = Join-Path $repo ("x64\{0}\package" -f $Configuration)
+$packageInf = Join-Path $packageDir "LecS65AcqDrv.inf"
+$packageSys = Join-Path $packageDir "LecS65AcqDrv.sys"
+$packageCat = Join-Path $packageDir "LecS65AcqDrv.cat"
 $lecdiag = Join-Path $repo "tools\lecdiag\build\lecdiag.exe"
 
 Write-Host "Building driver and lecdiag..."
@@ -63,11 +89,43 @@ if (-not $cert) {
 }
 
 $signtool = Find-SignTool
-Write-Host "Signing:"
-Write-Host "  $driver"
-& $signtool sign /fd SHA256 /sm /s My /n $CertificateName $driver
+Write-Host "Preparing signed driver package..."
+New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+Remove-Item -Force -ErrorAction SilentlyContinue $packageInf, $packageSys, $packageCat
+
+Copy-Item -Force $driver $packageSys
+
+$infText = Get-Content -Raw $infSource
+$now = Get-Date
+$version = "0.{0}.{1}.{2}" -f $now.Year, ([int]$now.ToString("MMdd")), ([int]$now.ToString("HHmm"))
+$driverVer = "{0},{1}" -f $now.ToString("MM/dd/yyyy"), $version
+$infText = [regex]::Replace(
+    $infText,
+    '(?m)^DriverVer=.*$',
+    "DriverVer=$driverVer")
+Set-Content -Path $packageInf -Value $infText -Encoding Ascii
+
+$signtool = Find-SignTool
+$inf2cat = Find-Inf2Cat
+
+Write-Host "Signing SYS:"
+Write-Host "  $packageSys"
+& $signtool sign /fd SHA256 /sm /s My /n $CertificateName $packageSys
 if ($LASTEXITCODE -ne 0) {
-    throw "signtool failed with exit code $LASTEXITCODE."
+    throw "signtool SYS signing failed with exit code $LASTEXITCODE."
+}
+
+Write-Host "Generating catalog..."
+& $inf2cat /driver:$packageDir /os:10_X64
+if ($LASTEXITCODE -ne 0) {
+    throw "Inf2Cat failed with exit code $LASTEXITCODE."
+}
+
+Write-Host "Signing catalog:"
+Write-Host "  $packageCat"
+& $signtool sign /fd SHA256 /sm /s My /n $CertificateName $packageCat
+if ($LASTEXITCODE -ne 0) {
+    throw "signtool CAT signing failed with exit code $LASTEXITCODE."
 }
 
 $device = Get-PnpDevice | Where-Object {
@@ -80,23 +138,26 @@ if (-not $device) {
 
 $instanceId = $device.InstanceId
 
-Write-Host "Disabling PnP device to unload the driver..."
-Write-Host "  $instanceId"
-& pnputil.exe /disable-device "$instanceId" /force | Out-Host
+Write-Host "Installing package through the Windows Driver Store..."
+Write-Host "  $packageInf"
+& pnputil.exe /add-driver "$packageInf" /install | Out-Host
 if ($LASTEXITCODE -ne 0) {
-    throw "pnputil /disable-device failed with exit code $LASTEXITCODE."
+    throw "pnputil /add-driver failed with exit code $LASTEXITCODE."
 }
 
-Start-Sleep -Seconds 1
-
-Write-Host "Installing freshly built SYS:"
-Write-Host "  $systemDriver"
-Copy-Item -Force $driver $systemDriver
-
-Write-Host "Re-enabling PnP device..."
-& pnputil.exe /enable-device "$instanceId" | Out-Host
+Write-Host "Restarting PnP device..."
+& pnputil.exe /restart-device "$instanceId" | Out-Host
 if ($LASTEXITCODE -ne 0) {
-    throw "pnputil /enable-device failed with exit code $LASTEXITCODE."
+    Write-Host "pnputil /restart-device was not sufficient; trying disable/enable..."
+    & pnputil.exe /disable-device "$instanceId" /force | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "pnputil /disable-device failed with exit code $LASTEXITCODE."
+    }
+    Start-Sleep -Seconds 1
+    & pnputil.exe /enable-device "$instanceId" | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "pnputil /enable-device failed with exit code $LASTEXITCODE."
+    }
 }
 
 Start-Sleep -Seconds 2
