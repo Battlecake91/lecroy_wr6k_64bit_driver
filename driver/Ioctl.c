@@ -12,6 +12,7 @@ LecIsPrivateDebugIoctl(
     case LECS65_IOCTL_DEBUG_GET_BARS:
     case LECS65_IOCTL_DEBUG_GET_TRACE:
     case LECS65_IOCTL_DEBUG_CLEAR_TRACE:
+    case LECS65_IOCTL_DEBUG_GET_PCI_CONFIG:
         return TRUE;
 
     default:
