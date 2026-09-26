@@ -106,6 +106,7 @@
     <ClInclude Include="LecS65Drv.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
+    <ClCompile Include="Acquisition.c" />
     <ClCompile Include="Ioctl.c" />
     <None Include="LecS65AcqDrv.inf" />
   </ItemGroup>
