@@ -452,3 +452,19 @@ pnputil /enable-device <PCI instance>
 
 This unloads/reloads the PnP function driver without requiring a reboot and is
 the preferred development-machine update path.
+
+
+### Driver Store installation
+
+Disabling the PCI device was not sufficient to make
+`%SystemRoot%\System32\drivers\LecS65AcqDrv.sys` replaceable on the
+reference system; direct `Copy-Item` still failed with access denied.
+
+The maintained reload script therefore no longer overwrites the protected
+system copy directly. It now creates a temporary signed driver package under
+`x64\<Configuration>\package`, generates and signs a fresh catalog, assigns
+a monotonically newer staged `DriverVer`, installs the package with
+`pnputil /add-driver ... /install`, and restarts the PnP device.
+
+This is the preferred update path because it uses the Windows Driver Store and
+PnP installation machinery instead of bypassing file protection.
