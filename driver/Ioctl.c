@@ -30,8 +30,12 @@ LecRecordIoctlTrace(
     _In_ BOOLEAN Wow64,
     _In_ NTSTATUS Status,
     _In_ ULONG_PTR Information,
+    _In_opt_ PVOID Type3InputBuffer,
+    _In_opt_ PVOID UserBuffer,
     _In_reads_bytes_opt_(PreviewLength) const UCHAR* Preview,
-    _In_ ULONG PreviewLength
+    _In_ ULONG PreviewLength,
+    _In_reads_bytes_opt_(OutputPreviewLength) const UCHAR* OutputPreview,
+    _In_ ULONG OutputPreviewLength
     )
 {
     KIRQL oldIrql;
@@ -59,8 +63,11 @@ LecRecordIoctlTrace(
     RtlZeroMemory(entry, sizeof(*entry));
 
     entry->Sequence = ++DevExt->TraceNextSequence;
+    entry->Timestamp100ns = KeQueryInterruptTime();
     entry->ProcessId = (ULONGLONG)(ULONG_PTR)PsGetCurrentProcessId();
     entry->Information = (ULONGLONG)Information;
+    entry->Type3InputBuffer = (ULONGLONG)(ULONG_PTR)Type3InputBuffer;
+    entry->UserBuffer = (ULONGLONG)(ULONG_PTR)UserBuffer;
     entry->Ioctl = Code;
     entry->InputLength = InputLength;
     entry->OutputLength = OutputLength;
@@ -77,6 +84,17 @@ LecRecordIoctlTrace(
             entry->InputPreview,
             Preview,
             entry->InputPreviewLength);
+    }
+
+    if (OutputPreview != NULL && OutputPreviewLength != 0) {
+        entry->OutputPreviewLength = min(
+            OutputPreviewLength,
+            (ULONG)LECS65_TRACE_OUTPUT_PREVIEW_BYTES);
+
+        RtlCopyMemory(
+            entry->OutputPreview,
+            OutputPreview,
+            entry->OutputPreviewLength);
     }
 
     DevExt->TraceWriteIndex =
@@ -1507,9 +1525,14 @@ LecS65DeviceControl(
     ULONG_PTR information = 0;
     BOOLEAN wow64 = FALSE;
     UCHAR inputPreview[LECS65_TRACE_PREVIEW_BYTES];
+    UCHAR outputPreview[LECS65_TRACE_OUTPUT_PREVIEW_BYTES];
     ULONG inputPreviewLength = 0;
+    ULONG outputPreviewLength = 0;
+    PVOID type3InputBuffer =
+        stack->Parameters.DeviceIoControl.Type3InputBuffer;
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
+    RtlZeroMemory(outputPreview, sizeof(outputPreview));
 
     InterlockedIncrement64(&devExt->IoctlCount);
     InterlockedExchange(&devExt->LastIoctl, (LONG)code);
@@ -1543,8 +1566,32 @@ LecS65DeviceControl(
             systemBuffer,
             inputPreviewLength);
 
-        LecTrace("IOCTL input (first <=64 bytes):\n");
+        LecTrace("IOCTL input preview:\n");
         LecHexDump((const UCHAR*)systemBuffer, inputLength);
+    }
+    else if (method == METHOD_NEITHER &&
+             type3InputBuffer != NULL &&
+             inputLength != 0 &&
+             Irp->RequestorMode == UserMode) {
+        __try {
+            inputPreviewLength = min(
+                inputLength,
+                (ULONG)sizeof(inputPreview));
+            ProbeForRead(
+                type3InputBuffer,
+                inputPreviewLength,
+                sizeof(UCHAR));
+            RtlCopyMemory(
+                inputPreview,
+                type3InputBuffer,
+                inputPreviewLength);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            inputPreviewLength = 0;
+            LecTrace(
+                "METHOD_NEITHER trace capture failed: 0x%08X\n",
+                GetExceptionCode());
+        }
     }
 
     switch (code) {
@@ -1740,6 +1787,80 @@ LecS65DeviceControl(
         LecTrace("legacy 0xCFDC212C -> STATUS_NOT_IMPLEMENTED\n");
         break;
 
+    case LECS65_IOCTL_REGISTER_TRANSFER:
+        if (systemBuffer == NULL ||
+            inputLength != 12 ||
+            outputLength < sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+        else {
+            ULONG request[3];
+            ULONG token = 0;
+
+            RtlCopyMemory(request, systemBuffer, sizeof(request));
+
+            status = LecRegisterTransfer(
+                devExt,
+                ULongToPtr(request[0]),
+                request[1],
+                Irp->RequestorMode,
+                &token);
+
+            if (NT_SUCCESS(status)) {
+                *(PULONG)systemBuffer = token;
+                information = sizeof(ULONG);
+            }
+
+            LecTrace(
+                "CFDC2124 register: user32=0x%08lX bytes=%lu reserved=0x%08lX -> token=%lu status=0x%08X\n",
+                request[0],
+                request[1],
+                request[2],
+                token,
+                status);
+        }
+        break;
+
+    case LECS65_IOCTL_UNREGISTER_TRANSFER:
+        if (systemBuffer == NULL ||
+            inputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            break;
+        }
+
+        status = LecUnregisterTransfer(
+            devExt,
+            *(PULONG)systemBuffer,
+            PsGetCurrentProcessId());
+        information = 0;
+        break;
+
+    case LECS65_IOCTL_ACQUIRE_BUFFERED:
+        /*
+         * The host-side ABI and MAM descriptor programming are decoded, but
+         * active acquisition stays gated until x64 DMA address-width and
+         * launch-count units are verified on the reference hardware.
+         */
+        status = STATUS_NOT_SUPPORTED;
+        information = 0;
+        LecTrace(
+            "CFDC2138 acquisition gated: trace captured, hardware launch disabled\n");
+        break;
+
+    case LECS65_IOCTL_ACQUIRE_NEITHER:
+        /*
+         * Type3InputBuffer is captured above for offline analysis. Do not
+         * launch DMA yet; the x64 implementation must preserve the packed ABI
+         * while fixing the legacy probing bugs.
+         */
+        status = STATUS_NOT_SUPPORTED;
+        information = 0;
+        LecTrace(
+            "CFDD219F METHOD_NEITHER acquisition gated: trace captured\n");
+        break;
+
+
     case LECS65_IOCTL_DEBUG_GET_STATS:
         if (systemBuffer == NULL ||
             outputLength < sizeof(LECS65_DEBUG_STATS)) {
@@ -1831,6 +1952,19 @@ LecS65DeviceControl(
         LecHexDump((const UCHAR*)systemBuffer, (ULONG)min(information, MAXULONG));
     }
 
+    if (method == METHOD_BUFFERED &&
+        NT_SUCCESS(status) &&
+        information != 0 &&
+        systemBuffer != NULL) {
+        outputPreviewLength = (ULONG)min(
+            information,
+            (ULONG_PTR)sizeof(outputPreview));
+        RtlCopyMemory(
+            outputPreview,
+            systemBuffer,
+            outputPreviewLength);
+    }
+
     LecTrace("IOCTL done: code=0x%08lX status=0x%08X info=%Iu\n",
         code, status, information);
 
@@ -1843,8 +1977,12 @@ LecS65DeviceControl(
         wow64,
         status,
         information,
+        type3InputBuffer,
+        Irp->UserBuffer,
         inputPreviewLength != 0 ? inputPreview : NULL,
-        inputPreviewLength);
+        inputPreviewLength,
+        outputPreviewLength != 0 ? outputPreview : NULL,
+        outputPreviewLength);
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
