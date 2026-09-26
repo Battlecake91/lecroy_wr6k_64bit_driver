@@ -2303,3 +2303,20 @@ the original A5FB packet to the generic BAR1 board-message transport.
 
 The x64 driver now implements these confirmed side effects and adds this exact
 captured opcode-`0x85` packet to the byte-exact runtime whitelist.
+
+
+## Additional family-1 startup forms
+
+The third staged trace exposes three further family-1 request shapes:
+
+- opcode `0x42`, mode 0, requested response bytes = 12, bit count = 83;
+- opcode `0x90`, no extra command payload, followed by an 85FB fetch;
+- opcode `0x42`, mode 1, requested response bytes = 8, bit count = 58.
+
+These fit already recovered legacy routing:
+
+- family-1 `0x90` uses the same generic BAR1 transmitter as `0x99`;
+- family-1 `0x42` uses the local JTAG-read path.
+
+No new handler semantics were needed. The x64 runtime gate was extended only
+with the exact input buffers observed in the trace.
