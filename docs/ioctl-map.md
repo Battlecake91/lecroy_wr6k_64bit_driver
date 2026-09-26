@@ -1593,3 +1593,28 @@ The exact dispatch branch invoking `0x13AE2` is still represented only by an
 undefined incoming reference at `0x1115B`. The exporter has therefore been
 extended to emit a raw instruction window when an address is not part of a
 defined Ghidra function.
+
+
+## Thirteenth headless export: exact DeviceControl dispatch branch recovered
+
+The raw instruction-window export around `0x1115B` resolves the previously undefined caller of `0x13AE2`.
+
+The legacy DeviceControl dispatch code directly compares `EAX` with `0xCFDC2110` and, on match, calls `FUN_00013AE2` from `0x1115B`. This confirms at instruction level:
+
+```text
+IOCTL 0xCFDC2110 -> FUN_00013AE2
+```
+
+The same raw window independently reconfirms neighboring branches for Dallas ID/read/write, `0x00223100`, `0xCFDC2124`, `0xCFDC212C`, `0xCFDC2130`, `0xCFDC2138`, `0xCFDC2180`, `0xCFDC2184`, and `0xCFDC218C`.
+
+### Acquisition wrapper details
+
+`FUN_000141DC`, the `0xCFDC2138` handler, passes the first DWORD of the buffered request as the transfer identifier and `buffer + 4` as the channel/config payload to `0x13C84`.
+
+`FUN_000141F8`, the `0xCFDD219F` METHOD_NEITHER handler, forwards the request object to `0x13DC6` and sources the channel/config payload through the pointer stored at request-object offset `+0x60`, subfield `+0x10`.
+
+This confirms the two front-ends share the same acquisition semantics but differ in caller-memory handling.
+
+### Delay-helper hardware side effect
+
+`FUN_00015536` writes a boolean through the register wrapper stored in the delay-helper object. Therefore `FUN_0001557C` asserts a hardware line before `KeDelayExecutionThread` and deasserts it afterwards. The exact named register should be resolved before reproducing this side effect in the x64 driver.
