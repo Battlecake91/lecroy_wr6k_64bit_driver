@@ -10,3 +10,12 @@ ghidra_reverse_engineering_lecroy/**/tmp*.ps
 
 # Local runtime trace captures may contain process pointers/state.
 trace-captures/
+
+
+# Local build outputs and generated driver packages
+x64/
+tools/lecdiag/build/
+
+# Visual Studio / package-manager caches
+.vs/
+packages/
