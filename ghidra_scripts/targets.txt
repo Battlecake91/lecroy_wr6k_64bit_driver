@@ -4,11 +4,11 @@
 # Updated automatically as reverse-engineering work advances.
 # Run scripts/run-ghidra-analysis.ps1; it pulls, exports, commits and pushes.
 
-PTR_FUN_0001c8bc
-PTR_LAB_0001c9ac
-12ec2
-11bdc
-11c36
-171de
-1731c
-172a2
+13914
+13934
+104a0
+170ee
+14122
+12e18
+174a8
+134f6
