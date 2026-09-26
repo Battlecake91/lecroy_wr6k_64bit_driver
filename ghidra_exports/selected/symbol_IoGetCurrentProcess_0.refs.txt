@@ -1,0 +1,32 @@
+SYMBOL IoGetCurrentProcess EXTERNAL:00000012
+REFERENCES
+0001c358 <no-function>
+00010e3d FUN_00010e3a
+00017444 FUN_0001731c
+0001376e FUN_00013768
+00012b60 FUN_00012b34
+00012b7a FUN_00012b34
+000129b9 FUN_00012988
+000129d2 FUN_00012988
+000129ec FUN_00012988
+00012a0a FUN_00012988
+00012924 FUN_000128f8
+0001293e FUN_000128f8
+POINTER_DWORDS
++0x00 <unreadable>
++0x04 <unreadable>
++0x08 <unreadable>
++0x0C <unreadable>
++0x10 <unreadable>
++0x14 <unreadable>
++0x18 <unreadable>
++0x1C <unreadable>
++0x20 <unreadable>
++0x24 <unreadable>
++0x28 <unreadable>
++0x2C <unreadable>
++0x30 <unreadable>
++0x34 <unreadable>
++0x38 <unreadable>
++0x3C <unreadable>
++0x40 <unreadable>
