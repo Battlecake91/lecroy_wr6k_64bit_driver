@@ -77,3 +77,12 @@ It also registers four PnP device-interface classes:
 The installed legacy INF has now been recovered as well. Windows publishes it as `oem18.inf`, while the file identifies itself as the original `LecS65AcqDrv.inf`. It confirms `PCI\\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`, service name `LecS65AcqDrv`, device class `DataAcquisition`, class GUID `{BA5FE95F-EE73-4113-8121-F38CC4FF0095}`, and binary name `LecS65AcqDrv.sys`.
 
 Together, those findings give the future x64 driver a useful incremental bring-up route: enumerate the same interfaces, bind to the confirmed PCI ID, map the PCI BARs, validate raw register access, then move on to Dallas, interrupts and acquisition/DMA.
+
+
+## Native x64 bring-up prototype
+
+Development has started on branch `prototype/x64-bringup`.
+
+The first prototype implements PCI/PnP bring-up, the recovered legacy DOS device path, BAR mapping, build query, raw register access and detailed IOCTL tracing. It intentionally leaves DMA, interrupts and unsafe METHOD_NEITHER handling for later iterations.
+
+See [docs/x64-bringup.md](docs/x64-bringup.md).

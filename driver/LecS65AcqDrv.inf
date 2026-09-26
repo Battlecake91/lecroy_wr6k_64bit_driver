@@ -1,0 +1,57 @@
+; LecS65AcqDrv.inf
+; Native x64 compatibility driver for LeCroy WR6k / S65 acquisition hardware.
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=DataAcquisition
+ClassGuid={BA5FE95F-EE73-4113-8121-F38CC4FF0095}
+Provider=%ProviderName%
+DriverVer=09/25/2026,0.1.0.0
+CatalogFile=LecS65AcqDrv.cat
+PnpLockdown=1
+
+[ClassInstall32]
+AddReg=ClassInstall_AddReg
+
+[ClassInstall_AddReg]
+HKR,,,0,%ClassName%
+
+[Manufacturer]
+%ManufacturerName%=LeCroy,NTamd64.10.0
+
+[LeCroy.NTamd64.10.0]
+%DeviceDesc%=LecS65_Install,PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00
+
+[LecS65_Install.NT]
+CopyFiles=LecS65_CopyFiles
+
+[LecS65_CopyFiles]
+LecS65AcqDrv.sys
+
+[SourceDisksNames]
+1=%DiskName%,,,
+
+[SourceDisksFiles]
+LecS65AcqDrv.sys=1
+
+[DestinationDirs]
+LecS65_CopyFiles=12
+
+[LecS65_Install.NT.Services]
+AddService=LecS65AcqDrv,0x00000002,LecS65_Service
+
+[LecS65_Service]
+DisplayName=%ServiceDesc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\LecS65AcqDrv.sys
+LoadOrderGroup=Base
+
+[Strings]
+ProviderName="LeCroy compatibility project"
+ManufacturerName="LeCroy"
+DeviceDesc="LeCroy Acquisition Device (S65)"
+ServiceDesc="LecS65Driver"
+ClassName="Data Acquisition Devices"
+DiskName="LecS65 x64 Driver Disk"

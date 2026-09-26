@@ -48,6 +48,12 @@ The BAR labels and offsets below are **confirmed** from the binary. The driver s
 | `ACQDIV` | `0x0EC` |
 | `ACQCUM` | `0x0F0` |
 | `PFREG` | `0x0F4` |
+| `SetIRQ` | `0x100` |
+| `TxControl` | `0x400` |
+| `RxControl` | `0x404` |
+| `TxCount` | `0x408` |
+| `RxCount` | `0x40C` |
+| `HWInt` | `0x410` |
 
 ## BAR2
 
@@ -87,3 +93,130 @@ The driver exposes generic raw register access:
 Both support legacy BAR0-only requests and extended packed requests carrying a BAR selector. See [ioctl-map.md](ioctl-map.md).
 
 This is useful for bring-up because an x64 replacement can be validated register-by-register before higher-level acquisition paths are implemented.
+
+
+## Superseded early BAR-size hypothesis
+
+An early bring-up build tried to classify the translated resources by size and
+treated the 0x40000-byte window as a separate bulk region. That hypothesis is
+superseded by the original driver's resource-constructor disassembly and by the
+working Dallas/1-Wire implementation.
+
+The legacy mapping is by memory-resource order: the 0x40000-byte second memory
+resource is BAR1, while the first and third 0x200-byte resources are BAR0 and
+BAR2 respectively. The corrected mapping is described below.
+
+
+## Recovered Dallas / 1-Wire hardware path
+
+The 2008 reference driver establishes the three memory resources in resource-index
+order and passes them to its register-map constructor as BAR0, BAR1 and BAR2.
+
+On the current reference system the translated resources are therefore:
+
+- BAR0: first memory resource, 0x200 bytes
+- BAR1: second memory resource, 0x40000 bytes
+- BAR2: third memory resource, 0x200 bytes
+
+This corrects the earlier conservative size-based prototype classification.
+
+The Dallas/1-Wire controller register is confirmed at:
+
+```text
+BAR2 + 0x40  ONEWIRE
+```
+
+The original low-level controller protocol is:
+
+- write `0`: 1-Wire reset
+- write `1`: transmit a zero bit
+- write `2`: transmit a one bit
+- write `3`: read a bit
+- read bit 0: controller busy
+- read bit 1: sampled 1-Wire data/presence state
+
+The original driver polls bit 0 until clear. After a reset, bit 1 clear indicates
+a detected presence pulse.
+
+Recovered Dallas transactions:
+
+```text
+GET_DALLAS_ID:
+  reset
+  write 0x33 (READ ROM), LSB first
+  read 8 bytes, LSB first
+  validate Dallas/Maxim CRC-8
+  retry up to 10 times on CRC failure
+
+READ_DALLAS_MEMORY:
+  reset
+  write 0xCC (SKIP ROM)
+  write 0xF0 (READ MEMORY)
+  write 0x00
+  write 0x00
+  read requested 1..0x200 bytes
+```
+
+Reference hardware results captured through the original x86 driver:
+
+```text
+Dallas ROM ID:
+23 F0 47 37 00 00 00 AC
+
+Full memory read:
+512 bytes
+```
+
+The ROM CRC byte `0xAC` matches the Dallas/Maxim CRC-8 of the preceding seven
+bytes.
+
+
+## BAR1 message-transport windows
+
+Further disassembly of the legacy `0xCFDC2110` transfer path identifies a
+message transport implemented entirely in BAR1.
+
+Confirmed control registers:
+
+```text
+BAR1 + 0x100  SetIRQ
+BAR1 + 0x400  TxControl
+BAR1 + 0x404  RxControl
+BAR1 + 0x408  TxCount
+BAR1 + 0x40C  RxCount
+BAR1 + 0x410  HWInt
+```
+
+The data windows used by the original driver are:
+
+```text
+BAR1 + 0x420 + 4*n   transmit word slots
+BAR1 + 0x600 + 4*n   receive word slots
+```
+
+Each logical protocol word is 16 bits, but the hardware slots are spaced on
+32-bit boundaries. The legacy driver writes and reads the slots through
+`WRITE_REGISTER_BUFFER_ULONG` and `READ_REGISTER_BUFFER_ULONG`, then consumes
+the low 16 bits of each slot.
+
+The original transmit helper:
+
+1. waits until `TxControl` reports idle;
+2. splits the outgoing byte stream into 16-bit words;
+3. writes up to `0x78` words into the transmit slots;
+4. writes the remaining/total word count through `TxCount`;
+5. starts the transfer by writing `TxControl` with bit 15 set and the chunk
+   word count in the low byte;
+6. repeats for continuation chunks when required.
+
+The receive helper:
+
+1. reads `RxControl`;
+2. treats bit 15 as data-ready;
+3. takes the low byte as the number of available 16-bit words;
+4. reads those words from the receive slots;
+5. clears the ready/count fields in `RxControl`;
+6. repeats when the continuation state is set.
+
+This transport is the hardware endpoint behind the A5FB/85FB protocol used by
+`0xCFDC2110`.
