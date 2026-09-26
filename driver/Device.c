@@ -216,12 +216,28 @@ LecHandleStartDevice(
 
             case CmResourceTypeInterrupt:
                 LecTrace(
-                    "  IRQ[%lu]: level=%lu vector=%lu affinity=%p flags=0x%X\n",
+                    "  IRQ[%lu]: level=%lu vector=%lu affinity=%p flags=0x%X share=%u\n",
                     descriptorIndex,
                     resource->u.Interrupt.Level,
                     resource->u.Interrupt.Vector,
                     (PVOID)resource->u.Interrupt.Affinity,
-                    resource->Flags);
+                    resource->Flags,
+                    resource->ShareDisposition);
+
+                DevExt->InterruptVector =
+                    resource->u.Interrupt.Vector;
+                DevExt->InterruptIrql =
+                    (KIRQL)resource->u.Interrupt.Level;
+                DevExt->InterruptSynchronizeIrql =
+                    (KIRQL)resource->u.Interrupt.Level;
+                DevExt->InterruptAffinity =
+                    resource->u.Interrupt.Affinity;
+                DevExt->InterruptMode =
+                    (resource->Flags & CM_RESOURCE_INTERRUPT_LATCHED) != 0
+                        ? Latched
+                        : LevelSensitive;
+                DevExt->InterruptShareVector =
+                    resource->ShareDisposition == CmResourceShareShared;
                 break;
 
             case CmResourceTypePort:
@@ -341,7 +357,24 @@ LecS65Pnp(
                 stack->Parameters.StartDevice.AllocatedResourcesTranslated);
 
             if (NT_SUCCESS(status)) {
+                NTSTATUS irqStatus;
+
                 devExt->Started = TRUE;
+
+                /*
+                 * Connecting the interrupt is passive until an understood
+                 * source is explicitly enabled in InterruptEnableShadow.
+                 * Do not fail safe bring-up if a platform refuses the legacy
+                 * line interrupt; diagnostics and passive tracing remain
+                 * useful in that state.
+                 */
+                irqStatus = LecConnectInterrupt(devExt);
+                if (!NT_SUCCESS(irqStatus)) {
+                    LecTrace(
+                        "START_DEVICE: continuing without connected IRQ: 0x%08X\n",
+                        irqStatus);
+                }
+
                 LecEnableInterfaces(devExt);
             }
         }
@@ -353,7 +386,9 @@ LecS65Pnp(
     case IRP_MN_STOP_DEVICE:
         devExt->Started = FALSE;
         LecDisableInterfaces(devExt);
+        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
+        LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(devExt->LowerDeviceObject, Irp);
@@ -361,7 +396,9 @@ LecS65Pnp(
     case IRP_MN_SURPRISE_REMOVAL:
         devExt->Started = FALSE;
         LecDisableInterfaces(devExt);
+        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
+        LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
         IoSkipCurrentIrpStackLocation(Irp);
         return IoCallDriver(devExt->LowerDeviceObject, Irp);
@@ -371,7 +408,9 @@ LecS65Pnp(
         devExt->Started = FALSE;
 
         LecDisableInterfaces(devExt);
+        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
+        LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
 
         IoSkipCurrentIrpStackLocation(Irp);
