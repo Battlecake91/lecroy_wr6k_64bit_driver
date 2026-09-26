@@ -615,3 +615,27 @@ MMIO access.
 Next step: capture a normal XStream startup with
 `scripts/capture-xstream-trace.ps1` on the scope and analyze the resulting
 JSONL, especially remaining firmware-forwarded `0xCFDC2110` records.
+
+
+## First real XStream startup trace
+
+A 120-second trace from the reference scope contains 35 IOCTLs and 11
+`CFDC2110` calls from a WOW64 XStream process.
+
+Distinct `CFDC2110` startup request forms:
+
+- one RESET: A5FB payload `40 02 40 01 52 45 53 45 54 00`
+- two family-1 opcode `0x99`: payload `40 01 99 00`
+- six family-0 opcode `0x88`: payload `40 00 88 00 DF FF`
+- two family-1 opcode `0x42` JTAG requests
+- each non-RESET request includes a following 85FB `40 00` fetch record
+- no C5FB record observed
+
+All 11 currently return `STATUS_INVALID_DEVICE_REQUEST` because the x64
+driver keeps `CFDC2110` trace-only. Do not re-enable the whole path at once.
+The next implementation step should be narrow and staged against these exact
+observed startup packets.
+
+A sanitized fixture is committed under
+`testdata/traces/xstream_startup_20260926_cfcd2110_sanitized.jsonl`.
+The raw trace stays local/private.
