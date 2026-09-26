@@ -199,3 +199,30 @@ stage rather than progressing to acquisition.
 The exact three newly observed packet buffers are now admitted by the runtime
 gate. Opcode `0x90` uses the already-decoded family-1 generic transport path;
 both opcode-`0x42` forms use the existing JTAG implementation.
+
+
+## Fourth staged startup capture
+
+The 2026-09-26 23:45 capture contains 46 IOCTL entries and 21
+`0xCFDC2110` calls.
+
+Results:
+
+- 6 CFDC2110 calls completed successfully after the previous whitelist update:
+  RESET, `0x99`, `0x88`, `0x85`, the 256-bit JTAG form, `0x90`, and
+  both mode-1 58-bit JTAG attempts all reached their implemented paths as
+  expected.
+- 15 calls were still rejected, and every rejected call is the same
+  family-1 opcode-`0x42`, mode-0, 83-bit JTAG request.
+- No new opcode family appears in this trace.
+
+Review showed that the previous whitelist entry for this 83-bit JTAG request
+was still transcribed incorrectly: the real XStream input is 54 bytes, while
+the hand-entered array had only 52 bytes and misplaced two zero bytes before
+the `C0 00 00 07` tail. The runtime gate therefore correctly rejected it.
+
+The byte-exact array has now been replaced directly from the captured 54-byte
+input. No JTAG semantics were changed.
+
+The capture header still reported `format_version: 2`; the remaining capture
+header literal in `lecdiag` has also been corrected to version 3.
