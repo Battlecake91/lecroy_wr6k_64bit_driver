@@ -377,3 +377,32 @@ The exact captured 94-byte family-1 opcode-`0x42`, mode-2, 256-bit request is
 now admitted. It produces local protocol status 4 and a 40-byte pending
 response; it performs no JTAG MMIO. The next scope capture should determine
 what XStream attempts after this local-error stage.
+
+## Eighth staged startup capture
+
+The 2026-09-27 01:35 capture contains 93 IOCTL entries and 71
+`0xCFDC2110` calls.
+
+Results:
+
+- 60 CFDC2110 calls completed successfully.
+- 11 calls were rejected with `STATUS_INVALID_DEVICE_REQUEST`.
+- The exact mode-2 / 256-bit local-response path now completes successfully.
+- XStream then issues the same 94-byte family-1 opcode-`0x42` shape with
+  mode values 3 and 4. Each appears 16 times and completes successfully.
+- Modes 2, 3 and 4 all return the same deterministic local response shape:
+  outer command status 4 followed by the 40-byte pending response whose defined
+  header is `00 00 00 00 02 00 04 00` and whose replacement-driver tail is
+  zero-filled.
+- The first rejected request is the same 94-byte packet with mode 5. It repeats
+  11 times.
+- XStream subsequently still reaches the admitted family-1 opcode-`0x90`
+  request and the known mode-1 / 58-bit JTAG request.
+- No acquisition-launch IOCTL appears in this capture.
+
+Important runtime/source discrepancy: current `main` contains byte-exact gate
+entries through mode 2 only. Modes 3 and 4 should therefore be rejected by
+`LecIsCapturedStartupCfDc2110`, yet this capture records them as successful.
+The successful output is consistent with the local `mode >= 2` protocol-error
+implementation, not with JTAG execution. Do not admit mode 5 until the exact
+driver binary/source state used for this capture is identified.
