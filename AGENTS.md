@@ -1638,3 +1638,21 @@ original 32-bit driver.
 Relevant commits:
 - ecd1ab6b087ca3deb60736208553b7e76ab189cb
 - e306a28cf8190ec0b73b13347e7ee422119c0687
+
+## lecdiag x86 build verification
+
+A user observed that running `./scripts/build-lecdiag.ps1 -Architecture x86`
+printed an output path under `tools/lecdiag/build/lecdiag.exe` and the resulting
+binary failed on 32-bit Windows with "not a valid application for this OS
+platform". The current repository script should instead emit
+`tools/lecdiag/build/x86/lecdiag.exe` for x86 builds.
+
+To make architecture mistakes explicit, commit
+`9080db419d654cac8816f8c86002fabf17d55bb0` adds PE-header verification after
+the build. The script now checks the Machine field and requires:
+- x86: 0x014C
+- x64: 0x8664
+
+It also prints the verified architecture and PE machine value. If a user still
+sees the old output path, their local checkout/script is stale or locally
+modified; pull/reset before rebuilding.
