@@ -1159,3 +1159,22 @@ Static legacy paths:
 
 `ghidra_scripts/targets.txt` now includes the opcode-`0x90`/`0xA0` helper
 functions needed for the next mapping pass.
+
+## Opcode 0xA0 mapping resolved
+
+The latest Ghidra export proves the family-0 opcode-`0xA0` register mapping.
+
+The CFDC2110 command dispatcher object is located at board-object offset
+`+0xEA8`. `FUN_00015FD8` accesses dispatcher field `+0x17A`, which lands
+at board-object offset `+0x1022`. `FUN_00014847` explicitly stores the
+PFREG register object at `+0x1022`; PFREG is BAR1 offset `0xF4`.
+
+Therefore opcode `0xA0` is now implemented as a direct 16-bit PFREG write
+with a local legacy status response.
+
+The remaining probe path, family-0 opcode `0x90`, uses dispatcher field
+`+0x19`. Its helper layout matches the SPI helper initialized by
+`FUN_0001340C` (active byte, CTL/DAT/DIN pointers, control shadow), but the
+pointer assignment still needs a direct constructor proof before enabling MMIO
+writes. Ghidra targets now include the command-object constructor region around
+`0x159E2` and neighboring raw addresses.
