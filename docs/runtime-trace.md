@@ -2399,3 +2399,46 @@ INTST 0x20 -> CLRIRQ 8
 these source-specific writes. The next hardware test should determine whether
 the post-calibration 0x0080 event storm disappears and XStream proceeds to
 normal acquisition/waveform traffic.
+
+
+## Trace 005808: first confirmed waveform acquisition on x64
+
+`xstream_trace_20260928_005808.jsonl` is the first known-good x64 runtime
+capture with **visible waveforms in XStream**.
+
+It was captured after the BAR1 CLRIRQ ISR fix in
+`6cc5a238684c217f1238aae2069950ec99a39672`.
+
+Key results:
+
+- 16,827 IOCTL records are captured; all return NTSTATUS success.
+- 3,134 CFDC2138 acquisition calls succeed.
+- Every CFDC2138 returns Information=4 and a DWORD exactly equal to the
+  requested data-byte count.
+- Successful acquisition sizes range from small helper/calibration buffers to
+  167,936-byte transfers.
+- The first CFDC2138 occurs about 18.31 s into the capture.
+- A 167,936-byte CFDC2138 succeeds about 18.33 s into the capture.
+- Successful CFDC2138 and family-1 opcode-0x51 traffic continues through the
+  end of the capture.
+- All 678 captured family-0 opcode-0x88 calls return the expected zero response.
+- The post-calibration pending-0x0080/CFDC2184 event storm from trace 004553 is
+  gone.
+
+Representative successful transition:
+
+```text
+85FB/0x01 -> enabled=0x02BF, pending=0x0080
+family0/0x88 / 0x0080 -> local zero response
+CFDC2184
+JTAG/status
+CFDC2138 0x0C00 -> 0x0C00
+family1/0x51 -> success
+CFDC2138 0x5400 -> 0x5400
+...
+CFDC2138 0x29000 -> 0x29000
+```
+
+This trace changes the project phase from basic x64 acquisition bring-up to
+feature/stability regression. It is the reference trace to protect against
+future regressions.

@@ -110,7 +110,7 @@ Together, those findings give the future x64 driver a useful incremental bring-u
 
 Development originally started on `prototype/x64-bringup`, but that work has been merged and active development now happens on `main`.
 
-The x64 prototype implements PCI/PnP bring-up, all five recovered interface GUIDs, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility and detailed IOCTL tracing. It deliberately omits the legacy DOS alias because the original XStream startup expects that probe to fail. Interrupt and acquisition behaviour are being reconstructed from the original x86 driver before active DMA execution is enabled.
+The x64 prototype implements PCI/PnP bring-up, all five recovered interface GUIDs, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility, interrupt delivery, the observed CFDC2124/CFDC2138 DMA path, family-1 MTTRGO transfers and detailed IOCTL tracing. It deliberately omits the legacy DOS alias because the original XStream startup expects that probe to fail. As of 2026-09-28, XStream displays real waveforms on the replacement x64 driver; active work has moved from basic acquisition bring-up to compatibility and stability validation.
 
 See [docs/x64-bringup.md](docs/x64-bringup.md) and
 [docs/runtime-trace.md](docs/runtime-trace.md).
@@ -198,3 +198,22 @@ ISR performs source-specific BAR1 `CLRIRQ` writes for INTST bits
 `0x04/0x08/0x10/0x20` before the common INTST acknowledge. The x64 ISR now
 mirrors those writes. The next hardware test is aimed at reaching normal
 waveform acquisition after calibration.
+
+
+### First confirmed x64 waveforms
+
+`xstream_trace_20260928_005808.jsonl` is the first captured run where XStream
+visibly displayed waveforms on the replacement 64-bit driver.
+
+The trace contains no failed IOCTLs. All 3,134 captured CFDC2138 acquisitions
+complete successfully, including repeated 167,936-byte transfers, and the
+post-calibration interrupt storm seen in the previous milestone trace is gone.
+
+The working baseline includes the recovered endpoint selection, CFDC2190,
+85FB framing/length rules, opcode-0x96 selector progression, legacy user-event
+delivery, command-status handling, one-channel CFDC2138 MAM DMA, family-1
+opcode-0x51 MTTRGO transfers, local opcode-0x88 acknowledgement, immediate
+IIMCL completion acknowledge and source-specific BAR1 CLRIRQ writes.
+
+The next phase is regression testing of normal oscilloscope behavior rather
+than further speculative startup/DMA changes.

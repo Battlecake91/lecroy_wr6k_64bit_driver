@@ -277,21 +277,18 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Hardware-test the BAR1 CLRIRQ source-specific interrupt acknowledge added
-   after `xstream_trace_20260928_004553.jsonl`.
-2. Trace 004553 proves calibration now completes after the opcode-0x88 local
-   acknowledgement fix, and every captured IOCTL returns success.
-3. Immediately after calibration, x64 enters an abnormal high-rate loop:
-   standalone 85FB/0x01 reports pending `0x0080`, local opcode-0x88 clears
-   it, `CFDC2184` runs, and pending `0x0080` is asserted again almost
-   immediately. The trace ring records about 91k calls while sequence numbers
-   exceed 1.5 million, proving a severe interrupt/event retrigger loop.
-4. Static ISR recovery shows the missing hardware acknowledge:
-   INTST 0x04/0x08/0x10/0x20 must write 1/2/4/8 respectively to BAR1 CLRIRQ
-   (offset 0x008) before the common INTST write-back. This is now implemented.
-5. Keep the proven CFDC2138 and family-1 0x51 DMA paths intact. Keep CFDD219F
-   and unobserved multi-channel CFDC2138 gated, and preserve the below-4-GiB
-   descriptor safety check.
+1. Preserve the working waveform-acquisition baseline proven by
+   `xstream_trace_20260928_005808.jsonl`.
+2. Move from bring-up to regression/compatibility validation: coupling, vertical
+   scale/offset, timebase, trigger modes/levels, Stop/Auto/Single transitions,
+   channel enable/disable, measurements and repeated XStream restart.
+3. Any new driver change must be checked against the 005808 waveform trace
+   before being accepted. Do not regress the BAR1 CLRIRQ, local opcode-0x88,
+   CFDC2138 MAM DMA or family-1 opcode-0x51 MTTRGO fixes.
+4. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated unless a
+   real application path requires them and the original behavior is recovered.
+5. Preserve the below-4-GiB descriptor safety check. Never truncate x64
+   physical addresses into the legacy DWORD descriptor format.
 
 
 ## Latest dispatch recovery
@@ -2358,6 +2355,30 @@ Important trace-format distinction:
     `CFDC2124/CFDC2138`;
   - this trace contains the pre-fix hard-coded 85FB length value `2` and must
     not be used to judge the post-`d51dbe2` driver state.
+- `xstream_trace_20260928_000706.jsonl`
+  - post-MTT calibration trace;
+  - proves family-1 opcode 0x51 works and exposes intermittent CFDC2138
+    completion timeouts before the ISR-side IIMCL clear fix.
+- `xstream_trace_20260928_002537.jsonl`
+  - proves all captured DMA/MTT IOCTLs succeed after the IIMCL fix;
+  - exposes the incorrect firmware forwarding of runtime opcode-0x88 /
+    mask 0x0080.
+- `xstream_trace_20260928_004553.jsonl`
+  - first x64 trace where calibration visibly completes;
+  - exposes the post-calibration INTST-0x04 / pending-0x0080 event storm caused
+    by missing BAR1 CLRIRQ acknowledgement.
+- `xstream_trace_20260928_005808.jsonl`
+  - **first confirmed x64 waveform-acquisition trace**;
+  - captured after commit `6cc5a238684c217f1238aae2069950ec99a39672`
+    added the recovered BAR1 CLRIRQ ISR acknowledgement;
+  - user visibly observed waveforms;
+  - 16,827 traced IOCTL records have NTSTATUS success;
+  - 3,134 CFDC2138 acquisitions all succeed and every four-byte result equals
+    the requested transfer byte count;
+  - successful CFDC2138 sizes include 0x0C00, 0x5400, 0x0400, 0x1400,
+    0x2000, 0x29000 (167,936 bytes) and others;
+  - all 678 captured family-0 opcode-0x88 calls return the legacy zero response;
+  - the previous million-call post-calibration event storm is absent.
 
 The older milestone traces from `xstream_trace_20260927_023951.jsonl` through
 `xstream_trace_20260927_151006.jsonl` remain indexed chronologically in
@@ -3013,3 +3034,57 @@ common INTST write-back afterwards.
 Trace 004553 is the primary evidence file for the completed-calibration /
 post-calibration event-loop stage. Do not ask the user to reproduce that stage
 unless validating a newer ISR state.
+
+
+## 2026-09-28 trace 005808: first confirmed x64 waveforms
+
+`xstream_trace_20260928_005808.jsonl` is the first runtime capture where the
+user visibly observed waveforms while XStream was running on the 64-bit
+replacement driver.
+
+This test uses current `main` after commit
+`6cc5a238684c217f1238aae2069950ec99a39672`, which restored the original
+BAR1 CLRIRQ source-specific ISR acknowledgement.
+
+Trace summary:
+
+```text
+records parsed              16,828
+IOCTL records               16,827
+non-success IOCTLs               0
+CFDC2110                     12,851
+CFDC2138                      3,134
+CFDC2184                        681
+CFDC2124                         67
+CFDC2128                         63
+```
+
+All 3,134 CFDC2138 calls return NTSTATUS success, Information=4 and a DWORD
+equal to the requested byte count. Observed requested sizes include:
+
+```text
+0x00000400    1,024 bytes
+0x00000C00    3,072 bytes
+0x00001400    5,120 bytes
+0x00002000    8,192 bytes
+0x00004C00   19,456 bytes
+0x00005400   21,504 bytes
+0x00029000  167,936 bytes
+```
+
+The first CFDC2138 appears about 18.31 s into the capture. A 167,936-byte
+transfer is already completing successfully about 18.33 s into the capture,
+and successful acquisition traffic continues through the final trace records.
+
+All 678 captured family-0 opcode-0x88 transactions return the original-style
+combined response ending in `0000`; none exposes the former firmware values
+0x002C/0x002D.
+
+The trace sequence spans 1..18,546 with only modest ring loss, rather than the
+>1.5-million sequence explosion seen in trace 004553. The previous
+post-calibration pending-0x0080 event storm is therefore resolved by the
+source-specific CLRIRQ writes.
+
+This is now the primary known-good x64 runtime baseline. Do not request another
+"does waveform acquisition work at all?" trace. Future captures should target
+specific regression areas or remaining features.
