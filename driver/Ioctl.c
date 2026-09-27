@@ -1182,7 +1182,7 @@ LecJtagWriteOnly(
 
 static
 BOOLEAN
-LecIsConfirmedForwardOnlyCfDc2110(
+LecIsStructurallySupportedCfDc2110(
     _In_reads_bytes_(InputLength) const UCHAR* Buffer,
     _In_ ULONG InputLength
     )
@@ -1198,10 +1198,10 @@ LecIsConfirmedForwardOnlyCfDc2110(
      *   family 0: opcode 0x84
      *   family 1: opcodes 0x81, 0x90, 0x99
      *
-     * Admit the command class rather than individual captured payloads, while
-     * still validating the packed CFDC2110 record framing before hardware is
-     * touched. 85FB fetch records are allowed only as companions to such a
-     * request.
+     * Admit statically decoded command classes rather than individual captured
+     * payloads, while still validating the packed CFDC2110 record framing
+     * before hardware is touched. 85FB fetch records are allowed only as
+     * companions to a supported request.
      */
     if (Buffer == NULL || InputLength < 8) {
         return FALSE;
@@ -1266,8 +1266,7 @@ LecIsConfirmedForwardOnlyCfDc2110(
                 }
 
                 offset = (ULONG)LecReadU16(payload + 4);
-                if ((offset & 3UL) != 0 ||
-                    offset > LECS65_BAR1_GPIO_DATA) {
+                if ((offset & 3UL) != 0) {
                     return FALSE;
                 }
 
@@ -1437,7 +1436,7 @@ LecIsAllowedCfDc2110(
         return FALSE;
     }
 
-    if (LecIsConfirmedForwardOnlyCfDc2110(Buffer, InputLength)) {
+    if (LecIsStructurallySupportedCfDc2110(Buffer, InputLength)) {
         return TRUE;
     }
 
