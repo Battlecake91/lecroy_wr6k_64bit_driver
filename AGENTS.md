@@ -1088,3 +1088,28 @@ The last pre-change trace, `xstream_trace_20260927_023951.jsonl`, ended with
 five rejected opcode-`0x84` selector-`0x0C` requests, five selector-`0x0D`
 requests, and one family-1 opcode-`0x81` selector-`0x0E` request. These no
 longer require individual whitelist entries.
+
+## Latest staged trace: 2026-09-27 02:50
+
+The semantic forwarding gate worked as intended: the next trace no longer
+stopped on additional opcode-`0x81`/`0x84` payload variants.
+
+Trace `xstream_trace_20260927_025005.jsonl` contains 427 CFDC2110 calls:
+416 successful and 11 rejected. The final blocked requests are:
+
+- family 0 / opcode `0x42`: 5 identical requests;
+- family 0 / opcode `0x92`, selector 1, offset `0xC0`, value
+  `0xFFFFFFFF`: 5 requests;
+- family 0 / opcode `0x92`, selector 1, offset `0xC4`, value
+  `0x00000460`: 1 request.
+
+Static legacy semantics:
+- `FUN_00015ACC` implements family-0 opcode `0x42` as a local JTAG write
+  loop through BAR1 JTAGNUM/JTAGDAT and creates a local status response.
+- `FUN_0001600E` implements family-0 opcode `0x92` as direct MMIO write.
+  Selector 1 is confirmed as BAR1 because the observed offsets are exactly
+  GPIODIR `0xC0` and GPIODAT `0xC4`.
+
+The x64 driver now implements opcode `0x42` structurally and opcode `0x92`
+selector 1 as an aligned BAR1 write with BAR resource bounds checked at runtime.
+Selectors 0 and 2 remain gated until their legacy base mappings are confirmed.
