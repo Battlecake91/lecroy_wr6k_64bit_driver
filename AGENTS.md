@@ -1360,3 +1360,25 @@ These are not user pointers/handles. Their concrete values are produced by
 legacy buffer/list helper code and must still be exported before implementation.
 Ghidra targets now include 12386, 123B4, 124C2, 1259A, 12290, 17A98 and 120FA
 to resolve those size producers and serialization helpers.
+
+## Buffer-query values implemented
+
+The final Ghidra helper exports resolve the exact four-byte query values:
+
+- 0x00223004 -> 0x00000110
+  - FUN_0001329E allocates a 0x110-byte trace-control block and stores 0x110
+    in its first DWORD.
+  - FUN_00012A5E returns that first DWORD for a four-byte output query.
+
+- 0x00223040 -> 0x00002CAE
+  - FUN_00012386 returns (maxInserted + 1) * 0x10A.
+  - Static insertion references show 43 distinct register objects are added to
+    the legacy register list.
+  - 43 * 0x10A = 0x2CAE.
+
+The x64 driver now returns these exact values for the two startup queries.
+
+The remaining unsupported 0x00222400 is still intentionally unmapped. The next
+runtime trace should determine whether satisfying the two size queries causes
+XStream to proceed to CFDC2124 transfer registration and the acquisition
+IOCTLs.
