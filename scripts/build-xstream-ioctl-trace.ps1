@@ -77,3 +77,12 @@ Write-Host "Built x86 XStream IOCTL tracer:"
 Write-Host "  $launcherOut"
 Write-Host "  $hookOut"
 Write-Host "  Architecture: x86 (PE machine 0x014C)"
+Write-Host ""
+Write-Host "Artifact verification:"
+foreach ($output in @($launcherOut, $hookOut)) {
+    $item = Get-Item $output
+    $hash = (Get-FileHash -Algorithm SHA256 -Path $output).Hash
+    Write-Host ("  {0}" -f $item.Name)
+    Write-Host ("    Bytes : {0}" -f $item.Length)
+    Write-Host ("    SHA256: {0}" -f $hash)
+}
