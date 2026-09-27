@@ -1950,3 +1950,22 @@ Fixes:
 - commit `a0482af7c375578d02b3d1ff1d72b1d1eddd817d` makes the launcher fall back to decorated name `_InitializeXStreamTrace@4` for robustness.
 
 Rebuild with `./scripts/build-xstream-ioctl-trace.ps1` and copy both rebuilt x86 files to the legacy system before retrying.
+
+
+## First passive legacy trace did not see LeCroy IOCTLs through DeviceIoControl
+
+Trace: `legacy_xstream_trace_20260927_165243.jsonl`.
+
+Observed:
+- 2014 Win32 DeviceIoControl calls;
+- five distinct codes, all 0x004708xx;
+- payloads contain HID device paths;
+- zero CFDCxxxx / 0022xxxx LeCroy IOCTLs.
+
+So injection/IAT logging works, but the LeCroy path bypasses the hooked Win32
+DeviceIoControl surface.
+
+Commit `994a875641e88adb9f3bcec5a3b8c1ed91fbca8d` adds interception of
+`ntdll!NtDeviceIoControlFile` and logs native request/response data as
+`type=nt_ioctl` records. Rebuild the tracer and recapture before considering
+more invasive methods.
