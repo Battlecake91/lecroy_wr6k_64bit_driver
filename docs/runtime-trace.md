@@ -1467,3 +1467,36 @@ ProcMon is useful for identifying device opens but is not sufficient as the
 primary capture mechanism because the required IOCTL payload bytes must be
 recorded. WinDbg can be used for spot checks, but an automated user-mode hook
 is preferable for the hundreds of startup calls.
+
+
+
+## Passive original-XStream user-mode IOCTL capture
+
+A dedicated x86 tracer is now in `tools/xstream-ioctl-trace`.
+
+It uses a small launcher plus injected x86 DLL instead of modifying the legacy
+kernel driver. The DLL hooks the user-mode import path for `DeviceIoControl`
+and records the exact request/response bytes seen by original 32-bit XStream.
+It also records CreateFile/CloseHandle activity so the LeCroy device handle can
+be identified directly.
+
+Build:
+
+```powershell
+.\scripts\build-xstream-ioctl-trace.ps1
+```
+
+Run on the original 32-bit system:
+
+```powershell
+.\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe"
+```
+
+The launcher creates a timestamped `legacy_xstream_trace_*.jsonl` in the
+current directory by default. Input/output capture is capped at 1 MiB per
+direction. Synchronous DeviceIoControl calls have complete returned output;
+pending overlapped calls are marked but completion APIs are not yet hooked.
+
+This is now the preferred ground-truth source for comparing the original driver
+with the x64 replacement, especially the startup traffic before the known
+pre-poll block.
