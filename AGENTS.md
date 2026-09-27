@@ -36,8 +36,10 @@ paths.
 
 In particular:
 
-- `0xCFDC2110` parsing/transport code is preserved, but hardware execution is
-  intentionally disabled in the x64 driver.
+- `0xCFDC2110` hardware execution is enabled only for command classes whose
+  host-side semantics or verbatim board-forwarding behavior have been recovered
+  and validated. Unknown/unproven packet classes must remain rejected; do not
+  broaden the whitelist merely to make XStream advance.
 - Do not recommend arbitrary raw `CFDC2110` replay against hardware.
 - Do not recommend arbitrary BAR reads/writes outside already understood
   registers. A previous incorrect BAR access could freeze the device.
@@ -275,18 +277,18 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Close the exact legacy pending-response semantics for the newly observed
-   family-1 opcode-`0x42`, mode-2, 256-bit buffer. Do not treat mode 2 as an
-   executable JTAG hardware mode.
-2. Only after the local protocol-status-4 and 85FB fetch response are proven,
-   consider a byte-exact admission and another XStream startup capture.
-3. Verify whether Windows supplies all source and descriptor-table pages below
-   4 GiB; the current x64 transfer registration deliberately rejects addresses
-   that do not fit the proven legacy 32-bit descriptor ABI.
-4. Determine MAM/MTT launch-count units from passive normal operation before
-   enabling `0xCFDC2138` or `0xCFDD219F` acquisition launch.
-5. Keep partial `0xCFDC2110` hardware execution disabled until the observed
-   startup/runtime packets have confirmed semantics.
+1. Hardware-test commit `124785ccd65e190fe73494394ea0ebc0502be8c5`,
+   the first x64 build that executes the proven one-channel `CFDC2138` DMA
+   path.
+2. Use the normal desktop trace helper and determine whether the first
+   0x0C00-byte transfer completes through INTST bit 0, times out, or exposes a
+   new deterministic IOCTL/hardware state.
+3. If `CFDC2138` succeeds, compare the subsequent transfer sizes/channels and
+   returned data flow against the existing full original traces before
+   broadening any ABI shape.
+4. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated.
+5. Preserve the below-4-GiB descriptor safety check. Do not truncate x64
+   physical addresses into the legacy DWORD descriptor format.
 
 
 ## Latest dispatch recovery
@@ -419,11 +421,15 @@ The native x64 driver has been advanced beyond the original bring-up prototype:
 - line-interrupt connection, ISR acknowledgement for explicitly owned sources,
   DPC dispatch and transfer completion-event signalling are implemented;
 - the interrupt path is passive until `InterruptEnableShadow` explicitly owns
-  a source. Active acquisition launch is still gated.
-- `0xCFDC2138` and `0xCFDD219F` are currently trace-visible but return
-  `STATUS_NOT_SUPPORTED`; do not enable MAMRGO/MTTRGO launch until DMA
-  address-width and launch-count units have been validated.
-- `0xCFDC2110` remains trace-only for safety.
+  a source;
+- the exact observed one-channel `0xCFDC2138` path is active: it reuses a
+  successfully registered below-4-GiB descriptor chain, programs the recovered
+  MAM/SGTA/IIMTC sequence, launches through MAMRGO and waits up to five seconds
+  for interrupt-bit-0 completion;
+- `0xCFDD219F` and unobserved multi-channel `0xCFDC2138` remain
+  `STATUS_NOT_SUPPORTED`;
+- recovered `0xCFDC2110` classes execute their proven local or board-forwarded
+  behavior, while unknown/unproven classes remain rejected.
 
 Passive runtime tracing has been upgraded:
 
