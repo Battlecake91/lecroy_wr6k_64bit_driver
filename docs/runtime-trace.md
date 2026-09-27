@@ -1284,3 +1284,41 @@ pre-poll CFDC2110 sequence captured from the x64 startup and probes the 76-bit
 JTAG status after each individual operation. It is intended for the original
 32-bit driver on a freshly initialized board, before XStream, to identify the
 specific state-changing command.
+
+## Legacy pre-poll replay isolates two hardware state transitions
+
+Running `lecdiag legacy-prepoll-replay` on a fresh board with the original
+32-bit driver produced a stable initial status:
+
+`1400 2040 0000 0002 0020`
+
+The first seven replayed operations leave that state unchanged.
+
+Step 8, the first family-0 opcode-0x42 JTAG write, changes only word 2:
+
+`1400 2040 0000 0002 0020`
+-> `1400 3040 0000 0002 0020`
+
+Steps 9 through 32 leave that state unchanged.
+
+Step 33, family-2 opcode-0x02 with MTTCTL=1, changes only word 4:
+
+`1400 3040 0000 0002 0020`
+-> `1400 3040 0000 0000 0020`
+
+The user also heard physical relays switching during this replay, confirming
+that the sequence is changing real board state.
+
+This is a critical discriminator because the current x64 startup reaches:
+
+`1400 3040 0000 0050 0020`
+
+Therefore:
+- the first JTAG write causing word2 0x2040 -> 0x3040 is normal and also occurs
+  under the legacy driver;
+- the real divergence is around the MTTCTL transition: legacy reaches word4
+  0x0000, while x64 reaches 0x0050.
+
+The next investigation should focus tightly on family-2 opcode 0x02 / MTTCTL
+and the state immediately feeding that operation, rather than on JTAG framing
+or the earlier GPIO/SPI/MAM commands.
