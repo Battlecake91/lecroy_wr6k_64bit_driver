@@ -256,7 +256,11 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     USHORT LegacyTransferMask;
     ULONG LegacySpiControlShadow;
     BOOLEAN LegacySpiInitialized;
-    UCHAR ReservedSpi[3];
+    BOOLEAN LegacyTimerInitialized;
+    UCHAR ReservedSpi[2];
+    KTIMER LegacyTimer;
+    LARGE_INTEGER LegacyTimerStartTime;
+    ULONG LegacyTimerDurationMs;
 
     KSPIN_LOCK TraceLock;
     ULONGLONG TraceNextSequence;
