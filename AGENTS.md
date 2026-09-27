@@ -1785,3 +1785,25 @@ If cold x64 baseline is 1400 2040 0000 0002 0020, the bad state is created by
 later XStream commands and persisted into the previous replay.
 If cold x64 baseline is already 1400 3040 0000 0050 0020, investigate driver
 start / board reset state before any XStream IOCTLs.
+
+## True cold x64 baseline is all-ones JTAG readback
+
+After full power-off/power-on, before XStream, the first x64
+`legacy-jtag-poll` returned full output:
+`000000000000000000000C00000000FFFFFFFFFFFFFFFFFF0F`
+
+So the fresh x64 board does NOT begin at the legacy fresh baseline
+`1400 2040 0000 0002 0020`.
+
+This means the replacement driver's startup path does not establish all of the
+legacy board/JTAG state. The previously observed x64 state
+`1400 3040 0000 0050 0020` must arise later.
+
+Next test must be clean:
+1. full hardware power cycle;
+2. no XStream;
+3. do not run `legacy-jtag-poll` or other diagnostic first;
+4. immediately run `lecdiag legacy-prepoll-replay`.
+
+Use the replay output to identify the first command that changes the x64
+all-ones cold state.
