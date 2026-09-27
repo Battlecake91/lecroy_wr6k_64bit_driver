@@ -732,3 +732,39 @@ publish a local status response.
 
 The x64 driver now implements this command structurally for both valid values
 rather than admitting only the observed zero-valued request.
+
+## Twenty-first staged startup capture
+
+Trace `xstream_trace_20260927_025927.jsonl` is the first capture where
+XStream reaches its main UI without the former startup error dialog.
+
+Observed application-level failures now split into two distinct groups:
+
+1. **Probe read failure for channels 1 through 5**
+   - five rejected family-0 opcode-`0x90` requests appear as one contiguous
+     block;
+   - each request carries selector `0x0E` and a 144-bit data sequence;
+   - legacy `FUN_00015E80` handles this command locally through the helper
+     object at driver-object offset `+0x19`, not through the generic board
+     transport;
+   - the helper chain `FUN_000155D0`, `FUN_0001236E`,
+     `FUN_0001588E` programs a control-shadow register and a data register.
+     The exact BAR1 register mapping of that helper object still needs to be
+     proven before enabling the path.
+
+2. **Trigger/arm failure**
+   - family-0 opcode `0xA0` is rejected repeatedly while trigger-related
+     GPIO/JTAG commands around it now succeed;
+   - legacy `FUN_00015FD8` performs a local 16-bit register write through an
+     internal register object at driver-object offset `+0x17A`;
+   - the precise MMIO target represented by that object is not yet mapped;
+   - the final rejected family-0 opcode `0x85` carries control word
+     `0x02A0`. Its host semantics were already decoded: update the legacy
+     interrupt-enable shadow bits and then forward the request to board
+     firmware. The x64 gate has now been generalized for structurally valid
+     opcode-`0x85` requests instead of admitting only the earlier
+     `0x00A0` capture.
+
+No `CFDC2138` or `CFDD219F` acquisition launch IOCTL occurs in this trace.
+Therefore the current "unable to arm acquisition board" message happens before
+the still-gated DMA acquisition path is entered.
