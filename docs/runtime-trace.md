@@ -493,3 +493,23 @@ every run is likely related to this incomplete startup sequence. The trace
 alone cannot prove that the dialog is caused by these specific rejections, but
 the repeatable timing and the progression to the next blocked packet after each
 admission make the connection operationally significant.
+
+## Twelfth staged startup capture
+
+The 2026-09-27 02:09 capture shows the next family-1 opcode-`0x81`
+selector forms after selectors 3, 4 and 5 were admitted.
+
+Observed newly rejected exact packets use selector bytes `0x06`, `0x07`
+and `0x08`. Their structure is unchanged: each is a 22-byte A5FB command
+followed by an 85FB fetch record requesting 10 output bytes.
+
+The application was previously allowed to continue past its reproducible
+startup error dialog, which introduces retry/recovery traffic after the actual
+startup failure point. Future captures should terminate XStream from that
+dialog instead. Analysis should treat the sequence up to the first rejected
+startup block as authoritative and anything after a manually skipped dialog as
+recovery-path traffic.
+
+Selectors 6, 7 and 8 are now added as exact captured runtime-gate entries.
+Legacy family-1 opcode `0x81` still uses the already decoded generic board
+transport; no broader opcode rule is introduced.
