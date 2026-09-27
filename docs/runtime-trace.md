@@ -556,3 +556,27 @@ family-1 opcode-`0x81` forms through the generic BAR1 board-message transport.
 
 The exact observed selector-12, selector-13, and selector-23 packets are now
 added to the byte-exact runtime gate. Unknown selector values remain rejected.
+
+## Fifteenth staged startup capture
+
+The 2026-09-27 02:31 capture was terminated at the XStreamDSO startup error
+dialog and therefore ends at the authoritative startup failure boundary.
+
+The trace contains 181 IOCTL records, including 170 `0xCFDC2110` calls. The
+final 11 rejected calls are all family-0 opcode `0x84` and occur as three
+exact 54-byte packet forms:
+
+- form 0: 5 rejections;
+- form 1: 5 rejections;
+- form 2: 1 rejection.
+
+Legacy family-0 dispatcher `FUN_00016A66` routes opcode `0x84` directly to
+the generic BAR1 board-message transmitter `FUN_00016168` without additional
+host-side register or state handling. This is the same generic transport class
+already used for several previously admitted firmware-forwarded startup
+commands.
+
+The replacement driver therefore adds only the three exact captured opcode
+`0x84` packet buffers to the byte-exact runtime gate and forwards them through
+the existing generic transport path. Their board-firmware meaning remains
+unknown.
