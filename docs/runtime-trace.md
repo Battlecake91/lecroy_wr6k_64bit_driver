@@ -710,3 +710,25 @@ as BAR1 by the observed `0xC0`/`0xC4` GPIO register offsets.
 The x64 driver now implements the decoded opcode-`0x42` JTAG-write semantics
 and opcode-`0x92` selector-1 BAR1 writes structurally rather than admitting
 only the captured packets.
+
+## Twentieth staged startup capture
+
+Trace `xstream_trace_20260927_025600.jsonl` contains 432 IOCTL records and
+421 CFDC2110 calls.
+
+- 420 CFDC2110 calls succeeded;
+- exactly one CFDC2110 call was rejected;
+- the rejected request is family 2 / opcode `0x02` with command-body value
+  `0x00`.
+
+This confirms that the newly implemented family-0 opcode-`0x42` JTAG write
+path and opcode-`0x92` selector-1 BAR1 MMIO write path both progress through
+startup successfully.
+
+Static analysis of legacy `FUN_000163B2` shows that family-2 opcode `0x02`
+is local MTT control: accept body value 0 or 1, optionally wait for an active
+transfer object, write that value to BAR1 MTTCTL at offset `0x80`, and
+publish a local status response.
+
+The x64 driver now implements this command structurally for both valid values
+rather than admitting only the observed zero-valued request.
