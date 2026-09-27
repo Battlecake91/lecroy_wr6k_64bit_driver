@@ -603,3 +603,28 @@ state changes.
 
 The exact selector-3, selector-4, and selector-5 packet buffers are now added
 to the byte-exact runtime gate. Unknown opcode-`0x84` forms remain rejected.
+
+## Seventeenth staged startup capture
+
+The 2026-09-27 02:35 capture was terminated at the XStreamDSO startup error
+dialog and ends cleanly at the next blocked startup stage.
+
+The trace contains 218 records, including 206 `0xCFDC2110` calls:
+
+- 195 CFDC2110 calls completed successfully;
+- 11 were rejected by the byte-exact gate;
+- every rejection is family-0 opcode `0x84`;
+- selector `0x06`: 5 rejections;
+- selector `0x07`: 5 rejections;
+- selector `0x08`: 1 rejection.
+
+The complete packet payload matters, not only the selector byte. Selector
+`0x06` carries payload words `0x0036` and `0x0069`, while selectors
+`0x07` and `0x08` carry `0x00A5` and `0x00D5`. The remaining repeated
+`0x03FF` words and the trailing 85FB fetch shape match the captured startup
+pattern.
+
+Because legacy family-0 opcode `0x84` is already known to use the generic
+BAR1 board-message transport without extra host-side state handling, the x64
+driver adds only these three exact 54-byte buffers. No selector-only or
+opcode-wide admission rule is introduced.
