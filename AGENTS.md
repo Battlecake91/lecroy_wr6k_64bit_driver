@@ -1029,3 +1029,19 @@ The final rejected block is family-0 opcode `0x84` with selectors:
 These exact observed 54-byte packet forms are now admitted through the existing
 generic BAR1 board-message transport. No broader opcode-`0x84` rule is
 introduced. Unknown forms remain blocked.
+
+## Latest staged trace: 2026-09-27 02:35
+
+Trace `xstream_trace_20260927_023559.jsonl` was terminated at the XStreamDSO
+startup error dialog. It contains 206 CFDC2110 calls: 195 successful and 11
+rejected.
+
+The final rejected block is family-0 opcode `0x84`:
+
+- selector `0x06`: 5 times, with payload words `0x0036`, `0x0069`;
+- selector `0x07`: 5 times, with payload words `0x00A5`, `0x00D5`;
+- selector `0x08`: 1 time, with payload words `0x00A5`, `0x00D5`.
+
+The complete 54-byte request buffer is significant. These three exact captured
+forms are now admitted through the existing generic BAR1 transport. Do not
+generalize admission by selector alone.
