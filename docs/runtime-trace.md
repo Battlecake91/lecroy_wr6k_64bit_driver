@@ -468,3 +468,28 @@ legacy dispatcher. The x64 driver therefore adds only the three exact captured
 22-byte packet forms to the runtime gate and routes opcode `0x81` through the
 existing generic transport path. Board-firmware semantics remain unknown and no
 opcode-wide admission rule is introduced.
+
+## Eleventh staged startup capture
+
+The 2026-09-27 02:01 capture contains 180 IOCTL records, including 158
+`0xCFDC2110` calls:
+
+- 147 CFDC2110 calls completed successfully;
+- 11 were rejected;
+- the previously admitted family-1 opcode-`0x81` selector forms
+  `0x00`, `0x01`, and `0x02` each complete successfully;
+- the only rejected shapes are the same 22-byte opcode-`0x81` packet with
+  selector bytes `0x03`, `0x04`, and `0x05`;
+- rejection counts are 5, 5, and 1 respectively.
+
+This strongly indicates that XStream is walking a deterministic opcode-`0x81`
+startup sequence. Legacy routing for family-1 opcode `0x81` is already known
+to use the generic BAR1 board-message transport without extra host-side
+register handling. The replacement therefore adds only these three newly
+captured exact buffers to the existing byte-exact gate.
+
+The long-standing XStreamDSO startup error that appears at the same point on
+every run is likely related to this incomplete startup sequence. The trace
+alone cannot prove that the dialog is caused by these specific rejections, but
+the repeatable timing and the progression to the next blocked packet after each
+admission make the connection operationally significant.
