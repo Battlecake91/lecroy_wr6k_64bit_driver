@@ -628,3 +628,22 @@ Because legacy family-0 opcode `0x84` is already known to use the generic
 BAR1 board-message transport without extra host-side state handling, the x64
 driver adds only these three exact 54-byte buffers. No selector-only or
 opcode-wide admission rule is introduced.
+
+## Eighteenth staged startup capture
+
+The 2026-09-27 02:37 capture was terminated at the XStreamDSO startup error
+dialog and ends cleanly at the next blocked startup stage.
+
+The trace contains 235 IOCTL records, including 224 `0xCFDC2110` calls:
+
+- 213 CFDC2110 calls completed successfully;
+- 11 were rejected by the byte-exact gate;
+- every rejection is family-0 opcode `0x84`;
+- selector `0x09`: 5 rejections, payload words `0x00A5`, `0x00D5`;
+- selector `0x0A`: 5 rejections, payload words `0x0043`, `0x0075`;
+- selector `0x0B`: 1 rejection, payload words `0x0000`, `0x0000`.
+
+As in the preceding opcode-`0x84` stage, the complete packet contents matter:
+the payload changes along with the selector. The x64 driver therefore admits
+only these three exact 54-byte packet buffers through the already decoded
+generic BAR1 board-message transport.
