@@ -25,6 +25,35 @@ typedef struct LECS65_IO_STATUS_BLOCK {
     ULONG_PTR Information;
 } LECS65_IO_STATUS_BLOCK, *PLECS65_IO_STATUS_BLOCK;
 
+
+typedef struct LECS65_UNICODE_STRING {
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR Buffer;
+} LECS65_UNICODE_STRING, *PLECS65_UNICODE_STRING;
+
+typedef struct LECS65_OBJECT_ATTRIBUTES {
+    ULONG Length;
+    HANDLE RootDirectory;
+    PLECS65_UNICODE_STRING ObjectName;
+    ULONG Attributes;
+    PVOID SecurityDescriptor;
+    PVOID SecurityQualityOfService;
+} LECS65_OBJECT_ATTRIBUTES, *PLECS65_OBJECT_ATTRIBUTES;
+
+typedef LONG (NTAPI *PFN_NtCreateFile)(
+    PHANDLE FileHandle,
+    ACCESS_MASK DesiredAccess,
+    PLECS65_OBJECT_ATTRIBUTES ObjectAttributes,
+    PLECS65_IO_STATUS_BLOCK IoStatusBlock,
+    PLARGE_INTEGER AllocationSize,
+    ULONG FileAttributes,
+    ULONG ShareAccess,
+    ULONG CreateDisposition,
+    ULONG CreateOptions,
+    PVOID EaBuffer,
+    ULONG EaLength);
+
 typedef LONG (NTAPI *PFN_NtDeviceIoControlFile)(
     HANDLE FileHandle,
     HANDLE Event,
@@ -45,6 +74,7 @@ static PFN_LoadLibraryW g_realLoadLibraryW;
 static PFN_LoadLibraryA g_realLoadLibraryA;
 static PFN_GetProcAddress g_realGetProcAddress;
 static PFN_NtDeviceIoControlFile g_realNtDeviceIoControlFile;
+static PFN_NtCreateFile g_realNtCreateFile;
 
 static HMODULE g_self;
 static HANDLE g_log = INVALID_HANDLE_VALUE;
@@ -61,9 +91,64 @@ static BOOL WINAPI HookCloseHandle(HANDLE);
 static HMODULE WINAPI HookLoadLibraryW(LPCWSTR);
 static HMODULE WINAPI HookLoadLibraryA(LPCSTR);
 static FARPROC WINAPI HookGetProcAddress(HMODULE,LPCSTR);
+static LONG NTAPI HookNtCreateFile(
+    PHANDLE fileHandle,
+    ACCESS_MASK desiredAccess,
+    PLECS65_OBJECT_ATTRIBUTES objectAttributes,
+    PLECS65_IO_STATUS_BLOCK ioStatus,
+    PLARGE_INTEGER allocationSize,
+    ULONG fileAttributes,
+    ULONG shareAccess,
+    ULONG createDisposition,
+    ULONG createOptions,
+    PVOID eaBuffer,
+    ULONG eaLength)
+{
+    char* objectName = copy_object_name_utf8(objectAttributes);
+    LONG status;
+    HANDLE result = NULL;
+    ULONG_PTR information = 0;
+    LONG seq;
+
+    status = g_realNtCreateFile(
+        fileHandle,desiredAccess,objectAttributes,ioStatus,allocationSize,
+        fileAttributes,shareAccess,createDisposition,createOptions,
+        eaBuffer,eaLength);
+
+    __try {
+        if (fileHandle) result = *fileHandle;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER) {
+        result = NULL;
+    }
+    information = safe_read_information(ioStatus);
+
+    seq = InterlockedIncrement(&g_sequence);
+    EnterCriticalSection(&g_logLock);
+    write_text("{\"type\":\"nt_create_file\",\"seq\":"); write_u32((DWORD)seq);
+    write_text(",\"tid\":"); write_u32(GetCurrentThreadId());
+    write_text(",\"path\":"); write_json_string(objectName ? objectName : "");
+    write_text(",\"handle\":\""); write_hex_ptr(result);
+    write_text("\",\"ntstatus\":\""); write_hex_u32((DWORD)status);
+    write_text("\",\"information\":"); write_u64((ULONGLONG)information);
+    write_text(",\"desired_access\":\""); write_hex_u32((DWORD)desiredAccess);
+    write_text("\",\"share_access\":\""); write_hex_u32(shareAccess);
+    write_text("\",\"create_disposition\":"); write_u32(createDisposition);
+    write_text(",\"create_options\":\""); write_hex_u32(createOptions);
+    write_text("\"}\r\n");
+    maybe_flush_log();
+    LeaveCriticalSection(&g_logLock);
+
+    if (objectName) HeapFree(GetProcessHeap(),0,objectName);
+    return status;
+}
+
 static LONG NTAPI HookNtDeviceIoControlFile(
     HANDLE,HANDLE,PVOID,PVOID,PLECS65_IO_STATUS_BLOCK,ULONG,
     PVOID,ULONG,PVOID,ULONG);
+static LONG NTAPI HookNtCreateFile(
+    PHANDLE,ACCESS_MASK,PLECS65_OBJECT_ATTRIBUTES,PLECS65_IO_STATUS_BLOCK,
+    PLARGE_INTEGER,ULONG,ULONG,ULONG,ULONG,PVOID,ULONG);
 
 static DWORD text_len(const char* s)
 {
@@ -205,6 +290,38 @@ static char* wide_to_utf8(LPCWSTR value)
     return out;
 }
 
+static char* copy_object_name_utf8(const LECS65_OBJECT_ATTRIBUTES* attributes)
+{
+    LECS65_UNICODE_STRING name;
+    WCHAR* copy = NULL;
+    char* utf8 = NULL;
+    SIZE_T chars;
+
+    if (!attributes) return NULL;
+
+    __try {
+        if (!attributes->ObjectName) return NULL;
+        name = *attributes->ObjectName;
+        if (!name.Buffer || name.Length == 0) return NULL;
+        chars = name.Length / sizeof(WCHAR);
+        copy = (WCHAR*)HeapAlloc(
+            GetProcessHeap(), HEAP_ZERO_MEMORY,
+            (chars + 1) * sizeof(WCHAR));
+        if (!copy) return NULL;
+        CopyMemory(copy, name.Buffer, name.Length);
+        copy[chars] = L'\0';
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER) {
+        if (copy) HeapFree(GetProcessHeap(), 0, copy);
+        return NULL;
+    }
+
+    utf8 = wide_to_utf8(copy);
+    HeapFree(GetProcessHeap(), 0, copy);
+    return utf8;
+}
+
+
 static BYTE* safe_copy(const void* src, DWORD requested, DWORD* copied)
 {
     BYTE* out;
@@ -245,7 +362,7 @@ static ULONG_PTR safe_read_information(const LECS65_IO_STATUS_BLOCK* p)
 static void log_header(void)
 {
     EnterCriticalSection(&g_logLock);
-    write_text("{\"type\":\"legacy_xstream_user_trace\",\"format_version\":2,\"pid\":");
+    write_text("{\"type\":\"legacy_xstream_user_trace\",\"format_version\":3,\"pid\":");
     write_u32(GetCurrentProcessId());
     write_text(",\"capture_limit\":");
     write_u32(TRACE_CAPTURE_LIMIT);
@@ -335,6 +452,9 @@ static void patch_module(HMODULE module)
                 else if (g_realNtDeviceIoControlFile != NULL &&
                          value == (void*)g_realNtDeviceIoControlFile)
                     patch_pointer(slot,HookNtDeviceIoControlFile);
+                else if (g_realNtCreateFile != NULL &&
+                         value == (void*)g_realNtCreateFile)
+                    patch_pointer(slot,HookNtCreateFile);
                 ++thunk;
             }
             ++imp;
@@ -571,6 +691,8 @@ static FARPROC WINAPI HookGetProcAddress(HMODULE module,LPCSTR name)
     if (lstrcmpA(name,"GetProcAddress") == 0) return (FARPROC)HookGetProcAddress;
     if (lstrcmpA(name,"NtDeviceIoControlFile") == 0)
         return (FARPROC)HookNtDeviceIoControlFile;
+    if (lstrcmpA(name,"NtCreateFile") == 0)
+        return (FARPROC)HookNtCreateFile;
     return p;
 }
 
@@ -605,12 +727,15 @@ __declspec(dllexport) DWORD WINAPI InitializeXStreamTrace(LPVOID unused)
             g_realNtDeviceIoControlFile =
                 (PFN_NtDeviceIoControlFile)g_realGetProcAddress(
                     ntdll,"NtDeviceIoControlFile");
+            g_realNtCreateFile =
+                (PFN_NtCreateFile)g_realGetProcAddress(
+                    ntdll,"NtCreateFile");
         }
     }
 
     if (!g_realDeviceIoControl || !g_realCreateFileW || !g_realCreateFileA ||
         !g_realCloseHandle || !g_realLoadLibraryW || !g_realLoadLibraryA ||
-        !g_realNtDeviceIoControlFile)
+        !g_realNtDeviceIoControlFile || !g_realNtCreateFile)
         return 0;
 
     n = GetEnvironmentVariableW(TRACE_ENV_NAME,path,(DWORD)(sizeof(path)/sizeof(path[0])));
