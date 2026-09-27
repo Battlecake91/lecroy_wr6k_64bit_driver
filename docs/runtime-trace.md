@@ -2484,3 +2484,31 @@ rejects the replacement entirely in user mode before touching the driver.
 The next required evidence is a passive x64 trace containing one deliberate
 `Run Link Tests` invocation. Preserve the current working waveform baseline
 while investigating this.
+
+
+## Trace 013644: Run Link Tests is rejected before a driver link-test request
+
+XStream's Developer -> Run Link Tests requires acquisition to be stopped.
+`xstream_trace_20260928_013644.jsonl` captures the action in that required
+state.
+
+XStream logs:
+
+```text
+WaveRunner Driver Not Supported
+```
+
+The kernel trace contains 572 IOCTL calls and all succeed. There is no new
+IOCTL code, no unsupported CFDC2110 packet and no driver error around the
+attempt. The stopped interval contains only existing helper calls
+(`SET_FLAG_BYTE`, `DELAY_MS`) plus the known family-1 opcode-0x42 JTAG
+status polling.
+
+Notably, XStream does not issue `CFDC21C8` during this captured session.
+Therefore the developer-menu rejection is not directly caused by the
+replacement's public build-query response 1002 at click time.
+
+The current evidence strongly favors an XStream-side driver-type/capability
+gate that prevents the actual link test from being dispatched. Investigation
+should move to the XStream user-mode binary containing the literal message
+rather than changing working PCI, DMA or interrupt semantics.
