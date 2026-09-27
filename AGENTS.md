@@ -1969,3 +1969,23 @@ Commit `994a875641e88adb9f3bcec5a3b8c1ed91fbca8d` adds interception of
 `ntdll!NtDeviceIoControlFile` and logs native request/response data as
 `type=nt_ioctl` records. Rebuild the tracer and recapture before considering
 more invasive methods.
+
+## CPU-frequency sensitivity is potentially relevant
+
+Reference 32-bit system: Core i5-3450. XStreamDSO becomes unreliable when CPU
+clock rises above the minimum setting, with acquisition-board / trigger-level /
+driver errors. The 32-bit Windows install is therefore normally capped at 5%
+maximum processor state. The x64 environment has been running at 100%.
+
+Treat this as an important timing clue. Before concluding that a remaining x64
+startup mismatch is semantic, repeat a controlled x64 run with the processor
+maximum state matched to the legacy system.
+
+Tracer overhead was also real. The initial hook flushed every JSONL record with
+FILE_FLAG_WRITE_THROUGH + FlushFileBuffers, while duration_us measured only the
+kernel call before logging. Commit
+668133737be58adc7f209aa3d126ee5aaaad9c9b switches to buffered logging and a
+flush every 256 records plus detach.
+
+Native legacy trace 20260927_185222 is successful and contains real LeCroy
+traffic: about 9158 CFDC2110, 1984 CFDC2138, 90 CFDC2124, and 74 CFDC2128 calls.
