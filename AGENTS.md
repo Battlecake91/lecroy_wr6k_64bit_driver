@@ -954,3 +954,16 @@ essentially every test run and manually skips it. Treat that error as relevant
 until disproven: it may be the application-visible consequence of the still
 incomplete startup command sequence. Correlate whether the dialog disappears
 or moves once the remaining startup rejections are removed.
+
+## Startup trace handling after XStreamDSO error dialog
+
+The reproducible XStreamDSO startup error dialog should no longer be skipped
+during protocol discovery. For future captures, terminate XStream from the
+dialog so the trace ends at the real startup failure point. Traffic after a
+manually skipped dialog may belong to retry/recovery logic and should not be
+used as evidence for the normal startup sequence.
+
+Latest trace `xstream_trace_20260927_020927.jsonl` exposes the next exact
+family-1 opcode-`0x81` selector forms: 6, 7 and 8. These are now admitted as
+byte-exact packets through the existing generic board-message transport.
+Unknown selectors remain blocked.
