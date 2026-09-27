@@ -2542,3 +2542,42 @@ admits and executes this complete statically confirmed class through
 This is distinct from family-0 opcode `0x85`, which also forwards but first
 updates host-side interrupt-mask state, and from local commands such as
 `0x90`, `0x92`, and `0xA0`.
+
+### CFDC2110 record types 1 and 2
+
+CFDC2110 is not exclusively a type-3 command protocol.
+
+Legacy `FUN_00015720` accepts packed record type 1 or 2. Such records are
+routed by `FUN_00013AE2` to `FUN_00012F30` rather than the type-3 command
+dispatcher.
+
+The payload must contain an even number of bytes. Legacy converts each
+16-bit payload value into an indexed four-byte temporary entry and passes the
+array to `FUN_00017BC8`.
+
+The resulting hardware sequence is:
+
+1. clear bit 16 in BAR1 GPIODAT (`0xC4`) via `FUN_000120DC`;
+2. write each 16-bit value to BAR1 MAMDAT (`0x40`);
+3. trigger BAR1 MAMPGO (`0x44`) with
+   `((record_type & 3) << 8) | value_count`.
+
+The captured type-1 records contain 42 payload bytes, i.e. 21 values, and
+therefore issue `MAMPGO = 0x115`.
+
+The x64 implementation now reproduces this behavior for structurally valid
+type-1 and type-2 records with at most 255 16-bit values.
+
+### Family 2 opcode 0x05 and 0x10
+
+Legacy family-2 dispatcher `FUN_000166A8` handles both locally:
+
+- opcode `0x05`: write BAR1 ITMODE `7`, then `3`;
+- opcode `0x10`: encode two boolean request bytes as
+  `(byte0 ? 2 : 0) | (byte1 ? 1 : 0)` and write the result to BAR1 LEDCTL
+  (`0xE0`).
+
+Both are now implemented structurally in the x64 driver.
+
+Family-2 opcode `0x01` is a separate internal timer/wait control and remains
+gated until the timer object's virtual method is exported and mapped.
