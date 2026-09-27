@@ -1909,3 +1909,28 @@ Run on legacy system:
 
 Use the resulting legacy trace as the primary source for locating the first
 semantic difference versus current x64 startup before sequence ~879.
+
+## Legacy XStream user-mode IOCTL tracer implemented
+
+A dependency-free x86 tracer now exists in `tools/xstream-ioctl-trace/`:
+- `xstream_trace_launcher.exe`: starts 32-bit XStream suspended, injects the hook DLL, explicitly initializes it, then resumes XStream;
+- `xstream_io_hook.dll`: IAT-hooks DeviceIoControl, CreateFileA/W, CloseHandle, LoadLibraryA/W and GetProcAddress and writes JSONL.
+
+Build:
+`./scripts/build-xstream-ioctl-trace.ps1`
+
+Output:
+- `tools/xstream-ioctl-trace/build/x86/xstream_trace_launcher.exe`
+- `tools/xstream-ioctl-trace/build/x86/xstream_io_hook.dll`
+
+The DLL no longer performs heavy initialization from DllMain. Commit
+`f05fda631065f5c546d03e5e05e89bc85ef78f30` exports
+`InitializeXStreamTrace`; commit
+`b0ca90b4b9d1180c6049215497bd776c1a2b102d` makes the launcher invoke that
+initializer in the suspended target before resuming XStream.
+
+Captured ioctl records include exact input/output bytes, sizes, success,
+GetLastError, bytes returned, thread id, duration and pending state. Async
+completion output is not captured yet. The goal is passive ground-truth tracing
+of the original XStream<->legacy-driver startup path, especially before the
+x64 trace's seq879 pre-poll block.
