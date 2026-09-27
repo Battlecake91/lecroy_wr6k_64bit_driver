@@ -1807,3 +1807,29 @@ Next test must be clean:
 
 Use the replay output to identify the first command that changes the x64
 all-ones cold state.
+
+## Cold x64 replay reaches legacy final status exactly
+
+After full power cycle, x64 replay initial state:
+- 1400 2000 0000 0000 0020
+
+Legacy replay initial:
+- 1400 2040 0000 0002 0020
+
+But after step 8 x64 reaches:
+- 1400 3040 0000 0000 0020
+
+and remains there through step 33.
+
+Legacy after step 33 is exactly:
+- 1400 3040 0000 0000 0020
+
+This is a major discriminator: the controlled x64 replay can establish the
+correct final pre-poll board state. Therefore the basic GPIO/SPI/JTAG/MAM/
+MTTCTL implementations are not sufficient to explain the real XStream stall at:
+- 1400 3040 0000 0050 0020
+
+Focus next on what differs between controlled replay and real XStream startup:
+earlier commands/state, packed-record batching, timing/timer interactions,
+other IOCTLs/events, or ordering outside the extracted immediate pre-poll
+sequence.
