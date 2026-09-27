@@ -1405,3 +1405,37 @@ This shifts the investigation away from the basic implementations of these
 operations and toward differences between the replay and real startup:
 preceding commands, command batching/record boundaries, timing, timer state,
 or interactions with other host-side IOCTLs/events.
+
+## Trace after successful controlled pre-initialization
+
+Trace `xstream_trace_20260927_151006.jsonl` was captured after the controlled
+x64 pre-poll replay had reached the correct legacy-equivalent state
+`1400 3040 0000 0000 0020`.
+
+The real XStream startup nevertheless returns to the known stalled state:
+
+`1400 3040 0000 0050 0020`
+
+The repeated 76-bit family-1 opcode-0x42 status poll occurs 46 times in this
+trace and every response is identical.
+
+Trace summary:
+- 962 IOCTL records plus header;
+- CFDC2110: 933 calls;
+- only failed IOCTL: sequence 2, `0x00222400`, status
+  `STATUS_INVALID_DEVICE_REQUEST (0xC0000010)`;
+- no CFDC2124 persistent transfer registration;
+- no CFDC2138 acquisition front;
+- no CFDD219F METHOD_NEITHER acquisition;
+- immediate pre-poll block at sequences 879-911 remains the same relevant
+  GPIO/SPI/JTAG/timer/MAM/MTTCTL sequence.
+
+Therefore the correct manually established board state is overwritten earlier
+during the real XStream startup. The next useful comparison must cover commands
+before the extracted pre-poll block rather than modifying that block itself.
+
+Current UI behavior also differs from early testing: the previous startup dialog
+with a "Beenden" option no longer appears. The remaining visible startup warning
+reports that Channel 1 through 5 probes cannot be read and is dismissed only
+with "OK". This may belong to the probe/ProBus detection path, but the current
+trace does not establish that it causes the later JTAG polling loop.
