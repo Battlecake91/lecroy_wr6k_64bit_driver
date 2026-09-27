@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define LECS65_IOCTL_CFDC2110          ((DWORD)0xCFDC2110)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((DWORD)0xCFDC21C8)
 #define LECS65_IOCTL_REGISTER_READ     ((DWORD)0xCFDC21C0)
 #define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
@@ -819,6 +820,163 @@ static int read_register(HANDLE h, unsigned bar, unsigned long offset)
     return 0;
 }
 
+static int hex_nibble(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static int parse_hex_bytes(
+    const char* text,
+    BYTE** bytesOut,
+    DWORD* lengthOut)
+{
+    size_t digits = 0;
+    size_t i;
+    BYTE* data;
+    size_t out = 0;
+    int high = -1;
+
+    if (text == NULL || bytesOut == NULL || lengthOut == NULL) {
+        return 1;
+    }
+
+    for (i = 0; text[i] != '\0'; ++i) {
+        if (hex_nibble(text[i]) >= 0) {
+            ++digits;
+        }
+        else if (text[i] != ' ' &&
+                 text[i] != '\t' &&
+                 text[i] != ':' &&
+                 text[i] != '-' &&
+                 text[i] != ',') {
+            return 1;
+        }
+    }
+
+    if ((digits & 1U) != 0 || digits == 0 || digits / 2 > 0x10000) {
+        return 1;
+    }
+
+    data = (BYTE*)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        digits / 2);
+    if (data == NULL) {
+        return 1;
+    }
+
+    for (i = 0; text[i] != '\0'; ++i) {
+        int nibble = hex_nibble(text[i]);
+        if (nibble < 0) {
+            continue;
+        }
+
+        if (high < 0) {
+            high = nibble;
+        }
+        else {
+            data[out++] = (BYTE)((high << 4) | nibble);
+            high = -1;
+        }
+    }
+
+    *bytesOut = data;
+    *lengthOut = (DWORD)out;
+    return 0;
+}
+
+static int raw_ioctl(
+    HANDLE h,
+    DWORD ioctl,
+    const char* inputHex,
+    DWORD outputLength)
+{
+    BYTE* input = NULL;
+    DWORD inputLength = 0;
+    BYTE* output = NULL;
+    DWORD returned = 0;
+    DWORD i;
+    BOOL ok;
+
+    if (parse_hex_bytes(inputHex, &input, &inputLength) != 0) {
+        fprintf(stderr, "invalid input hex\n");
+        return 2;
+    }
+
+    if (outputLength > 0x10000UL) {
+        fprintf(stderr, "output length must be 0..65536\n");
+        HeapFree(GetProcessHeap(), 0, input);
+        return 2;
+    }
+
+    if (outputLength != 0) {
+        output = (BYTE*)HeapAlloc(
+            GetProcessHeap(),
+            HEAP_ZERO_MEMORY,
+            outputLength);
+        if (output == NULL) {
+            HeapFree(GetProcessHeap(), 0, input);
+            fprintf(stderr, "HeapAlloc failed\n");
+            return 1;
+        }
+    }
+
+    ok = DeviceIoControl(
+        h,
+        ioctl,
+        input,
+        inputLength,
+        output,
+        outputLength,
+        &returned,
+        NULL);
+
+    if (!ok) {
+        print_error("raw DeviceIoControl");
+        if (output != NULL) {
+            HeapFree(GetProcessHeap(), 0, output);
+        }
+        HeapFree(GetProcessHeap(), 0, input);
+        return 1;
+    }
+
+    printf(
+        "IOCTL 0x%08lX succeeded: input=%lu output-capacity=%lu returned=%lu\n",
+        (unsigned long)ioctl,
+        (unsigned long)inputLength,
+        (unsigned long)outputLength,
+        (unsigned long)returned);
+
+    printf("Output:");
+    for (i = 0; i < returned; ++i) {
+        printf("%02X", output[i]);
+    }
+    printf("\n");
+
+    if (output != NULL) {
+        HeapFree(GetProcessHeap(), 0, output);
+    }
+    HeapFree(GetProcessHeap(), 0, input);
+    return 0;
+}
+
+static int legacy_jtag_poll(HANDLE h)
+{
+    static const char request[] =
+        "060020000300FBA5"
+        "4001420100000A004C000000DFC0000C04000000004C000200000000C00F2000"
+        "120002000300FB854000";
+
+    return raw_ioctl(
+        h,
+        LECS65_IOCTL_CFDC2110,
+        request,
+        24);
+}
+
 static void usage(const char* exe)
 {
     printf("Usage:\n");
@@ -833,6 +991,8 @@ static void usage(const char* exe)
     printf("  %s dallas-id\n", exe);
     printf("  %s dallas-read [length 1..512]\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
+    printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
+    printf("  %s legacy-jtag-poll\n", exe);
     printf("\nExamples:\n");
     printf("  %s build\n", exe);
     printf("  %s read 0 0x0\n", exe);
@@ -917,6 +1077,28 @@ int main(int argc, char** argv)
         }
 
         result = read_dallas_memory(h, length);
+    }
+    else if (_stricmp(argv[1], "raw-ioctl") == 0 && argc == 5) {
+        char* end1 = NULL;
+        char* end2 = NULL;
+        unsigned long ioctl = strtoul(argv[2], &end1, 0);
+        unsigned long outputLength = strtoul(argv[4], &end2, 0);
+
+        if (end1 == argv[2] || *end1 != '\0' ||
+            end2 == argv[4] || *end2 != '\0') {
+            fprintf(stderr, "invalid numeric argument\n");
+            result = 2;
+        }
+        else {
+            result = raw_ioctl(
+                h,
+                (DWORD)ioctl,
+                argv[3],
+                (DWORD)outputLength);
+        }
+    }
+    else if (_stricmp(argv[1], "legacy-jtag-poll") == 0 && argc == 2) {
+        result = legacy_jtag_poll(h);
     }
     else if (_stricmp(argv[1], "read") == 0 && argc == 4) {
         char* end1 = NULL;
