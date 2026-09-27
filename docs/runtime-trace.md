@@ -1253,3 +1253,34 @@ This strongly indicates that the JTAG transfer framing/readback path is now
 correct and that the FPGA/device is in a different state before the poll. The
 remaining work should focus on upstream initialization/state transitions rather
 than response packing.
+
+## Legacy state transition confirmed around XStream startup
+
+Repeated direct legacy-driver polling before XStream is stable across multiple
+runs:
+
+`1400 2040 0000 0002 0020`
+
+After XStream starts with the original driver, the same direct poll becomes:
+
+`1400 2040 0000 0000 0020`
+
+The current x64 driver remains at:
+
+`1400 3040 0000 0050 0020`
+
+Therefore:
+- legacy word 2 remains stable at 0x2040 across startup;
+- legacy word 4 transitions from 0x0002 to 0x0000 when XStream initializes the
+  board;
+- x64 additionally has bit 0x1000 set in word 2 and bits 0x0010/0x0040 set in
+  word 4.
+
+This confirms that the x64 stall is caused by upstream device state rather than
+JTAG response packing.
+
+A new `lecdiag legacy-prepoll-replay` diagnostic replays the exact immediate
+pre-poll CFDC2110 sequence captured from the x64 startup and probes the 76-bit
+JTAG status after each individual operation. It is intended for the original
+32-bit driver on a freshly initialized board, before XStream, to identify the
+specific state-changing command.
