@@ -47,16 +47,24 @@ static int make_default_trace_path(WCHAR* output,DWORD capacity)
     return 1;
 }
 
-static int inject_dll(HANDLE process,const WCHAR* dllPath)
+static int inject_dll_and_initialize(
+    HANDLE process,
+    const WCHAR* dllPath)
 {
     SIZE_T bytes = ((SIZE_T)lstrlenW(dllPath)+1)*sizeof(WCHAR);
     LPVOID remote;
     HANDLE thread;
     HMODULE kernel32;
     FARPROC loadLibraryW;
-    DWORD exitCode = 0;
+    DWORD remoteBase = 0;
+    HMODULE localImage = NULL;
+    FARPROC localInit;
+    SIZE_T initOffset;
+    LPTHREAD_START_ROUTINE remoteInit;
+    DWORD initResult = 0;
 
-    remote = VirtualAllocEx(process,NULL,bytes,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+    remote = VirtualAllocEx(
+        process,NULL,bytes,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     if (!remote) {
         print_win32_error("VirtualAllocEx");
         return 0;
@@ -79,22 +87,70 @@ static int inject_dll(HANDLE process,const WCHAR* dllPath)
     thread = CreateRemoteThread(
         process,NULL,0,(LPTHREAD_START_ROUTINE)loadLibraryW,remote,0,NULL);
     if (!thread) {
-        print_win32_error("CreateRemoteThread");
+        print_win32_error("CreateRemoteThread(LoadLibraryW)");
         VirtualFreeEx(process,remote,0,MEM_RELEASE);
         return 0;
     }
 
     WaitForSingleObject(thread,INFINITE);
-    if (!GetExitCodeThread(thread,&exitCode))
-        print_win32_error("GetExitCodeThread");
+    if (!GetExitCodeThread(thread,&remoteBase)) {
+        print_win32_error("GetExitCodeThread(LoadLibraryW)");
+        remoteBase = 0;
+    }
 
     CloseHandle(thread);
     VirtualFreeEx(process,remote,0,MEM_RELEASE);
 
-    if (!exitCode) {
+    if (!remoteBase) {
         fprintf(stderr,"LoadLibraryW in XStream returned NULL.\n");
         return 0;
     }
+
+    /*
+     * Resolve the exported initializer RVA locally without running the DLL's
+     * normal dependency initialization. The same RVA is valid in the remote
+     * mapping even when ASLR chose a different image base.
+     */
+    localImage = LoadLibraryExW(
+        dllPath,NULL,DONT_RESOLVE_DLL_REFERENCES);
+    if (!localImage) {
+        print_win32_error("LoadLibraryExW(hook)");
+        return 0;
+    }
+
+    localInit = GetProcAddress(localImage,"InitializeXStreamTrace");
+    if (!localInit) {
+        print_win32_error("GetProcAddress(InitializeXStreamTrace)");
+        FreeLibrary(localImage);
+        return 0;
+    }
+
+    initOffset = (SIZE_T)((BYTE*)localInit - (BYTE*)localImage);
+    remoteInit = (LPTHREAD_START_ROUTINE)(
+        (BYTE*)(ULONG_PTR)remoteBase + initOffset);
+
+    thread = CreateRemoteThread(
+        process,NULL,0,remoteInit,NULL,0,NULL);
+    if (!thread) {
+        print_win32_error("CreateRemoteThread(InitializeXStreamTrace)");
+        FreeLibrary(localImage);
+        return 0;
+    }
+
+    WaitForSingleObject(thread,INFINITE);
+    if (!GetExitCodeThread(thread,&initResult)) {
+        print_win32_error("GetExitCodeThread(InitializeXStreamTrace)");
+        initResult = 0;
+    }
+
+    CloseHandle(thread);
+    FreeLibrary(localImage);
+
+    if (!initResult) {
+        fprintf(stderr,"InitializeXStreamTrace in XStream failed.\n");
+        return 0;
+    }
+
     return 1;
 }
 
@@ -163,7 +219,7 @@ int wmain(int argc,WCHAR** argv)
         return 1;
     }
 
-    if (!inject_dll(pi.hProcess,hookPath)) {
+    if (!inject_dll_and_initialize(pi.hProcess,hookPath)) {
         TerminateProcess(pi.hProcess,1);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
