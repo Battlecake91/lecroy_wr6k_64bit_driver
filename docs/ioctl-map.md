@@ -2430,3 +2430,26 @@ confirmed as BAR1, making the target BAR1 MTTCTL.
 The x64 implementation maps an active transfer wait to
 `CurrentTransfer->CompletionEvent`, then writes 0 or 1 to BAR1 offset
 `0x80` and returns the legacy local status response.
+
+### Family 0 opcode 0x90, 0xA0, and generalized 0x85
+
+After the normal XStream startup began completing, the next application-level
+failures exposed three family-0 paths.
+
+**Opcode `0x90`** is handled by legacy `FUN_00015E80`, not by the generic
+board-message forwarder. The captured request uses selector `0x0E` and a
+144-bit sequence. The function manipulates a helper object at driver-object
+offset `+0x19` through `FUN_000155D0`, `FUN_0001236E`, and
+`FUN_0001588E`. Those helpers maintain a control shadow, write it to one MMIO
+register, bit-reverse 32-bit data words, and write them to another register.
+The exact BAR/base mapping must be confirmed before this path is enabled.
+
+**Opcode `0xA0`** is handled by legacy `FUN_00015FD8`. It takes a 16-bit
+value from the request and writes it through a single internal MMIO register
+object at driver-object offset `+0x17A`, then creates a local status response.
+The underlying BAR/register mapping is not yet confirmed.
+
+**Opcode `0x85`** uses legacy `FUN_00016962` for host-side control-bit
+updates, then forwards the request to board firmware. The host logic is already
+implemented in the x64 driver. Runtime admission is now structural for this
+decoded opcode instead of matching only one captured control word.
