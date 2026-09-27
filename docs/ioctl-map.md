@@ -2848,3 +2848,86 @@ Legacy `FUN_00015ACC` uses the same pattern for write-only JTAG transfers.
 The previous x64 code rewrote JTAGNUM before every complete 16-bit chunk,
 which can restart the underlying JTAG operation. The x64 implementation now
 matches the continuous legacy sequence exactly.
+
+## Passive original-driver trace corrections (2026-09-27)
+
+The injected 32-bit XStream tracer captured the original driver at the Native
+API boundary. This runtime evidence corrects several earlier static-only
+assumptions.
+
+### 0x00222400
+
+XStream calls `0x00222400` immediately after Dallas ID access with
+`InputLength=0` and `OutputLength=4`.
+
+Original driver result:
+- NTSTATUS: `STATUS_SUCCESS (0x00000000)`
+- Information: `0`
+- no returned output bytes.
+
+The x64 replacement previously returned `STATUS_INVALID_DEVICE_REQUEST`.
+This is now implemented as a success/no-data compatibility control.
+
+### 0x00223004 trace-control descriptor
+
+The original 0x110-byte descriptor contains the name:
+
+`CKeTraceControl: `
+
+including the colon and trailing space. The x64 replacement previously emitted
+`CKeTraceControl`.
+
+### 0x00223040 register-list order
+
+The full 43-entry original-driver list captured at runtime is ordered:
+
+1. TxControl
+2. RxControl
+3. TxCount
+4. RxCount
+5. SetIRQ
+6. HWInt
+7. FVER
+8. ERRS
+9. ERRM
+10. INTST
+11. IIMCL
+12. CLRIRQ
+13. CLRERR
+14. INTEN
+15. SGTA
+16. IIMTC
+17. IIMST
+18. BUZZER
+19. ONEWIRE
+20. START
+21. ITMODE
+22. MAMDAT
+23. MAMPGO
+24. MAMSEQ
+25. MAMRGO
+26. SPICTL
+27. SPIDAT
+28. SPIDIN
+29. JTAGNUM
+30. JTAGDAT
+31. JTAGDIN
+32. MTTCTL
+33. MTTRGO
+34. MTTNUM
+35. LEDCTL
+36. ACQFVER
+37. RMIDIV
+38. RMICUM
+39. ACQDIV
+40. ACQCUM
+41. PFREG
+42. GPIODIR
+43. GPIODAT
+
+The original indexed getter is observed with index zero and returns
+`TxControl`. Also, the live list reports `INTEN` as wrapper/access type 2,
+not type 0.
+
+Commit `9ec5723466f06d3d60d8846b89b919715e79c010` updates these early
+startup ABI details in the x64 driver.
