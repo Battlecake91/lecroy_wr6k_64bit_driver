@@ -2716,3 +2716,36 @@ There are 43 entries, giving `43 * 0x10A = 0x2CAE`.
 The x64 driver currently implements only the first-stage four-byte size query.
 The full payload retrieval remains to be implemented once the last serializer
 details are statically closed.
+
+### Full second-stage payloads implemented
+
+The full payload stage for the two legacy query IOCTLs is now implemented.
+
+For `0x00223004`, the x64 driver returns the reconstructed 0x110-byte
+`CKeTraceControl` block:
+
+- DWORD 0x000 = 0x110;
+- DWORD 0x004 = 1;
+- ANSI name field at 0x008 = `CKeTraceControl`;
+- DWORD 0x108 = 2;
+- DWORD 0x10C = 0.
+
+For `0x00223040`, the x64 driver now serializes the 43 legacy register-list
+entries in the recovered insertion order. Each entry is exactly 0x10A bytes:
+
+- name[256];
+- BAR byte at 0x100;
+- unaligned DWORD register offset at 0x101;
+- type byte at 0x105;
+- unaligned DWORD data at 0x106.
+
+The recovered entry order runs from FVER/ERRS/ERRM through the MAM/SPI/JTAG,
+MTT, GPIO and acquisition registers, followed by the transport registers
+TxControl, RxControl, TxCount, RxCount, SetIRQ and HWInt.
+
+Legacy type-2 entries return their wrapper shadow DWORD rather than reading
+MMIO; their initial shadow state is zero. Types 0, 1 and 4 are refreshed from
+the mapped register before serialization. INTEN is returned from the x64
+driver's maintained interrupt-enable shadow.
+
+This closes both the size-query and full-payload halves of the two-stage ABI.
