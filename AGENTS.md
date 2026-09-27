@@ -1604,3 +1604,37 @@ Fixed in commit:
 Both LecJtagExecute and LecJtagWriteOnly now match legacy chunk sequencing.
 Next trace should show whether the repeated 76-bit status response finally
 changes and XStream advances.
+
+## Latest trace and legacy reference strategy
+
+Trace `xstream_trace_20260927_123731.jsonl`:
+- 962 IOCTLs;
+- 961 success;
+- only 0x00222400 fails;
+- 937 CFDC2110;
+- still no CFDC2124 / CFDC2138 / CFDD219F.
+- repeated family-1 opcode-0x42 76-bit response is unchanged:
+  `0000 4014 0030 5000 0020`.
+
+XStream polls several times, calls DELAY_MS(10), and resumes the same scan.
+This is an intentional status wait.
+
+Need a legacy-driver reference response instead of continuing blind host-side
+changes.
+
+New lecdiag commands:
+- raw-ioctl <code> <input-hex> <output-bytes>
+- legacy-jtag-poll
+
+`legacy-jtag-poll` sends the exact current CFDC2110 76-bit request and prints
+the 24-byte result. It uses only the real legacy ABI, not x64 private debug
+IOCTLs.
+
+Build helper now accepts:
+`./scripts/build-lecdiag.ps1 -Architecture x86`
+and produces an x86 binary under tools/lecdiag/build/x86 for use with the
+original 32-bit driver.
+
+Relevant commits:
+- ecd1ab6b087ca3deb60736208553b7e76ab189cb
+- e306a28cf8190ec0b73b13347e7ee422119c0687
