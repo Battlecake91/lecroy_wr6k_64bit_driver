@@ -2403,12 +2403,19 @@ The supplied script performs the following sequence itself:
 10. Attempts to copy the finished trace to the configured NAS trace directory;
     if the NAS copy fails, the local trace remains intact.
 
-Default command to give the user for an ordinary x64 trace run, executed from
-the directory containing the helper script:
+The helper is located at the fixed scope path:
+
+`C:\\Users\\LeCroyUser\\Desktop\\Run-LeCroy-XStream-Trace.ps1`
+
+Always give the user the complete path. Do not use a relative
+`.\\Run-LeCroy-XStream-Trace.ps1` invocation, even if the current directory
+would make it work.
+
+Default command for an ordinary x64 trace run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-.\\Run-LeCroy-XStream-Trace.ps1 -Configuration Debug
+& "C:\\Users\\LeCroyUser\\Desktop\\Run-LeCroy-XStream-Trace.ps1" -Configuration Debug
 ```
 
 When asking the user to test a new x64 driver state, always provide the exact
@@ -2421,3 +2428,64 @@ Do not use this helper when the investigation specifically requires complete
 user-mode buffers, `NtCreateFile` handle/interface mapping, or another field
 that the kernel trace cannot capture. In that case explicitly state why the
 user-mode XStream tracer is required and give its exact command sequence.
+
+
+### 2026-09-27 post-d51dbe2 trace: xstream_trace_20260927_222010.jsonl
+
+This is the first x64 kernel trace captured after the corrected 85FB payload-length
+rule in commit `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd`.
+
+Confirmed progress:
+
+- Family-1 opcode `0x96` no longer stalls on selector `0x20`.
+- Exactly 120 opcode-`0x96` requests are observed and the selector advances
+  through the legacy-style sequence beginning `0x20, 0x22, 0x24, 0x26, ...`.
+- The first opcode-`0x96` output now contains the legacy 85FB length
+  `0x0202` (514). The earlier `212113` blocker is resolved.
+- No `CFDC2124`, `CFDC2138`, or `CFDD219F` calls are reached yet.
+
+The late trace reaches the known family-1 opcode-`0x42` 76-bit JTAG status
+request at seq 819. It is repeated 47 times with response payload state
+`1400 3040 0000 0050 0020` (host framing omitted here), with a 10 ms delay
+after the first six polls.
+
+Legacy comparison changes the interpretation of that status loop:
+
+- the original 32-bit trace also returns the same `...0050...` state for its
+  first 46 observed polls;
+- the original later changes to `...0002...`, but it already performs real
+  `CFDC2124` transfer registrations and `CFDC2138` acquisitions while the
+  JTAG status is still `...0050...`;
+- therefore the `...0050...` JTAG value itself is not sufficient to explain
+  why current x64 never starts acquisition.
+
+A representative original active cycle around the same status state is:
+
+```text
+family2/op02 = 1
+85FB status
+family0/op88
+CFDC2184(1)
+family2/op02 = 0
+family1/op42 JTAG status -> ...0050...
+CFDC2124
+CFDC2138
+...
+```
+
+Current x64 instead reaches family2/op02 = 1 and then remains in repeated JTAG
+status requests; it never enters that host-side acquisition sequence.
+
+Do not invent a side effect for `CFDC2184`: static recovery already proves the
+legacy DeviceControl branch completes it with STATUS_SUCCESS and zero
+information, which matches the current x64 handler. The absence of repeated
+`CFDC2184` calls is evidence of user-mode control-flow divergence, not evidence
+that the no-op handler is wrong.
+
+The next useful discriminator is a fresh injected x86 user-mode XStream trace
+on the **current post-d51dbe2 x64 system**. The kernel trace intentionally
+suppresses successful `CFDC21C0` reads and does not preserve the same
+thread/handle-level Native-API flow. Existing
+`legacy_xstream_trace_20260927_203017.jsonl` is not a substitute because it
+was captured on the earlier x64 endpoint state while `ALADDINAcqDriver0` was
+still published.
