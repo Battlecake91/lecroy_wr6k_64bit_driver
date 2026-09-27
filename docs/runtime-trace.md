@@ -854,3 +854,41 @@ statically confirmed pure-forwarding class is:
 
 The x64 semantic gate and execution path now admit that complete family-0
 forward-only class rather than requiring individual captured packets.
+
+## Twenty-fourth runtime capture: MAM configuration records reached
+
+Trace `xstream_trace_20260927_100938.jsonl` contains 810 IOCTL records and
+790 CFDC2110 calls:
+
+- 779 CFDC2110 calls succeeded;
+- 11 CFDC2110 calls were rejected;
+- CFDC2138 / CFDD219F acquisition launch IOCTLs are still not reached.
+
+The rejected requests are now:
+
+- family 2 / opcode `0x10` once;
+- family 2 / opcode `0x05` once;
+- family 2 / opcode `0x01` three times;
+- six CFDC2110 **type-1** records carrying 42-byte payloads.
+
+The family-2 local commands decode as:
+
+- opcode `0x10`: write a two-boolean encoded value to BAR1 LEDCTL (`0xE0`);
+- opcode `0x05`: pulse BAR1 ITMODE `7 -> 3`;
+- opcode `0x01`: legacy internal restartable timer/wait control, observed with
+  1 ms and 100 ms delays.
+
+The six type-1 records are the first non-type-3 CFDC2110 records reached in the
+runtime sequence. Legacy `FUN_00015720` accepts record types 1 and 2 and
+`FUN_00012F30` interprets their payload as an array of 16-bit values.
+
+For the captured 42-byte type-1 records, the payload is 21 values. Legacy
+clears BAR1 GPIODAT bit 16, writes each value through MAMDAT, then writes
+MAMPGO with `(mode << 8) | count`. For type 1 / 21 values that is
+`MAMPGO = 0x115`.
+
+The x64 driver now implements structurally valid type-1/type-2 MAM
+configuration records, family-2 opcode-`0x05`, and family-2 opcode-`0x10`.
+
+Family-2 opcode-`0x01` remains gated pending export of the legacy timer
+object implementation.
