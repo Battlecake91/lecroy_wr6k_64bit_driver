@@ -1272,6 +1272,13 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 2 && opcode == 0x02) {
+                if (payloadLength < 4 || payload[3] > 1) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if ((family == 0 && opcode == 0x84) ||
                      (family == 1 &&
                       (opcode == 0x81 ||
@@ -1602,6 +1609,45 @@ LecIoctlCfDc2110(
                 else {
                     protocolStatus = 8;
                 }
+            }
+            else if (payload[1] == 2 && payload[2] == 0x02) {
+                NTSTATUS hwStatus;
+                volatile ULONG* mttCtl;
+                UCHAR enable = payload[3];
+                PLECS65_TRANSFER currentTransfer =
+                    (PLECS65_TRANSFER)InterlockedCompareExchangePointer(
+                        (PVOID volatile*)&DevExt->CurrentTransfer,
+                        NULL,
+                        NULL);
+
+                if (currentTransfer != NULL) {
+                    (VOID)KeWaitForSingleObject(
+                        &currentTransfer->CompletionEvent,
+                        Executive,
+                        KernelMode,
+                        FALSE,
+                        NULL);
+                }
+
+                hwStatus = LecGetBar1Register(
+                    DevExt,
+                    0x080,
+                    &mttCtl);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    WRITE_REGISTER_ULONG(mttCtl, enable != 0 ? 1UL : 0UL);
+                    protocolStatus = 0;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+
+                LecWriteU32(pendingResponse, 0);
+                LecWriteU16(pendingResponse + 4, 2);
+                LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
+                pendingResponseLength = 8;
+                pendingResponseReady = TRUE;
+                hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 0 && payload[2] == 0x42) {
                 NTSTATUS hwStatus = LecJtagWriteOnly(
