@@ -1195,3 +1195,36 @@ The x64 driver now exactly matches legacy sequencing:
 
 This is the current primary root-cause candidate for the repeated JTAG status
 poll.
+
+## Thirty-first runtime capture: JTAG response still unchanged
+
+Trace `xstream_trace_20260927_123731.jsonl` contains 962 IOCTL events.
+
+Summary:
+- 961 succeed;
+- only the tolerated `0x00222400` probe still fails;
+- 937 CFDC2110 calls;
+- no CFDC2124 / CFDC2138 / CFDD219F.
+
+The corrected continuous JTAG chunk sequencing does not change the observed
+family-1 opcode-0x42 status. The repeated 76-bit scan still returns:
+
+`0000 4014 0030 5000 0020`
+
+XStream performs several polls, then issues `0x00222C00` DELAY_MS with a
+10 ms delay, and resumes the same poll. This is therefore an intentional
+user-mode wait loop on a hardware status condition rather than an IOCTL
+failure loop.
+
+At this stage the most valuable discriminator is a reference response from
+the original 32-bit driver on the same hardware state. The existing x64 trace
+facility cannot run against the legacy driver because its DEBUG_GET_TRACE
+IOCTL is private to the replacement driver.
+
+`lecdiag` now includes:
+- `raw-ioctl <code> <input-hex> <output-bytes>`;
+- `legacy-jtag-poll`, which sends the exact repeated 76-bit CFDC2110 request
+  and prints the returned 24-byte response.
+
+The build helper also supports `-Architecture x86` so the same diagnostic can
+be run on a 32-bit Windows installation with the original driver.
