@@ -1273,3 +1273,31 @@ Family2/0x01 remains gated. Legacy `FUN_0001621A` controls an internal
 restartable timer object at dispatcher+0x186 and is observed with 1 ms and
 100 ms requests. `ghidra_scripts/targets.txt` now includes `157c4` so the
 timer object's implementation can be exported next.
+
+## Family-2 opcode 0x01 resolved; MAM write format corrected
+
+The latest Ghidra export adds `FUN_000157C4`, proving that the object used by
+family-2 opcode `0x01` is a Windows notification KTIMER wrapper.
+
+`FUN_0001621A` behavior:
+- command body byte0 must be 1;
+- next DWORD is requested duration in milliseconds;
+- zero-duration is normalized to 1 ms;
+- poll timer with zero timeout;
+- if signaled, arm a new relative one-shot timer;
+- if still pending, compute elapsed/remaining time and re-arm only when the new
+  requested duration exceeds the remaining interval;
+- protocol response is local and immediate.
+
+The x64 driver now reproduces this behavior with a device-owned KTIMER.
+
+Important MAM correction:
+`FUN_00012F30` creates temporary entries containing both payload value and
+entry index. `FUN_00017BC8`/`FUN_000179E2` write the complete DWORD to
+MAMDAT:
+`(index << 16) | value`.
+The previous raw-16-bit write implementation was corrected before hardware
+testing.
+
+Next hardware test may now progress beyond family2/0x01 and the six type-1 MAM
+configuration records.
