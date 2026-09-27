@@ -217,3 +217,17 @@ IIMCL completion acknowledge and source-specific BAR1 CLRIRQ writes.
 
 The next phase is regression testing of normal oscilloscope behavior rather
 than further speculative startup/DMA changes.
+
+
+### Normal-operation regression status
+
+A broader regression run,
+`xstream_trace_20260928_011938.jsonl`, keeps every captured IOCTL successful
+while the scope is used normally. The user has verified correct-looking
+waveform amplitude/frequency plus working timebase, vertical scale, coupling,
+bandwidth, 2-channel/10-GS/s mode switching and trigger-type changes.
+
+The remaining probe-side uncertainty is ProBus communication. The recovered
+family-0 opcode-0x90 SPI/probe path is heavily exercised and succeeds in the
+trace, but the driver does not expose a direct I2C interface. Physical ProBus
+I2C behavior therefore still needs a real probe-level validation.

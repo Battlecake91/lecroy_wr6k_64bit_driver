@@ -277,18 +277,21 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Preserve the working waveform-acquisition baseline proven by
-   `xstream_trace_20260928_005808.jsonl`.
-2. Move from bring-up to regression/compatibility validation: coupling, vertical
-   scale/offset, timebase, trigger modes/levels, Stop/Auto/Single transitions,
-   channel enable/disable, measurements and repeated XStream restart.
-3. Any new driver change must be checked against the 005808 waveform trace
-   before being accepted. Do not regress the BAR1 CLRIRQ, local opcode-0x88,
-   CFDC2138 MAM DMA or family-1 opcode-0x51 MTTRGO fixes.
-4. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated unless a
+1. Preserve the working acquisition baseline proven by
+   `xstream_trace_20260928_005808.jsonl` and the wider functional-regression
+   run `xstream_trace_20260928_011938.jsonl`.
+2. User-validated normal scope functions on x64 now include:
+   waveform height/frequency plausibility, vertical scale, timebase, coupling,
+   bandwidth, 2-channel/10-GS/s mode switching, and trigger-type changes.
+3. Do not change working acquisition/interrupt paths speculatively. Future
+   driver changes need a concrete failing feature or trace discriminator.
+4. The main unverified hardware feature is currently ProBus/probe
+   communication, especially whether the external probe-side I2C behavior is
+   preserved. The host-side probe/SPI path is active and error-free, but this
+   does not prove the physical downstream bus.
+5. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated unless a
    real application path requires them and the original behavior is recovered.
-5. Preserve the below-4-GiB descriptor safety check. Never truncate x64
-   physical addresses into the legacy DWORD descriptor format.
+   Preserve the below-4-GiB descriptor safety check.
 
 
 ## Latest dispatch recovery
@@ -3088,3 +3091,56 @@ source-specific CLRIRQ writes.
 This is now the primary known-good x64 runtime baseline. Do not request another
 "does waveform acquisition work at all?" trace. Future captures should target
 specific regression areas or remaining features.
+
+
+## 2026-09-28 trace 011938: broad functional regression passes
+
+`xstream_trace_20260928_011938.jsonl` is the first broad normal-operation
+regression run after waveform acquisition was restored.
+
+User-visible validation during this run:
+
+- displayed waveform height is plausible/correct;
+- displayed waveform frequency is plausible/correct;
+- timebase adjustment works;
+- input vertical scale adjustment works;
+- coupling changes work;
+- bandwidth changes work;
+- switching to 2-channel / 10 GS/s mode works;
+- trigger-type changes work.
+
+Trace summary:
+
+```text
+records                    156,971
+IOCTL records              156,970
+non-success IOCTLs               0
+CFDC2110                   106,365
+CFDC2138                    43,157
+CFDC2184                     6,296
+CFDC2124                       494
+CFDC2128                       486
+```
+
+All captured IOCTLs return NTSTATUS success. CFDC2138 traffic spans channel IDs
+`0, 1, 2, 0x30, 0x31, 0x32`; the run therefore exercises substantially more
+than the original one-channel bring-up path and remains stable while XStream
+changes acquisition modes and front-end settings.
+
+Probe-path evidence:
+
+- family-0 opcode `0x90` occurs 1,700 times;
+- selector `0x0E` occurs 1,436 times with the recovered 144-bit probe
+  transaction shape;
+- selector `0x0C` occurs 87 times;
+- selectors `0..4` also occur repeatedly;
+- every captured request succeeds.
+
+Static recovery identifies family-0 opcode 0x90 as the local BAR1 SPI helper
+using SPICTL/SPIDAT/SPIDIN. This proves the host-side probe-control path is
+active on x64. It does **not** prove that an external ProBus probe's physical
+I2C communication works: the Windows driver trace does not expose SDA/SCL or a
+direct I2C controller, so a real ProBus-device recognition/configuration test is
+still required.
+
+Treat trace 011938 as the primary normal-operation functional-regression trace.

@@ -2442,3 +2442,29 @@ CFDC2138 0x29000 -> 0x29000
 This trace changes the project phase from basic x64 acquisition bring-up to
 feature/stability regression. It is the reference trace to protect against
 future regressions.
+
+
+## Trace 011938: normal oscilloscope controls remain stable
+
+`xstream_trace_20260928_011938.jsonl` is a broad feature-regression capture
+taken after visible waveform operation was established.
+
+The user verified during this run that waveform amplitude/frequency look
+correct and that timebase, vertical scale, coupling, bandwidth,
+2-channel/10-GS/s mode switching and trigger-type changes all work.
+
+The trace contains 156,970 IOCTL records with no non-success NTSTATUS.
+43,157 CFDC2138 acquisitions complete successfully while the application
+changes these operating modes. Observed acquisition channel IDs are
+`0,1,2,0x30,0x31,0x32`, which demonstrates stable operation across a much
+broader configuration set than the initial one-channel DMA milestone.
+
+The trace also heavily exercises the statically recovered probe/SPI helper:
+1,700 family-0 opcode-0x90 calls are present, including 1,436 selector-0x0E
+144-bit transactions matching the previously recovered probe request shape.
+This validates the host-to-acquisition-board SPI programming path.
+
+It does not yet validate external ProBus I2C operation. No direct I2C register
+or SDA/SCL-level transaction is visible in the recovered driver ABI; the
+Windows driver programs SPICTL/SPIDAT/SPIDIN instead. A connected ProBus probe
+must therefore be used to validate recognition and probe-side communication.
