@@ -892,3 +892,22 @@ configuration records, family-2 opcode-`0x05`, and family-2 opcode-`0x10`.
 
 Family-2 opcode-`0x01` remains gated pending export of the legacy timer
 object implementation.
+
+## Family-2 timer path resolved before next hardware run
+
+The follow-up Ghidra export provides `FUN_000157C4`, the constructor for the
+timer object referenced by family-2 opcode `0x01`.
+
+The object contains a Windows notification `KTIMER` initialized by
+`KeInitializeTimerEx`. Combined with the already exported
+`FUN_0001621A`, this resolves the command as non-blocking restartable timer
+control rather than a hardware register access.
+
+The x64 driver now implements the observed body form (mode byte 1 plus a
+32-bit millisecond duration), including the legacy behavior of polling the
+timer, arming/re-arming only as needed, and normalizing zero to 1 ms.
+
+During the same verification, the type-1/type-2 MAM path was corrected:
+legacy writes `(entry_index << 16) | payload_word` to MAMDAT, not the raw
+16-bit payload word alone. This correction was made before the next scope
+hardware run.
