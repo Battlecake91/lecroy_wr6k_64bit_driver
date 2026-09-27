@@ -1939,3 +1939,29 @@ length-2 exception.
 This is now the next x64 retest target. If XStream accepts the corrected opcode
 0x96 status response, it should be able to progress toward transfer registration
 and the first `CFDC2124/2138` acquisition requests.
+
+## First near-functional x64 startup: probes OK, trigger starts, no waveform data
+
+Fresh x64 trace: `xstream_trace_20260927_212113.jsonl`, captured after
+commit `cf90d85d3ee6d13710251ffc4edd6a2735ada579` admitted generic
+family-0 opcode-0x88 requests.
+
+Visible XStream behavior improved substantially:
+- the previous "Stopped the Acquisition ... Reset the Link" error is gone;
+- channel probe read failures are gone;
+- XStream allows acquisition/trigger to be started;
+- no waveform/acquisition data appears.
+
+The trace contains no `0xCFDC2124`, `0xCFDC2138`, or `0xCFDD219F`
+requests. Therefore the current problem is not yet active DMA-buffer
+registration or transfer execution. XStream is still waiting in the CFDC2110
+control/status layer before entering the acquisition-buffer path.
+
+The late runtime traffic is dominated by family-1 opcode-0x96 CFDC2110
+transactions. This is now the primary next investigation target: compare the
+opcode-0x96 request/response semantics byte-for-byte against the original
+32-bit reference trace and determine which returned state prevents XStream from
+advancing to transfer registration and CFDC2138 acquisition.
+
+At this point the legacy endpoint selection, early startup ABI, probe
+enumeration, and trigger-control path are substantially functional.
