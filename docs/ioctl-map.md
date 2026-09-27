@@ -2415,3 +2415,18 @@ The x64 driver therefore implements selector 1 as an aligned BAR1 register
 write with the final resource-bound check performed by `LecGetBar1Register`.
 Selectors 0 and 2 remain unimplemented until their legacy base-object mapping
 is confirmed.
+
+### Family 2 opcode 0x02
+
+The clean 2026-09-27 02:56 startup trace reaches family 2 / opcode `0x02`
+after the family-0 JTAG and MMIO-write paths were implemented.
+
+Legacy `FUN_000163B2` handles this command locally. The first command-body
+byte must be 0 or 1. The legacy driver optionally waits for an active internal
+transfer object, then writes that value to the register at offset `0x80` of
+the same MMIO base used by family-0 opcode-`0x92` selector 1. That base is
+confirmed as BAR1, making the target BAR1 MTTCTL.
+
+The x64 implementation maps an active transfer wait to
+`CurrentTransfer->CompletionEvent`, then writes 0 or 1 to BAR1 offset
+`0x80` and returns the legacy local status response.
