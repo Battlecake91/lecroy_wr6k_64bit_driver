@@ -2056,3 +2056,53 @@ This remains a kernel-ring capture: output previews are limited to 128 bytes and
 successful `CFDC21C0` register reads are intentionally omitted. Use the
 injected user-mode XStream tracer instead when complete IOCTL output buffers or
 `NtCreateFile` handle/interface mapping are required.
+
+
+## Post-85FB-length retest: xstream_trace_20260927_222010.jsonl
+
+This capture is the first x64 hardware run after
+`d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` changed normal raw-hardware
+85FB response lengths from the hard-coded value 2 to `recordOutput - 6`.
+
+The fix is confirmed on hardware. Family-1 opcode `0x96` now executes exactly
+120 times and advances through the legacy selector sequence starting with
+`0x20, 0x22, 0x24, 0x26, ...`. The first returned record contains the
+expected 85FB payload length `0x0202`. The former 2473-call selector-`0x20`
+loop from `xstream_trace_20260927_212113.jsonl` is gone.
+
+The trace still contains no `CFDC2124`, `CFDC2138`, or `CFDD219F`. At the
+late runtime stage it reaches the familiar 76-bit family-1 opcode-`0x42` JTAG
+status request at seq 819 and repeats it 47 times with the same
+`1400 3040 0000 0050 0020` response state, separated by a 10 ms delay after
+six polls.
+
+A new comparison with `legacy_xstream_trace_20260927_195608.jsonl` shows that
+this JTAG state must not be treated as the acquisition blocker by itself. The
+original stack also observes the `...0050...` state repeatedly and begins
+`CFDC2124` / `CFDC2138` acquisition traffic while that state is still
+present. A representative legacy cycle is:
+
+```text
+family2/op02 = 1
+85FB status
+family0/op88
+CFDC2184(1)
+family2/op02 = 0
+family1/op42 JTAG status -> ...0050...
+CFDC2124
+CFDC2138
+...
+```
+
+The current x64 application path instead reaches family2/op02 = 1 and then
+continues polling JTAG without entering the acquisition IOCTL sequence.
+`CFDC2184` itself is not a missing driver-side action: static analysis proves
+that the original DeviceControl handler is an inline success/no-data branch,
+and the x64 implementation already matches it.
+
+The next comparison therefore needs the current x64 **user-mode** Native-API
+flow, especially successful `CFDC21C0` register reads, thread ordering, and the
+requests between the first late JTAG status result and the acquisition branch.
+The kernel trace intentionally omits successful `CFDC21C0` entries. The older
+x64 user-mode trace `legacy_xstream_trace_20260927_203017.jsonl` predates the
+DOS-alias removal and cannot represent the current endpoint/control-flow state.
