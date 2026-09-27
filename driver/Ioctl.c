@@ -1286,6 +1286,13 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 0 && opcode == 0xA0) {
+                if (payloadLength < 6) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if ((family == 0 && opcode == 0x84) ||
                      (family == 1 &&
                       (opcode == 0x81 ||
@@ -1693,6 +1700,37 @@ LecIoctlCfDc2110(
 
                     if (NT_SUCCESS(hwStatus)) {
                         WRITE_REGISTER_ULONG(target, value);
+                        protocolStatus = 0;
+                    }
+                    else {
+                        protocolStatus = 8;
+                    }
+
+                    LecWriteU32(pendingResponse, 0);
+                    LecWriteU16(pendingResponse + 4, 2);
+                    LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
+                    pendingResponseLength = 8;
+                    pendingResponseReady = TRUE;
+                    hardwareResponsePending = FALSE;
+                }
+            }
+            else if (payload[1] == 0 && payload[2] == 0xA0) {
+                NTSTATUS hwStatus;
+                volatile ULONG* pfreg;
+                USHORT value;
+
+                if (payloadLength < 6) {
+                    protocolStatus = 8;
+                }
+                else {
+                    value = LecReadU16(payload + 4);
+                    hwStatus = LecGetBar1Register(
+                        DevExt,
+                        0x0F4,
+                        &pfreg);
+
+                    if (NT_SUCCESS(hwStatus)) {
+                        WRITE_REGISTER_ULONG(pfreg, (ULONG)value);
                         protocolStatus = 0;
                     }
                     else {
