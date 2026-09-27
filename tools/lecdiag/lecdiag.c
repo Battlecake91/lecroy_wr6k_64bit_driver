@@ -1082,6 +1082,206 @@ static int legacy_jtag_poll(HANDLE h)
         24);
 }
 
+static int send_hex_ioctl(
+    HANDLE h,
+    DWORD ioctl,
+    const char* inputHex,
+    DWORD outputLength,
+    BYTE* output,
+    DWORD outputCapacity,
+    DWORD* returnedOut)
+{
+    BYTE* input = NULL;
+    DWORD inputLength = 0;
+    BYTE* localOutput = output;
+    DWORD returned = 0;
+    BOOL ok;
+
+    if (parse_hex_bytes(inputHex, &input, &inputLength) != 0) {
+        fprintf(stderr, "invalid input hex\n");
+        return 2;
+    }
+
+    if (outputLength > outputCapacity && output != NULL) {
+        HeapFree(GetProcessHeap(), 0, input);
+        return 2;
+    }
+
+    if (localOutput == NULL && outputLength != 0) {
+        localOutput = (BYTE*)HeapAlloc(
+            GetProcessHeap(),
+            HEAP_ZERO_MEMORY,
+            outputLength);
+        if (localOutput == NULL) {
+            HeapFree(GetProcessHeap(), 0, input);
+            return 1;
+        }
+    }
+    else if (localOutput != NULL && outputCapacity != 0) {
+        ZeroMemory(localOutput, outputCapacity);
+    }
+
+    ok = DeviceIoControl(
+        h,
+        ioctl,
+        input,
+        inputLength,
+        localOutput,
+        outputLength,
+        &returned,
+        NULL);
+
+    HeapFree(GetProcessHeap(), 0, input);
+
+    if (!ok) {
+        if (output == NULL && localOutput != NULL) {
+            HeapFree(GetProcessHeap(), 0, localOutput);
+        }
+        print_error("DeviceIoControl");
+        return 1;
+    }
+
+    if (returnedOut != NULL) {
+        *returnedOut = returned;
+    }
+
+    if (output == NULL && localOutput != NULL) {
+        HeapFree(GetProcessHeap(), 0, localOutput);
+    }
+
+    return 0;
+}
+
+static void print_jtag_words(const BYTE* output, DWORD returned)
+{
+    unsigned i;
+
+    if (output == NULL || returned < 24) {
+        printf("  JTAG response too short: %lu\n", (unsigned long)returned);
+        return;
+    }
+
+    printf("  JTAG words:");
+    for (i = 14; i + 1 < 24; i += 2) {
+        unsigned value =
+            (unsigned)output[i] |
+            ((unsigned)output[i + 1] << 8);
+        printf(" %04X", value);
+    }
+    printf("\n");
+}
+
+static int probe_jtag_status(HANDLE h)
+{
+    static const char request[] =
+        "060020000300FBA5"
+        "4001420100000A004C000000DFC0000C04000000004C000200000000C00F2000"
+        "120002000300FB854000";
+    BYTE output[24];
+    DWORD returned = 0;
+    int result;
+
+    result = send_hex_ioctl(
+        h,
+        LECS65_IOCTL_CFDC2110,
+        request,
+        sizeof(output),
+        output,
+        sizeof(output),
+        &returned);
+    if (result != 0) {
+        return result;
+    }
+
+    print_jtag_words(output, returned);
+    return 0;
+}
+
+typedef struct LEGACY_REPLAY_STEP {
+    const char* name;
+    const char* inputHex;
+    DWORD outputLength;
+} LEGACY_REPLAY_STEP;
+
+static int legacy_prepoll_replay(HANDLE h)
+{
+    /*
+     * Exact immediate pre-poll CFDC2110 sequence captured from the current
+     * x64 XStream run. Probe the 76-bit status after each operation so the
+     * original driver/hardware identifies the state-changing step.
+     *
+     * Run this on a freshly initialized legacy-driver system before XStream.
+     */
+    static const LEGACY_REPLAY_STEP steps[] = {
+        { "GPIO C4 <- 0x470", "06000A000300FBA540009201C40070040000080002000300FB854000", 14 },
+        { "GPIO C4 <- 0x478", "06000A000300FBA540009201C40078040000080002000300FB854000", 14 },
+        { "GPIO C4 <- 0x47C", "06000A000300FBA540009201C4007C040000080002000300FB854000", 14 },
+        { "GPIO C4 <- 0x47E", "06000A000300FBA540009201C4007E040000080002000300FB854000", 14 },
+        { "GPIO C4 <- 0x47F", "06000A000300FBA540009201C4007F040000080002000300FB854000", 14 },
+        { "GPIO C4 <- 0x4FF", "06000A000300FBA540009201C400FF040000080002000300FB854000", 14 },
+        { "SPI selector 0x0C", "06000E000300FBA54000900C2800000047E17A140000080002000300FB854000", 14 },
+        { "JTAG write 1", "060014000300FBA54000420130000000DFC000080400403000FC0000080002000300FB854000", 14 },
+        { "JTAG write 2", "060014000300FBA54000420130000000DFC000080400403000FC0000080002000300FB854000", 14 },
+        { "JTAG write 3", "060014000300FBA54000420130000000DFC000080400200700FCA000080002000300FB854000", 14 },
+        { "JTAG write 4", "060014000300FBA54000420130000000DFC000080400E09700FC1A01080002000300FB854000", 14 },
+        { "JTAG write 5", "060014000300FBA54000420130000000DFC000080400200000FCE001080002000300FB854000", 14 },
+        { "Timer arm 1 ms", "060008000300FBA54002010101000000080002000300FB854000", 14 },
+        { "SPI selector 0x0E", "06001A000300FBA54000900E900000001838000CBA1C000CBA1C000CE43F000CE43F080002000300FB854000", 14 },
+        { "SPI selector 0", "06000C000300FBA54000900018000000C2000E00080002000300FB854000", 14 },
+        { "SPI selector 1", "06000C000300FBA54000900118000000C2000E00080002000300FB854000", 14 },
+        { "SPI selector 2", "06000C000300FBA5400090021800000042000E00080002000300FB854000", 14 },
+        { "SPI selector 3", "06000C000300FBA5400090031800000042000E00080002000300FB854000", 14 },
+        { "SPI selector 4", "06000C000300FBA54000900418000000C2000E00080002000300FB854000", 14 },
+        { "Timer arm 100 ms", "060008000300FBA54002010164000000080002000300FB854000", 14 },
+        { "MAM 00", "06002A000100FBA5000000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 01", "06002A000100FBA5010000C000C0000000800000008001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 02", "06002A000100FBA5020000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 30", "06002A000100FBA5300000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 31", "06002A000100FBA5310000C000C0000000800000008001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 32", "06002A000100FBA5320000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 00 repeat", "06002A000100FBA5000000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 01 repeat", "06002A000100FBA5010000C000C0000000800000008001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 02 repeat", "06002A000100FBA5020000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 30 repeat", "06002A000100FBA5300000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 31 repeat", "06002A000100FBA5310000C000C0000000800000008001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MAM 32 repeat", "06002A000100FBA5320000C000C0000000000000000001010100000000000008000000020000000000000000000000000000", 6 },
+        { "MTTCTL <- 1", "060006000300FBA5400202010000080002000300FB854000", 14 }
+    };
+    size_t i;
+
+    printf("Initial status:\n");
+    if (probe_jtag_status(h) != 0) {
+        return 1;
+    }
+
+    for (i = 0; i < sizeof(steps) / sizeof(steps[0]); ++i) {
+        DWORD returned = 0;
+        int result;
+
+        printf("[%02u] %s\n", (unsigned)(i + 1), steps[i].name);
+        result = send_hex_ioctl(
+            h,
+            LECS65_IOCTL_CFDC2110,
+            steps[i].inputHex,
+            steps[i].outputLength,
+            NULL,
+            0,
+            &returned);
+        if (result != 0) {
+            printf("  step failed\n");
+            return result;
+        }
+
+        Sleep(2);
+
+        if (probe_jtag_status(h) != 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static void usage(const char* exe)
 {
     printf("Usage:\n");
@@ -1098,6 +1298,7 @@ static void usage(const char* exe)
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
+    printf("  %s legacy-prepoll-replay\n", exe);
     printf("\nExamples:\n");
     printf("  %s build\n", exe);
     printf("  %s read 0 0x0\n", exe);
@@ -1204,6 +1405,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "legacy-jtag-poll") == 0 && argc == 2) {
         result = legacy_jtag_poll(h);
+    }
+    else if (_stricmp(argv[1], "legacy-prepoll-replay") == 0 && argc == 2) {
+        result = legacy_prepoll_replay(h);
     }
     else if (_stricmp(argv[1], "read") == 0 && argc == 4) {
         char* end1 = NULL;
