@@ -1871,6 +1871,20 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 0 && opcode == 0x88) {
+                /*
+                 * FUN_000169xx handles opcode 0x88 generically: the trailing
+                 * WORD is consumed as a mask and the command is then forwarded
+                 * to board firmware. Runtime traces show multiple legitimate
+                 * mask values (for example 0xFFDF and 0x001F), so this must not
+                 * be restricted to one captured packet literal.
+                 */
+                if (payloadLength < 6) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if (family == 0 && opcode == 0xA0) {
                 if (payloadLength < 6) {
                     return FALSE;
