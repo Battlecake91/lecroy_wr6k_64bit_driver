@@ -1279,6 +1279,13 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 0 && opcode == 0x85) {
+                if (payloadLength < 6) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if ((family == 0 && opcode == 0x84) ||
                      (family == 1 &&
                       (opcode == 0x81 ||
@@ -1321,11 +1328,6 @@ LecIsAllowedCfDc2110(
     static const UCHAR opcode88Packet[] = {
         0x06,0x00,0x06,0x00,0x03,0x00,0xFB,0xA5,
         0x40,0x00,0x88,0x00,0xDF,0xFF,
-        0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
-    };
-    static const UCHAR opcode85Packet[] = {
-        0x06,0x00,0x06,0x00,0x03,0x00,0xFB,0xA5,
-        0x40,0x00,0x85,0x00,0xA0,0x00,
         0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
     };
     static const UCHAR jtag42Packet[] = {
@@ -1453,7 +1455,6 @@ LecIsAllowedCfDc2110(
 
     if (LECS65_MATCH_CAPTURED_PACKET(resetPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(opcode88Packet) ||
-        LECS65_MATCH_CAPTURED_PACKET(opcode85Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode1LongPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode2LongPacket) ||
