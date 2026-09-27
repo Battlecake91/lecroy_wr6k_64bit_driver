@@ -1141,3 +1141,25 @@ wrote every indexed value again on the repeated 899-904 block.
 The x64 driver now tracks a per-index MAM shadow plus validity and suppresses
 duplicate MAMDAT writes while still issuing MAMPGO for each record, matching
 legacy semantics.
+
+## Twenty-ninth trace follow-up: exact MAM shadow constructor recovered
+
+Trace `xstream_trace_20260927_121601.jsonl` still reaches the same repeated
+family-1 opcode-0x42 76-bit JTAG scan with response words:
+
+`0000 4014 0030 5000 0020`
+
+No CFDC2124, CFDC2138 or CFDD219F appears.
+
+Further static analysis of the MAMDAT register object resolved the constructor
+semantics. The MAMDAT object at board offset +0x368 is built by
+`FUN_00011A00`, not the simpler generic register constructor.
+
+`FUN_00011A00` initializes all 256 per-index shadow DWORDs to
+`0xFFFFFFFF`. Since `FUN_000179E2` compares only the low 16-bit data field,
+the effective initial value is `0xFFFF` for every MAM index.
+
+The x64 implementation previously treated every index as initially invalid and
+therefore always issued the first MAMDAT write. It now starts with the exact
+legacy 0xFFFF shadow state and suppresses a first write when the requested data
+is already 0xFFFF.
