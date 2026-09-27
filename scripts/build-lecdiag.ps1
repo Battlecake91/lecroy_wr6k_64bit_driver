@@ -73,5 +73,35 @@ if (-not (Test-Path $out)) {
     throw "Build completed without producing $out"
 }
 
+# Verify the PE machine field so an incorrectly selected compiler environment
+# cannot silently produce the wrong architecture.
+$stream = [System.IO.File]::OpenRead($out)
+$reader = $null
+try {
+    $reader = New-Object System.IO.BinaryReader($stream)
+    $stream.Position = 0x3C
+    $peOffset = $reader.ReadInt32()
+    $stream.Position = $peOffset
+    $signature = $reader.ReadUInt32()
+    if ($signature -ne 0x00004550) {
+        throw "Output is not a valid PE image: $out"
+    }
+    $machine = $reader.ReadUInt16()
+}
+finally {
+    if ($reader -ne $null) {
+        $reader.Dispose()
+    }
+    else {
+        $stream.Dispose()
+    }
+}
+
+$expectedMachine = if ($Architecture -eq "x86") { 0x014C } else { 0x8664 }
+if ($machine -ne $expectedMachine) {
+    throw ("Architecture verification failed: requested {0}, PE machine=0x{1:X4}, expected=0x{2:X4}" -f $Architecture, $machine, $expectedMachine)
+}
+
 Write-Host "Built:"
 Write-Host "  $out"
+Write-Host ("  Architecture: {0} (PE machine 0x{1:X4})" -f $Architecture, $machine)
