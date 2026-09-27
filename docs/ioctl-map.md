@@ -2581,3 +2581,38 @@ Both are now implemented structurally in the x64 driver.
 
 Family-2 opcode `0x01` is a separate internal timer/wait control and remains
 gated until the timer object's virtual method is exported and mapped.
+
+### Family 2 opcode 0x01 timer control
+
+The exported `FUN_000157C4` constructor proves that the object used by
+legacy `FUN_0001621A` wraps a Windows kernel timer initialized with
+`KeInitializeTimerEx`.
+
+The observed command body is:
+
+- byte 0 = 1;
+- bytes 1..4 = requested delay in milliseconds.
+
+Legacy `FUN_0001621A` performs a zero-timeout poll of the timer. If the timer
+is signaled it arms a new relative one-shot interval. If the timer is still
+pending it computes the elapsed interval and only re-arms when the newly
+requested duration exceeds the remaining time. A zero request is normalized to
+1 ms.
+
+The x64 driver reproduces this behavior using a driver-owned notification
+`KTIMER`, `KeWaitForSingleObject` with a zero timeout, `KeQuerySystemTime`,
+and `KeSetTimer`. The runtime trace observed 1 ms and 100 ms requests.
+
+### MAMDAT indexed write format
+
+The initial type-1/type-2 implementation was corrected after re-reading
+`FUN_00012F30`, `FUN_00017BC8`, and `FUN_000179E2`.
+
+Each temporary MAM entry is not merely the 16-bit payload value. Legacy stores
+the entry index in the upper 16 bits and the payload value in the lower 16
+bits, then writes that complete 32-bit value to MAMDAT:
+
+`MAMDAT = (index << 16) | value`.
+
+For a 21-word type-1 record, entries therefore use indices 0 through 20 before
+`MAMPGO = 0x115` is issued. The x64 implementation now matches that format.
