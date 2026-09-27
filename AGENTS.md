@@ -2096,3 +2096,29 @@ Next: use the x86 injected XStream user-mode tracer on the x64 system too. Its
 NtCreateFile records can directly prove which GUID/interface paths XStream opens
 with the replacement driver and permit an apples-to-apples user-mode comparison
 with legacy trace 20260927_195608.
+
+## Correction: main XStream IOCTL stream uses ALADDINAcqDriver0
+
+x64 injected user-mode trace `legacy_xstream_trace_20260927_203017.jsonl`
+shows all five PCI interface GUIDs open successfully, including 958695A4.
+
+However, the actual x64 startup CFDC2110/register stream is sent through the
+legacy DOS path `\\??\\ALADDINAcqDriver0`, not through the 958695A4 handle.
+XStream opens that DOS path at seq 584 (handle 0x5CC) and again at seq 5056
+(handle 0xBF4). Those handles carry ~922 CFDC2110, ~512 CFDC21C0, 3 CFDC21C4,
+4 00223040 and event controls.
+
+The helper interface roles remain confirmed:
+- 8D1103B8 = Dallas;
+- 9007C2BC = trace control;
+- FC5DF040 = three-event registration;
+- 7AC34BE9 = delay/flag.
+
+Treat the previous statement that 958695A4 is itself the main DeviceIoControl
+endpoint as superseded. It is definitely a real interface and is opened by
+XStream, but may serve discovery/classification while the DOS symbolic link is
+the actual acquisition/control path.
+
+Adding 958695A4 therefore could not by itself fix the JTAG startup loop. The
+next work should compare byte-for-byte CFDC2110 request/response behavior over
+ALADDINAcqDriver0 against the original 32-bit driver.
