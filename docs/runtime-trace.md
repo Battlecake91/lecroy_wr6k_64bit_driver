@@ -1965,3 +1965,25 @@ advancing to transfer registration and CFDC2138 acquisition.
 
 At this point the legacy endpoint selection, early startup ABI, probe
 enumeration, and trigger-control path are substantially functional.
+
+### 2026-09-27 x64 runtime trace: Family 1 opcode 0x96 dominates pre-DMA state
+
+The x64 kernel trace `xstream_trace_20260927_212113.jsonl` was inspected after the DOS alias removal, `CFDC2190` implementation, 85FB host-header fix, and generic Family-0 opcode `0x88` allowance.
+
+Key observations:
+
+- 3,125 of 3,154 captured records are `CFDC2110` requests.
+- 2,473 `CFDC2110` requests are the same Family-1 opcode-`0x96` transaction:
+
+  ```text
+  06000A000300FBA540019604002000000002080202000300FB854000
+  ```
+
+- These calls complete with NTSTATUS success and report `Information = 526` bytes.
+- The in-kernel trace stores only the first 128 response bytes, so it is not sufficient for a byte-for-byte comparison of the complete 526-byte opcode-`0x96` response.
+- The common 128-byte prefix begins with the expected six-byte host framing followed by a firmware payload containing the ASCII string `Test_Information`.
+- Later 128-byte previews contain varying `2C00` words at multiple positions. Do not treat those changes as the blocker until a complete user-mode response capture is compared with the legacy system; the kernel preview is incomplete by design.
+- No IOCTL in this trace failed at the NTSTATUS layer.
+- `CFDC2124`, `CFDC2138`, and `CFDD219F` are still absent. XStream therefore remains in the pre-DMA control/status phase.
+
+Current next step: capture or recover the complete original 32-bit and x64 user-mode `CFDC2110` responses for Family 1 opcode `0x96`, then compare request, full 526-byte response, and transition sequence. Do not modify the DMA/MDL path before that comparison identifies the first semantic divergence.
