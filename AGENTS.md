@@ -1860,3 +1860,22 @@ UI correction: the old startup "Beenden" error dialog has not appeared for some
 time. Current visible warning says Channel 1-5 probes cannot be read and only
 offers OK. Treat that separately; it may be ProbeBus/ProBus-related, but the
 trace does not yet prove a causal link to the JTAG poll.
+
+## Preferred next step: passive legacy XStream IOCTL hook
+
+Instead of more active probes, capture the original XStream<->driver traffic in
+user mode on the 32-bit legacy system.
+
+Recommended implementation:
+- x86 instrumentation DLL injected into 32-bit XStream;
+- hook DeviceIoControl, optionally CreateFileA/W and CloseHandle;
+- forward every call unchanged;
+- log exact input bytes before the call and exact output bytes / bytesReturned /
+  GetLastError after it;
+- include sequence, timestamp, thread id, IOCTL code, sizes and duration;
+- use a JSONL format compatible enough with current x64 trace tooling to allow
+  direct diffing.
+
+This is preferable to ProcMon (insufficient payload visibility) and to manual
+WinDbg breakpoints (awkward for hundreds of calls). It leaves the original
+kernel driver untouched and provides ground-truth legacy traffic.
