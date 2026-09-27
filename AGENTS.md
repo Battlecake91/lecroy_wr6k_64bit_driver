@@ -2054,3 +2054,23 @@ Commit `adaad84fb6ea1dddc76533c43e8163197c03805a` adds explicit forward
 declarations for all helper functions used by the early native hook and removes
 the redundant misplaced prototype block. Rebuild with
 `./scripts/build-xstream-ioctl-trace.ps1`.
+
+
+## Recovered legacy interface-role map
+
+The format-version-3 passive trace `legacy_xstream_trace_20260927_195608.jsonl`
+maps the original native device opens to five interface GUIDs:
+
+- `958695A4-693A-435E-8297-66F805D8E46A`: main acquisition/control endpoint;
+- `8D1103B8-5BF4-4B5C-B21E-EEAACE97D418`: Dallas/board identification;
+- `9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5`: trace control;
+- `FC5DF040-D6CD-4BA0-B5E0-2561972963A2`: three-event registration;
+- `7AC34BE9-F766-4F15-9E88-854BA5E2146E`: delay/flag helper.
+
+The x64 driver had only the latter four interface GUIDs. The main
+`958695A4-...` acquisition endpoint was missing. It is now registered by
+commits `45a4abe9cf08ec055b6b631881ec139575d80ca1` and
+`65525e75c557c0e58b685b6c64c1a5d340c8c6aa`.
+
+Test this corrected five-interface configuration before making more JTAG or
+transport changes.
