@@ -2142,3 +2142,26 @@ DOS alias. Retest x64 before making any further JTAG/transport changes.
 
 Expected next trace: ALADDINAcqDriver0 open fails; main IOCTL stream moves to
 958695A4 handle.
+
+## Current blocker after DOS-alias fix: CFDC2190
+
+Trace `xstream_trace_20260927_204139.jsonl` proves that removing the
+ALADDINAcqDriver0 DOS alias materially changed startup into the original-style
+interface path. The old x64 START writes 4,2,1 disappear.
+
+The next hard divergence is seq 20:
+- IOCTL CFDC2190
+- input exactly 29 bytes
+- input = 0000000002000000FF7F00000000000000000000000000000000000000
+- x64 previously returned C0000010 because no handler existed.
+
+Recovered legacy semantics:
+- +0x04 DWORD controls global interrupt-mask bit 1;
+- +0x08 DWORD is BAR0 ERRM;
+- no output.
+
+Implemented:
+- 3d393570ee35c1b014c5093b167581c3091d7615
+- 803670576886117541848b81c867872814e39a10
+
+Retest this before touching JTAG/transport logic again.
