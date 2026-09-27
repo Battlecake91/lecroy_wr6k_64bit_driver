@@ -317,3 +317,21 @@ For `Melody`, two implementation levels must be distinguished:
 Therefore the safe first implementation should treat `Melody` as a unique
 rhythmic signature using the existing on/off gate. Frequency control should be
 added only after the electrical/FPGA behavior has been verified.
+
+
+## BAR1 + 0x008 - CLRIRQ
+
+`FUN_00014847` names BAR1 offset `0x008` as `CLRIRQ`. The original ISR
+`FUN_000108D6` uses it as a source-specific acknowledge register:
+
+| INTST bit | CLRIRQ write |
+|---:|---:|
+| `0x04` | `1` |
+| `0x08` | `2` |
+| `0x10` | `4` |
+| `0x20` | `8` |
+
+These writes occur before the normal INTST write-back acknowledge. They are
+required to deassert the physical source behind the CFDC2180/command-status
+events. Omitting them produces the post-calibration event storm captured in
+`xstream_trace_20260928_004553.jsonl`.

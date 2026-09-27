@@ -187,3 +187,14 @@ Current staged-runtime note:
   split while keeping other masks firmware-forwarded;
 - `CFDD219F` and unobserved multi-channel acquisition remain intentionally
   gated rather than guessed.
+
+
+### 2026-09-28 runtime milestone
+
+The latest x64 trace (`xstream_trace_20260928_004553.jsonl`) exits the
+application's calibration phase with no failed IOCTLs, but then exposes a
+post-calibration interrupt-event storm. Static recovery shows that the legacy
+ISR performs source-specific BAR1 `CLRIRQ` writes for INTST bits
+`0x04/0x08/0x10/0x20` before the common INTST acknowledge. The x64 ISR now
+mirrors those writes. The next hardware test is aimed at reaching normal
+waveform acquisition after calibration.

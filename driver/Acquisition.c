@@ -5,6 +5,7 @@
 #define LECS65_BAR0_IIMCL  0x048
 #define LECS65_BAR0_INTST  0x080
 #define LECS65_BAR0_INTEN  0x084
+#define LECS65_BAR1_CLRIRQ  0x008
 
 static
 VOID
@@ -504,6 +505,7 @@ LecInterruptService(
         (PLECS65_DEVICE_EXTENSION)Context;
     volatile ULONG* intst;
     volatile ULONG* iimcl;
+    volatile ULONG* clrirq;
     ULONG status;
 
     UNREFERENCED_PARAMETER(Interrupt);
@@ -511,6 +513,8 @@ LecInterruptService(
     if (!devExt->Started ||
         devExt->Bar[0] == NULL ||
         devExt->BarLength[0] < LECS65_BAR0_INTST + sizeof(ULONG) ||
+        devExt->Bar[1] == NULL ||
+        devExt->BarLength[1] < LECS65_BAR1_CLRIRQ + sizeof(ULONG) ||
         devExt->InterruptEnableShadow == 0) {
         return FALSE;
     }
@@ -538,6 +542,39 @@ LecInterruptService(
         iimcl = (volatile ULONG*)(
             devExt->Bar[0] + LECS65_BAR0_IIMCL);
         WRITE_REGISTER_ULONG(iimcl, 0UL);
+    }
+
+    /*
+     * The same legacy ISR performs a second, source-specific acknowledge for
+     * board-side interrupt sources 2..5 through BAR1 CLRIRQ.
+     *
+     * FUN_00014847 maps acquisition-subobject +0x200 to
+     * BAR1 +0x008 ("CLRIRQ"). Because the acquisition subobject lives at
+     * main+0x1E0, original ISR writes through main+0x3E0:
+     *
+     *   INTST 0x04 -> CLRIRQ 1
+     *   INTST 0x08 -> CLRIRQ 2
+     *   INTST 0x10 -> CLRIRQ 4
+     *   INTST 0x20 -> CLRIRQ 8
+     *
+     * These writes happen before the common INTST write-back acknowledge.
+     * Omitting them leaves the underlying board source asserted and causes
+     * the CFDC2180 command-status event to retrigger continuously.
+     */
+    clrirq = (volatile ULONG*)(
+        devExt->Bar[1] + LECS65_BAR1_CLRIRQ);
+
+    if ((status & 0x04UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 1UL);
+    }
+    if ((status & 0x08UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 2UL);
+    }
+    if ((status & 0x10UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 4UL);
+    }
+    if ((status & 0x20UL) != 0) {
+        WRITE_REGISTER_ULONG(clrirq, 8UL);
     }
 
     /*

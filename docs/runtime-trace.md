@@ -2362,3 +2362,40 @@ show `...0400` where x64 returns zero. Static analysis shows the original
 type-1/type-2 MAM-config path does not initialize those output bytes; they are
 allocator residue from the temporary output pool. The x64 driver's zeroing is
 intentional and should remain unless application dependence is proven.
+
+
+## Trace 004553: calibration completes, then command-event source retriggers continuously
+
+After the opcode-0x88 local-vs-firmware correction,
+`xstream_trace_20260928_004553.jsonl` finally exits `Calibrating...`.
+There is still no waveform.
+
+Every captured IOCTL succeeds. The meaningful transition occurs at about
+181.43 s, after the final calibration DMA transfers. XStream then repeats:
+
+```text
+85FB/0x01 -> enabled 0x02BF, pending 0x0080
+family0/0x88 mask 0x0080 -> local zero response
+CFDC2184(1)
+```
+
+at an extreme rate. The kernel ring records roughly 91k entries while trace
+sequence numbers exceed 1.5 million by the end of the 270-second capture.
+
+This proves that the host correctly clears local pending bit 0x0080, but the
+underlying interrupt source immediately asserts again.
+
+Static legacy ISR analysis identifies the omitted hardware acknowledge.
+`FUN_000108D6` writes BAR1 CLRIRQ before its common INTST acknowledge:
+
+```text
+INTST 0x04 -> CLRIRQ 1
+INTST 0x08 -> CLRIRQ 2
+INTST 0x10 -> CLRIRQ 4
+INTST 0x20 -> CLRIRQ 8
+```
+
+`FUN_00014847` maps CLRIRQ to BAR1 offset 0x008. The x64 ISR now reproduces
+these source-specific writes. The next hardware test should determine whether
+the post-calibration 0x0080 event storm disappears and XStream proceeds to
+normal acquisition/waveform traffic.

@@ -3172,3 +3172,27 @@ firmware; 352 returned payload 0x002C. The original traces never expose this:
 all captured opcode-0x88 responses are zero.
 
 Startup masks such as 0xFFDF and 0x001F remain on the firmware-forwarded path.
+
+
+## Interrupt source acknowledge and CFDC2180 event lifecycle
+
+The CFDC2180 command-status event is not cleared solely by family-0 opcode
+0x88. The original hardware ISR first acknowledges the physical source.
+
+Recovered `FUN_000108D6` sequence:
+
+```text
+INTST bit 0x04 -> BAR1 CLRIRQ <- 1
+INTST bit 0x08 -> BAR1 CLRIRQ <- 2
+INTST bit 0x10 -> BAR1 CLRIRQ <- 4
+INTST bit 0x20 -> BAR1 CLRIRQ <- 8
+then common INTST write-back acknowledge
+then queue DPC
+```
+
+The DPC maps 0x04/0x10/0x20 to sticky command bits 0x0080/0x0800/0x0100 and
+signals the event registered by CFDC2180. User mode later consumes the sticky
+bit through 85FB/0x01 and clears it with family-0 opcode 0x88.
+
+Both layers are required: opcode 0x88 clears the host-side sticky state, while
+CLRIRQ clears the underlying board interrupt source.

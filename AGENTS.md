@@ -277,23 +277,21 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Hardware-test the corrected family-0 opcode-`0x88` special case added after
-   `xstream_trace_20260928_002537.jsonl`.
-2. Trace 002537 proves the previous immediate IIMCL-completion fix removed the
-   six intermittent DMA timeouts: all 1261 CFDC2138 calls succeed, all 114
-   family-1 opcode-`0x51` MTTRGO calls succeed, and the trace contains no
-   failed IOCTL.
-3. XStream nevertheless remains indefinitely in `Calibrating...`. The first
-   strong semantic divergence is family-0 opcode `0x88 / mask 0x0080`:
-   original handles this mask locally, whereas x64 was incorrectly forwarding
-   it to firmware thousands of times.
-4. Both full original traces show every opcode-`0x88` response as zero. In
-   trace 002537, 352 forwarded `0x0080` requests return firmware value
-   `0x002C`; trace 000706 also showed `0x002D`. Treat those as evidence of
-   the wrong forwarding path, not as a firmware status to emulate.
-5. Keep the now-proven DMA/MTT paths intact. Keep `CFDD219F` and unobserved
-   multi-channel `CFDC2138` gated, and preserve the below-4-GiB descriptor
-   safety check.
+1. Hardware-test the BAR1 CLRIRQ source-specific interrupt acknowledge added
+   after `xstream_trace_20260928_004553.jsonl`.
+2. Trace 004553 proves calibration now completes after the opcode-0x88 local
+   acknowledgement fix, and every captured IOCTL returns success.
+3. Immediately after calibration, x64 enters an abnormal high-rate loop:
+   standalone 85FB/0x01 reports pending `0x0080`, local opcode-0x88 clears
+   it, `CFDC2184` runs, and pending `0x0080` is asserted again almost
+   immediately. The trace ring records about 91k calls while sequence numbers
+   exceed 1.5 million, proving a severe interrupt/event retrigger loop.
+4. Static ISR recovery shows the missing hardware acknowledge:
+   INTST 0x04/0x08/0x10/0x20 must write 1/2/4/8 respectively to BAR1 CLRIRQ
+   (offset 0x008) before the common INTST write-back. This is now implemented.
+5. Keep the proven CFDC2138 and family-1 0x51 DMA paths intact. Keep CFDD219F
+   and unobserved multi-channel CFDC2138 gated, and preserve the below-4-GiB
+   descriptor safety check.
 
 
 ## Latest dispatch recovery
@@ -2951,3 +2949,67 @@ them. Static `FUN_00013AE2 -> FUN_00012F30` shows those record outputs are not
 initialized by the original host handler. Do not reproduce that kernel-pool
 information leak or treat those bytes as a defined ABI unless future user-mode
 evidence proves XStream depends on them.
+
+
+## 2026-09-28 trace 004553: calibration completes; post-calibration CLRIRQ loop identified
+
+`xstream_trace_20260928_004553.jsonl` is the first hardware trace after the
+family-0 opcode-0x88 masks 0x0080/0x0800 were corrected to the original local
+acknowledgement path.
+
+User-visible result:
+
+- `Calibrating...` still takes a long time but now eventually completes.
+- No waveform is displayed afterwards.
+- The application appears mostly idle from the UI perspective.
+
+Trace result:
+
+- 91,109 IOCTL records are captured and every one has NTSTATUS success.
+- `CFDC2138`: 40 calls, all success.
+- `CFDC2124`: 43 calls; `CFDC2128`: 41 calls.
+- No unsupported or failed CFDC2110 command appears.
+- After approximately 181.43 s, immediately after the final calibration DMA
+  burst, XStream enters a repeated three-step cycle:
+  1. standalone 85FB/0x01 -> enabled=0x02BF, pending=0x0080;
+  2. local family-0 opcode 0x88 / mask 0x0080 -> success/zero response;
+  3. CFDC2184(1) -> success.
+- The same pending bit is then visible again immediately. The stored trace has
+  only about 91k lines because the 256-entry kernel ring is being overrun;
+  internal sequence numbers rise from roughly 30k at the start of the loop to
+  above 1.53 million by 270 s. This is not normal low activity but an extreme
+  host event loop.
+
+The local opcode-0x88 implementation is now correct. The missing behavior is
+one layer below it in the hardware ISR.
+
+Original `FUN_000108D6` handles the interrupt sources as follows before the
+common INTST write-back:
+
+```text
+INTST 0x01 -> IIMCL = 0
+INTST 0x04 -> CLRIRQ = 1
+INTST 0x08 -> CLRIRQ = 2
+INTST 0x10 -> CLRIRQ = 4
+INTST 0x20 -> CLRIRQ = 8
+```
+
+`FUN_00014847` proves that the pointer used for those 0x04..0x20 writes is
+BAR1 CLRIRQ:
+
+- acquisition object base = `main + 0x1E0`;
+- CLRIRQ register object = acquisition + `0x200`;
+- pointer location therefore = `main + 0x3E0`;
+- register address = BAR1 base + `0x008`.
+
+The previous x64 ISR performed the IIMCL completion clear and the common INTST
+write-back, but omitted every CLRIRQ source acknowledge. Consequently INTST
+0x04 could immediately reassert, the DPC re-latched command pending bit 0x0080,
+and the CFDC2180 user event woke XStream again.
+
+The x64 ISR now mirrors the four CLRIRQ writes exactly and still performs the
+common INTST write-back afterwards.
+
+Trace 004553 is the primary evidence file for the completed-calibration /
+post-calibration event-loop stage. Do not ask the user to reproduce that stage
+unless validating a newer ISR state.
