@@ -2717,3 +2717,23 @@ The x64 driver now executes only this observed CFDC2138 one-channel form
 real and maps to STATUS_IO_TIMEOUT; no fake completion is returned.
 
 `CFDD219F` remains gated. Multi-channel CFDC2138 remains gated.
+
+
+## 2026-09-27 CFDC2138 build fix
+
+The first build of commit `124785ccd65e190fe73494394ea0ebc0502be8c5`
+failed before driver loading. The new CFDC2138 helper called `LecReadU32`,
+but only `LecReadU16` and the write helpers existed in `Ioctl.c`. MSVC
+therefore emitted C4013 and the linker failed with LNK2019 for the unresolved
+`LecReadU32` symbol.
+
+The fix adds the missing unaligned-safe `LecReadU32` helper using
+`RtlCopyMemory`, matching the existing 16-bit helper style. The same change
+initializes the family-2 opcode-0x02 `mttCtl` pointer to NULL to remove the
+existing C4701/C4703 maybe-uninitialized warnings without changing control-flow
+semantics.
+
+The failed build never reached signing or driver reload, so no DMA-capable
+driver from commit 124785c was loaded during that attempt. Retest using the
+normal `Run-LeCroy-XStream-Trace.ps1 -Configuration Debug` workflow after
+pulling the fix.
