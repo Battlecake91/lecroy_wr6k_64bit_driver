@@ -1301,3 +1301,16 @@ testing.
 
 Next hardware test may now progress beyond family2/0x01 and the six type-1 MAM
 configuration records.
+
+## Build fix after timer implementation
+
+The first WDK build after adding family-2 opcode-`0x01` failed because
+`KeQuerySystemTime` was not available as a linkable symbol in the current
+WDK environment.
+
+The timer implementation only needs a monotonic elapsed-time source, not wall
+clock time. It now uses `KeQueryInterruptTime()`, which returns 100-ns units
+suitable for the legacy remaining-time calculation.
+
+The unrelated C4456 warning in the CFDC2110 validator was also cleaned up by
+renaming the inner opcode-`0x92` register offset variable.
