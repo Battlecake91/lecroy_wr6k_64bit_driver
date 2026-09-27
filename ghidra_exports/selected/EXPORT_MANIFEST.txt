@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: b1a339cf08d5afbca530c4d6d3fc30a0cffa84b4
+Source commit: 063ec6c440c361007d31a40a730266683b60c46f
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -57,6 +57,9 @@ Targets:
   12290
   17a98
   120fa
+  11a00
+  13f70
+  19362
 
 Exported files:
   00010380_FUN_00010380.c
@@ -91,6 +94,8 @@ Exported files:
   00011962_FUN_00011962.refs.txt
   000119bc_FUN_000119bc.c
   000119bc_FUN_000119bc.refs.txt
+  00011a00_FUN_00011a00.c
+  00011a00_FUN_00011a00.refs.txt
   00011a88_FUN_00011a88.c
   00011a88_FUN_00011a88.refs.txt
   00011aa6_FUN_00011aa6.c
@@ -213,6 +218,8 @@ Exported files:
   00013dc6_FUN_00013dc6.refs.txt
   00013f3c_FUN_00013f3c.c
   00013f3c_FUN_00013f3c.refs.txt
+  00013f70_FUN_00013f70.c
+  00013f70_FUN_00013f70.refs.txt
   00013fa6_FUN_00013fa6.c
   00013fa6_FUN_00013fa6.refs.txt
   00014122_FUN_00014122.c
@@ -443,6 +450,8 @@ Exported files:
   0001860e_FUN_0001860e.refs.txt
   0001919a_FUN_0001919a.c
   0001919a_FUN_0001919a.refs.txt
+  00019362_FUN_00019362.c
+  00019362_FUN_00019362.refs.txt
   0001955a_FUN_0001955a.c
   0001955a_FUN_0001955a.refs.txt
   00019966_FUN_00019966.c
