@@ -1879,3 +1879,33 @@ Recommended implementation:
 This is preferable to ProcMon (insufficient payload visibility) and to manual
 WinDbg breakpoints (awkward for hundreds of calls). It leaves the original
 kernel driver untouched and provides ground-truth legacy traffic.
+
+
+
+## x86 original-XStream IOCTL tracer implemented
+
+New tool:
+- `tools/xstream-ioctl-trace/xstream_trace_launcher.c`
+- `tools/xstream-ioctl-trace/xstream_io_hook.c`
+- `scripts/build-xstream-ioctl-trace.ps1`
+
+Purpose: capture original 32-bit XStream's real user-mode DeviceIoControl
+traffic while it talks to the untouched legacy kernel driver.
+
+The x86 launcher starts XStream suspended, injects `xstream_io_hook.dll`, then
+resumes the process. The hook patches import tables for DeviceIoControl,
+CreateFileA/W, CloseHandle, LoadLibraryA/W and GetProcAddress and forwards calls
+unchanged.
+
+JSONL records include exact input bytes before each call and returned output
+bytes for synchronous calls, plus IOCTL code, sizes, thread id, duration,
+GetLastError, handle, and pending/overlapped state. Buffers are capped at 1 MiB.
+
+Build:
+`.\scripts\build-xstream-ioctl-trace.ps1`
+
+Run on legacy system:
+`.\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe"`
+
+Use the resulting legacy trace as the primary source for locating the first
+semantic difference versus current x64 startup before sequence ~879.
