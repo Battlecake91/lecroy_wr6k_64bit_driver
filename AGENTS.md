@@ -1726,3 +1726,37 @@ New diagnostic in commit 7ab94af4ed7216e68270d5220e68174c6935f252:
   XStream.
 
 Use this to identify the first command that changes legacy status bits.
+
+## Pre-poll replay isolates current divergence to MTTCTL transition
+
+Fresh-board legacy replay results:
+
+Initial:
+- 1400 2040 0000 0002 0020
+
+Step 8, first family0/op42 JTAG write:
+- word2 changes 2040 -> 3040
+- resulting state: 1400 3040 0000 0002 0020
+
+Steps 9-32:
+- unchanged
+
+Step 33, family2/op02 MTTCTL=1:
+- word4 changes 0002 -> 0000
+- resulting state: 1400 3040 0000 0000 0020
+
+Current x64 stalled state:
+- 1400 3040 0000 0050 0020
+
+Therefore word2=3040 is NOT itself a bug. The first JTAG write legitimately
+sets that bit under the original driver too.
+
+The actual current divergence is the MTTCTL transition:
+- legacy after MTTCTL=1: word4=0000
+- x64 after MTTCTL=1 / poll: word4=0050
+
+User heard relays switch during the replay, confirming real hardware state
+changes.
+
+Focus next on exact family2/op02 implementation and preconditions. Stop spending
+time on JTAG response packing unless new evidence appears.
