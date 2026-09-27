@@ -535,3 +535,24 @@ This confirms that terminating at the dialog yields the authoritative normal
 startup boundary. The exact selector-9, selector-10, and selector-11 packet
 forms are now added to the byte-exact runtime gate and continue to use the
 already decoded generic BAR1 board-message transport.
+
+## Fourteenth staged startup capture
+
+The 2026-09-27 02:29 capture was again terminated at the XStreamDSO startup
+error dialog. The final rejection block is therefore the authoritative normal
+startup boundary.
+
+The trace contains 175 IOCTL records. The last 11 rejected `0xCFDC2110`
+calls are all family-1 opcode `0x81`:
+
+- selector `0x0C`: 5 rejections;
+- selector `0x0D`: 5 rejections;
+- selector `0x17`: 1 rejection.
+
+The jump from selector `0x0D` to `0x17` shows that the selector byte is not
+simply a monotonically increasing counter. It is more likely an index or
+selection value from a fixed startup list. Legacy still routes all observed
+family-1 opcode-`0x81` forms through the generic BAR1 board-message transport.
+
+The exact observed selector-12, selector-13, and selector-23 packets are now
+added to the byte-exact runtime gate. Unknown selector values remain rejected.
