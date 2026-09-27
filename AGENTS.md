@@ -1061,3 +1061,30 @@ The final rejected family-0 opcode-`0x84` forms are:
 These three complete 54-byte buffers are now admitted through the existing
 generic BAR1 transport. Keep matching byte-exactly; the selector alone is not
 sufficient because the payload also varies.
+
+## CFDC2110 gate strategy change
+
+Do not keep adding byte-exact entries for command classes whose legacy path is
+statically confirmed to be a pure board forwarder.
+
+Current semantic forward-only set:
+
+- family 0 / opcode `0x84`;
+- family 1 / opcode `0x81`;
+- family 1 / opcode `0x90`;
+- family 1 / opcode `0x99`.
+
+`LecIsConfirmedForwardOnlyCfDc2110` validates the packed type-3 record list,
+record bounds, A5FB payload prefix, family/opcode pair, and companion 85FB
+fetch prefix before admitting the request. The old accumulated byte-exact
+arrays for opcode `0x81` and `0x84` were removed.
+
+Keep byte-exact or special handling for commands with host-side effects or
+incomplete semantics. In particular, family-0 opcode `0x85` must remain
+special because the legacy driver changes host interrupt-mask state before
+forwarding.
+
+The last pre-change trace, `xstream_trace_20260927_023951.jsonl`, ended with
+five rejected opcode-`0x84` selector-`0x0C` requests, five selector-`0x0D`
+requests, and one family-1 opcode-`0x81` selector-`0x0E` request. These no
+longer require individual whitelist entries.
