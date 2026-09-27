@@ -920,6 +920,16 @@ typedef struct _LECS65_LEGACY_REGISTER_LIST_ENTRY {
 
 static const LECS65_LEGACY_REGISTER_LIST_ENTRY
 g_LecLegacyRegisterList[LECS65_LEGACY_REGISTER_COUNT] = {
+    /*
+     * Live original-driver capture establishes this exact public ordering.
+     * XStream requests indexed entry zero and expects TxControl there.
+     */
+    { "TxControl", 1, 0x400, 4 },
+    { "RxControl", 1, 0x404, 4 },
+    { "TxCount",   1, 0x408, 4 },
+    { "RxCount",   1, 0x40C, 4 },
+    { "SetIRQ",    1, 0x100, 2 },
+    { "HWInt",     1, 0x410, 4 },
     { "FVER",      0, 0x000, 1 },
     { "ERRS",      0, 0x004, 4 },
     { "ERRM",      0, 0x008, 2 },
@@ -927,7 +937,7 @@ g_LecLegacyRegisterList[LECS65_LEGACY_REGISTER_COUNT] = {
     { "IIMCL",     0, 0x048, 2 },
     { "CLRIRQ",    1, 0x008, 2 },
     { "CLRERR",    1, 0x004, 2 },
-    { "INTEN",     0, 0x084, 0 },
+    { "INTEN",     0, 0x084, 2 },
     { "SGTA",      0, 0x040, 2 },
     { "IIMTC",     0, 0x044, 2 },
     { "IIMST",     0, 0x04C, 1 },
@@ -956,13 +966,7 @@ g_LecLegacyRegisterList[LECS65_LEGACY_REGISTER_COUNT] = {
     { "ACQCUM",    1, 0x0F0, 1 },
     { "PFREG",     1, 0x0F4, 2 },
     { "GPIODIR",   1, 0x0C0, 2 },
-    { "GPIODAT",   1, 0x0C4, 4 },
-    { "TxControl", 1, 0x400, 4 },
-    { "RxControl", 1, 0x404, 4 },
-    { "TxCount",   1, 0x408, 4 },
-    { "RxCount",   1, 0x40C, 4 },
-    { "SetIRQ",    1, 0x100, 2 },
-    { "HWInt",     1, 0x410, 4 }
+    { "GPIODAT",   1, 0x0C4, 4 }
 };
 
 static
@@ -972,7 +976,7 @@ LecFillLegacyTraceBlock(
     _In_ ULONG OutputLength
     )
 {
-    static const CHAR traceName[] = "CKeTraceControl";
+    static const CHAR traceName[] = "CKeTraceControl: ";
 
     if (Buffer == NULL ||
         OutputLength != LECS65_LEGACY_TRACE_BLOCK_BYTES) {
@@ -3040,6 +3044,17 @@ LecS65DeviceControl(
     }
 
     switch (code) {
+    case LECS65_IOCTL_00222400:
+        /*
+         * Live original-driver capture proves that XStream probes this
+         * control during startup and the legacy driver returns success with
+         * Information=0. The 4-byte output buffer is left untouched.
+         */
+        status = STATUS_SUCCESS;
+        information = 0;
+        LecTrace("legacy 0x00222400 -> STATUS_SUCCESS, info=0\n");
+        break;
+
     case LECS65_IOCTL_CFDC2110:
         /*
          * Confirmed pure board-forwarding command classes are admitted after
