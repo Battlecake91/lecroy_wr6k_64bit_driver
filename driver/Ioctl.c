@@ -3275,6 +3275,76 @@ LecS65DeviceControl(
         information = 0;
         break;
 
+    case LECS65_IOCTL_CFDC2190:
+        /*
+         * Legacy 0xCFDC2190 accepts exactly 29 input bytes and no output.
+         * Static analysis of FUN_00013A40 plus the original runtime trace
+         * establish the startup-relevant fields:
+         *
+         *   +0x04 DWORD: controls global interrupt-mask bit 1
+         *   +0x08 DWORD: value written to BAR0 ERRM (offset 0x008)
+         *
+         * The remaining bytes belong to the paired 0xCFDC2194
+         * status/readback structure and are preserved as ABI padding here.
+         */
+        if (systemBuffer == NULL ||
+            inputLength != 29 ||
+            outputLength != 0) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+        else {
+            ULONG control;
+            ULONG errorMask;
+            ULONG newInterruptMask;
+            volatile ULONG* errm;
+
+            RtlCopyMemory(
+                &control,
+                (PUCHAR)systemBuffer + 4,
+                sizeof(control));
+            RtlCopyMemory(
+                &errorMask,
+                (PUCHAR)systemBuffer + 8,
+                sizeof(errorMask));
+
+            status = LecResolveRegister(
+                devExt,
+                0,
+                0x008,
+                &errm);
+
+            if (NT_SUCCESS(status)) {
+                WRITE_REGISTER_ULONG(errm, errorMask);
+
+                newInterruptMask =
+                    (ULONG)InterlockedCompareExchange(
+                        (volatile LONG*)&devExt->InterruptEnableShadow,
+                        0,
+                        0);
+
+                if (control != 0) {
+                    newInterruptMask |= 0x02UL;
+                }
+                else {
+                    newInterruptMask &= ~0x02UL;
+                }
+
+                status = LecCommitLegacyInterruptMask(
+                    devExt,
+                    newInterruptMask);
+            }
+
+            information = 0;
+            LecTrace(
+                "CFDC2190 control=0x%08lX ERRM=0x%08lX -> 0x%08X\n",
+                control,
+                errorMask,
+                status);
+        }
+        break;
+
     case LECS65_IOCTL_SET_THREE_EVENTS:
         status = LecIoctlSetThreeEvents(
             devExt,
