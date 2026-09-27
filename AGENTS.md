@@ -1579,3 +1579,28 @@ Fixed in:
 
 The driver now initializes the MAM shadow lazily to 0xFFFF for all 256 indices
 and suppresses writes exactly as legacy does.
+
+## Current primary fix: continuous JTAG scan sequencing
+
+Trace `xstream_trace_20260927_122739.jsonl` remains stuck in the same
+family-1 opcode-0x42 76-bit JTAG scan. The MAM 0xFFFF constructor correction
+does not affect the six pre-poll records because they contain no 0xFFFF values.
+
+Critical mismatch found in JTAG implementation:
+
+Legacy FUN_00015C7E / FUN_00015ACC:
+- write JTAGNUM once for all complete 16-bit chunks;
+- stream JTAGDAT for each chunk without rewriting JTAGNUM;
+- only reprogram JTAGNUM for the final partial chunk.
+
+Previous x64 implementation:
+- rewrote JTAGNUM before every 16-bit chunk.
+
+This can restart the hardware shift state and break a continuous 76-bit scan.
+
+Fixed in commit:
+- 3d0070e5328e3ae19412728cd644fb53bd1161bb
+
+Both LecJtagExecute and LecJtagWriteOnly now match legacy chunk sequencing.
+Next trace should show whether the repeated 76-bit status response finally
+changes and XStream advances.
