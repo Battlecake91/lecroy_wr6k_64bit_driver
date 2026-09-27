@@ -85,14 +85,21 @@ The legacy driver exposes generic register access:
 0xCFDC21C8  driver build query -> 1002
 ```
 
-It also registers four PnP device-interface classes:
+It registers five PnP device-interface classes:
 
 ```text
-{7AC34BE9-F766-4F15-9E88-854BA5E2146E}
-{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}
-{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}
-{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
+{958695A4-693A-435E-8297-66F805D8E46A}  acquisition/control
+{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}  Dallas / board ID
+{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}  trace control
+{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}  three-event registration
+{7AC34BE9-F766-4F15-9E88-854BA5E2146E}  delay / flag helper
 ```
+
+Passive tracing also established an important endpoint-selection detail:
+original XStream probes `\\??\\ALADDINAcqDriver0`, expects that open to fail
+with `STATUS_OBJECT_NAME_NOT_FOUND`, and then uses the
+`{958695A4-...}` PnP interface for acquisition/control traffic. The x64
+replacement deliberately does not publish that DOS alias.
 
 The installed legacy INF has now been recovered as well. Windows publishes it as `oem18.inf`, while the file identifies itself as the original `LecS65AcqDrv.inf`. It confirms `PCI\\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`, service name `LecS65AcqDrv`, device class `DataAcquisition`, class GUID `{BA5FE95F-EE73-4113-8121-F38CC4FF0095}`, and binary name `LecS65AcqDrv.sys`.
 
@@ -103,7 +110,7 @@ Together, those findings give the future x64 driver a useful incremental bring-u
 
 Development originally started on `prototype/x64-bringup`, but that work has been merged and active development now happens on `main`.
 
-The x64 prototype implements PCI/PnP bring-up, the recovered legacy DOS device path, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility and detailed IOCTL tracing. Interrupt and acquisition behaviour are being reconstructed from the original x86 driver before more hardware execution is enabled.
+The x64 prototype implements PCI/PnP bring-up, all five recovered interface GUIDs, BAR mapping, build query, raw register access, Dallas/1-Wire access, event-registration compatibility and detailed IOCTL tracing. It deliberately omits the legacy DOS alias because the original XStream startup expects that probe to fail. Interrupt and acquisition behaviour are being reconstructed from the original x86 driver before active DMA execution is enabled.
 
 See [docs/x64-bringup.md](docs/x64-bringup.md) and
 [docs/runtime-trace.md](docs/runtime-trace.md).
@@ -147,9 +154,19 @@ Its generated `DriverVer` uses the UTC calendar date so Inf2Cat does not reject
 builds made shortly after local midnight as postdated packages.
 
 
-Current staged-runtime note: the exact 54-byte mode-1 / 83-bit JTAG request is
-now admitted and succeeds. The next exposed request is a 94-byte family-1
-opcode `0x42`, mode-2, 256-bit form. The legacy handler returns local protocol
-status 4 for modes above 1 without touching JTAG hardware, but the x64 fetch
-response is not yet proven byte-exact. Mode 2 therefore remains rejected. No
-broader JTAG or opcode whitelist has been enabled.
+Current staged-runtime note:
+
+- the original-style interface startup path is active;
+- `CFDC2190`, six-byte 85FB host framing and generic family-0 opcode
+  `0x88` handling are implemented;
+- the corrected 85FB length rule now lets the 120 family-1 opcode-`0x96`
+  selector reads advance exactly like the legacy trace instead of looping on
+  selector `0x20`;
+- the latest trace still stops before `CFDC2124` / `CFDC2138`;
+- static comparison found that the x64 ISR/DPC previously acknowledged
+  non-transfer interrupt sources without delivering the legacy
+  `CFDC2180` / `CFDC218C` user events. The recovered event mapping is now
+  implemented and is the next hardware retest target;
+- active `CFDC2138` / `CFDD219F` DMA launch remains intentionally gated
+  until the legacy transfer ABI and x64 physical-address constraints are
+  proven on hardware.
