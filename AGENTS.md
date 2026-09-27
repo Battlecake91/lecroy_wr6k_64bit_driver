@@ -2165,3 +2165,25 @@ Implemented:
 - 803670576886117541848b81c867872814e39a10
 
 Retest this before touching JTAG/transport logic again.
+
+## Current next test: 85FB hardware-response framing fix
+
+Trace `xstream_trace_20260927_210024.jsonl` has no failing IOCTLs; CFDC2190
+now succeeds. The earliest remaining semantic mismatch is the first family-1
+opcode-0x99 CFDC2110 response.
+
+Original output starts:
+`0000000000000000000002000200FFFFFFFF...`
+
+x64 output starts:
+`0000000000000200000000000000...`
+
+This exposed a generic framing bug: original 85FB hardware fetches prepend a
+6-byte host header (DWORD 0, WORD 2) before raw firmware bytes. x64 copied raw
+BAR1 RX bytes directly into the record.
+
+Fixed in commit `33e24638d72bd5ae587ff80d6bebea4702a112cb`.
+
+Retest x64 before changing transport or JTAG logic. If opcode-0x99 still differs
+after the framing shift is corrected, focus next on why its raw 256-byte payload
+is zeros on x64 versus 0xFF on the original reference.
