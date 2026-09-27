@@ -1382,3 +1382,32 @@ The remaining unsupported 0x00222400 is still intentionally unmapped. The next
 runtime trace should determine whether satisfying the two size queries causes
 XStream to proceed to CFDC2124 transfer registration and the acquisition
 IOCTLs.
+
+## Latest runtime state: calibration passes, acquiring waits
+
+Trace `xstream_trace_20260927_112352.jsonl`:
+- 924 CFDC2110 calls, all successful.
+- XStream now progresses past "Calibrating".
+- UI then remains at "Acquiring" with no waveform data.
+
+The four-byte query stage is fixed:
+- 0x223004 -> 0x110;
+- 0x223040 -> 0x2CAE.
+
+XStream then performs second-stage full-buffer reads:
+- 0x223004 with out=272 -> currently STATUS_INVALID_BUFFER_SIZE;
+- 0x223040 with out=11438 -> currently STATUS_INVALID_BUFFER_SIZE.
+
+No CFDC2124 / CFDC2138 / CFDD219F follows. These second-stage buffers are
+therefore the current leading blocker before transfer registration/acquisition.
+
+Static payload facts:
+- 0x223004 full response is a 0x110-byte CKeTraceControl descriptor block.
+- 0x223040 full response is 43 serialized register entries at 0x10A bytes per
+  entry, total 0x2CAE bytes.
+- serialized register entry layout is:
+  name[256], BAR byte, offset DWORD, type byte, data DWORD.
+
+Ghidra targets now also include 11A00, 13F70 and 19362 to close the remaining
+register-list/trace-control serialization details before implementing the full
+buffers.
