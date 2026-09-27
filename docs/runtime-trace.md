@@ -1322,3 +1322,34 @@ Therefore:
 The next investigation should focus tightly on family-2 opcode 0x02 / MTTCTL
 and the state immediately feeding that operation, rather than on JTAG framing
 or the earlier GPIO/SPI/MAM commands.
+
+## x64 pre-poll replay started from an already-diverged board state
+
+Running `legacy-prepoll-replay` against the x64 replacement driver produced:
+
+Initial:
+`1400 3040 0000 0050 0020`
+
+and every replay step, including MTTCTL=1, remained at that same value.
+
+This run cannot be compared step-for-step with the fresh-board legacy replay
+because the x64 board state was already divergent before the first replayed
+operation. The current evidence therefore does not prove that the x64
+family-2 opcode-0x02 implementation itself creates 0x0050; the state may have
+persisted from a previous XStream/acquisition attempt.
+
+Static re-check of legacy FUN_00012FDE versus LecRunLegacyStartupProbe shows
+the startup MMIO sequence matches:
+- START <- 1;
+- 100 us delay;
+- read START bit0;
+- buzzer 300 ms;
+- ITMODE <- 7;
+- 500 us delay;
+- buzzer 300 ms;
+- ITMODE <- 3.
+
+A true cold-hardware baseline is required next. Restarting/reloading the driver
+is insufficient if FPGA/JTAG state survives PCI driver reload. Power-cycle the
+scope/hardware, do not start XStream, and immediately run only
+`lecdiag legacy-jtag-poll` against the x64 driver.
