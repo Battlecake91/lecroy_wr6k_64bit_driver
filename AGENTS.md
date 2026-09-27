@@ -1698,3 +1698,31 @@ JTAG response packing without new evidence.
 Next investigation should identify the state-setting operations before this
 poll, ideally by observing the original driver's complete startup IOCTL stream
 or by controlled direct probes.
+
+## Legacy XStream state transition
+
+Direct legacy poll is stable before XStream:
+- 1400 2040 0000 0002 0020
+
+After original XStream starts:
+- 1400 2040 0000 0000 0020
+
+Current x64 stalled state:
+- 1400 3040 0000 0050 0020
+
+So original XStream clears legacy word4 bit 0x0002 while word2 stays 0x2040.
+The x64 path has three additional differing status bits: word2 0x1000 and
+word4 0x0010/0x0040.
+
+This proves the remaining issue is upstream hardware state, not response
+packing.
+
+New diagnostic in commit 7ab94af4ed7216e68270d5220e68174c6935f252:
+- `lecdiag legacy-prepoll-replay`
+- replays the exact immediate pre-poll x64 CFDC2110 sequence;
+- after every step, sends the known 76-bit legacy JTAG poll and prints five
+  words;
+- intended to run on the original 32-bit driver from a fresh board state before
+  XStream.
+
+Use this to identify the first command that changes legacy status bits.
