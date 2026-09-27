@@ -2385,3 +2385,33 @@ zero-fills the undefined tail instead of leaking kernel-pool contents. The
 captured 94-byte mode-2 request is admitted byte-exactly. Mode 2 remains a
 local protocol-error path and never reaches `JTAGNUM`, `JTAGDAT`, or
 `JTAGDIN`.
+
+### Family 0 opcode 0x42 and 0x92
+
+The latest clean startup trace reached two non-forwarding family-0 commands.
+
+**Opcode `0x42`** is handled by legacy `FUN_00015ACC`. Its request body is
+interpreted locally as a JTAG write sequence:
+
+- byte 0: mode, accepted values 0 or 1;
+- byte 1: bit count;
+- bytes 2..4: legacy header/reserved fields;
+- from byte 5: repeated pairs of 16-bit words, one 4-byte chunk per up-to-16
+  JTAG bits.
+
+For each chunk the legacy driver writes BAR1 JTAGNUM and JTAGDAT. It does not
+use the generic board-message transport for this opcode and it returns a local
+8-byte success/status response.
+
+**Opcode `0x92`** is handled by legacy `FUN_0001600E`. Its request body is:
+
+- byte 0: target selector 0, 1 or 2;
+- bytes 1..2: 16-bit register offset;
+- bytes 3..6: 32-bit value.
+
+Selector 1 is confirmed to address BAR1: the captured startup writes target
+offsets `0x00C0` and `0x00C4`, matching BAR1 GPIODIR and GPIODAT exactly.
+The x64 driver therefore implements selector 1 as an aligned BAR1 register
+write with the final resource-bound check performed by `LecGetBar1Register`.
+Selectors 0 and 2 remain unimplemented until their legacy base-object mapping
+is confirmed.
