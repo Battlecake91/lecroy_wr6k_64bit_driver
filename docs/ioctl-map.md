@@ -2829,3 +2829,22 @@ an explicit invalid state and therefore always emitted the first write.
 
 The x64 driver now lazily initializes all 256 MAM shadows to `0xFFFF` and
 compares directly against that state, matching legacy constructor semantics.
+
+### JTAGNUM write sequencing
+
+Raw assembly of legacy `FUN_00015C7E` shows an important sequencing detail.
+
+For a JTAG transfer longer than 16 bits, the legacy driver does not program
+JTAGNUM for every data word. Instead it:
+
+1. writes JTAGNUM once with 16-bit mode (low nibble zero) and selected mode bit;
+2. streams every complete 16-bit pair through JTAGDAT;
+3. reads JTAGDIN after each data write when response data is required;
+4. if a partial chunk remains, writes JTAGNUM once more with the remainder;
+5. transfers the final partial chunk.
+
+Legacy `FUN_00015ACC` uses the same pattern for write-only JTAG transfers.
+
+The previous x64 code rewrote JTAGNUM before every complete 16-bit chunk,
+which can restart the underlying JTAG operation. The x64 implementation now
+matches the continuous legacy sequence exactly.
