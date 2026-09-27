@@ -1461,3 +1461,23 @@ Both new forms are implemented in commit 766d6c896208279cc69d777cb534d47657da444
 No CFDC2124 / CFDC2138 / CFDD219F is reached in this trace yet. The next
 hardware run will determine whether the only remaining startup failure,
 0x00222400, is still gating acquisition.
+
+## Latest trace: one remaining failure
+
+Trace `xstream_trace_20260927_114916.jsonl`:
+- 959 IOCTL events;
+- 937 CFDC2110 calls, all successful;
+- 0x223000 succeeds;
+- all 0x223004 forms succeed;
+- all 0x223040 forms succeed, including indexed in=4/out=0x10A.
+
+Exactly one IOCTL still fails:
+- 0x00222400, in=0, out=4 -> STATUS_INVALID_DEVICE_REQUEST.
+
+No CFDC2124 / CFDC2138 / CFDD219F appears after it.
+
+The current DeviceControl raw export has a gap between 0x10F8F and 0x11018.
+Because 0x222400 is lower than the already mapped 0x222C00 branch, its
+dispatch must be in or before this missing region. Ghidra targets 11008,
+11010 and 11014 were added in commit
+3621ffa4b7e2c1800a1fb86aae1410955a9cc67e to close this final dispatcher gap.
