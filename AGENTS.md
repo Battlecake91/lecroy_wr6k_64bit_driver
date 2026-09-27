@@ -1341,3 +1341,22 @@ which explains why arming succeeds but no waveform data appears.
 Ghidra targets now include raw DeviceControl windows around 0x10FC0-0x11080 and
 candidate handlers 0x128BC, 0x12ADA, 0x12A5E, 0x12CAC, 0x12C18, 0x12D24 to map
 these IOCTLs exactly before implementing them.
+
+## Buffer-query IOCTL dispatch resolved
+
+The DeviceControl export after the 10:47 runtime trace resolves the two
+four-byte query IOCTLs:
+
+- 0x00223004 -> FUN_00012A5E;
+- 0x00223040 -> FUN_00012C18.
+
+For a 4-byte output buffer, both return a size DWORD:
+- 0x223004 reads the first DWORD from a driver-owned buffer pointer at
+  board-object offset +0x11EA;
+- 0x223040 calls FUN_00012386 on the object at +0x11EE and returns that
+  serialized size.
+
+These are not user pointers/handles. Their concrete values are produced by
+legacy buffer/list helper code and must still be exported before implementation.
+Ghidra targets now include 12386, 123B4, 124C2, 1259A, 12290, 17A98 and 120FA
+to resolve those size producers and serialization helpers.
