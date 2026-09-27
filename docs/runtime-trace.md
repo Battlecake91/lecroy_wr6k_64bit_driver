@@ -1086,3 +1086,30 @@ still uncertain.
 
 Raw assembly targets were added inside FUN_00015C7E at 0x15CC0, 0x15CF0,
 0x15D20, 0x15D50 and 0x15D70 to recover the exact response-word formation.
+
+## JTAG poll follow-up: upstream timing mismatch identified
+
+Full assembly for legacy `FUN_00015C7E` confirms that the x64 JTAG response
+bit extraction is already correct:
+
+- full 16-bit chunks return `JTAGDIN >> 16`;
+- the final partial chunk returns
+  `JTAGDIN >> (32 - remaining_bits)`;
+- JTAGNUM mode/bit-count programming and JTAGDAT word ordering match the
+  legacy implementation.
+
+The repeated mode-1 76-bit JTAG poll is therefore downstream of an earlier
+state/timing problem rather than an output-word extraction bug.
+
+The immediately preceding runtime sequence is:
+- multiple type-1 MAM configuration records;
+- family-2 opcode 0x02 writing MTTCTL=1;
+- repeated family-1 opcode 0x42 JTAG poll.
+
+Static review of legacy `FUN_000163B2` found that opcode 0x02 must wait on
+the timer armed by opcode 0x01 before writing MTTCTL. The x64 implementation
+had instead waited on a DMA completion event, which is not equivalent and is
+normally absent at this stage.
+
+This timer barrier is now corrected. Type-1/type-2 MAM records are also fixed
+to always use legacy MAM mode 1.
