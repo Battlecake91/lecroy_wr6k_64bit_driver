@@ -2815,3 +2815,17 @@ type-1 records at seq 893-898 are repeated byte-for-byte at seq 899-904.
 The x64 driver now maintains a 256-entry 16-bit MAM shadow plus valid flags and
 suppresses duplicate indexed writes, while preserving the MAMPGO launch for
 every record.
+
+### Exact MAMDAT shadow initialization
+
+Legacy board construction uses `FUN_00011A00` for the MAMDAT register object.
+That constructor initializes all 256 indexed shadow DWORDs to
+`0xFFFFFFFF`. `FUN_000179E2` compares only the low 16-bit data field, so
+the effective initial shadow value for every MAM index is `0xFFFF`.
+
+This means the first attempt to program value `0xFFFF` for an index is
+already suppressed by the legacy driver. The previous x64 implementation used
+an explicit invalid state and therefore always emitted the first write.
+
+The x64 driver now lazily initializes all 256 MAM shadows to `0xFFFF` and
+compares directly against that state, matching legacy constructor semantics.
