@@ -2469,3 +2469,38 @@ object for **PFREG**, BAR1 offset `0xF4`. Because
 The request supplies a 16-bit value which the legacy driver writes directly to
 PFREG and then returns a local success/status response. The x64 driver now
 implements this path structurally.
+
+### Family 0 opcode 0x90 resolved to SPI helper
+
+The constructor chain now proves the register mapping used by legacy
+`FUN_00015E80`.
+
+`FUN_00014212` constructs the CFDC2110 command-dispatch object at board-object
+offset `+0xEA8` and calls `FUN_000158EE` with:
+
+- param1 = board `+0x104A` (JTAG helper);
+- param2 = board `+0x106A` (SPI helper).
+
+`FUN_000158EE` stores param2 at dispatcher field `+0x19`. Therefore
+`FUN_00015E80`, which dereferences dispatcher `+0x19`, operates on the SPI
+helper at board `+0x106A`.
+
+`FUN_00014847` initializes that helper through `FUN_0001340C` with:
+
+- BAR1 `SPICTL` at `0xA0`;
+- BAR1 `SPIDAT` at `0xA4`;
+- BAR1 `SPIDIN` at `0xA8`;
+- initial control shadow `0x001FF000`.
+
+The opcode-`0x90` request body contains selector, bit count, a 16-bit control
+field, and packed 16-bit data words. Legacy selects one of selector values
+0,1,2,3,4,0x0C,0x0E, updates the SPI control shadow, commits it to SPICTL,
+bit-reverses each 16-bit payload word into the 32-bit SPIDAT write format, and
+finally deasserts the selector and clears the low five control bits.
+
+The captured probe request uses selector `0x0E`, bit count `0x0090` (144),
+and exactly nine 16-bit words, matching the legacy loop exactly.
+
+The x64 driver now implements this opcode structurally, including lazy legacy
+SPICTL initialization to `0x001FF000`, selector handling, control-shadow
+updates, bit reversal, SPIDAT writes, and local protocol status response.
