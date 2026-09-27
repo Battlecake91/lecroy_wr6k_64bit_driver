@@ -2544,3 +2544,36 @@ next focused regression test.
 The user also located the Developer-link-test rejection string in
 `lecaladdinhwaccesspcisvr.dll`, making that DLL the next user-mode analysis
 target for `WaveRunner Driver Not Supported`.
+
+
+## Run Link Tests final disposition: vendor-disabled for S65/WaveRunner
+
+Static analysis of the installed `lecaladdinhwaccesspcisvr.dll` explains the
+developer-menu message conclusively.
+
+The link-test routine checks two booleans in its embedded driver-connection
+object:
+
+```text
+connected?
+    no  -> "Driver Not Connected"
+S65/WaveRunner driver?
+    yes -> "WaveRunner Driver Not Supported"
+else
+    -> execute link tests
+```
+
+The constructor for that connection object recognizes `Null`, `S65`,
+`FE2` and `CENTAUR`. Selecting `S65` sets the exact flag tested by the
+link-test routine.
+
+This means the rejection is intentional LeCroy user-mode behavior for the S65
+driver family and is not caused by the 64-bit replacement driver. No new IOCTL
+needs to be added for this menu action.
+
+Forcing the flag off is unsafe as a compatibility strategy: the same flag
+selects alternate IOCTL/driver paths elsewhere in the DLL, including a
+`0xCFDC219C` versus `0xCFDD219F` branch.
+
+The installed DLL was analyzed locally only and must not be added to the public
+repository.

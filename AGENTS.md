@@ -3287,3 +3287,78 @@ C:\Program Files (x86)\LeCroy\XStream\lecaladdinhwaccesspcisvr.dll
 That DLL is therefore the primary user-mode reverse-engineering target for the
 Developer -> Run Link Tests support gate once the Revision-page regression is
 verified.
+
+
+## 2026-09-28 user-mode analysis: Run Link Tests is intentionally disabled for S65/WaveRunner
+
+The user supplied the installed proprietary
+`lecaladdinhwaccesspcisvr.dll` for local reverse engineering only. Do not
+commit or redistribute that DLL in this public repository.
+
+Analyzed file:
+
+```text
+PE32 x86 DLL
+timestamp: 2017-06-23 14:05:50
+SHA-256:
+4bdfcbe57fb76f40ca5d77f729e1a6662aa3b5b4e3dd2e12a7f13f84ecfc4f86
+```
+
+The literal UTF-16 string `WaveRunner Driver Not Supported` is at image VA
+`0x1002FB18` (file offset `0x2EF18`). Its only direct code reference is in
+the developer-link-test routine around `0x1001A121`.
+
+Recovered gate:
+
+```text
+if (this->driverConnection.connected == false)
+    log "Driver Not Connected";
+else if (this->driverConnection.isS65WaveRunnerDriver != false)
+    log "WaveRunner Driver Not Supported";
+else
+    continue with processor/build/PCI revision and gigabit-link tests;
+```
+
+The field mapping is recovered by following construction of the embedded
+driver-connection object:
+
+- outer hardware-access object constructs its connection object at
+  `this + 0x10` through function `0x10019347`;
+- connection `+0x20` therefore appears to the link-test routine as outer
+  `+0x30`;
+- connection `+0x22` appears as outer `+0x32`;
+- link-test checks outer `+0x32` first for driver-connected state;
+- it then checks outer `+0x30` for the WaveRunner/S65 rejection.
+
+The connection constructor recognizes driver-family strings:
+
+```text
+"Null"
+"S65"
+"FE2"
+"CENTAUR"
+```
+
+For `"S65"`, it selects the PnP-interface-backed handle and sets connection
+byte `+0x20 = 1`. That exact byte is the condition producing
+`WaveRunner Driver Not Supported`.
+
+Therefore the developer-menu rejection is vendor-intended behavior for the
+S65/WaveRunner driver family. It is not evidence that the x64 replacement is
+missing a kernel IOCTL or returning a wrong build/version value. The original
+S65 driver path would hit the same user-mode gate.
+
+Do not "fix" this by forcing the S65 flag to zero in the DLL. The same flag is
+used elsewhere to choose materially different driver ABI paths. For example,
+code around `0x1001AE8D` selects between IOCTL values `0xCFDC219C` and
+`0xCFDD219F` based on the same S65-family flag. Clearing it would make
+XStream behave as though different acquisition hardware/driver semantics were
+present and could regress a currently working scope.
+
+Project conclusion for Developer -> Run Link Tests:
+
+- treat `WaveRunner Driver Not Supported` as expected vendor behavior for
+  S65/WaveRunner;
+- no replacement-driver change is required;
+- if equivalent diagnostics are desired, reconstruct them as a separate
+  diagnostic tool/lecdiag path rather than falsifying the XStream driver family.

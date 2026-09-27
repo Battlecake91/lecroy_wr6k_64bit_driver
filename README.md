@@ -244,3 +244,20 @@ the requests.
 The XStream literal `WaveRunner Driver Not Supported` has also been located
 in `lecaladdinhwaccesspcisvr.dll`; that user-mode component is the next
 reverse-engineering target for the Developer -> Run Link Tests support gate.
+
+
+### Developer Link Test limitation is vendor-defined
+
+The XStream Developer -> Run Link Tests message
+`WaveRunner Driver Not Supported` has been reverse engineered in the installed
+`lecaladdinhwaccesspcisvr.dll`.
+
+The DLL explicitly marks the `S65` driver family as a WaveRunner driver and
+refuses to run this developer test for that family before any link-test IOCTL is
+sent. This is therefore expected vendor behavior, not a missing feature of the
+replacement x64 kernel driver.
+
+The same driver-family flag affects other ABI choices inside XStream, so
+patching or falsifying it would risk switching XStream onto the wrong hardware
+path. The current project intentionally leaves this vendor diagnostic gate
+unchanged.
