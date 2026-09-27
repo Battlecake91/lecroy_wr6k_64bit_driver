@@ -1987,3 +1987,36 @@ Key observations:
 - `CFDC2124`, `CFDC2138`, and `CFDD219F` are still absent. XStream therefore remains in the pre-DMA control/status phase.
 
 Current next step: capture or recover the complete original 32-bit and x64 user-mode `CFDC2110` responses for Family 1 opcode `0x96`, then compare request, full 526-byte response, and transition sequence. Do not modify the DMA/MDL path before that comparison identifies the first semantic divergence.
+
+
+### 2026-09-27 legacy comparison: opcode 0x96 readiness byte
+
+A full user-mode legacy trace comparison using `legacy_xstream_trace_20260927_195608.jsonl` and `legacy_xstream_trace_20260927_185222.jsonl` identifies a concrete semantic difference in the Family-1 opcode-`0x96` response.
+
+For the exact request
+
+```text
+06000A000300FBA540019604002000000002080202000300FB854000
+```
+
+the legacy driver returns 526 bytes beginning with
+
+```text
+0000000000000000000002020000546573745F496E666F726D6174696F6E...
+```
+
+whereas the current x64 trace begins with
+
+```text
+0000000000000000000002000000546573745F496E666F726D6174696F6E...
+```
+
+The first and, within the available 128-byte x64 preview, only difference is output offset 11: legacy `0x02`, x64 `0x00`. This byte is after the six-byte host framing, so the mismatch is in the firmware response rather than in the host-header prefix itself.
+
+The behavioral consequence is strong: the legacy XStream sequence advances the opcode-`0x96` request field from `0x20` to `0x22`, `0x24`, `0x26`, ... after receiving the `...0202...` state. The x64 path repeatedly issues the `0x20` request while receiving `...0200...`. This is the best current explanation for why XStream never proceeds to `CFDC2124` / `CFDC2138`.
+
+Both independent legacy captures return the same full 526-byte response for the `0x20` request, strengthening the reference result.
+
+The older pre-fix x64 trace `xstream_trace_20260927_211141.jsonl` is useful only for history: its sequence diverges earlier because Family-0 opcode `0x88 / 0x001F` fails ten times. Do not use that earlier divergence to diagnose the current post-`0x88` state.
+
+Next investigation: compare the request sequence immediately preceding the first opcode-`0x96 / 0x20` transaction in the post-fix x64 trace against the legacy sequence, looking for the command or hardware-side effect that leaves the firmware readiness/status byte at `0x00` instead of `0x02`.
