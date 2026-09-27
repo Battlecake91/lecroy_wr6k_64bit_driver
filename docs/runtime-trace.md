@@ -978,3 +978,20 @@ with 43 entries of 0x10A bytes each.
 
 Additional Ghidra targets were added for the remaining serialization helper
 functions needed to reconstruct these payloads byte-for-byte.
+
+## Full query payloads implemented before next hardware capture
+
+The second-stage failures seen in `xstream_trace_20260927_112352.jsonl` have
+now been addressed in the x64 driver.
+
+`0x00223004` supports both:
+- out=4 -> 0x110;
+- out=0x110 -> reconstructed CKeTraceControl descriptor block.
+
+`0x00223040` supports both:
+- out=4 -> 0x2CAE;
+- out=0x2CAE -> reconstructed 43-entry register list with 0x10A-byte entries.
+
+The next hardware capture should determine whether XStream proceeds from the
+visible "Acquiring" wait to CFDC2124 transfer registration and then to
+CFDC2138 / CFDD219F acquisition execution.
