@@ -2027,3 +2027,32 @@ and then `CFDC2138` acquisition calls.
 Current next test: build/install `main` including `d51dbe2` and retest XStream.
 If acquisition still stalls, the next trace must be explicitly post-`d51dbe2`;
 the existing `212113` trace cannot answer that newer-state question.
+
+
+## Preferred x64 capture workflow on the scope
+
+For normal x64 regression/retest captures, the scope has a local helper
+`Run-LeCroy-XStream-Trace.ps1`. Prefer it whenever the in-kernel `lecdiag`
+trace contains the required evidence.
+
+The helper updates the checkout, builds/signs/loads the selected driver
+configuration, starts `lecdiag trace-capture`, launches XStream, and finalizes
+the trace when XStream is closed. The local output is written below the scope
+checkout as:
+
+```text
+C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver\trace-captures\xstream_trace_YYYYMMDD_HHMMSS.jsonl
+```
+
+Normal invocation from an elevated PowerShell, while the current directory is
+the folder containing the helper:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\Run-LeCroy-XStream-Trace.ps1 -Configuration Debug
+```
+
+This remains a kernel-ring capture: output previews are limited to 128 bytes and
+successful `CFDC21C0` register reads are intentionally omitted. Use the
+injected user-mode XStream tracer instead when complete IOCTL output buffers or
+`NtCreateFile` handle/interface mapping are required.
