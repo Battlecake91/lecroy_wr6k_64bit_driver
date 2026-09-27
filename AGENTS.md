@@ -1833,3 +1833,30 @@ Focus next on what differs between controlled replay and real XStream startup:
 earlier commands/state, packed-record batching, timing/timer interactions,
 other IOCTLs/events, or ordering outside the extracted immediate pre-poll
 sequence.
+
+## 2026-09-27 trace after correct manual board state
+
+Trace: xstream_trace_20260927_151006.jsonl.
+
+Before XStream, controlled x64 replay had reached the correct final state:
+- 1400 3040 0000 0000 0020
+
+During real XStream startup it is driven back to:
+- 1400 3040 0000 0050 0020
+
+The known 76-bit poll repeats 46 times with exactly that response.
+
+Trace stats:
+- 962 IOCTLs;
+- CFDC2110 = 933;
+- only failure remains seq2 0x00222400 / C0000010;
+- no CFDC2124, CFDC2138 or CFDD219F.
+
+Conclusion: the immediate pre-poll block itself can work correctly, but some
+earlier part of real XStream startup establishes the bad word4=0x0050 state.
+Investigate pre-sequence commands before seq879.
+
+UI correction: the old startup "Beenden" error dialog has not appeared for some
+time. Current visible warning says Channel 1-5 probes cannot be read and only
+offers OK. Treat that separately; it may be ProbeBus/ProBus-related, but the
+trace does not yet prove a causal link to the JTAG poll.
