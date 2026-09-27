@@ -1439,3 +1439,31 @@ with a "Beenden" option no longer appears. The remaining visible startup warning
 reports that Channel 1 through 5 probes cannot be read and is dismissed only
 with "OK". This may belong to the probe/ProBus detection path, but the current
 trace does not establish that it causes the later JTAG polling loop.
+
+## Planned legacy user-mode IOCTL capture
+
+The next comparison should capture XStream's actual traffic while it talks to
+the original 32-bit driver, rather than infer legacy behaviour from active
+probes.
+
+Preferred approach: inject a 32-bit instrumentation DLL into the original
+32-bit XStream process and hook Win32 `DeviceIoControl` (and optionally
+`CreateFileA/W` / `CloseHandle`) in user mode. The hook should call the real
+API unchanged and log, for each call:
+- timestamp / sequence number / thread id;
+- device handle and resolved device path when available;
+- IOCTL code;
+- input length and exact input bytes before the call;
+- output capacity;
+- BOOL return value and GetLastError;
+- returned byte count and exact output bytes after the call;
+- optional duration.
+
+This avoids modifying or instrumenting the original kernel driver and gives a
+passive ground-truth trace of XStream's legacy request/response stream. A
+Detours-style x86 API hook is suitable because XStream itself is 32-bit.
+
+ProcMon is useful for identifying device opens but is not sufficient as the
+primary capture mechanism because the required IOCTL payload bytes must be
+recorded. WinDbg can be used for spot checks, but an automated user-mode hook
+is preferable for the hundreds of startup calls.
