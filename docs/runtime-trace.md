@@ -1989,34 +1989,41 @@ Key observations:
 Current next step: capture or recover the complete original 32-bit and x64 user-mode `CFDC2110` responses for Family 1 opcode `0x96`, then compare request, full 526-byte response, and transition sequence. Do not modify the DMA/MDL path before that comparison identifies the first semantic divergence.
 
 
-### 2026-09-27 legacy comparison: opcode 0x96 readiness byte
+### 2026-09-27 correction: opcode-0x96 difference is the 85FB host length
 
-A full user-mode legacy trace comparison using `legacy_xstream_trace_20260927_195608.jsonl` and `legacy_xstream_trace_20260927_185222.jsonl` identifies a concrete semantic difference in the Family-1 opcode-`0x96` response.
+The initial interpretation of output offset 11 as a firmware readiness byte was
+incorrect. `CFDC2110` returns concatenated per-record outputs. For the captured
+opcode-`0x96` request the first A5FB record contributes six bytes, so total
+output offsets 6..11 are the host header of the following 85FB fetch record.
+The differing word at offsets 10..11 is therefore the 85FB **host payload
+length**, not firmware state.
 
-For the exact request
+The full legacy traces make the rule explicit:
 
-```text
-06000A000300FBA540019604002000000002080202000300FB854000
-```
+- opcode-`0x90`: legacy output contains 85FB length `0x0006`;
+- opcode-`0x96`: legacy output contains 85FB length `0x0202` (514);
+- opcode-`0x99`: legacy special case reports length `0x0002`.
 
-the legacy driver returns 526 bytes beginning with
+`xstream_trace_20260927_212113.jsonl` was captured at 21:21 local time before
+commit `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` at 21:31 local time. That
+commit replaces the old hard-coded raw-hardware 85FB length `2` with
+`recordOutput - 6`, while keeping the opcode-`0x99` override at 2. Therefore
+`212113` is evidence for the bug fixed by `d51dbe2`, not evidence for a
+remaining post-fix firmware mismatch.
 
-```text
-0000000000000000000002020000546573745F496E666F726D6174696F6E...
-```
+A second misleading observation is also resolved: the legacy user-mode trace
+shows repeated successful `CFDC21C0` reads between nearby control operations,
+while the x64 kernel trace does not. The x64 kernel trace intentionally drops
+successful `LECS65_IOCTL_REGISTER_READ / CFDC21C0` entries to avoid flooding
+its 256-entry ring. Their absence cannot be used to claim that XStream skipped
+that polling path.
 
-whereas the current x64 trace begins with
+The two independent original captures agree on the opcode-`0x96` sequence.
+They perform 120 contiguous opcode-`0x96` fetches beginning with selector
+`0x20`, then `0x22`, `0x24`, `0x26`, and so on. In the large functional
+legacy captures the application later reaches `CFDC2124` transfer registration
+and then `CFDC2138` acquisition calls.
 
-```text
-0000000000000000000002000000546573745F496E666F726D6174696F6E...
-```
-
-The first and, within the available 128-byte x64 preview, only difference is output offset 11: legacy `0x02`, x64 `0x00`. This byte is after the six-byte host framing, so the mismatch is in the firmware response rather than in the host-header prefix itself.
-
-The behavioral consequence is strong: the legacy XStream sequence advances the opcode-`0x96` request field from `0x20` to `0x22`, `0x24`, `0x26`, ... after receiving the `...0202...` state. The x64 path repeatedly issues the `0x20` request while receiving `...0200...`. This is the best current explanation for why XStream never proceeds to `CFDC2124` / `CFDC2138`.
-
-Both independent legacy captures return the same full 526-byte response for the `0x20` request, strengthening the reference result.
-
-The older pre-fix x64 trace `xstream_trace_20260927_211141.jsonl` is useful only for history: its sequence diverges earlier because Family-0 opcode `0x88 / 0x001F` fails ten times. Do not use that earlier divergence to diagnose the current post-`0x88` state.
-
-Next investigation: compare the request sequence immediately preceding the first opcode-`0x96 / 0x20` transaction in the post-fix x64 trace against the legacy sequence, looking for the command or hardware-side effect that leaves the firmware readiness/status byte at `0x00` instead of `0x02`.
+Current next test: build/install `main` including `d51dbe2` and retest XStream.
+If acquisition still stalls, the next trace must be explicitly post-`d51dbe2`;
+the existing `212113` trace cannot answer that newer-state question.
