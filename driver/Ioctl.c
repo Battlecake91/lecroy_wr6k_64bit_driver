@@ -48,14 +48,19 @@ LecRecordIoctlTrace(
     }
 
     /*
-     * XStream polls the generic register-read IOCTL hundreds of times during
-     * startup. Those successful reads contain no useful protocol payload in
-     * the current trace format and would evict the interesting control calls.
+     * Keep successful legacy register reads in the trace.
+     *
+     * Earlier bring-up builds suppressed CFDC21C0 because a divergent x64
+     * startup path polled it heavily. The current interface-based path is now
+     * close enough to the legacy flow that these reads are diagnostically
+     * important: the original application performs register/status reads
+     * immediately around the transition from the late JTAG status poll into
+     * CFDC2124/CFDC2138 acquisition traffic.
+     *
+     * lecdiag trace-capture snapshots the ring every 250 ms, so retain the
+     * reads rather than hiding the very control-flow discriminator needed for
+     * the current comparison.
      */
-    if (Code == LECS65_IOCTL_REGISTER_READ &&
-        NT_SUCCESS(Status)) {
-        return;
-    }
 
     KeAcquireSpinLock(&DevExt->TraceLock, &oldIrql);
 
