@@ -1554,10 +1554,24 @@ LecApplyMamConfigRecord(
     WRITE_REGISTER_ULONG(gpioData, gpioValue & 0xFFFEFFFFUL);
 
     for (i = 0; i < count; ++i) {
-        ULONG value =
-            (i << 16) |
-            (ULONG)LecReadU16(Payload + i * 2UL);
-        WRITE_REGISTER_ULONG(mamData, value);
+        USHORT data =
+            LecReadU16(Payload + i * 2UL);
+
+        /*
+         * Legacy FUN_000179E2 keeps a 16-bit shadow per MAM index and
+         * suppresses duplicate MAMDAT writes. MAMPGO is still issued for
+         * every record, even when every indexed data value is unchanged.
+         */
+        if (DevExt->LegacyMamShadowValid[i] == 0 ||
+            DevExt->LegacyMamShadow[i] != data) {
+            ULONG value =
+                (i << 16) |
+                (ULONG)data;
+
+            DevExt->LegacyMamShadow[i] = data;
+            DevExt->LegacyMamShadowValid[i] = 1;
+            WRITE_REGISTER_ULONG(mamData, value);
+        }
     }
 
     WRITE_REGISTER_ULONG(
