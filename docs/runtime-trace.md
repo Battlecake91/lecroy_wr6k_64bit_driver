@@ -1530,3 +1530,40 @@ records contain:
 
 Trace format version is now 2. Rebuild both x86 tracer binaries and repeat the
 legacy XStream capture.
+
+## CPU-frequency sensitivity and tracer timing perturbation
+
+The original 32-bit reference system has a known timing sensitivity: with the
+Core i5-3450 running above its minimum clock, XStreamDSO regularly reports
+acquisition-board errors, including failures around trigger-level programming
+and driver communication. The reference Windows 32-bit installation is
+therefore normally limited to 5% maximum processor state. The current 64-bit
+system has been running at 100% maximum processor state.
+
+This is potentially relevant to the x64 compatibility work. It suggests that at
+least part of the original software/driver/firmware stack contains
+CPU-speed-sensitive polling or delay assumptions. The x64 test environment
+should therefore be compared at the same low processor-state setting before
+drawing conclusions from timing-dependent startup behavior.
+
+The first native-API legacy trace also demonstrated substantial tracer overhead.
+The hook measured the kernel call itself before writing the log, so its
+`duration_us` values do not include the synchronous log flush performed after
+each record. The first implementation used both `FILE_FLAG_WRITE_THROUGH` and
+`FlushFileBuffers` after essentially every traced call, which can seriously
+slow XStream and distort a timing-sensitive path.
+
+Commit `668133737be58adc7f209aa3d126ee5aaaad9c9b` changes the tracer to buffered
+logging:
+- removes `FILE_FLAG_WRITE_THROUGH`;
+- flushes every 256 records instead of every record;
+- still flushes the header immediately and flushes on normal DLL detach.
+
+This reduces timing perturbation while keeping bounded trace loss on a crash.
+
+The captured native trace `legacy_xstream_trace_20260927_185222.jsonl`
+contains real LeCroy traffic, including approximately:
+- 9158 x `0xCFDC2110`;
+- 1984 x `0xCFDC2138`;
+- 90 x `0xCFDC2124`;
+- 74 x `0xCFDC2128`.
