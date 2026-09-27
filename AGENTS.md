@@ -1558,3 +1558,24 @@ Relevant commits:
 
 Next trace should show whether avoiding the second identical MAMDAT programming
 block allows the post-MTTCTL JTAG status to advance.
+
+## Exact MAM shadow constructor state recovered
+
+Trace `xstream_trace_20260927_121601.jsonl` is still stuck in the same
+post-MTTCTL family-1 opcode-0x42 JTAG poll.
+
+Important static correction:
+- MAMDAT register object is constructed by FUN_00011A00 at board +0x368.
+- FUN_00011A00 initializes 256 shadow DWORDs to 0xFFFFFFFF.
+- FUN_000179E2 compares only the low 16-bit value.
+- Effective initial shadow for every MAM index is therefore 0xFFFF.
+
+Previous x64 code used a separate invalid state and always emitted the first
+write. That is not legacy-compatible for initial value 0xFFFF.
+
+Fixed in:
+- 393f6c10b066898b2f42a348e448bbc95b0e235c
+- 8d48f6b13c1b9a541b338de23486015191eb63ad
+
+The driver now initializes the MAM shadow lazily to 0xFFFF for all 256 indices
+and suppresses writes exactly as legacy does.
