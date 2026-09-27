@@ -2294,3 +2294,37 @@ The synchronous wait is the same five-second event wait used by the MAM path.
 
 The x64 driver now admits and executes both statically equivalent family-1
 opcodes 0x50 and 0x51 with that local MTTRGO path.
+
+
+## Trace 000706: calibration runs, but six completion interrupts time out
+
+`xstream_trace_20260928_000706.jsonl` is the first capture after the local
+family-1 opcode-0x50/0x51 MTTRGO path was enabled.
+
+The earlier `CAAcqDescBuilder::Init / FAILED to Initialize Memory` fatal
+error is gone. XStream advances into a long `Calibrating...` phase and issues
+large amounts of acquisition and front-end traffic. The user's CH1 coupling
+change does not expose a rejected IOCTL.
+
+The trace contains 804 CFDC2138 calls: 798 succeed and six return
+`0xC00000B5 STATUS_IO_TIMEOUT`. All 114 family-1 opcode-0x51 MTTRGO
+operations succeed. There are no unsupported/rejected CFDC2110 requests.
+
+Every timeout is a channel-0x30, config-0x0C00 acquisition. The requested byte
+counts are 0x20, 0x20, 0x24, 0x28, 0x54 and 0x10. Each failure lasts the full
+five-second legacy wait and is followed by an identical retry that succeeds
+roughly 30 ms later. These six retries alone add about 30 seconds to the
+calibration run.
+
+This behavior differs from both full original captures: all 1902 CFDC2138 calls
+in the 19:56 trace and all 1984 in the 18:52 trace succeed.
+
+Static analysis provides a concrete missing completion-path operation. Original
+`FUN_000108D6` writes zero to the register pointer at `main+0x3B8` whenever
+INTST bit 0 is observed. Because `FUN_00014847` is instantiated at
+`main+0x1E0` and places BAR0 IIMCL at subobject offset `0x1D8`,
+`main+0x3B8` is definitively BAR0 IIMCL (0x048). Thus the original ISR clears
+IIMCL immediately on transfer completion, before deferred event signalling.
+
+The x64 ISR now reproduces that immediate `IIMCL=0` write. Its existing
+post-wait IIMST/IIMCL cleanup remains as the later defensive cleanup path.

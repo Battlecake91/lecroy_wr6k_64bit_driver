@@ -503,6 +503,7 @@ LecInterruptService(
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)Context;
     volatile ULONG* intst;
+    volatile ULONG* iimcl;
     ULONG status;
 
     UNREFERENCED_PARAMETER(Interrupt);
@@ -521,6 +522,22 @@ LecInterruptService(
     status &= devExt->InterruptEnableShadow;
     if (status == 0) {
         return FALSE;
+    }
+
+    /*
+     * Legacy FUN_000108D6 performs an immediate source-specific acknowledge
+     * for transfer-completion bit 0 before it queues deferred processing.
+     *
+     * FUN_00014847 is constructed at main+0x1E0 and stores BAR0 IIMCL
+     * (offset 0x048) at subobject+0x1D8, i.e. main+0x3B8.  The ISR's bit-0
+     * branch writes zero through exactly main+0x3B8.  Mirror that write here
+     * before recording/acknowledging INTST, rather than waiting for the
+     * synchronous acquisition thread's later cleanup.
+     */
+    if ((status & 0x01UL) != 0) {
+        iimcl = (volatile ULONG*)(
+            devExt->Bar[0] + LECS65_BAR0_IIMCL);
+        WRITE_REGISTER_ULONG(iimcl, 0UL);
     }
 
     /*

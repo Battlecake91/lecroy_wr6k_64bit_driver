@@ -175,9 +175,14 @@ Current staged-runtime note:
   observed in both complete original runtime captures. It reproduces the
   recovered MAM setup, SGTA/IIMTC launch, interrupt-bit-0 completion and
   five-second timeout path;
-- the next exposed memory-builder operation is family-1 opcode `0x51`.
-  Static recovery shows opcodes `0x50/0x51` resolve a CFDC2124 transfer token
-  and launch its descriptor chain through MTTRGO; this proven local MTT path is
-  now implemented;
+- family-1 opcodes `0x50/0x51` now execute the recovered MTTRGO path; trace
+  `xstream_trace_20260928_000706.jsonl` shows all 114 observed opcode-0x51
+  transfers succeeding;
+- that trace reaches sustained calibration/front-end activity. 798 of 804
+  CFDC2138 acquisitions succeed; six channel-0x30 transfers hit the five-second
+  completion timeout and then succeed on an immediate identical retry;
+- static recovery shows the original ISR clears BAR0 IIMCL immediately when
+  transfer-completion INTST bit 0 arrives. The x64 ISR now mirrors that missing
+  hardware acknowledge before DPC event delivery;
 - `CFDD219F` and unobserved multi-channel acquisition remain intentionally
   gated rather than guessed.

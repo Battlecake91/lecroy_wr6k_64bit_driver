@@ -277,17 +277,19 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Hardware-test the family-1 opcode-`0x50/0x51` MTTRGO path added after
-   `xstream_trace_20260927_235712.jsonl`.
-2. The first one-channel `CFDC2138` MAM acquisition is already proven on x64:
-   trace 235712 returns SUCCESS, Information=4 and `000C0000` for the
-   0x0C00-byte request. Do not regress or re-gate that path.
-3. The immediate next discriminator is whether the second registered 0x400-byte
-   transfer completes through family-1 opcode `0x51` and lets
-   `CAAcqDescBuilder::Init` continue to its subsequent transfer set.
-4. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated.
-5. Preserve the below-4-GiB descriptor safety check. Never truncate x64
-   physical addresses into the legacy DWORD descriptor format.
+1. Hardware-test the immediate IIMCL clear added to the x64 ISR after
+   `xstream_trace_20260928_000706.jsonl`.
+2. Trace 000706 proves that both DMA launch paths now execute: all 114
+   family-1 opcode-`0x51` MTTRGO calls succeed, and 798 of 804 CFDC2138
+   MAM acquisitions succeed.
+3. The only non-success IOCTLs in that trace are six CFDC2138
+   `STATUS_IO_TIMEOUT (0xC00000B5)` results. Each timed-out request targets
+   channel `0x30`, and the identical retry succeeds immediately afterwards.
+4. The two complete original traces contain 1902 and 1984 CFDC2138 calls
+   respectively and every captured call succeeds, so these x64 timeouts are a
+   real compatibility defect, not expected calibration behavior.
+5. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated. Preserve
+   the below-4-GiB descriptor safety check.
 
 
 ## Latest dispatch recovery
@@ -2813,3 +2815,64 @@ MTTRGO rather than MAMRGO.
 
 The x64 implementation now mirrors that proven path and uses the same
 owner-checked below-4-GiB descriptor object already built by CFDC2124.
+
+
+## 2026-09-28 trace 000706: calibration progresses; intermittent transfer completion timeouts remain
+
+`xstream_trace_20260928_000706.jsonl` is the first x64 capture after
+family-1 opcode 0x50/0x51 MTTRGO support.
+
+High-level result:
+
+- XStream no longer raises the CAAcqDescBuilder memory-initialization fatal
+  error.
+- The application remains active in `Calibrating...` for a long interval and
+  continues issuing acquisition/front-end traffic through the end of the
+  capture.
+- The user changed CH1 coupling from DC50 toward DC 1 Meg during the run. The
+  trace continues through front-end configuration traffic; there is no
+  unsupported/rejected IOCTL associated with that interaction.
+- Relays were audibly observed once during the run, consistent with the
+  application finally reaching front-end/calibration control rather than being
+  blocked in memory setup.
+
+Trace counts:
+
+```text
+CFDC2110  10070
+CFDC2184   2798
+CFDC2138    804
+CFDC2124    766
+CFDC2128    756
+family1/0x51 114
+```
+
+All 114 family-1 opcode-0x51 calls succeed with the legacy 14-byte combined
+response. No CFDC2110 call is rejected. Of 804 CFDC2138 calls, 798 succeed and
+six return `STATUS_IO_TIMEOUT (0xC00000B5)`.
+
+The six failures occur at approximately 52.38, 70.97, 80.09, 103.42, 121.38
+and 142.54 seconds after the first traced IOCTL. Every failed request is channel
+`0x30`, config `0x00000C00`; requested sizes are 0x20, 0x20, 0x24, 0x28,
+0x54 and 0x10 bytes. In every case XStream retries the same token/request and
+the retry succeeds about 30 ms after the five-second timeout completes.
+
+This is not observed on the original driver: the complete 19:56 legacy trace
+contains 1902 CFDC2138 calls and the complete 18:52 trace contains 1984; every
+captured call returns NTSTATUS success with Information=4.
+
+Static comparison identifies a missing immediate ISR action. The acquisition
+subobject is constructed at `main+0x1E0`. `FUN_00014847` stores BAR0 IIMCL
+(offset `0x048`) at subobject offset `0x1D8`, therefore the raw pointer is
+at `main+0x3B8`. Original ISR `FUN_000108D6` explicitly writes zero through
+`main+0x3B8` whenever INTST bit 0 is set, before it queues the DPC that later
+signals the transfer completion event.
+
+The previous x64 ISR acknowledged INTST bit 0 but did not perform this immediate
+IIMCL clear; IIMCL was only conditionally cleaned up after the waiting thread
+resumed. The x64 ISR now mirrors the original bit-0 behavior and writes
+`IIMCL=0` immediately before pending-bit/DPC processing.
+
+Trace 000706 is now the primary evidence file for the post-MTT calibration
+stage. Do not ask for memory-initialization or opcode-0x51 traces again unless a
+newer driver state specifically needs regression comparison.

@@ -3097,3 +3097,40 @@ Runtime evidence:
 
 Trace `xstream_trace_20260927_235712.jsonl` is the first x64 runtime request
 for this path: opaque transfer token 2, launch value 0x0080.
+
+
+## Transfer-completion ISR performs immediate IIMCL clear
+
+The completion path has one additional hardware-side action that was previously
+missing from the x64 ISR.
+
+`FUN_000115C4` constructs the acquisition subobject at `main+0x1E0`.
+Within `FUN_00014847`:
+
+```text
+subobject + 0x1D8 -> BAR0 IIMCL (0x048)
+```
+
+Therefore:
+
+```text
+(main + 0x1E0) + 0x1D8 = main + 0x3B8
+```
+
+Original ISR `FUN_000108D6` handles INTST bit 0 with:
+
+```text
+cached IIMCL state <- 0
+WRITE_REGISTER_ULONG(*(main + 0x3B8), 0)
+```
+
+before the final INTST acknowledge and DPC queue. The DPC later consumes pending
+bit 0 and signals the currently selected transfer entry's completion event.
+
+This immediate IIMCL clear is distinct from the later synchronous
+`FUN_00012D6A` IIMST/IIMCL cleanup. The x64 ISR now mirrors the immediate
+write as well. This change is motivated by trace
+`xstream_trace_20260928_000706.jsonl`, where six otherwise valid CFDC2138
+transfers wait the full five seconds for completion, while their identical
+retries succeed immediately. Both complete original traces have zero captured
+CFDC2138 failures.
