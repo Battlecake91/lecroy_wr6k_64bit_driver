@@ -1599,3 +1599,47 @@ These are earlier and more plausible control-flow causes than the later
 76-bit JTAG poll. The x64 driver has been corrected for the proven local ABI
 differences first; board-forward response differences will be re-evaluated
 after a new trace.
+
+## Legacy trace reveals multiple distinct device handles
+
+A deeper review of `legacy_xstream_trace_20260927_185222.jsonl` shows that
+LeCroy-related IOCTL families are not all issued through one handle.
+
+Observed handle grouping:
+
+- `0x00000690`: main acquisition/control path
+  - 9156 x `0xCFDC2110`
+  - 1984 x `0xCFDC2138`
+  - 290 x `0xCFDC2184`
+  - 90 x `0xCFDC2124`
+  - 74 x `0xCFDC2128`
+  - register/status controls including `0xCFDC21C0`, `0x00223040`,
+    `0xCFDC2180`, `0xCFDC218C`, `0xCFDC2190`
+- `0x000006A4`: trace-control path
+  - `0x00223004`
+  - `0x00223000`
+- `0x00000698`: Dallas / board-identification path
+  - `0x00223080`
+  - `0x00222400`
+  - `0x00223084`
+- `0x000006C4`: three-event registration
+  - `0x00223100`
+- additional handles `0x00000308`, `0x00000AF0`, `0x00000D88`
+  carry the `0x00222C00` / `0x00222C04` delay/flag family.
+
+This is important because the current x64 reconstruction effectively exposes
+the recovered interfaces on one compatibility device path and handles all of
+these controls in one dispatch surface. The original stack may instead be
+routing them through distinct device objects, distinct interface paths, or
+separate logical endpoints.
+
+Therefore the runtime success of `0x00222400` must not yet be interpreted as
+proof that it belongs to the main acquisition DeviceControl switch. Static
+analysis had found no such branch there. The successful call is on a different
+legacy handle than `0xCFDC2110`.
+
+Commit `c3af835647f749564a18c9c589c10b53da349da7` extends the injected legacy
+tracer with `ntdll!NtCreateFile` interception. New `nt_create_file` records
+capture the native object path and returned handle so the next legacy run can
+map each IOCTL family to its actual device/interface path. Trace format version
+is now 3.
