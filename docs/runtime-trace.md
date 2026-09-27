@@ -1856,3 +1856,42 @@ Commit `33e24638d72bd5ae587ff80d6bebea4702a112cb` fixes this for hardware-backed
 After this framing fix, any remaining opcode-0x99 payload mismatch (notably
 original 0xFF bytes versus current 0x00 bytes) can be evaluated independently
 as transport/state rather than host-record framing.
+
+## Acquisition-link error after 85FB framing fix exposes opcode-0x88 admission bug
+
+Fresh x64 trace: `xstream_trace_20260927_211141.jsonl`.
+
+Visible XStream behavior changed materially: instead of the previous startup
+stall it now reports:
+
+`Stopped the Acquisition, Go to service Menu, Internals to Reset the Link`
+
+The trace shows why. Immediately before the new failure state, XStream sends the
+same family-0 opcode-0x88 request ten times:
+
+`060006000300FBA5400088001F00080002000300FB854000`
+
+All ten x64 calls return `STATUS_INVALID_DEVICE_REQUEST (0xC0000010)`.
+
+The original 32-bit trace contains the exact same request once (legacy sequence
+3375) and returns success with 14 output bytes:
+
+`0000000000000000000002000000`
+
+The actual x64 opcode-0x88 handler was already present and implements the
+recovered semantics:
+- read the trailing WORD mask;
+- clear those bits from `LegacyTransferMask`;
+- forward the command to board firmware;
+- fetch the firmware response.
+
+The failure was caused solely by the pre-dispatch structural admission check,
+which did not admit generic opcode-0x88 records and only allowed one old captured
+literal containing mask 0xFFDF.
+
+Commit `cf90d85d3ee6d13710251ffc4edd6a2735ada579` updates structural admission to
+accept family-0 opcode 0x88 whenever the recovered minimum payload length is
+present. This admits both observed masks (0xFFDF and 0x001F) without weakening
+record framing validation.
+
+This is now the next x64 retest target.
