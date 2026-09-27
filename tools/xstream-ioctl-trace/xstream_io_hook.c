@@ -3,6 +3,10 @@
 #include <tlhelp32.h>
 #include <stdint.h>
 
+#if defined(_M_IX86)
+#pragma comment(linker, "/EXPORT:InitializeXStreamTrace=_InitializeXStreamTrace@4")
+#endif
+
 #define TRACE_ENV_NAME L"LECS65_TRACE_PATH"
 #define TRACE_CAPTURE_LIMIT (1024U * 1024U)
 
