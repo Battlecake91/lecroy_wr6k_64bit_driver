@@ -647,3 +647,36 @@ As in the preceding opcode-`0x84` stage, the complete packet contents matter:
 the payload changes along with the selector. The x64 driver therefore admits
 only these three exact 54-byte packet buffers through the already decoded
 generic BAR1 board-message transport.
+
+## Semantic gate for confirmed forward-only commands
+
+The runtime gate no longer enumerates every captured payload for command
+classes that the legacy driver is statically confirmed to forward unchanged to
+the board firmware.
+
+The following CFDC2110 A5FB command classes are now admitted after structural
+record validation:
+
+- family 0, opcode `0x84`;
+- family 1, opcode `0x81`;
+- family 1, opcode `0x90`;
+- family 1, opcode `0x99`.
+
+The validator walks the complete packed record list and requires valid type-3
+record framing, in-bounds `8 + payload_length` spans, A5FB command payloads
+beginning with `0x40`, and only the statically confirmed family/opcode pairs.
+A companion 85FB fetch record is accepted only with the expected `40 00`
+payload prefix. At least one confirmed forward-only A5FB command must be
+present.
+
+This replaces the accumulated byte-exact packet arrays for opcode `0x81` and
+`0x84`. Commands with decoded host-side side effects, such as family-0 opcode
+`0x85`, remain on the stricter path.
+
+The final byte-exact trace before this change,
+`xstream_trace_20260927_023951.jsonl`, contained 252 IOCTL records and 241
+CFDC2110 calls. 230 CFDC2110 calls succeeded. The final 11 blocked requests
+were opcode-`0x84` selector `0x0C` five times, selector `0x0D` five
+times, and family-1 opcode-`0x81` selector `0x0E` once. These requests are
+now covered by the semantic forward-only gate without adding more per-packet
+whitelist entries.
