@@ -2235,3 +2235,29 @@ Commit `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` implements this generic rule
 for raw hardware responses while preserving op99's length-2 override.
 
 Retest before touching DMA/acquisition code.
+
+## Current state: trigger starts, probes work, still no acquisition data
+
+After commit `cf90d85d3ee6d13710251ffc4edd6a2735ada579`, fresh trace
+`xstream_trace_20260927_212113.jsonl` reaches the best state so far:
+
+- no acquisition-link error;
+- no channel probe read failures;
+- trigger/acquisition can be started in XStream;
+- no waveform data is returned.
+
+Important discriminator: this trace still contains no CFDC2124, CFDC2138, or
+CFDD219F calls. Therefore do not start debugging DMA launch yet. XStream has
+not reached transfer registration.
+
+The late runtime path is dominated by CFDC2110 family-1 opcode 0x96. Next work
+should compare original-vs-x64 opcode-0x96 request/response behavior and identify
+the first semantic mismatch that prevents transition into the acquisition
+buffer path.
+
+Do not undo the following now-proven fixes:
+- no ALADDINAcqDriver0 DOS alias;
+- fifth interface GUID 958695A4 registered;
+- CFDC2190 implemented;
+- 85FB hardware-response host framing fixed;
+- generic family-0 opcode 0x88 masks admitted.
