@@ -1786,3 +1786,36 @@ Expected result after this change:
 3. The main CFDC2110/control stream should move onto that interface handle.
 4. Only after this endpoint-selection behavior matches should later JTAG /
 transport responses be compared again.
+
+## DOS-alias removal changed x64 startup path; next missing IOCTL exposed
+
+Fresh x64 trace: `xstream_trace_20260927_204139.jsonl`, captured after commit
+`0534482a6e00463b12420e03a28c83e9465801a6` stopped publishing the
+`ALADDINAcqDriver0` DOS alias.
+
+This change materially altered startup behavior. The previous x64 path that
+issued three raw BAR0 START writes (4, 2, 1) is no longer present. XStream now
+enters the interface-based path that more closely matches the original system.
+
+The next proven ABI mismatch appears at sequence 20:
+
+`0xCFDC2190 -> STATUS_INVALID_DEVICE_REQUEST (0xC0000010)`
+
+Request bytes:
+
+`0000000002000000FF7F00000000000000000000000000000000000000`
+
+The original driver implements this control and accepts exactly 29 input bytes.
+Recovered startup-relevant semantics:
+- DWORD at +0x04 controls global interrupt-mask bit 1;
+- DWORD at +0x08 is written to BAR0 ERRM (offset 0x008);
+- no output is returned.
+
+The observed startup request therefore enables bit 1 and programs ERRM=0x7FFF.
+
+Implemented in commits:
+- `3d393570ee35c1b014c5093b167581c3091d7615`: add IOCTL constant;
+- `803670576886117541848b81c867872814e39a10`: implement the 29-byte startup
+  path and preserve the recovered interrupt-mask semantics.
+
+This is now the next x64 retest target before further JTAG analysis.
