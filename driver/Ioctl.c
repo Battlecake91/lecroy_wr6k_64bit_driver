@@ -905,6 +905,161 @@ LecWriteU32(
     RtlCopyMemory(Buffer, &Value, sizeof(Value));
 }
 
+typedef struct _LECS65_LEGACY_REGISTER_LIST_ENTRY {
+    PCSTR Name;
+    UCHAR Bar;
+    ULONG Offset;
+    UCHAR Type;
+} LECS65_LEGACY_REGISTER_LIST_ENTRY;
+
+#define LECS65_LEGACY_TRACE_BLOCK_BYTES 0x110UL
+#define LECS65_LEGACY_REGISTER_ENTRY_BYTES 0x10AUL
+#define LECS65_LEGACY_REGISTER_COUNT 43UL
+#define LECS65_LEGACY_REGISTER_LIST_BYTES \
+    (LECS65_LEGACY_REGISTER_COUNT * LECS65_LEGACY_REGISTER_ENTRY_BYTES)
+
+static const LECS65_LEGACY_REGISTER_LIST_ENTRY
+g_LecLegacyRegisterList[LECS65_LEGACY_REGISTER_COUNT] = {
+    { "FVER",      0, 0x000, 1 },
+    { "ERRS",      0, 0x004, 4 },
+    { "ERRM",      0, 0x008, 2 },
+    { "INTST",     0, 0x080, 4 },
+    { "IIMCL",     0, 0x048, 2 },
+    { "CLRIRQ",    1, 0x008, 2 },
+    { "CLRERR",    1, 0x004, 2 },
+    { "INTEN",     0, 0x084, 0 },
+    { "SGTA",      0, 0x040, 2 },
+    { "IIMTC",     0, 0x044, 2 },
+    { "IIMST",     0, 0x04C, 1 },
+    { "BUZZER",    2, 0x000, 2 },
+    { "ONEWIRE",   2, 0x040, 4 },
+    { "START",     0, 0x00C, 4 },
+    { "ITMODE",    1, 0x000, 2 },
+    { "MAMDAT",    1, 0x040, 2 },
+    { "MAMPGO",    1, 0x044, 2 },
+    { "MAMSEQ",    1, 0x060, 2 },
+    { "MAMRGO",    1, 0x064, 2 },
+    { "SPICTL",    1, 0x0A0, 2 },
+    { "SPIDAT",    1, 0x0A4, 2 },
+    { "SPIDIN",    1, 0x0A8, 1 },
+    { "JTAGNUM",   1, 0x020, 2 },
+    { "JTAGDAT",   1, 0x024, 2 },
+    { "JTAGDIN",   1, 0x028, 1 },
+    { "MTTCTL",    1, 0x080, 2 },
+    { "MTTRGO",    1, 0x084, 2 },
+    { "MTTNUM",    1, 0x090, 1 },
+    { "LEDCTL",    1, 0x0E0, 2 },
+    { "ACQFVER",   1, 0x00C, 1 },
+    { "RMIDIV",    1, 0x0E4, 2 },
+    { "RMICUM",    1, 0x0E8, 1 },
+    { "ACQDIV",    1, 0x0EC, 2 },
+    { "ACQCUM",    1, 0x0F0, 1 },
+    { "PFREG",     1, 0x0F4, 2 },
+    { "GPIODIR",   1, 0x0C0, 2 },
+    { "GPIODAT",   1, 0x0C4, 4 },
+    { "TxControl", 1, 0x400, 4 },
+    { "RxControl", 1, 0x404, 4 },
+    { "TxCount",   1, 0x408, 4 },
+    { "RxCount",   1, 0x40C, 4 },
+    { "SetIRQ",    1, 0x100, 2 },
+    { "HWInt",     1, 0x410, 4 }
+};
+
+static
+NTSTATUS
+LecFillLegacyTraceBlock(
+    _Out_writes_bytes_(OutputLength) UCHAR* Buffer,
+    _In_ ULONG OutputLength
+    )
+{
+    static const CHAR traceName[] = "CKeTraceControl";
+
+    if (Buffer == NULL ||
+        OutputLength != LECS65_LEGACY_TRACE_BLOCK_BYTES) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    RtlZeroMemory(Buffer, OutputLength);
+    LecWriteU32(Buffer + 0x000, LECS65_LEGACY_TRACE_BLOCK_BYTES);
+    LecWriteU32(Buffer + 0x004, 1UL);
+    RtlCopyMemory(
+        Buffer + 0x008,
+        traceName,
+        min((ULONG)sizeof(traceName), 0x100UL));
+    LecWriteU32(Buffer + 0x108, 2UL);
+    LecWriteU32(Buffer + 0x10C, 0UL);
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecFillLegacyRegisterList(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Out_writes_bytes_(OutputLength) UCHAR* Buffer,
+    _In_ ULONG OutputLength
+    )
+{
+    ULONG i;
+
+    if (Buffer == NULL ||
+        OutputLength != LECS65_LEGACY_REGISTER_LIST_BYTES) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    RtlZeroMemory(Buffer, OutputLength);
+
+    for (i = 0; i < LECS65_LEGACY_REGISTER_COUNT; ++i) {
+        const LECS65_LEGACY_REGISTER_LIST_ENTRY* source =
+            &g_LecLegacyRegisterList[i];
+        UCHAR* target =
+            Buffer + i * LECS65_LEGACY_REGISTER_ENTRY_BYTES;
+        ULONG data = 0;
+        SIZE_T nameLength = strlen(source->Name);
+        volatile ULONG* reg;
+        NTSTATUS status;
+
+        if (nameLength > 0xFF) {
+            nameLength = 0xFF;
+        }
+
+        if (nameLength != 0) {
+            RtlCopyMemory(target, source->Name, nameLength);
+        }
+
+        target[0x100] = source->Bar;
+        LecWriteU32(target + 0x101, source->Offset);
+        target[0x105] = source->Type;
+
+        /*
+         * Legacy type 2 returns the wrapper's shadow DWORD rather than
+         * touching MMIO. Those shadows are zero immediately after
+         * construction unless updated through a wrapper write.
+         *
+         * Types 0, 1 and 4 are refreshed from hardware before serialization.
+         */
+        if (source->Type != 2) {
+            status = LecResolveRegister(
+                DevExt,
+                source->Bar,
+                source->Offset,
+                &reg);
+
+            if (NT_SUCCESS(status)) {
+                data = READ_REGISTER_ULONG(reg);
+            }
+        }
+
+        if (source->Bar == 0 &&
+            source->Offset == 0x084) {
+            data = DevExt->InterruptEnableShadow;
+        }
+
+        LecWriteU32(target + 0x106, data);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 LecCommitLegacyInterruptMask(
@@ -2858,31 +3013,66 @@ LecS65DeviceControl(
         break;
 
     case LECS65_IOCTL_QUERY_BUFFER_A:
-        if (systemBuffer == NULL || outputLength != sizeof(ULONG)) {
+        if (systemBuffer == NULL) {
             status = STATUS_INVALID_BUFFER_SIZE;
             information = 0;
             break;
         }
 
-        *(PULONG)systemBuffer = 0x00000110UL;
-        information = sizeof(ULONG);
-        status = STATUS_SUCCESS;
-        LecTrace("legacy 0x00223004 buffer size -> 0x%08lX\n",
-                 *(PULONG)systemBuffer);
+        if (outputLength == sizeof(ULONG)) {
+            *(PULONG)systemBuffer = LECS65_LEGACY_TRACE_BLOCK_BYTES;
+            information = sizeof(ULONG);
+            status = STATUS_SUCCESS;
+            LecTrace(
+                "legacy 0x00223004 trace-block size -> 0x%08lX\n",
+                *(PULONG)systemBuffer);
+        }
+        else if (outputLength == LECS65_LEGACY_TRACE_BLOCK_BYTES) {
+            status = LecFillLegacyTraceBlock(
+                (PUCHAR)systemBuffer,
+                outputLength);
+            information = NT_SUCCESS(status) ? outputLength : 0;
+            LecTrace(
+                "legacy 0x00223004 trace-block payload -> 0x%08X info=%Iu\n",
+                status,
+                information);
+        }
+        else {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+        }
         break;
 
     case LECS65_IOCTL_QUERY_BUFFER_B:
-        if (systemBuffer == NULL || outputLength != sizeof(ULONG)) {
+        if (systemBuffer == NULL) {
             status = STATUS_INVALID_BUFFER_SIZE;
             information = 0;
             break;
         }
 
-        *(PULONG)systemBuffer = 0x00002CAEUL;
-        information = sizeof(ULONG);
-        status = STATUS_SUCCESS;
-        LecTrace("legacy 0x00223040 register-list size -> 0x%08lX\n",
-                 *(PULONG)systemBuffer);
+        if (outputLength == sizeof(ULONG)) {
+            *(PULONG)systemBuffer = LECS65_LEGACY_REGISTER_LIST_BYTES;
+            information = sizeof(ULONG);
+            status = STATUS_SUCCESS;
+            LecTrace(
+                "legacy 0x00223040 register-list size -> 0x%08lX\n",
+                *(PULONG)systemBuffer);
+        }
+        else if (outputLength == LECS65_LEGACY_REGISTER_LIST_BYTES) {
+            status = LecFillLegacyRegisterList(
+                devExt,
+                (PUCHAR)systemBuffer,
+                outputLength);
+            information = NT_SUCCESS(status) ? outputLength : 0;
+            LecTrace(
+                "legacy 0x00223040 register-list payload -> 0x%08X info=%Iu\n",
+                status,
+                information);
+        }
+        else {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+        }
         break;
 
     case LECS65_IOCTL_SET_EVENT_0:
