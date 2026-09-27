@@ -914,6 +914,18 @@ LecReadU16(
 }
 
 static
+ULONG
+LecReadU32(
+    _In_reads_bytes_(sizeof(ULONG)) const UCHAR* Buffer
+    )
+{
+    ULONG value;
+
+    RtlCopyMemory(&value, Buffer, sizeof(value));
+    return value;
+}
+
+static
 VOID
 LecWriteU16(
     _Out_writes_bytes_(sizeof(USHORT)) UCHAR* Buffer,
@@ -2441,7 +2453,7 @@ LecIoctlCfDc2110(
             }
             else if (payload[1] == 2 && payload[2] == 0x02) {
                 NTSTATUS hwStatus = STATUS_SUCCESS;
-                volatile ULONG* mttCtl;
+                volatile ULONG* mttCtl = NULL;
                 UCHAR enable = payload[3];
 
                 /*
