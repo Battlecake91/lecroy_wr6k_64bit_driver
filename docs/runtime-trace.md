@@ -794,3 +794,38 @@ Together with the already resolved opcode-`0xA0` -> PFREG mapping, the next
 runtime test should show whether the application-visible probe errors disappear
 and whether the trigger/arm sequence progresses beyond its previous failure
 point.
+
+## Twenty-second runtime capture: probe path passes, arm advances
+
+Trace `xstream_trace_20260927_094813.jsonl` contains 485 IOCTL records and
+460 CFDC2110 calls:
+
+- 449 CFDC2110 calls succeeded;
+- 11 were rejected.
+
+The previously failing probe-related family-0 opcode-`0x90` path now
+completes successfully. Six opcode-`0x90` requests are present and all six
+succeed. The resolved family-0 opcode-`0xA0` PFREG path also executes five
+times successfully.
+
+The remaining rejected commands are:
+
+- one family-1 opcode-`0x42`, mode 1, 58-bit JTAG request;
+- ten family-1 opcode-`0x96` requests.
+
+Legacy family-1 dispatcher `FUN_000165A6` routes opcode `0x96` directly
+through the same generic board-message transport as the already-supported
+forward-only family-1 commands. Static analysis also identifies family-1
+opcodes `0x4A`, `0x82`, `0x91`, and `0x97` as the same pure-forwarding
+class. The semantic gate now admits that complete confirmed class.
+
+The rejected 58-bit opcode-`0x42` request differs from an already successful
+58-bit request only in JTAG payload data. Legacy `FUN_00015C7E` reads the
+required 4-byte JTAG chunks from the contiguous packed IOCTL record buffer and
+does not constrain those reads to the current record's `payload_length`.
+For this request, the final JTAG chunk overlaps bytes belonging to the
+following packed record. The x64 implementation now preserves that legacy
+behavior while bounding the read by the complete validated IOCTL input buffer,
+so no out-of-buffer access is possible.
+
+No acquisition launch IOCTL is reached before these final rejections.
