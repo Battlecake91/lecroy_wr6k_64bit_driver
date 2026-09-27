@@ -1129,3 +1129,33 @@ internal transfer, and writes 0/1 to BAR1 offset `0x80` (MTTCTL), then
 creates a local status response. The x64 implementation now maps the optional
 wait to `CurrentTransfer->CompletionEvent` and implements both valid body
 values structurally.
+
+## Latest runtime state: startup succeeds, probe/arm failures remain
+
+Trace `xstream_trace_20260927_025927.jsonl` corresponds to the first run where
+XStream reaches its main UI without the previous startup error dialog.
+
+Application-visible failures:
+- "Problems reading probe Ch1-Ch5"
+- "unable to arm acquisition board" when selecting Auto or Single trigger.
+
+Trace correlation:
+- five consecutive rejected family-0 opcode-`0x90` requests strongly align
+  with the five probe-channel errors;
+- repeated family-0 opcode-`0xA0` requests occur in the later trigger/arm
+  sequence;
+- the final rejected opcode-`0x85` uses control word `0x02A0`;
+- there is no CFDC2138 or CFDD219F call, so the arm failure currently happens
+  before the gated DMA acquisition launch path.
+
+Static legacy paths:
+- opcode `0x90` -> `FUN_00015E80` -> helper object at `this+0x19`,
+  control/data MMIO helper chain; exact BAR mapping still unproven.
+- opcode `0xA0` -> `FUN_00015FD8` -> direct register object at
+  `this+0x17A`; exact MMIO target still unproven.
+- opcode `0x85` -> `FUN_00016962` host interrupt-mask update + generic
+  board transport. The x64 gate now accepts structurally valid decoded
+  opcode-`0x85` requests, not only the earlier exact packet.
+
+`ghidra_scripts/targets.txt` now includes the opcode-`0x90`/`0xA0` helper
+functions needed for the next mapping pass.
