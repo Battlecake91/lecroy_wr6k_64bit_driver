@@ -1704,3 +1704,49 @@ XStream process on the x64 replacement system as well. Because the tracer now
 records NtCreateFile paths, this will show exactly which of the five interface
 GUID paths XStream opens under x64 and allow a same-layer comparison against
 the original 32-bit trace.
+
+## x64 user-mode trace: acquisition traffic uses the DOS device link
+
+Trace `legacy_xstream_trace_20260927_203017.jsonl` was captured by injecting
+the x86 user-mode tracer into the 32-bit XStream process while it was running
+against the x64 replacement driver.
+
+All five recovered PCI interface GUID paths are successfully opened under x64,
+including `{958695A4-693A-435E-8297-66F805D8E46A}`. However, the main
+acquisition/control IOCTL stream does **not** run on that interface handle in
+this trace.
+
+Instead XStream opens the legacy DOS device name:
+
+`\??\ALADDINAcqDriver0`
+
+and sends the main control traffic there. The first such open is sequence 584
+(handle 0x5CC); XStream later reopens the same DOS path at sequence 5056
+(handle 0xBF4).
+
+Observed on those DOS-link handles:
+- approximately 922 x `0xCFDC2110`;
+- approximately 512 x `0xCFDC21C0`;
+- 3 x `0xCFDC21C4`;
+- 4 x `0x00223040`;
+- event controls including `0xCFDC2180` and `0xCFDC218C`.
+
+The recovered helper-interface routing is also confirmed under x64:
+- `8D1103B8...`: Dallas / board identification;
+- `9007C2BC...`: trace control;
+- `FC5DF040...`: three-event registration;
+- `7AC34BE9...`: delay/flag helper.
+
+The `958695A4...` path is opened successfully, but no LeCroy IOCTL traffic is
+observed on its handle in this x64 trace. Therefore the earlier interpretation
+that this GUID itself is the main DeviceIoControl endpoint was too strong. It
+may instead be a discovery/classification interface while the legacy DOS link
+remains the actual acquisition-control endpoint.
+
+This also explains why adding the fifth GUID did not alter the failing
+CFDC2110/JTAG startup behavior: XStream was already sending that traffic through
+`ALADDINAcqDriver0`, which the x64 driver has exposed from the beginning.
+
+No active acquisition IOCTLs such as `0xCFDC2138` are reached in this failing
+x64 startup trace, consistent with XStream stalling earlier during board
+initialization.
