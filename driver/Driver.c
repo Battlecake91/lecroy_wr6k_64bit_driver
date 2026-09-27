@@ -114,7 +114,6 @@ LecS65AddDevice(
     )
 {
     UNICODE_STRING deviceName;
-    UNICODE_STRING dosName;
     PDEVICE_OBJECT deviceObject = NULL;
     PLECS65_DEVICE_EXTENSION devExt;
     NTSTATUS status;
@@ -176,16 +175,21 @@ LecS65AddDevice(
         }
     }
 
-    RtlInitUnicodeString(&dosName, LECS65_DOS_DEVICE_NAME);
-    status = IoCreateSymbolicLink(&dosName, &deviceName);
-    if (NT_SUCCESS(status)) {
-        devExt->SymbolicLinkCreated = TRUE;
-        LecTrace("AddDevice: DOS link created: %wZ -> %wZ\n", &dosName, &deviceName);
-    }
-    else {
-        LecTrace("AddDevice: IoCreateSymbolicLink failed 0x%08X\n", status);
-        /* Keep the PnP device alive so interface-based diagnostics can still work. */
-    }
+    /*
+     * Do NOT publish \\.\ALADDINAcqDriver0.
+     *
+     * Passive tracing of the original 32-bit system proves that XStream first
+     * probes this legacy DOS name and expects the open to fail with
+     * STATUS_OBJECT_NAME_NOT_FOUND. It then falls back to the
+     * {958695A4-693A-435E-8297-66F805D8E46A} PnP interface, which is where the
+     * original driver receives CFDC2110/acquisition traffic.
+     *
+     * Publishing the DOS alias on x64 changed XStream's control path and sent
+     * the main IOCTL stream through an endpoint that does not exist on the
+     * reference installation.
+     */
+    devExt->SymbolicLinkCreated = FALSE;
+    LecTrace("AddDevice: legacy DOS alias intentionally not published\n");
 
     deviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
