@@ -1398,7 +1398,8 @@ LecLegacyTimerArmOrExtend(
 {
     LARGE_INTEGER zeroTimeout;
     LARGE_INTEGER dueTime;
-    ULONGLONG now100ns;
+    LARGE_INTEGER counterFrequency;
+    LARGE_INTEGER nowCounter;
     NTSTATUS waitStatus;
     ULONG requested = RequestedMilliseconds != 0 ?
         RequestedMilliseconds : 1UL;
@@ -1420,7 +1421,7 @@ LecLegacyTimerArmOrExtend(
         FALSE,
         &zeroTimeout);
 
-    now100ns = KeQueryInterruptTime();
+    nowCounter = KeQueryPerformanceCounter(&counterFrequency);
 
     if (waitStatus == STATUS_SUCCESS) {
         dueTime.QuadPart =
@@ -1431,19 +1432,23 @@ LecLegacyTimerArmOrExtend(
             dueTime,
             NULL);
 
-        DevExt->LegacyTimerStartTime.QuadPart = (LONGLONG)now100ns;
+        DevExt->LegacyTimerStartTime = nowCounter;
         DevExt->LegacyTimerDurationMs = requested;
         return STATUS_SUCCESS;
     }
 
     if (waitStatus == STATUS_TIMEOUT) {
-        LONGLONG elapsed100ns =
-            (LONGLONG)now100ns -
+        LONGLONG elapsedTicks =
+            nowCounter.QuadPart -
             DevExt->LegacyTimerStartTime.QuadPart;
-        ULONG elapsedMs =
-            elapsed100ns > 0 ?
-            (ULONG)(elapsed100ns / 10000LL) :
-            0UL;
+        ULONG elapsedMs = 0;
+
+        if (elapsedTicks > 0 &&
+            counterFrequency.QuadPart > 0) {
+            elapsedMs = (ULONG)(
+                (elapsedTicks * 1000LL) /
+                counterFrequency.QuadPart);
+        }
         LONG remainingMs =
             (LONG)DevExt->LegacyTimerDurationMs -
             (LONG)elapsedMs;
@@ -1457,7 +1462,7 @@ LecLegacyTimerArmOrExtend(
                 dueTime,
                 NULL);
 
-            DevExt->LegacyTimerStartTime.QuadPart = (LONGLONG)now100ns;
+            DevExt->LegacyTimerStartTime = nowCounter;
             DevExt->LegacyTimerDurationMs = requested;
         }
 
