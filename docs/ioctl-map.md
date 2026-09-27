@@ -2634,3 +2634,25 @@ the same capture.
 Their exact legacy handler mapping is therefore being recovered from the
 earlier portion of the DeviceControl dispatch tree before any value is
 invented.
+
+### Legacy mapping for 0x00223004 and 0x00223040
+
+The follow-up DeviceControl export resolves the dispatch entries:
+
+- `0x00223004` -> legacy `FUN_00012A5E`;
+- `0x00223040` -> legacy `FUN_00012C18`.
+
+Both are size-query style IOCTLs when called with a 4-byte output buffer.
+
+`FUN_00012A5E` dereferences a driver-owned pointer at object offset
+`+0x11EA`. The first DWORD of that pointed buffer is treated as its byte
+length. With a four-byte output buffer the legacy driver returns that length
+DWORD directly.
+
+`FUN_00012C18` operates on the object at `+0x11EE` and calls
+`FUN_00012386` to obtain its current serialized byte size. With a four-byte
+output buffer the legacy driver returns that size DWORD directly.
+
+The actual values are not hard-coded in the dispatchers. Their producer/helper
+functions still need to be exported before the x64 driver can return the exact
+legacy values without guessing.
