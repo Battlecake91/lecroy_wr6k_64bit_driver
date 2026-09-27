@@ -1163,3 +1163,35 @@ The x64 implementation previously treated every index as initially invalid and
 therefore always issued the first MAMDAT write. It now starts with the exact
 legacy 0xFFFF shadow state and suppresses a first write when the requested data
 is already 0xFFFF.
+
+## Thirtieth runtime capture: root-cause candidate in JTAG chunk sequencing
+
+Trace `xstream_trace_20260927_122739.jsonl` still reaches the same repeated
+family-1 opcode-0x42 76-bit JTAG poll and returns:
+
+`0000 4014 0030 5000 0020`
+
+The exact 0xFFFF MAM shadow initialization does not affect the six MAM records
+immediately preceding the poll because none of those records contains a
+0xFFFF data word.
+
+A stronger legacy mismatch was then identified in both JTAG handlers.
+
+Legacy `FUN_00015C7E` and `FUN_00015ACC` program JTAGNUM once before a run
+of complete 16-bit chunks. JTAGDAT is then streamed repeatedly while JTAGNUM
+is left untouched. Only the final partial chunk reprograms JTAGNUM with the
+remaining bit count.
+
+The previous x64 implementation rewrote JTAGNUM before every single 16-bit
+chunk. On hardware where writing JTAGNUM arms/restarts the shift operation,
+that changes a continuous 76-bit scan into multiple restarted sub-scans.
+
+The x64 driver now exactly matches legacy sequencing:
+- one JTAGNUM write for all full 16-bit chunks;
+- stream all corresponding JTAGDAT words;
+- one additional JTAGNUM write only for the final partial chunk;
+- same behavior applied to both read/write JTAG transactions and write-only
+  JTAG transactions.
+
+This is the current primary root-cause candidate for the repeated JTAG status
+poll.
