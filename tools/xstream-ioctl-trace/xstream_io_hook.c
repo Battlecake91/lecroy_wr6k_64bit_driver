@@ -27,6 +27,7 @@ static HANDLE g_log = INVALID_HANDLE_VALUE;
 static CRITICAL_SECTION g_logLock;
 static volatile LONG g_sequence;
 static LARGE_INTEGER g_qpcFrequency;
+static volatile LONG g_initialized;
 
 static BOOL WINAPI HookDeviceIoControl(HANDLE,DWORD,LPVOID,DWORD,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static HANDLE WINAPI HookCreateFileW(LPCWSTR,DWORD,DWORD,LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE);
@@ -437,9 +438,13 @@ static FARPROC WINAPI HookGetProcAddress(HMODULE module,LPCSTR name)
     return p;
 }
 
-static BOOL initialize_hook(void)
+__declspec(dllexport) DWORD WINAPI InitializeXStreamTrace(LPVOID unused)
 {
     WCHAR path[MAX_PATH*4];
+    UNREFERENCED_PARAMETER(unused);
+
+    if (InterlockedCompareExchange(&g_initialized, 1, 0) != 0)
+        return 1;
     HMODULE kernel32;
     DWORD n;
 
@@ -447,9 +452,9 @@ static BOOL initialize_hook(void)
     QueryPerformanceFrequency(&g_qpcFrequency);
 
     kernel32 = GetModuleHandleW(L"kernel32.dll");
-    if (!kernel32) return FALSE;
+    if (!kernel32) return 0;
     g_realGetProcAddress = (PFN_GetProcAddress)GetProcAddress(kernel32,"GetProcAddress");
-    if (!g_realGetProcAddress) return FALSE;
+    if (!g_realGetProcAddress) return 0;
 
     g_realDeviceIoControl = (PFN_DeviceIoControl)g_realGetProcAddress(kernel32,"DeviceIoControl");
     g_realCreateFileW = (PFN_CreateFileW)g_realGetProcAddress(kernel32,"CreateFileW");
@@ -460,7 +465,7 @@ static BOOL initialize_hook(void)
 
     if (!g_realDeviceIoControl || !g_realCreateFileW || !g_realCreateFileA ||
         !g_realCloseHandle || !g_realLoadLibraryW || !g_realLoadLibraryA)
-        return FALSE;
+        return 0;
 
     n = GetEnvironmentVariableW(TRACE_ENV_NAME,path,(DWORD)(sizeof(path)/sizeof(path[0])));
     if (!n || n >= (DWORD)(sizeof(path)/sizeof(path[0])))
@@ -469,27 +474,36 @@ static BOOL initialize_hook(void)
     g_log = g_realCreateFileW(
         path,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,CREATE_ALWAYS,
         FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
-    if (g_log == INVALID_HANDLE_VALUE) return FALSE;
+    if (g_log == INVALID_HANDLE_VALUE) return 0;
 
     log_header();
     patch_all_modules();
-    return TRUE;
+    return 1;
 }
 
 BOOL WINAPI DllMain(HINSTANCE instance,DWORD reason,LPVOID reserved)
 {
     UNREFERENCED_PARAMETER(reserved);
+
     if (reason == DLL_PROCESS_ATTACH) {
+        /*
+         * Keep DllMain loader-lock safe. The launcher explicitly invokes
+         * InitializeXStreamTrace in a second remote thread after LoadLibraryW
+         * has returned, before XStream's primary thread is resumed.
+         */
         g_self = instance;
         DisableThreadLibraryCalls(instance);
-        initialize_hook();
-    } else if (reason == DLL_PROCESS_DETACH) {
-        if (g_log != INVALID_HANDLE_VALUE) {
-            FlushFileBuffers(g_log);
-            if (g_realCloseHandle) g_realCloseHandle(g_log);
-            g_log = INVALID_HANDLE_VALUE;
-        }
-        DeleteCriticalSection(&g_logLock);
     }
+    else if (reason == DLL_PROCESS_DETACH) {
+        if (g_initialized != 0) {
+            if (g_log != INVALID_HANDLE_VALUE) {
+                FlushFileBuffers(g_log);
+                if (g_realCloseHandle) g_realCloseHandle(g_log);
+                g_log = INVALID_HANDLE_VALUE;
+            }
+            DeleteCriticalSection(&g_logLock);
+        }
+    }
+
     return TRUE;
 }
