@@ -2043,3 +2043,14 @@ to identify whether these are separate device objects/interfaces/drivers.
 
 The live 0x00223040 register-list correction remains valid because it is on the
 main handle 0x690 together with CFDC2110.
+
+## NtCreateFile tracer build fix
+
+The first NtCreateFile tracer revision failed to compile because the new
+`HookNtCreateFile` body appeared before helper-function declarations. MSVC then
+implicitly assumed `int` return types and later reported C2371/C2040 conflicts.
+
+Commit `adaad84fb6ea1dddc76533c43e8163197c03805a` adds explicit forward
+declarations for all helper functions used by the early native hook and removes
+the redundant misplaced prototype block. Rebuild with
+`./scripts/build-xstream-ioctl-trace.ps1`.
