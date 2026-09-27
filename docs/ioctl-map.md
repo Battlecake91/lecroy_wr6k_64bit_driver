@@ -2616,3 +2616,21 @@ bits, then writes that complete 32-bit value to MAMDAT:
 
 For a 21-word type-1 record, entries therefore use indices 0 through 20 before
 `MAMPGO = 0x115` is issued. The x64 implementation now matches that format.
+
+### Outstanding four-byte query IOCTLs after successful arm
+
+The first runtime capture with successful acquisition-board arming still shows
+three unsupported METHOD_BUFFERED IOCTLs, each with no input and four-byte
+output:
+
+- `0x00222400`;
+- `0x00223004` (`QUERY_BUFFER_A`);
+- `0x00223040` (`QUERY_BUFFER_B`).
+
+The latter two occur immediately after legacy event registration. XStream does
+not subsequently issue transfer-registration or acquisition-launch IOCTLs in
+the same capture.
+
+Their exact legacy handler mapping is therefore being recovered from the
+earlier portion of the DeviceControl dispatch tree before any value is
+invented.
