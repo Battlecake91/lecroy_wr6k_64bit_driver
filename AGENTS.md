@@ -1203,3 +1203,30 @@ already implemented.
 
 Next runtime validation should focus on whether "Problems reading probe
 Ch1-Ch5" disappears and where Auto/Single arm proceeds after these two paths.
+
+## Latest runtime trace: 2026-09-27 09:48
+
+Trace `xstream_trace_20260927_094813.jsonl` contains 460 CFDC2110 calls:
+449 success and 11 rejected.
+
+Important validation:
+- family-0 opcode `0x90` SPI/probe path: 6 calls, all successful;
+- family-0 opcode `0xA0` PFREG path: 5 calls, all successful;
+- the previous probe/PFREG blockers are therefore cleared at driver-protocol
+  level.
+
+Remaining blockers:
+- one family-1 opcode-`0x42` mode-1 58-bit JTAG request;
+- ten family-1 opcode-`0x96` requests.
+
+Legacy `FUN_000165A6` proves the pure family-1 forwarder set:
+`4A,81,82,90,91,96,97,99`. The x64 semantic gate now admits the complete set.
+
+Legacy `FUN_00015C7E` may read JTAG chunks across the current packed record
+boundary into the following record. The x64 JTAG path now reproduces this
+behavior only within the bounds of the fully validated complete IOCTL buffer.
+This removes the remaining payload-specific mode-0/1 JTAG whitelist behavior
+without introducing out-of-buffer reads.
+
+Next runtime test should show whether Auto/Single reaches the acquisition IOCTL
+path after these arm-stage commands.
