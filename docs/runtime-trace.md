@@ -1050,3 +1050,39 @@ The existing raw DeviceControl export has a gap from 0x10F8F to 0x11018,
 which is the only remaining region that can contain the dispatch handling for
 the lower 0x222400 code before the 0x222C00 branch. Additional Ghidra raw
 targets were added at 0x11008, 0x11010 and 0x11014 to recover that final gap.
+
+## Twenty-eighth trace re-evaluation: the real hang is JTAG polling
+
+Further inspection of `xstream_trace_20260927_114916.jsonl` changes the
+current blocker assessment.
+
+Although `0x00222400` is the only remaining IOCTL that returns an error, the
+fully reconstructed legacy DeviceControl switch does not contain a handler for
+that code either. It is therefore likely a tolerated probe rather than the
+cause of the acquisition stall.
+
+The actual runtime hang is visible at the end of the trace: XStream repeatedly
+issues the same CFDC2110 family-1 opcode-`0x42` JTAG transaction.
+
+The repeated request is:
+- mode = 1;
+- requested data bytes = 10;
+- bit count = 76;
+- five JTAG chunks (4 x 16 bits + 12 bits).
+
+The current x64 implementation returns the following 10 data bytes, interpreted
+as five 16-bit words:
+
+`0000 4014 0030 5000 0020`
+
+XStream immediately repeats the identical scan, indicating that the response
+does not satisfy the state transition it is waiting for.
+
+Static review of legacy `FUN_00015C7E` plus `FUN_0001586E` shows that the
+JTAGDIN value is returned through an unusual stack output parameter that Ghidra
+does not currently decompile correctly. The x64 implementation's direct
+JTAGDIN read is conceptually correct, but the exact word selection/bit shift is
+still uncertain.
+
+Raw assembly targets were added inside FUN_00015C7E at 0x15CC0, 0x15CF0,
+0x15D20, 0x15D50 and 0x15D70 to recover the exact response-word formation.
