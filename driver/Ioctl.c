@@ -1181,6 +1181,165 @@ LecJtagWriteOnly(
 }
 
 static
+ULONG
+LecReverseBits32(
+    _In_ ULONG Value
+    )
+{
+    ULONG result = 0;
+    ULONG bit;
+
+    for (bit = 0; bit < 32; ++bit) {
+        if ((Value & 0x80000000UL) != 0) {
+            result |= 1UL << bit;
+        }
+        Value <<= 1;
+    }
+
+    return result;
+}
+
+static
+BOOLEAN
+LecLegacySpiSelect(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ UCHAR Selector,
+    _In_ BOOLEAN Asserted
+    )
+{
+    ULONG shadow = DevExt->LegacySpiControlShadow;
+    ULONG state = Asserted ? 1UL : 0UL;
+
+    switch (Selector) {
+    case 0:
+        shadow = (state << 14) | (shadow & 0xFFFFBC1FUL);
+        break;
+    case 1:
+        shadow = (state << 15) | (shadow & 0xFFFF7C3FUL) | 0x20UL;
+        break;
+    case 2:
+        shadow = (state << 16) | (shadow & 0xFFFEFD5FUL) | 0x140UL;
+        break;
+    case 3:
+        shadow = (state << 17) | (shadow & 0xFFFDFD7FUL) | 0x160UL;
+        break;
+    case 4:
+        shadow = (state << 18) | (shadow & 0xFFFBFD9FUL) | 0x180UL;
+        break;
+    case 0x0C:
+        shadow = (((state << 13) ^ shadow) & 0x2000UL) ^ shadow;
+        shadow |= 0x300UL;
+        break;
+    case 0x0E:
+        shadow = (state << 12) | (shadow & 0xFFFFEEBFUL) | 0x2A0UL;
+        break;
+    default:
+        return FALSE;
+    }
+
+    DevExt->LegacySpiControlShadow = shadow;
+    return TRUE;
+}
+
+static
+NTSTATUS
+LecLegacySpiWrite(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(RequestLength) const UCHAR* Request,
+    _In_ ULONG RequestLength
+    )
+{
+    volatile ULONG* spiCtl;
+    volatile ULONG* spiData;
+    ULONG bitCount;
+    ULONG remainingBits;
+    ULONG inputOffset = 5;
+    NTSTATUS status;
+
+    if (Request == NULL || RequestLength < 5) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    bitCount = LecReadU16(Request + 1);
+
+    if (RequestLength < 5UL + ((bitCount + 15UL) / 16UL) * 2UL) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    status = LecGetBar1Register(DevExt, 0x0A0, &spiCtl);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecGetBar1Register(DevExt, 0x0A4, &spiData);
+    if (!NT_SUCCESS(status)) return status;
+
+    if (!DevExt->LegacySpiInitialized) {
+        /*
+         * Legacy FUN_0001340C initializes the SPI helper shadow with 0x1FF000
+         * and immediately commits it to SPICTL.
+         */
+        DevExt->LegacySpiControlShadow = 0x001FF000UL;
+        WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+        DevExt->LegacySpiInitialized = TRUE;
+    }
+
+    if (LecReadU16(Request + 3) != 0) {
+        if (!LecLegacySpiSelect(DevExt, Request[0], FALSE)) {
+            return STATUS_INVALID_PARAMETER;
+        }
+        WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+
+        if (!LecLegacySpiSelect(DevExt, Request[0], TRUE)) {
+            return STATUS_INVALID_PARAMETER;
+        }
+        WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+    }
+
+    if (!LecLegacySpiSelect(DevExt, Request[0], FALSE)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    remainingBits = bitCount;
+
+    if (remainingBits < 17UL) {
+        DevExt->LegacySpiControlShadow =
+            (DevExt->LegacySpiControlShadow & ~0x1FUL) |
+            (remainingBits & 0x1FUL);
+    }
+    else {
+        DevExt->LegacySpiControlShadow =
+            (DevExt->LegacySpiControlShadow & 0xFFFFFFF0UL) |
+            0x10UL;
+    }
+
+    WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+
+    while (remainingBits > 15UL) {
+        USHORT word = LecReadU16(Request + inputOffset);
+        WRITE_REGISTER_ULONG(spiData, LecReverseBits32((ULONG)word));
+        inputOffset += 2;
+        remainingBits -= 16UL;
+    }
+
+    if (remainingBits != 0) {
+        USHORT word = LecReadU16(Request + inputOffset);
+
+        DevExt->LegacySpiControlShadow =
+            (DevExt->LegacySpiControlShadow & ~0x1FUL) |
+            (remainingBits & 0x1FUL);
+        WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+        WRITE_REGISTER_ULONG(spiData, LecReverseBits32((ULONG)word));
+    }
+
+    if (!LecLegacySpiSelect(DevExt, Request[0], TRUE)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    DevExt->LegacySpiControlShadow &= ~0x1FUL;
+    WRITE_REGISTER_ULONG(spiCtl, DevExt->LegacySpiControlShadow);
+
+    return STATUS_SUCCESS;
+}
+
+static
 BOOLEAN
 LecIsStructurallySupportedCfDc2110(
     _In_reads_bytes_(InputLength) const UCHAR* Buffer,
@@ -1288,6 +1447,35 @@ LecIsStructurallySupportedCfDc2110(
             }
             else if (family == 0 && opcode == 0xA0) {
                 if (payloadLength < 6) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
+            else if (family == 0 && opcode == 0x90) {
+                const UCHAR* request = payload + 3;
+                ULONG requestLength = (ULONG)payloadLength - 3;
+                ULONG bitCount;
+
+                if (requestLength < 5) {
+                    return FALSE;
+                }
+
+                bitCount = LecReadU16(request + 1);
+                if (requestLength < 5UL + ((bitCount + 15UL) / 16UL) * 2UL) {
+                    return FALSE;
+                }
+
+                switch (request[0]) {
+                case 0:
+                case 1:
+                case 2:
+                case 3:
+                case 4:
+                case 0x0C:
+                case 0x0E:
+                    break;
+                default:
                     return FALSE;
                 }
 
@@ -1713,6 +1901,30 @@ LecIoctlCfDc2110(
                     pendingResponseReady = TRUE;
                     hardwareResponsePending = FALSE;
                 }
+            }
+            else if (payload[1] == 0 && payload[2] == 0x90) {
+                NTSTATUS hwStatus = LecLegacySpiWrite(
+                    DevExt,
+                    payload + 3,
+                    payloadLength - 3);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    protocolStatus = 0;
+                }
+                else if (hwStatus == STATUS_INVALID_PARAMETER ||
+                         hwStatus == STATUS_INVALID_BUFFER_SIZE) {
+                    protocolStatus = 4;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+
+                LecWriteU32(pendingResponse, 0);
+                LecWriteU16(pendingResponse + 4, 2);
+                LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
+                pendingResponseLength = 8;
+                pendingResponseReady = TRUE;
+                hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 0 && payload[2] == 0xA0) {
                 NTSTATUS hwStatus;
