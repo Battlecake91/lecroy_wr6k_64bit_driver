@@ -1819,3 +1819,40 @@ Implemented in commits:
   path and preserve the recovered interrupt-mask semantics.
 
 This is now the next x64 retest target before further JTAG analysis.
+
+## First successful-status semantic divergence: 85FB framing
+
+Fresh x64 trace `xstream_trace_20260927_210024.jsonl` contains 953 IOCTLs and
+no failing NTSTATUS values. `0xCFDC2190` now succeeds at sequence 20 with the
+expected 29-byte startup request.
+
+The earliest remaining byte-level mismatch against the original 32-bit trace is
+already visible at the first family-1 opcode-0x99 forward/fetch transaction.
+
+Request:
+`060004000300FBA540019900080102000300FB854000`
+
+Original 270-byte output begins:
+
+`0000000000000000000002000200FFFFFFFF...`
+
+x64 output begins:
+
+`0000000000000200000000000000...`
+
+The original 0x88 and 0x85 forward/fetch responses show the same structural
+pattern. This proves that the legacy 85FB path prepends a six-byte host response
+header to the raw BAR1 firmware response:
+- DWORD 0
+- WORD 2
+- raw firmware response bytes follow.
+
+The x64 implementation had been copying the raw firmware response directly into
+the 85FB output record, shifting the protocol layout by six bytes.
+
+Commit `33e24638d72bd5ae587ff80d6bebea4702a112cb` fixes this for hardware-backed
+85FB responses while leaving locally constructed JTAG/timer responses unchanged.
+
+After this framing fix, any remaining opcode-0x99 payload mismatch (notably
+original 0xFF bytes versus current 0x00 bytes) can be evaluated independently
+as transport/state rather than host-record framing.
