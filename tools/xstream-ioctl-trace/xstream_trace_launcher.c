@@ -119,6 +119,10 @@ static int inject_dll_and_initialize(
     }
 
     localInit = GetProcAddress(localImage,"InitializeXStreamTrace");
+#if defined(_M_IX86)
+    if (!localInit)
+        localInit = GetProcAddress(localImage,"_InitializeXStreamTrace@4");
+#endif
     if (!localInit) {
         print_win32_error("GetProcAddress(InitializeXStreamTrace)");
         FreeLibrary(localImage);
