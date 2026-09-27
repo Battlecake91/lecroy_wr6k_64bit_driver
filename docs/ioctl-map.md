@@ -2776,3 +2776,25 @@ Legacy `0x00223040` has a third form in addition to size and full-list reads:
 Legacy `FUN_00012C18` calls `FUN_000124C2` for this form. The x64 driver now
 supports indexed entries 0 through 42 through the same serializer used for the
 full 43-entry list.
+
+### Family-2 opcode 0x02 timer barrier corrected
+
+Raw legacy analysis of `FUN_000163B2` shows that family-2 opcode `0x02`
+does not write `MTTCTL` immediately.
+
+If the legacy command object's timer exists, the handler first performs an
+indefinite `KeWaitForSingleObject` on that timer. The timer is armed by
+family-2 opcode `0x01`. Only after the timer becomes signaled does the driver
+write `MTTCTL = 0` or `1`.
+
+The previous x64 implementation incorrectly waited on the current DMA
+transfer's completion event instead. Before acquisition transfer registration
+this usually meant no wait at all, removing the hardware settling delay.
+
+The x64 implementation now waits on `LegacyTimer` with alertable kernel wait
+semantics before writing `MTTCTL`.
+
+A second static correction was made to type-1/type-2 packed MAM records:
+legacy `FUN_00012F30` always calls `FUN_00017BC8(..., mode=1)` regardless
+of whether the packed record type is 1 or 2. The x64 path now always programs
+MAMPGO mode 1 for both record types.
