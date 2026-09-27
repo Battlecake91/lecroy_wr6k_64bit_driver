@@ -260,7 +260,8 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     PKEVENT LegacyEvent4;
     UCHAR LegacyFlagByte;
     UCHAR ReservedLegacy;
-    USHORT LegacyTransferMask;
+    USHORT LegacyCommandPendingMask;
+    USHORT LegacyCommandEnableMask;
     ULONG LegacySpiControlShadow;
     BOOLEAN LegacySpiInitialized;
     BOOLEAN LegacyTimerInitialized;

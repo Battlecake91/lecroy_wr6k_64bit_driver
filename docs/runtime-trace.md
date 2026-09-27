@@ -2165,3 +2165,58 @@ current board transport uses direct RX_CONTROL polling.
 
 Active DMA remains disabled. The purpose of the next hardware run is to see
 whether XStream finally progresses into `CFDC2124` / `CFDC2138`.
+
+
+## Post-event-fix trace: standalone 85FB/0x01 status gate
+
+`xstream_trace_20260927_225338.jsonl` changes behavior immediately after the
+restored interrupt-to-event delivery. XStream no longer only waits in the late
+JTAG status loop. It issues the standalone CFDC2110 packet
+
+```text
+0A0002000300FB854001
+```
+
+eleven times. Before this handler was implemented, the x64 whitelist rejected
+all eleven calls with `0xC0000010 STATUS_INVALID_DEVICE_REQUEST`. XStream
+then terminated acquisition setup with "Unable to arm acquisition board" and
+"PCI Communication failed!".
+
+The exact request is already present 280 times in
+`legacy_xstream_trace_20260927_195608.jsonl` and 289 times in
+`legacy_xstream_trace_20260927_185222.jsonl`. Every captured original call
+returns:
+
+```text
+000000000400BF028000
+```
+
+This is a local driver status structure, not a firmware response. Recovered
+`FUN_000169B4` proves the ten-byte layout:
+
+```text
+DWORD 0
+WORD  4
+WORD  command enable mask
+WORD  sticky command pending mask
+```
+
+The original command object stores the complete enable word from family-0
+opcode `0x85`. The DPC latches pending command bits `0x0080`, `0x0800`,
+and `0x0100` from INTST sources `0x04`, `0x10`, and `0x20`
+respectively, masked by that enable word. Family-0 opcode `0x88` clears the
+requested sticky pending bits.
+
+At the observed acquisition transition, the earlier opcode-`0x85` command
+has programmed enable mask `0x02BF`; the event-producing interrupt latches
+pending bit `0x0080`, producing the captured original response
+`...0400 BF02 8000`.
+
+The x64 implementation now mirrors that state machine rather than returning a
+constant capture. The original trace then proceeds directly through
+opcode-`0x88 / 0x0080`, `CFDC2184`, family-2 opcode-`0x02 = 0`, one
+JTAG status request, `CFDC2124`, and `CFDC2138`.
+
+DMA execution remains gated; the purpose of the next test is to verify that
+XStream reaches the already implemented transfer registration and then the
+still-disabled acquisition handler.

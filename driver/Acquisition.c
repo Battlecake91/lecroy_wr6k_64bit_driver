@@ -600,6 +600,31 @@ LecInterruptDpc(
     if ((pending & (0x02UL | 0x04UL | 0x10UL | 0x20UL)) != 0) {
         KeAcquireSpinLockAtDpcLevel(&devExt->LegacyEventLock);
 
+        /*
+         * The legacy command-status object has a 16-bit enabled mask and a
+         * sticky 16-bit pending mask. FUN_00011390 latches these command bits
+         * from the corresponding hardware interrupt sources before waking the
+         * CFDC2180 event:
+         *
+         *   INTST 0x04 -> command pending 0x0080
+         *   INTST 0x10 -> command pending 0x0800
+         *   INTST 0x20 -> command pending 0x0100
+         *
+         * Only bits enabled through family-0 opcode 0x85 become pending.
+         */
+        if ((pending & 0x04UL) != 0) {
+            devExt->LegacyCommandPendingMask |=
+                (USHORT)(devExt->LegacyCommandEnableMask & 0x0080U);
+        }
+        if ((pending & 0x10UL) != 0) {
+            devExt->LegacyCommandPendingMask |=
+                (USHORT)(devExt->LegacyCommandEnableMask & 0x0800U);
+        }
+        if ((pending & 0x20UL) != 0) {
+            devExt->LegacyCommandPendingMask |=
+                (USHORT)(devExt->LegacyCommandEnableMask & 0x0100U);
+        }
+
         if ((pending & 0x02UL) != 0 &&
             devExt->LegacyEvent1 != NULL) {
             KeSetEvent(

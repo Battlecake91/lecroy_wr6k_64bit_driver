@@ -2958,3 +2958,33 @@ the deferred handler `FUN_00011390`. Its recovered event mapping is:
 The x64 replacement implements the externally visible `0x01`, `0x02`,
 and `0x04/0x10/0x20` event deliveries. It does not invent an `0x08`
 user-event mapping; its current RX transport polls RX_CONTROL directly.
+
+
+## 85FB subcommand 1: local command-status query
+
+A standalone type-3 85FB record with payload `40 01` is now fully decoded.
+The captured request is:
+
+```text
+0A0002000300FB854001
+```
+
+`FUN_000169B4` returns a ten-byte local structure:
+
+```text
+DWORD 0
+WORD  4
+WORD  enabled_mask
+WORD  pending_mask
+```
+
+The masks belong to the command/status object used by family-0 control:
+
+- family-0 opcode `0x85` stores the complete 16-bit enabled mask;
+- the deferred interrupt path latches sticky pending bits, gated by that mask:
+  INTST `0x04 -> 0x0080`, `0x10 -> 0x0800`, `0x20 -> 0x0100`;
+- family-0 opcode `0x88` clears pending bits selected by its mask.
+
+Both full legacy runtime captures repeatedly return
+`000000000400BF028000` at the acquisition transition, corresponding to
+enabled mask `0x02BF` and pending mask `0x0080`.

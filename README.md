@@ -163,10 +163,10 @@ Current staged-runtime note:
   selector reads advance exactly like the legacy trace instead of looping on
   selector `0x20`;
 - the latest trace still stops before `CFDC2124` / `CFDC2138`;
-- static comparison found that the x64 ISR/DPC previously acknowledged
-  non-transfer interrupt sources without delivering the legacy
-  `CFDC2180` / `CFDC218C` user events. The recovered event mapping is now
-  implemented and is the next hardware retest target;
+- restoring the recovered `CFDC2180` / `CFDC218C` event delivery wakes
+  XStream's acquisition-control path. The next exposed gate was standalone
+  85FB subcommand `0x01`, a local command-status query. Its enable/pending
+  mask state machine is now implemented from the recovered legacy code;
 - active `CFDC2138` / `CFDD219F` DMA launch remains intentionally gated
   until the legacy transfer ABI and x64 physical-address constraints are
   proven on hardware.

@@ -2563,3 +2563,73 @@ This change does **not** enable DMA. `CFDC2138` and `CFDD219F` remain
 gated. The next test should determine whether restoring the legacy wakeup path
 causes XStream to issue `CFDC2124` and then reach the already-gated
 acquisition IOCTL.
+
+
+## 2026-09-27 trace 225338: standalone 85FB status is the next gate
+
+Trace `xstream_trace_20260927_225338.jsonl` is the first hardware run after
+commit `21238b8fe94c02b42bf04ce84e98ceffd1dd393b` restored the proven
+CFDC2180/CFDC218C interrupt-to-event delivery.
+
+The behavioral change proves that the event fix wakes a previously blocked
+XStream control path. Instead of remaining indefinitely in the late JTAG poll,
+XStream immediately issues the standalone ten-byte CFDC2110 request:
+
+```text
+0A0002000300FB854001
+```
+
+The pre-fix x64 parser rejected this request eleven times with
+`STATUS_INVALID_DEVICE_REQUEST (0xC0000010)`, after which XStream reported
+"Unable to arm acquisition board" and "PCI Communication failed!".
+
+Both independent original traces already contain this exact request hundreds
+of times. They return the identical ten-byte response:
+
+```text
+000000000400BF028000
+```
+
+Static legacy recovery explains every field. `FUN_000169B4`, 85FB
+subcommand 1, returns:
+
+```text
+DWORD 0
+WORD  4
+WORD  command enable mask
+WORD  sticky command pending mask
+```
+
+At this acquisition transition the enable mask is `0x02BF`, programmed by
+the preceding family-0 opcode-`0x85` request. The pending mask is `0x0080`.
+Original `FUN_00011390` latches command-status bits from hardware interrupts:
+
+- INTST `0x04` -> pending `0x0080`
+- INTST `0x10` -> pending `0x0800`
+- INTST `0x20` -> pending `0x0100`
+
+Only bits present in the command enable mask are latched. Family-0 opcode
+`0x88` clears requested sticky pending bits before forwarding the command.
+
+The x64 driver now implements this stateful local status path. It does not
+hard-code `BF02 8000`: opcode `0x85` stores the current enable mask, the
+DPC latches the proven pending bits, standalone 85FB/0x01 reports both masks,
+and opcode `0x88` clears the requested pending bits.
+
+Legacy sequencing shows the immediate expected next path after a successful
+status query:
+
+```text
+85FB/0x01 -> enabled 0x02BF, pending 0x0080
+family0/0x88 mask 0x0080
+CFDC2184
+family2/0x02 = 0
+family1/0x42 JTAG status
+CFDC2124
+CFDC2138
+```
+
+Active DMA remains intentionally gated. The next retest is expected to expose
+`CFDC2124` and then reach `CFDC2138`; a controlled failure at the still
+unsupported acquisition handler is acceptable evidence and must not be hidden
+by fabricating DMA success.

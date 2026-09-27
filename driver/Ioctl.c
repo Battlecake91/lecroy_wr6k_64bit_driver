@@ -2031,6 +2031,9 @@ LecIsAllowedCfDc2110(
         0x40,0x00,0x88,0x00,0xDF,0xFF,
         0x08,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
     };
+    static const UCHAR status85fbPacket[] = {
+        0x0A,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x01
+    };
     static const UCHAR jtag42Packet[] = {
         0x06,0x00,0x4C,0x00,0x03,0x00,0xFB,0xA5,
         0x40,0x01,0x42,0x00,0x00,0x00,0x20,0x00,
@@ -2156,6 +2159,7 @@ LecIsAllowedCfDc2110(
 
     if (LECS65_MATCH_CAPTURED_PACKET(resetPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(opcode88Packet) ||
+        LECS65_MATCH_CAPTURED_PACKET(status85fbPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Packet) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode1LongPacket) ||
         LECS65_MATCH_CAPTURED_PACKET(jtag42Mode2LongPacket) ||
@@ -2621,8 +2625,20 @@ LecIoctlCfDc2110(
 
                 if (payloadLength >= 6) {
                     USHORT mask = LecReadU16(payload + 4);
-                    DevExt->LegacyTransferMask &=
+                    KIRQL oldIrql;
+
+                    /*
+                     * Legacy FUN_00016A66 clears sticky command-status bits
+                     * before forwarding opcode 0x88 to board firmware.
+                     */
+                    KeAcquireSpinLock(
+                        &DevExt->LegacyEventLock,
+                        &oldIrql);
+                    DevExt->LegacyCommandPendingMask &=
                         (USHORT)~mask;
+                    KeReleaseSpinLock(
+                        &DevExt->LegacyEventLock,
+                        oldIrql);
                 }
 
                 hwStatus = LecTransportSend(
@@ -2651,6 +2667,24 @@ LecIoctlCfDc2110(
                     ULONG newMask;
 
                     controlWord = LecReadU16(payload + 4);
+
+                    /*
+                     * FUN_00016962 first stores the complete 16-bit command
+                     * enable mask. Standalone 85FB/0x01 later reports this
+                     * value together with the DPC-latched pending mask.
+                     */
+                    {
+                        KIRQL oldIrql;
+
+                        KeAcquireSpinLock(
+                            &DevExt->LegacyEventLock,
+                            &oldIrql);
+                        DevExt->LegacyCommandEnableMask =
+                            controlWord;
+                        KeReleaseSpinLock(
+                            &DevExt->LegacyEventLock,
+                            oldIrql);
+                    }
 
                     /*
                      * Legacy FUN_00016962 interprets the captured control word
@@ -2781,9 +2815,47 @@ LecIoctlCfDc2110(
             }
         }
         else if (signature == 0x85FB) {
-            if (payloadLength < 2 ||
-                payload[0] != 0x40 ||
-                payload[1] != 0) {
+            if (payloadLength >= 2 &&
+                payload[0] == 0x40 &&
+                payload[1] == 0x01) {
+                USHORT enabledMask;
+                USHORT pendingMask;
+                KIRQL oldIrql;
+
+                /*
+                 * Legacy FUN_000169B4 subcommand 1 is a local status query.
+                 * It returns exactly ten bytes:
+                 *
+                 *   DWORD 0
+                 *   WORD  4
+                 *   WORD  enabled command mask (object +0x0B)
+                 *   WORD  sticky pending mask  (object +0x09)
+                 *
+                 * Both independent original runtime captures repeatedly show
+                 * 000000000400BF028000 at the acquisition transition.
+                 */
+                if (recordOutput < 10) {
+                    status = STATUS_BUFFER_TOO_SMALL;
+                    break;
+                }
+
+                KeAcquireSpinLock(
+                    &DevExt->LegacyEventLock,
+                    &oldIrql);
+                enabledMask = DevExt->LegacyCommandEnableMask;
+                pendingMask = DevExt->LegacyCommandPendingMask;
+                KeReleaseSpinLock(
+                    &DevExt->LegacyEventLock,
+                    oldIrql);
+
+                LecWriteU32(recordResult, 0);
+                LecWriteU16(recordResult + 4, 4);
+                LecWriteU16(recordResult + 6, enabledMask);
+                LecWriteU16(recordResult + 8, pendingMask);
+            }
+            else if (payloadLength < 2 ||
+                     payload[0] != 0x40 ||
+                     payload[1] != 0) {
                 if (recordOutput >= 6) {
                     LecWriteU32(recordResult, 0);
                     LecWriteU16(recordResult + 4, 2);
