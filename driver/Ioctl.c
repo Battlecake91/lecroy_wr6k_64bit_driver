@@ -2149,7 +2149,7 @@ LecIoctlCfDc2110(
                 DevExt,
                 payload,
                 payloadLength,
-                type == 1 ? 1U : 2U);
+                1U);
 
             if (!NT_SUCCESS(hwStatus)) {
                 status = hwStatus;
@@ -2297,28 +2297,32 @@ LecIoctlCfDc2110(
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 2 && payload[2] == 0x02) {
-                NTSTATUS hwStatus;
+                NTSTATUS hwStatus = STATUS_SUCCESS;
                 volatile ULONG* mttCtl;
                 UCHAR enable = payload[3];
-                PLECS65_TRANSFER currentTransfer =
-                    (PLECS65_TRANSFER)InterlockedCompareExchangePointer(
-                        (PVOID volatile*)&DevExt->CurrentTransfer,
-                        NULL,
-                        NULL);
 
-                if (currentTransfer != NULL) {
-                    (VOID)KeWaitForSingleObject(
-                        &currentTransfer->CompletionEvent,
+                /*
+                 * Legacy FUN_000163B2 waits on the KTIMER owned by the
+                 * command object before it writes MTTCTL. This timer is armed
+                 * by family-2 opcode 0x01. The old x64 path incorrectly waited
+                 * on a DMA completion event instead, which removes the required
+                 * hardware settling delay before MTTCTL changes state.
+                 */
+                if (DevExt->LegacyTimerInitialized) {
+                    hwStatus = KeWaitForSingleObject(
+                        &DevExt->LegacyTimer,
                         Executive,
                         KernelMode,
-                        FALSE,
+                        TRUE,
                         NULL);
                 }
 
-                hwStatus = LecGetBar1Register(
-                    DevExt,
-                    0x080,
-                    &mttCtl);
+                if (NT_SUCCESS(hwStatus)) {
+                    hwStatus = LecGetBar1Register(
+                        DevExt,
+                        0x080,
+                        &mttCtl);
+                }
 
                 if (NT_SUCCESS(hwStatus)) {
                     WRITE_REGISTER_ULONG(mttCtl, enable != 0 ? 1UL : 0UL);
