@@ -2377,3 +2377,47 @@ family-1 opcode-`0x96` reads beginning with selectors `0x20, 0x22, 0x24,
 0x26, ...`, rather than repeating `0x20`. The original traces later reach
 `CFDC2124` followed immediately by `CFDC2138`. Only a post-`d51dbe2` trace
 can determine the next blocker if acquisition still does not start.
+
+
+## Preferred x64 scope test workflow
+
+The user keeps a scope-local PowerShell helper named
+`Run-LeCroy-XStream-Trace.ps1`. For normal x64 hardware retests, prefer this
+script over manually asking for separate pull/build/load/capture/start steps.
+
+The supplied script performs the following sequence itself:
+
+1. Requires an elevated PowerShell session.
+2. Uses the scope checkout at
+   `C:\\Users\\LeCroyUser\\Git\\lecroy_wr6k_64bit_driver`.
+3. Runs `git pull`.
+4. Runs `scripts\\build-sign-load-driver.ps1 -Configuration <Debug|Release>`.
+5. Uses `tools\\lecdiag\\build\\lecdiag.exe trace-capture` with a one-hour
+   maximum window.
+6. Stops an already-running XStream instance before the test.
+7. Starts the kernel trace, then launches
+   `C:\\Program Files (x86)\\LeCroy\\XStream\\lecroyxstreamdso.exe`.
+8. Keeps tracing until XStream is closed normally, then stops the trace helper.
+9. Saves the trace as
+   `trace-captures\\xstream_trace_YYYYMMDD_HHMMSS.jsonl` in the repo checkout.
+10. Attempts to copy the finished trace to the configured NAS trace directory;
+    if the NAS copy fails, the local trace remains intact.
+
+Default command to give the user for an ordinary x64 trace run, executed from
+the directory containing the helper script:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\\Run-LeCroy-XStream-Trace.ps1 -Configuration Debug
+```
+
+When asking the user to test a new x64 driver state, always provide the exact
+commands they should execute. Do not merely say "retest" or describe the steps
+abstractly. Prefer the helper script whenever the required evidence is available
+from the kernel `lecdiag` trace. Tell the user what visible XStream action to
+perform during the run and when to close XStream.
+
+Do not use this helper when the investigation specifically requires complete
+user-mode buffers, `NtCreateFile` handle/interface mapping, or another field
+that the kernel trace cannot capture. In that case explicitly state why the
+user-mode XStream tracer is required and give its exact command sequence.
