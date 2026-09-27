@@ -2095,6 +2095,19 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 1 &&
+                     (opcode == 0xA1 || opcode == 0xA2)) {
+                /*
+                 * FUN_000165A6 dispatches these to local register-read
+                 * helpers with no command-body arguments. The Revision page
+                 * emits exactly one trailing zero byte after the opcode.
+                 */
+                if (payloadLength != 4) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if (family == 1 && opcode == 0x42) {
                 const UCHAR* request = payload + 3;
                 ULONG requestOffset =
@@ -2995,6 +3008,70 @@ LecIoctlCfDc2110(
                     (ULONG)payload[2],
                     token,
                     (ULONG)launchUnits,
+                    (ULONG)protocolStatus,
+                    hwStatus);
+            }
+            else if (payload[1] == 1 &&
+                     (payload[2] == 0xA1 ||
+                      payload[2] == 0xA2)) {
+                volatile ULONG* revisionReg = NULL;
+                ULONG revisionValue = 0;
+                NTSTATUS hwStatus;
+
+                /*
+                 * Legacy FUN_000165A6:
+                 *   0xA1 -> FUN_00015BCE -> dispatcher+0x17E
+                 *   0xA2 -> FUN_00015C26 -> dispatcher+0x176
+                 *
+                 * Dispatcher base is board+0xEA8. Constructor FUN_00014847
+                 * maps:
+                 *   board+0x1026 -> BAR1 ACQFVER (0x00C)
+                 *   board+0x101E -> BAR0 FVER    (0x000)
+                 *
+                 * Both helpers return a local 12-byte pending response:
+                 *   DWORD 0, WORD 6, WORD status, DWORD register value.
+                 */
+                if (payload[2] == 0xA1) {
+                    hwStatus = LecResolveRegister(
+                        DevExt,
+                        1,
+                        0x00C,
+                        &revisionReg);
+                }
+                else {
+                    hwStatus = LecResolveRegister(
+                        DevExt,
+                        0,
+                        0x000,
+                        &revisionReg);
+                }
+
+                if (NT_SUCCESS(hwStatus)) {
+                    revisionValue =
+                        READ_REGISTER_ULONG(revisionReg);
+                    protocolStatus = 0;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+
+                LecWriteU32(pendingResponse, 0);
+                LecWriteU16(pendingResponse + 4, 6);
+                LecWriteU16(
+                    pendingResponse + 6,
+                    protocolStatus);
+                LecWriteU32(
+                    pendingResponse + 8,
+                    revisionValue);
+                pendingResponseLength = 12;
+                pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
+                hardwareResponsePending = FALSE;
+
+                LecTrace(
+                    "CFDC2110 family1/0x%02X revision read -> value=0x%08lX protocol=%u hw=0x%08X\n",
+                    (ULONG)payload[2],
+                    revisionValue,
                     (ULONG)protocolStatus,
                     hwStatus);
             }

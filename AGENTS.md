@@ -3224,3 +3224,66 @@ developer diagnostic path as appropriate.
 Trace 013644 is the canonical evidence file for this developer-menu gate. Do
 not request another Run Link Tests driver trace unless a changed XStream-side
 or identity implementation needs validation.
+
+
+## 2026-09-28 trace 014500: Service/Revision page exposes family-1 A1/A2
+
+The user opened XStream Service -> AladdinAcqBoard -> Revision and received:
+
+```text
+HardwarePCI Communication error!
+```
+
+The page nevertheless displays other revision information, including
+`Device Driver Build Num: 1002`.
+
+Trace `xstream_trace_20260928_014500.jsonl` isolates the remaining driver
+error. It contains 590 IOCTL calls: 579 success and 11
+`STATUS_INVALID_DEVICE_REQUEST (0xC0000010)` failures. Every failure is one
+of two new CFDC2110 local requests:
+
+```text
+family 1 / opcode 0xA2
+060004000300FBA54001A2000C0002000300FB854000
+
+family 1 / opcode 0xA1
+060004000300FBA54001A1000C0002000300FB854000
+```
+
+They alternate repeatedly while the Revision page refreshes. No other IOCTL
+fails.
+
+Static legacy dispatch closes both commands completely:
+
+- `FUN_000165A6` routes family-1 `0xA1` to `FUN_00015BCE`.
+- `FUN_000165A6` routes family-1 `0xA2` to `FUN_00015C26`.
+- dispatcher base = board object `+0xEA8`;
+- `0xA1` reads dispatcher `+0x17E` = board `+0x1026`;
+- constructor `FUN_00014847` stores the BAR1 `ACQFVER` register wrapper
+  (offset `0x00C`) at board `+0x1026`;
+- `0xA2` reads dispatcher `+0x176` = board `+0x101E`;
+- constructor stores the BAR0 `FVER` register wrapper (offset `0x000`) at
+  board `+0x101E`.
+
+Both legacy helpers construct the same 12-byte local pending response:
+
+```text
+DWORD 0
+WORD  6
+WORD  protocol status
+DWORD register value
+```
+
+The x64 driver now implements both local reads exactly. They are not firmware
+forwarders.
+
+The same user session also located the literal
+`WaveRunner Driver Not Supported` in:
+
+```text
+C:\Program Files (x86)\LeCroy\XStream\lecaladdinhwaccesspcisvr.dll
+```
+
+That DLL is therefore the primary user-mode reverse-engineering target for the
+Developer -> Run Link Tests support gate once the Revision-page regression is
+verified.

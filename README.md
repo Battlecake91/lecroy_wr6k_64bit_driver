@@ -231,3 +231,16 @@ The remaining probe-side uncertainty is ProBus communication. The recovered
 family-0 opcode-0x90 SPI/probe path is heavily exercised and succeeds in the
 trace, but the driver does not expose a direct I2C interface. Physical ProBus
 I2C behavior therefore still needs a real probe-level validation.
+
+
+### Service Revision diagnostics
+
+The Service -> AladdinAcqBoard -> Revision page exposed two additional local
+legacy commands: family-1 opcodes `0xA1` and `0xA2`. Static recovery maps
+them to BAR1 `ACQFVER` and BAR0 `FVER` reads respectively. The replacement
+now returns the original 12-byte revision response format instead of rejecting
+the requests.
+
+The XStream literal `WaveRunner Driver Not Supported` has also been located
+in `lecaladdinhwaccesspcisvr.dll`; that user-mode component is the next
+reverse-engineering target for the Developer -> Run Link Tests support gate.

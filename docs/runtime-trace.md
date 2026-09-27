@@ -2512,3 +2512,35 @@ The current evidence strongly favors an XStream-side driver-type/capability
 gate that prevents the actual link test from being dispatched. Investigation
 should move to the XStream user-mode binary containing the literal message
 rather than changing working PCI, DMA or interrupt semantics.
+
+
+## Trace 014500: Revision-page PCI communication error is family-1 A1/A2
+
+Opening Service -> AladdinAcqBoard -> Revision produces
+`HardwarePCI Communication error!` on the pre-fix x64 driver.
+
+The trace contains exactly 11 failed IOCTLs. All are CFDC2110 requests for
+family-1 opcodes 0xA1 or 0xA2; all other calls succeed.
+
+Recovered legacy semantics:
+
+```text
+family1/0xA1 -> BAR1 ACQFVER (0x00C)
+family1/0xA2 -> BAR0 FVER    (0x000)
+```
+
+Each is a local host-side register read and installs a 12-byte pending response:
+
+```text
+DWORD 0
+WORD  6
+WORD  status
+DWORD register_value
+```
+
+The x64 driver now implements this exact behavior. The Revision page is the
+next focused regression test.
+
+The user also located the Developer-link-test rejection string in
+`lecaladdinhwaccesspcisvr.dll`, making that DLL the next user-mode analysis
+target for `WaveRunner Driver Not Supported`.

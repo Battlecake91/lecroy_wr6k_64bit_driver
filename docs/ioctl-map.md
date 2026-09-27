@@ -3196,3 +3196,44 @@ bit through 85FB/0x01 and clears it with family-0 opcode 0x88.
 
 Both layers are required: opcode 0x88 clears the host-side sticky state, while
 CLRIRQ clears the underlying board interrupt source.
+
+
+## Family-1 opcodes 0xA1 / 0xA2: FPGA revision reads
+
+Service -> AladdinAcqBoard -> Revision exercises two local family-1 commands
+that are not generic board-message forwarders.
+
+Legacy `FUN_000165A6` dispatch:
+
+```text
+0xA1 -> FUN_00015BCE
+0xA2 -> FUN_00015C26
+```
+
+Object mapping through `FUN_00014847`:
+
+```text
+0xA1:
+  dispatcher +0x17E
+  = board +0x1026
+  -> BAR1 ACQFVER, offset 0x00C
+
+0xA2:
+  dispatcher +0x176
+  = board +0x101E
+  -> BAR0 FVER, offset 0x000
+```
+
+Both read one DWORD and create the same 12-byte local response:
+
+```text
+DWORD 0
+WORD  6
+WORD  status     // 0 success, 8 missing/unavailable register wrapper
+DWORD value
+```
+
+Trace `xstream_trace_20260928_014500.jsonl` is the first x64 runtime evidence
+for these commands. Before implementation, every observed A1/A2 request was
+rejected with STATUS_INVALID_DEVICE_REQUEST and XStream displayed
+`HardwarePCI Communication error!`.
