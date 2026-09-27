@@ -1206,10 +1206,6 @@ LecIsAllowedCfDc2110(
     _In_ ULONG InputLength
     )
 {
-    if (LecIsConfirmedForwardOnlyCfDc2110(Buffer, InputLength)) {
-        return TRUE;
-    }
-
     static const UCHAR resetPacket[] = {
         0x06,0x00,0x0A,0x00,0x03,0x00,0xFB,0xA5,
         0x40,0x02,0x40,0x01,0x52,0x45,0x53,0x45,0x54,0x00
@@ -1347,6 +1343,10 @@ LecIsAllowedCfDc2110(
 
     if (Buffer == NULL) {
         return FALSE;
+    }
+
+    if (LecIsConfirmedForwardOnlyCfDc2110(Buffer, InputLength)) {
+        return TRUE;
     }
 
 #define LECS65_MATCH_CAPTURED_PACKET(packet) \
