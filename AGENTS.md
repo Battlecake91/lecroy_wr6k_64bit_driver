@@ -2274,3 +2274,17 @@ Latest x64 kernel trace: `xstream_trace_20260927_212113.jsonl`.
 - Preserve the established baseline: no `ALADDINAcqDriver0` DOS alias, register `958695A4-693A-435E-8297-66F805D8E46A`, keep `CFDC2190`, keep the 85FB six-byte host header, and keep generic Family-0 opcode `0x88` acceptance.
 
 Next action: obtain complete original-32-bit and x64 Family-1 opcode-`0x96` responses and compare them byte-for-byte plus the subsequent request sequence.
+
+
+### 2026-09-27 opcode 0x96 legacy comparison result
+
+Full legacy user-mode traces establish the current pre-DMA blocker more precisely:
+
+- Request: `06000A000300FBA540019604002000000002080202000300FB854000`.
+- Legacy response starts `0000000000000000000002020000...`.
+- Current x64 response preview starts `0000000000000000000002000000...`.
+- First visible mismatch is output offset 11: legacy `0x02`, x64 `0x00`. It lies after the six-byte host header and is therefore firmware-side state, not the 85FB host-header prefix.
+- Legacy advances the request selector `0x20 -> 0x22 -> 0x24 -> 0x26 -> ...`; x64 remains on `0x20` while the readiness/status byte stays zero.
+- Two independent legacy captures agree on the complete 526-byte `0x20` response.
+
+Investigate the post-fix x64 command sequence immediately before the first Family-1 opcode-`0x96 / 0x20` call and compare its hardware side effects with legacy. Do not modify DMA/MDL handling yet.
