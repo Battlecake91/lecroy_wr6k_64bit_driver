@@ -2100,9 +2100,25 @@ continues polling JTAG without entering the acquisition IOCTL sequence.
 that the original DeviceControl handler is an inline success/no-data branch,
 and the x64 implementation already matches it.
 
-The next comparison therefore needs the current x64 **user-mode** Native-API
-flow, especially successful `CFDC21C0` register reads, thread ordering, and the
-requests between the first late JTAG status result and the acquisition branch.
-The kernel trace intentionally omits successful `CFDC21C0` entries. The older
-x64 user-mode trace `legacy_xstream_trace_20260927_203017.jsonl` predates the
-DOS-alias removal and cannot represent the current endpoint/control-flow state.
+The next comparison needs the successful `CFDC21C0` register/status traffic
+between the late JTAG status result and the acquisition branch. Older x64
+kernel traces omitted successful `CFDC21C0` entries by design. Commit
+`ca75f36d17ba0789f818e3f9f2bd599370b58ba1` removes that suppression without
+changing driver/hardware semantics. The next normal kernel capture can therefore
+show those reads directly. A new injected user-mode trace is only needed if the
+expanded kernel trace still cannot explain the branch.
+
+
+## Diagnostic trace change: retain successful CFDC21C0 reads
+
+Commit `ca75f36d17ba0789f818e3f9f2bd599370b58ba1` removes the early bring-up
+optimization that discarded successful `CFDC21C0` register reads from the
+kernel diagnostic ring. That optimization was useful when a divergent startup
+path produced heavy polling, but it now hides the exact status-read sequence
+needed to compare the post-`d51dbe2` x64 flow with the original acquisition
+transition.
+
+This commit changes tracing only. Register-read behavior, hardware accesses,
+and all acquisition/control semantics are unchanged. Existing traces remain
+valid, but successful CFDC21C0 absence in any capture made before this commit
+must be treated as an instrumentation limitation.
