@@ -2504,3 +2504,26 @@ and exactly nine 16-bit words, matching the legacy loop exactly.
 The x64 driver now implements this opcode structurally, including lazy legacy
 SPICTL initialization to `0x001FF000`, selector handling, control-shadow
 updates, bit reversal, SPIDAT writes, and local protocol status response.
+
+### Family 1 forward-only class and JTAG record-span behavior
+
+Legacy `FUN_000165A6` identifies the following family-1 opcodes as pure
+generic board-message forwarders:
+
+`0x4A, 0x81, 0x82, 0x90, 0x91, 0x96, 0x97, 0x99`.
+
+The x64 CFDC2110 semantic validator and execution path now treat this complete
+statically confirmed set as forward-only commands rather than requiring
+per-packet captures.
+
+Family-1 opcode `0x42` remains a local JTAG command. For modes 0 and 1,
+legacy `FUN_00015C7E` derives the number of four-byte input chunks from the
+bit count and reads them from the contiguous input record list. It does not
+stop at the current record's declared payload boundary. A captured 58-bit
+request demonstrates this behavior: the fourth JTAG chunk crosses into the
+following packed record.
+
+The x64 implementation reproduces that ABI quirk safely by allowing the JTAG
+parser to consume the remainder of the already validated complete IOCTL input
+buffer, while still rejecting any required read that would exceed the total
+buffer.
