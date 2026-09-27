@@ -52,6 +52,7 @@ static CRITICAL_SECTION g_logLock;
 static volatile LONG g_sequence;
 static LARGE_INTEGER g_qpcFrequency;
 static volatile LONG g_initialized;
+static volatile LONG g_recordsSinceFlush;
 
 static BOOL WINAPI HookDeviceIoControl(HANDLE,DWORD,LPVOID,DWORD,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static HANDLE WINAPI HookCreateFileW(LPCWSTR,DWORD,DWORD,LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE);
@@ -82,6 +83,19 @@ static void write_raw(const char* s, DWORD n)
 static void write_text(const char* s)
 {
     write_raw(s, text_len(s));
+}
+
+static void maybe_flush_log(void)
+{
+    /*
+     * Avoid flushing the filesystem cache after every traced call. That
+     * perturbs timing-sensitive legacy software far more than the hook itself.
+     * Periodic flushes still bound data loss if XStream crashes.
+     */
+    if (InterlockedIncrement(&g_recordsSinceFlush) >= 256) {
+        InterlockedExchange(&g_recordsSinceFlush, 0);
+        FlushFileBuffers(g_log);
+    }
 }
 
 static void write_u32(DWORD value)
@@ -256,7 +270,7 @@ static void log_create(const char* api,const char* path,HANDLE result,
     write_text(",\"flags\":\""); write_hex_u32(flags);
     write_text("\",\"last_error\":"); write_u32(error);
     write_text("}\r\n");
-    FlushFileBuffers(g_log);
+    maybe_flush_log();
     LeaveCriticalSection(&g_logLock);
 }
 
@@ -270,7 +284,7 @@ static void log_close(HANDLE handle, BOOL result, DWORD error)
     write_text("\",\"success\":"); write_text(result ? "true" : "false");
     write_text(",\"last_error\":"); write_u32(error);
     write_text("}\r\n");
-    FlushFileBuffers(g_log);
+    maybe_flush_log();
     LeaveCriticalSection(&g_logLock);
 }
 
@@ -400,7 +414,7 @@ static BOOL WINAPI HookDeviceIoControl(
     write_text(",\"output_truncated\":"); write_text(returned > outCopied ? "true" : "false");
     write_text(",\"output_hex\":"); write_hex_bytes(outCopy,outCopied);
     write_text("}\r\n");
-    FlushFileBuffers(g_log);
+    maybe_flush_log();
     LeaveCriticalSection(&g_logLock);
 
     if (inCopy) HeapFree(GetProcessHeap(),0,inCopy);
@@ -481,7 +495,7 @@ static LONG NTAPI HookNtDeviceIoControlFile(
     write_text(information > outCopied ? "true" : "false");
     write_text(",\"output_hex\":"); write_hex_bytes(outCopy,outCopied);
     write_text("}\r\n");
-    FlushFileBuffers(g_log);
+    maybe_flush_log();
     LeaveCriticalSection(&g_logLock);
 
     if (inCopy) HeapFree(GetProcessHeap(),0,inCopy);
@@ -605,7 +619,7 @@ __declspec(dllexport) DWORD WINAPI InitializeXStreamTrace(LPVOID unused)
 
     g_log = g_realCreateFileW(
         path,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
+        FILE_ATTRIBUTE_NORMAL,NULL);
     if (g_log == INVALID_HANDLE_VALUE) return 0;
 
     log_header();
