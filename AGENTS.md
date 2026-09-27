@@ -2074,3 +2074,25 @@ commits `45a4abe9cf08ec055b6b631881ec139575d80ca1` and
 
 Test this corrected five-interface configuration before making more JTAG or
 transport changes.
+
+
+## Five-interface retest did not resolve startup loop
+
+Fresh x64 trace `xstream_trace_20260927_201339.jsonl` was captured after
+registering the recovered 958695A4 main acquisition interface and with maximum
+processor state still at 5%.
+
+Result:
+- early corrected ABI behavior is active;
+- 930 CFDC2110 calls;
+- startup still reaches the same 76-bit family1/op42 poll;
+- seq 906 onward repeats 43 times;
+- response remains exactly `1400 3040 0000 0050 0020`.
+
+Conclusion: missing 958695A4 registration was a real defect but not the sole
+root cause.
+
+Next: use the x86 injected XStream user-mode tracer on the x64 system too. Its
+NtCreateFile records can directly prove which GUID/interface paths XStream opens
+with the replacement driver and permit an apples-to-apples user-mode comparison
+with legacy trace 20260927_195608.
