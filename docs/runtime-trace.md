@@ -1677,3 +1677,30 @@ Commits:
 - `45a4abe9cf08ec055b6b631881ec139575d80ca1`: increase interface count to 5;
 - `65525e75c557c0e58b685b6c64c1a5d340c8c6aa`: register the recovered main
   acquisition GUID.
+
+
+## Five-interface x64 retest
+
+Fresh x64 trace: `xstream_trace_20260927_201339.jsonl`, captured after adding
+the recovered main interface GUID `958695A4-693A-435E-8297-66F805D8E46A`
+and while the system remained limited to 5% maximum processor state.
+
+The corrected driver is active: the trace still shows the previously corrected
+early ABI details (0x00222400 succeeds, the trace-control descriptor is exact,
+and the register list begins with TxControl).
+
+However, adding the fifth interface did not materially change XStream's startup
+control flow. The trace contains 930 CFDC2110 calls and still reaches the same
+76-bit family-1/opcode-0x42 poll state. Starting at sequence 906, that poll is
+repeated 43 times with the identical response:
+
+`1400 3040 0000 0050 0020`
+
+Therefore the missing acquisition-interface registration was a real
+compatibility defect but is not sufficient to resolve the startup failure.
+
+Next discriminator: run the x86 injected user-mode tracer against the 32-bit
+XStream process on the x64 replacement system as well. Because the tracer now
+records NtCreateFile paths, this will show exactly which of the five interface
+GUID paths XStream opens under x64 and allow a same-layer comparison against
+the original 32-bit trace.
