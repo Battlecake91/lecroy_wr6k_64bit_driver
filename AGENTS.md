@@ -1672,3 +1672,29 @@ as a fallback for the replacement driver.
 
 Rebuild the x86 diagnostic after pulling and retry `lecdiag.exe build` then
 `lecdiag.exe legacy-jtag-poll` on the original driver system.
+
+
+## Legacy reference JTAG response obtained
+
+The x86 lecdiag probe now works with the original 32-bit driver.
+
+Exact repeated 76-bit poll response:
+- legacy full output:
+  `000000000000000000000C00000000144020000002002000`
+- current x64 full output:
+  `000000000000000000000C00000000144030000050002000`
+
+Five little-endian JTAG words:
+- legacy: 1400 2040 0000 0002 0020
+- x64:    1400 3040 0000 0050 0020
+
+Matching: words 1, 3, 5.
+Different: word 2 (2040 vs 3040), word 4 (0002 vs 0050).
+
+This is strong evidence that JTAG framing/extraction is now correct and that
+upstream device state differs before the poll. Do not spend more time changing
+JTAG response packing without new evidence.
+
+Next investigation should identify the state-setting operations before this
+poll, ideally by observing the original driver's complete startup IOCTL stream
+or by controlled direct probes.
