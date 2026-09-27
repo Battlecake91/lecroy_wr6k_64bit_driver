@@ -993,6 +993,69 @@ LecFillLegacyTraceBlock(
 
 static
 NTSTATUS
+LecFillLegacyRegisterEntry(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG Index,
+    _Out_writes_bytes_(LECS65_LEGACY_REGISTER_ENTRY_BYTES) UCHAR* Target
+    )
+{
+    const LECS65_LEGACY_REGISTER_LIST_ENTRY* source;
+    ULONG data = 0;
+    SIZE_T nameLength = 0;
+    volatile ULONG* reg;
+    NTSTATUS status;
+
+    if (Target == NULL ||
+        Index >= LECS65_LEGACY_REGISTER_COUNT) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    source = &g_LecLegacyRegisterList[Index];
+    RtlZeroMemory(Target, LECS65_LEGACY_REGISTER_ENTRY_BYTES);
+
+    while (source->Name[nameLength] != '\0' &&
+           nameLength < 0xFF) {
+        ++nameLength;
+    }
+
+    if (nameLength != 0) {
+        RtlCopyMemory(Target, source->Name, nameLength);
+    }
+
+    Target[0x100] = source->Bar;
+    LecWriteU32(Target + 0x101, source->Offset);
+    Target[0x105] = source->Type;
+
+    /*
+     * Legacy type 2 returns the wrapper's shadow DWORD rather than
+     * touching MMIO. Those shadows are zero immediately after
+     * construction unless updated through a wrapper write.
+     *
+     * Types 0, 1 and 4 are refreshed from hardware before serialization.
+     */
+    if (source->Type != 2) {
+        status = LecResolveRegister(
+            DevExt,
+            source->Bar,
+            source->Offset,
+            &reg);
+
+        if (NT_SUCCESS(status)) {
+            data = READ_REGISTER_ULONG(reg);
+        }
+    }
+
+    if (source->Bar == 0 &&
+        source->Offset == 0x084) {
+        data = DevExt->InterruptEnableShadow;
+    }
+
+    LecWriteU32(Target + 0x106, data);
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
 LecFillLegacyRegisterList(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Out_writes_bytes_(OutputLength) UCHAR* Buffer,
@@ -1006,56 +1069,15 @@ LecFillLegacyRegisterList(
         return STATUS_INVALID_BUFFER_SIZE;
     }
 
-    RtlZeroMemory(Buffer, OutputLength);
-
     for (i = 0; i < LECS65_LEGACY_REGISTER_COUNT; ++i) {
-        const LECS65_LEGACY_REGISTER_LIST_ENTRY* source =
-            &g_LecLegacyRegisterList[i];
-        UCHAR* target =
-            Buffer + i * LECS65_LEGACY_REGISTER_ENTRY_BYTES;
-        ULONG data = 0;
-        SIZE_T nameLength = 0;
-        volatile ULONG* reg;
-        NTSTATUS status;
+        NTSTATUS status = LecFillLegacyRegisterEntry(
+            DevExt,
+            i,
+            Buffer + i * LECS65_LEGACY_REGISTER_ENTRY_BYTES);
 
-        while (source->Name[nameLength] != '\0' &&
-               nameLength < 0xFF) {
-            ++nameLength;
+        if (!NT_SUCCESS(status)) {
+            return status;
         }
-
-        if (nameLength != 0) {
-            RtlCopyMemory(target, source->Name, nameLength);
-        }
-
-        target[0x100] = source->Bar;
-        LecWriteU32(target + 0x101, source->Offset);
-        target[0x105] = source->Type;
-
-        /*
-         * Legacy type 2 returns the wrapper's shadow DWORD rather than
-         * touching MMIO. Those shadows are zero immediately after
-         * construction unless updated through a wrapper write.
-         *
-         * Types 0, 1 and 4 are refreshed from hardware before serialization.
-         */
-        if (source->Type != 2) {
-            status = LecResolveRegister(
-                DevExt,
-                source->Bar,
-                source->Offset,
-                &reg);
-
-            if (NT_SUCCESS(status)) {
-                data = READ_REGISTER_ULONG(reg);
-            }
-        }
-
-        if (source->Bar == 0 &&
-            source->Offset == 0x084) {
-            data = DevExt->InterruptEnableShadow;
-        }
-
-        LecWriteU32(target + 0x106, data);
     }
 
     return STATUS_SUCCESS;
@@ -3013,6 +3035,41 @@ LecS65DeviceControl(
             (ULONG)devExt->LegacyFlagByte);
         break;
 
+    case LECS65_IOCTL_SET_TRACE_CONTROL:
+        if (systemBuffer == NULL ||
+            inputLength != 0x108 ||
+            outputLength != 0) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+        else {
+            ULONG level;
+            ULONG index;
+
+            RtlCopyMemory(
+                &level,
+                (PUCHAR)systemBuffer + 0x100,
+                sizeof(level));
+            RtlCopyMemory(
+                &index,
+                (PUCHAR)systemBuffer + 0x104,
+                sizeof(index));
+
+            /*
+             * Legacy FUN_00012ADA passes the final two DWORDs to
+             * FUN_00012290(traceControl, index, level). This only changes
+             * software trace verbosity and has no board-side effect.
+             */
+            status = STATUS_SUCCESS;
+            information = 0;
+            LecTrace(
+                "legacy 0x00223000 trace-control index=%lu level=%lu\n",
+                index,
+                level);
+        }
+        break;
+
     case LECS65_IOCTL_QUERY_BUFFER_A:
         if (systemBuffer == NULL) {
             status = STATUS_INVALID_BUFFER_SIZE;
@@ -3059,7 +3116,8 @@ LecS65DeviceControl(
                 "legacy 0x00223040 register-list size -> 0x%08lX\n",
                 *(PULONG)systemBuffer);
         }
-        else if (outputLength == LECS65_LEGACY_REGISTER_LIST_BYTES) {
+        else if (inputLength == 0 &&
+                 outputLength == LECS65_LEGACY_REGISTER_LIST_BYTES) {
             status = LecFillLegacyRegisterList(
                 devExt,
                 (PUCHAR)systemBuffer,
@@ -3067,6 +3125,23 @@ LecS65DeviceControl(
             information = NT_SUCCESS(status) ? outputLength : 0;
             LecTrace(
                 "legacy 0x00223040 register-list payload -> 0x%08X info=%Iu\n",
+                status,
+                information);
+        }
+        else if (inputLength == sizeof(ULONG) &&
+                 outputLength == LECS65_LEGACY_REGISTER_ENTRY_BYTES) {
+            ULONG index = *(PULONG)systemBuffer;
+
+            status = LecFillLegacyRegisterEntry(
+                devExt,
+                index,
+                (PUCHAR)systemBuffer);
+            information = NT_SUCCESS(status) ?
+                LECS65_LEGACY_REGISTER_ENTRY_BYTES : 0;
+
+            LecTrace(
+                "legacy 0x00223040 register entry index=%lu -> 0x%08X info=%Iu\n",
+                index,
                 status,
                 information);
         }
