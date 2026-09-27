@@ -513,3 +513,25 @@ recovery-path traffic.
 Selectors 6, 7 and 8 are now added as exact captured runtime-gate entries.
 Legacy family-1 opcode `0x81` still uses the already decoded generic board
 transport; no broader opcode rule is introduced.
+
+## Thirteenth staged startup capture
+
+The 2026-09-27 02:25 capture was terminated from the reproducible XStreamDSO
+startup error dialog instead of continuing past it. This produces a clean stop
+at the actual startup failure point with no recovery-path traffic afterwards.
+
+The trace contains 172 IOCTL records, including 161 `0xCFDC2110` calls:
+
+- 150 CFDC2110 calls completed successfully;
+- 11 were rejected by the byte-exact gate;
+- every rejected call is family-1 opcode `0x81`;
+- selector `0x09`: 5 rejections;
+- selector `0x0A`: 5 rejections;
+- selector `0x0B`: 1 rejection;
+- no later recovery traffic appears because XStream was terminated at the
+  dialog.
+
+This confirms that terminating at the dialog yields the authoritative normal
+startup boundary. The exact selector-9, selector-10, and selector-11 packet
+forms are now added to the byte-exact runtime gate and continue to use the
+already decoded generic BAR1 board-message transport.
