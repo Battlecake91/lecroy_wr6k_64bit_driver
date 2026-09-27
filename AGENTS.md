@@ -2019,3 +2019,27 @@ ABI constants: `4608e757...` and `d800ecf8...`.
 
 Next: build/load x64 with CPU maximum processor state matched to legacy 5%,
 capture a fresh XStream trace, then compare again before touching op99 transport.
+
+## Critical new finding: original LeCroy stack uses multiple handles
+
+Legacy native trace groups LeCroy IOCTL families by distinct handles:
+- 0x690: main CFDC2110/acquisition/register path;
+- 0x6A4: 0x00223004 / 0x00223000 trace-control;
+- 0x698: Dallas + 0x00222400 + Dallas-memory;
+- 0x6C4: 0x00223100 three-event registration;
+- 0x308 / 0xAF0 / 0xD88: delay/flag 0x00222C00 / 0x00222C04.
+
+This means the earlier conclusion "0x00222400 belongs to the acquisition
+DeviceControl switch and should succeed there" is not proven. Static analysis
+still found no 0x00222400 branch in that switch. The runtime call succeeds on a
+different legacy handle.
+
+Do not collapse these families conceptually until device-path mapping is known.
+
+Commit c3af835647f749564a18c9c589c10b53da349da7 adds NtCreateFile tracing to
+xstream_io_hook.dll. Rebuild and recapture legacy XStream. The next trace should
+contain type=nt_create_file records mapping native paths to handles, allowing us
+to identify whether these are separate device objects/interfaces/drivers.
+
+The live 0x00223040 register-list correction remains valid because it is on the
+main handle 0x690 together with CFDC2110.
