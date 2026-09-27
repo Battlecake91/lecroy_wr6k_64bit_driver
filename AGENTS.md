@@ -1411,3 +1411,28 @@ Static payload facts:
 Ghidra targets now also include 11A00, 13F70 and 19362 to close the remaining
 register-list/trace-control serialization details before implementing the full
 buffers.
+
+## Full legacy query payload stage implemented
+
+The x64 driver now implements both stages of 0x00223004 and 0x00223040.
+
+0x223004:
+- out=4 -> 0x110;
+- out=0x110 -> exact reconstructed CKeTraceControl block:
+  size=0x110, enabled=1, name="CKeTraceControl", type=2, trailing DWORD=0.
+
+0x223040:
+- out=4 -> 0x2CAE;
+- out=0x2CAE -> 43 entries x 0x10A bytes.
+- entry layout: name[256], BAR byte, DWORD offset, type byte, DWORD data.
+- order and type bytes are reconstructed from FUN_00014847, FUN_00014212,
+  FUN_000174F2 and FUN_0001785B.
+- type-2 entries use initial shadow value 0; types 0/1/4 are refreshed from
+  MMIO; INTEN uses InterruptEnableShadow.
+
+Relevant implementation commits:
+- ca931925... full payload serializers;
+- d12f0633... remove CRT strlen dependency for kernel linking.
+
+Next trace should show whether CFDC2124 / CFDC2138 / CFDD219F finally appear
+after the full payload queries succeed.
