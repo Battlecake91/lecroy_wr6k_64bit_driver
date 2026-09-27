@@ -2295,10 +2295,12 @@ Before requesting a new capture:
 Important trace-format distinction:
 
 - x64 `xstream_trace_*.jsonl` files produced from the in-kernel diagnostic
-  ring store only 128 output bytes per IOCTL and intentionally suppress
-  successful `CFDC21C0` / `LECS65_IOCTL_REGISTER_READ` entries. Therefore
-  the absence of successful `CFDC21C0` calls in those files is not evidence
-  that XStream did not issue them.
+  ring store only 128 output bytes per IOCTL. Traces captured **before**
+  commit `ca75f36d17ba0789f818e3f9f2bd599370b58ba1` also intentionally suppress
+  successful `CFDC21C0` / `LECS65_IOCTL_REGISTER_READ` entries. Their
+  absence in those older traces is not evidence that XStream did not issue
+  them. Newer traces retain successful register reads for control-flow
+  comparison.
 - legacy/user-mode `legacy_xstream_trace_*.jsonl` captures can contain full
   `NtDeviceIoControlFile` buffers. Format-version-3 captures also contain
   `NtCreateFile` records and therefore preserve interface/handle mapping.
@@ -2367,9 +2369,10 @@ fetch records as well. Commit
 already fixes this by using `recordOutput - 6` for normal raw-hardware 85FB
 responses while preserving opcode-`0x99` as a length-2 exception.
 
-Do not infer from the kernel trace that the legacy `CFDC21C0` polling block is
-missing: successful register-read IOCTLs are deliberately omitted by
-`LecRecordIoctlTrace`.
+Do not infer from pre-`ca75f36d` kernel traces that the legacy `CFDC21C0`
+polling block is missing: those traces deliberately omitted successful
+register-read IOCTLs. Commit `ca75f36d17ba0789f818e3f9f2bd599370b58ba1`
+removes that diagnostic suppression for new captures.
 
 Next hardware test: build/install current `main` including `d51dbe2` and run
 XStream. A useful success discriminator is that legacy performs 120 contiguous
@@ -2482,10 +2485,31 @@ information, which matches the current x64 handler. The absence of repeated
 `CFDC2184` calls is evidence of user-mode control-flow divergence, not evidence
 that the no-op handler is wrong.
 
-The next useful discriminator is a fresh injected x86 user-mode XStream trace
-on the **current post-d51dbe2 x64 system**. The kernel trace intentionally
-suppresses successful `CFDC21C0` reads and does not preserve the same
-thread/handle-level Native-API flow. Existing
-`legacy_xstream_trace_20260927_203017.jsonl` is not a substitute because it
-was captured on the earlier x64 endpoint state while `ALADDINAcqDriver0` was
-still published.
+The next useful discriminator is the successful `CFDC21C0` register/status
+traffic around the late JTAG/acquisition transition. Commit
+`ca75f36d17ba0789f818e3f9f2bd599370b58ba1` changes only diagnostics: it
+stops suppressing successful register reads in the kernel trace. No hardware
+or IOCTL semantics are changed. Retest with the normal scope desktop helper
+before escalating to another injected user-mode trace. If the kernel ring
+proves insufficient, a fresh user-mode Native-API trace on the current
+post-d51dbe2 endpoint state is the fallback; the older
+`legacy_xstream_trace_20260927_203017.jsonl` predates DOS-alias removal and
+is not an equivalent current-state reference.
+
+
+### Current diagnostic retest after ca75f36d
+
+Commit `ca75f36d17ba0789f818e3f9f2bd599370b58ba1` retains successful
+`CFDC21C0` register reads in the in-kernel trace. This is a tracing-only
+change. The next scope run should use the standard desktop helper at its exact
+path:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+& "C:\\Users\\LeCroyUser\\Desktop\\Run-LeCroy-XStream-Trace.ps1" -Configuration Debug
+```
+
+During the run, let XStream reach the no-waveform/acquiring state, leave it
+there long enough to execute the late JTAG polling block, then close XStream
+normally. The resulting trace should reveal the CFDC21C0 offsets and returned
+values that were hidden in earlier x64 captures.
