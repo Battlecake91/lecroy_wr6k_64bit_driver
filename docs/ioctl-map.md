@@ -2453,3 +2453,19 @@ The underlying BAR/register mapping is not yet confirmed.
 updates, then forwards the request to board firmware. The host logic is already
 implemented in the x64 driver. Runtime admission is now structural for this
 decoded opcode instead of matching only one captured control word.
+
+### Family 0 opcode 0xA0 resolved to PFREG
+
+The command-dispatch object used by `FUN_00015FD8` is the subobject at
+board-object offset `+0xEA8`. Legacy `FUN_00015FD8` dereferences its field
+at `+0x17A`.
+
+`FUN_00014847` initializes board-object offset `+0x1022` with the register
+object for **PFREG**, BAR1 offset `0xF4`. Because
+`0xEA8 + 0x17A = 0x1022`, the mapping is exact:
+
+`family 0 / opcode 0xA0 -> BAR1 PFREG (0xF4)`.
+
+The request supplies a 16-bit value which the legacy driver writes directly to
+PFREG and then returns a local success/status response. The x64 driver now
+implements this path structurally.
