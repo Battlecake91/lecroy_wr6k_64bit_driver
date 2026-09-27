@@ -1934,3 +1934,19 @@ GetLastError, bytes returned, thread id, duration and pending state. Async
 completion output is not captured yet. The goal is passive ground-truth tracing
 of the original XStream<->legacy-driver startup path, especially before the
 x64 trace's seq879 pre-poll block.
+
+
+## x86 tracer initializer export fix
+
+First legacy-system launch failed with:
+`GetProcAddress(InitializeXStreamTrace) failed: 127`.
+
+Cause: x86 `WINAPI` / `__stdcall` name decoration exported the initializer as
+`_InitializeXStreamTrace@4` instead of the undecorated name expected by the
+launcher.
+
+Fixes:
+- commit `78fc712932139bcf6646af07e5d0e7b4bb021330` adds an x86 linker export alias so the DLL exports stable name `InitializeXStreamTrace`;
+- commit `a0482af7c375578d02b3d1ff1d72b1d1eddd817d` makes the launcher fall back to decorated name `_InitializeXStreamTrace@4` for robustness.
+
+Rebuild with `./scripts/build-xstream-ioctl-trace.ps1` and copy both rebuilt x86 files to the legacy system before retrying.
