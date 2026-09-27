@@ -937,3 +937,20 @@ three exact observed packets are now admitted and routed through the existing
 generic transport implementation. Their board-firmware meaning remains
 unknown; keep all uncaptured `0x81` forms rejected. No acquisition-launch
 IOCTL appears yet.
+
+## Latest staged trace: 2026-09-27 02:01
+
+Raw trace `xstream_trace_20260927_020125.jsonl` contains 180 IOCTL records and
+158 CFDC2110 calls: 147 success and 11 rejected.
+
+The exact family-1 opcode-`0x81` selectors 0, 1 and 2 now succeed. The only
+rejected packet shapes are the same 22-byte request with selectors 3, 4 and 5,
+with counts 5, 5 and 1. These three exact observed forms are now admitted
+through the same generic board-message transport. No broad opcode-`0x81`
+rule is introduced.
+
+The user reports a reproducible XStreamDSO startup error at the same point on
+essentially every test run and manually skips it. Treat that error as relevant
+until disproven: it may be the application-visible consequence of the still
+incomplete startup command sequence. Correlate whether the dialog disappears
+or moves once the remaining startup rejections are removed.
