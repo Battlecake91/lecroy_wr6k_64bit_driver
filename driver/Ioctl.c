@@ -1481,10 +1481,40 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
+            else if (family == 1 && opcode == 0x42) {
+                const UCHAR* request = payload + 3;
+                ULONG requestOffset =
+                    offset + 8UL + 3UL;
+                ULONG available;
+                ULONG bitCount;
+                ULONG required;
+
+                if (payloadLength < 12 ||
+                    request[0] > 1 ||
+                    requestOffset > InputLength) {
+                    return FALSE;
+                }
+
+                bitCount = LecReadU16(request + 5);
+                required =
+                    9UL + ((bitCount + 15UL) / 16UL) * 4UL;
+                available = InputLength - requestOffset;
+
+                if (required > available) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
             else if ((family == 0 && opcode == 0x84) ||
                      (family == 1 &&
-                      (opcode == 0x81 ||
+                      (opcode == 0x4A ||
+                       opcode == 0x81 ||
+                       opcode == 0x82 ||
                        opcode == 0x90 ||
+                       opcode == 0x91 ||
+                       opcode == 0x96 ||
+                       opcode == 0x97 ||
                        opcode == 0x99))) {
                 sawForwardCommand = TRUE;
             }
@@ -1788,9 +1818,14 @@ LecIoctlCfDc2110(
                     NT_SUCCESS(hwStatus) ? 0 : 8;
             }
             else if (payload[1] == 1 &&
-                     (payload[2] == 0x99 ||
+                     (payload[2] == 0x4A ||
+                      payload[2] == 0x81 ||
+                      payload[2] == 0x82 ||
                       payload[2] == 0x90 ||
-                      payload[2] == 0x81)) {
+                      payload[2] == 0x91 ||
+                      payload[2] == 0x96 ||
+                      payload[2] == 0x97 ||
+                      payload[2] == 0x99)) {
                 NTSTATUS hwStatus = LecTransportSend(
                     DevExt,
                     record + 6,
@@ -2073,10 +2108,15 @@ LecIoctlCfDc2110(
                     hwStatus = STATUS_INVALID_BUFFER_SIZE;
                 }
                 else {
+                    ULONG requestOffset =
+                        inputOffset + 8UL + 3UL;
+                    ULONG requestAvailable =
+                        InputLength - requestOffset;
+
                     hwStatus = LecJtagExecute(
                         DevExt,
                         payload + 3,
-                        payloadLength - 3,
+                        requestAvailable,
                         pendingResponse,
                         max(OutputLength, 8UL),
                         &pendingResponseLength);
