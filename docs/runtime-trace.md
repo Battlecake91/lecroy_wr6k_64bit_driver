@@ -1500,3 +1500,33 @@ pending overlapped calls are marked but completion APIs are not yet hooked.
 This is now the preferred ground-truth source for comparing the original driver
 with the x64 replacement, especially the startup traffic before the known
 pre-poll block.
+
+## First legacy user-mode hook capture and native-API escalation
+
+First successful user-mode capture:
+`legacy_xstream_trace_20260927_165243.jsonl`
+
+Summary:
+- 2016 JSONL records total;
+- 2014 `DeviceIoControl` records;
+- only five distinct IOCTL codes were observed;
+- all observed codes are in the `0x004708xx` family;
+- captured payloads contain HID device paths;
+- no LeCroy IOCTL such as `0xCFDC2110`, `0xCFDC21C8`, or `0x00222C00`
+  appeared through the Win32 `DeviceIoControl` hook.
+
+Therefore the LeCroy software path is not using the hooked Win32 API surface for
+its acquisition-driver traffic. The likely next layer is the Native API.
+
+Commit `994a875641e88adb9f3bcec5a3b8c1ed91fbca8d` extends the injected x86
+hook to intercept `ntdll!NtDeviceIoControlFile` as well. The new `nt_ioctl`
+records contain:
+- native IOCTL code;
+- input/output sizes and exact buffers;
+- returned NTSTATUS;
+- `IO_STATUS_BLOCK.Information`;
+- event/APC pointers and pending state;
+- duration, sequence and thread id.
+
+Trace format version is now 2. Rebuild both x86 tracer binaries and repeat the
+legacy XStream capture.
