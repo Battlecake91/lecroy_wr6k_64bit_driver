@@ -2749,3 +2749,30 @@ the mapped register before serialization. INTEN is returned from the x64
 driver's maintained interrupt-enable shadow.
 
 This closes both the size-query and full-payload halves of the two-stage ABI.
+
+### 0x00223000 trace-control setter and indexed 0x00223040 query
+
+Legacy DeviceControl dispatch maps `0x00223000` to `FUN_00012ADA`.
+
+Its ABI is:
+
+- METHOD_BUFFERED;
+- input length exactly `0x108`;
+- no output;
+- final two DWORDs are passed as `index` and `level` to
+  `FUN_00012290`.
+
+The operation only changes the software trace-control object and has no board
+MMIO side effect. The x64 driver validates the structure and completes it
+successfully while recording the requested index/level in the debug trace.
+
+Legacy `0x00223040` has a third form in addition to size and full-list reads:
+
+- input length 4;
+- output length `0x10A`;
+- input DWORD = register-list index;
+- output = one refreshed serialized register entry.
+
+Legacy `FUN_00012C18` calls `FUN_000124C2` for this form. The x64 driver now
+supports indexed entries 0 through 42 through the same serializer used for the
+full 43-entry list.
