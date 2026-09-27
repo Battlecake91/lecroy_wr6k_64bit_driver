@@ -1567,3 +1567,35 @@ contains real LeCroy traffic, including approximately:
 - 1984 x `0xCFDC2138`;
 - 90 x `0xCFDC2124`;
 - 74 x `0xCFDC2128`.
+
+
+## First semantic legacy-vs-x64 comparison
+
+A new standard-library-only comparator is available at
+`tools/trace-diff/compare_xstream_traces.py`.
+
+Comparing `legacy_xstream_trace_20260927_185222.jsonl` against
+`xstream_trace_20260927_151006.jsonl` shows the first important differences
+very early in startup:
+
+1. Both streams begin with Dallas ID, 0x00222400, and Dallas memory requests.
+2. The original driver returns success for 0x00222400; x64 returned
+   `STATUS_INVALID_DEVICE_REQUEST`.
+3. Immediately after that, the x64 XStream path contains three raw
+   `0xCFDC21C4` writes to BAR0 offset 0x0C with values 4, 2 and 1. These calls
+   are absent from the original-driver stream.
+4. For the same family-1/opcode-0x99 CFDC2110 request, the original driver
+   returns real board payload while the captured x64 response differs
+   substantially. This may be downstream of the already-diverged startup state
+   and should be retested after the early ABI fixes.
+5. Original XStream performs opcode-0x88, opcode-0x85 and CFDC2184 earlier than
+   the x64 path.
+6. The original 0x00223040 register list starts with TxControl; the x64 list
+   started with FVER.
+7. Original trace-control descriptor string is `CKeTraceControl: `, while x64
+   emitted `CKeTraceControl`.
+
+These are earlier and more plausible control-flow causes than the later
+76-bit JTAG poll. The x64 driver has been corrected for the proven local ABI
+differences first; board-forward response differences will be re-evaluated
+after a new trace.
