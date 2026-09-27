@@ -911,3 +911,34 @@ During the same verification, the type-1/type-2 MAM path was corrected:
 legacy writes `(entry_index << 16) | payload_word` to MAMDAT, not the raw
 16-bit payload word alone. This correction was made before the next scope
 hardware run.
+
+## Twenty-fifth runtime capture: arm succeeds, no acquisition data
+
+Trace `xstream_trace_20260927_104718.jsonl` corresponds to the first run where
+XStream no longer reports that it cannot arm the acquisition board.
+
+The capture contains 1050 IOCTL records. Of these, 1033 are CFDC2110 calls and
+all 1033 complete successfully. The previously reconstructed probe, JTAG, SPI,
+MAM, timer, PFREG and board-forwarding paths therefore no longer produce a
+runtime rejection in this capture.
+
+Only three IOCTLs fail:
+
+- `0x00222400`: zero input, four-byte output, STATUS_INVALID_DEVICE_REQUEST;
+- `0x00223004` (`QUERY_BUFFER_A`): zero input, four-byte output,
+  STATUS_INVALID_DEVICE_REQUEST;
+- `0x00223040` (`QUERY_BUFFER_B`): zero input, four-byte output,
+  STATUS_INVALID_DEVICE_REQUEST.
+
+The two buffer-query IOCTLs occur immediately after event registration during
+initialization. No `CFDC2124` transfer registration, `CFDC2138` buffered
+acquisition, or `CFDD219F` METHOD_NEITHER acquisition call appears later in
+the trace.
+
+This makes the missing four-byte query results the current leading blocker for
+measurement data: XStream can configure and arm the board, but it never enters
+the registered-buffer/acquisition execution path.
+
+Additional Ghidra targets around the earlier DeviceControl dispatch tree and
+the candidate handler functions were added to resolve the exact semantics of
+`0x00222400`, `0x00223004`, and `0x00223040`.
