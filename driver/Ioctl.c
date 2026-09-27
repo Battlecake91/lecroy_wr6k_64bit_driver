@@ -1113,6 +1113,74 @@ LecJtagExecute(
 
 
 static
+NTSTATUS
+LecJtagWriteOnly(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(RequestLength) const UCHAR* Request,
+    _In_ ULONG RequestLength
+    )
+{
+    volatile ULONG* jtagNum;
+    volatile ULONG* jtagData;
+    ULONG remainingBits;
+    ULONG inputOffset = 5;
+    UCHAR mode;
+    NTSTATUS status;
+
+    if (Request == NULL || RequestLength < 5) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    mode = Request[0];
+    remainingBits = Request[1];
+
+    if (mode > 1) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_JTAG_NUM,
+        &jtagNum);
+    if (!NT_SUCCESS(status)) return status;
+
+    status = LecGetBar1Register(
+        DevExt,
+        LECS65_BAR1_JTAG_DATA,
+        &jtagData);
+    if (!NT_SUCCESS(status)) return status;
+
+    while (remainingBits != 0) {
+        ULONG thisBits = min(remainingBits, 16UL);
+        USHORT firstWord;
+        USHORT secondWord;
+        ULONG dataValue;
+
+        if (inputOffset + 4 > RequestLength) {
+            return STATUS_INVALID_BUFFER_SIZE;
+        }
+
+        firstWord = LecReadU16(Request + inputOffset);
+        secondWord = LecReadU16(Request + inputOffset + 2);
+
+        WRITE_REGISTER_ULONG(
+            jtagNum,
+            ((mode != 0) ? 0x100UL : 0UL) |
+            (thisBits & 0x0FUL));
+
+        dataValue =
+            ((ULONG)firstWord << 16) |
+            (ULONG)secondWord;
+        WRITE_REGISTER_ULONG(jtagData, dataValue);
+
+        inputOffset += 4;
+        remainingBits -= thisBits;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static
 BOOLEAN
 LecIsConfirmedForwardOnlyCfDc2110(
     _In_reads_bytes_(InputLength) const UCHAR* Buffer,
@@ -1172,15 +1240,49 @@ LecIsConfirmedForwardOnlyCfDc2110(
             family = payload[1];
             opcode = payload[2];
 
-            if (!((family == 0 && opcode == 0x84) ||
-                  (family == 1 &&
-                   (opcode == 0x81 ||
-                    opcode == 0x90 ||
-                    opcode == 0x99)))) {
+            if ((family == 0 && opcode == 0x42)) {
+                const UCHAR* request = payload + 3;
+                ULONG requestLength = (ULONG)payloadLength - 3;
+                ULONG bitCount;
+                ULONG chunks;
+
+                if (requestLength < 5 || request[0] > 1) {
+                    return FALSE;
+                }
+
+                bitCount = request[1];
+                chunks = (bitCount + 15UL) / 16UL;
+                if (requestLength < 5UL + chunks * 4UL) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
+            else if (family == 0 && opcode == 0x92) {
+                ULONG offset;
+
+                if (payloadLength != 10 || payload[3] != 1) {
+                    return FALSE;
+                }
+
+                offset = (ULONG)LecReadU16(payload + 4);
+                if ((offset & 3UL) != 0 ||
+                    offset > LECS65_BAR1_GPIO_DATA) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
+            else if ((family == 0 && opcode == 0x84) ||
+                     (family == 1 &&
+                      (opcode == 0x81 ||
+                       opcode == 0x90 ||
+                       opcode == 0x99))) {
+                sawForwardCommand = TRUE;
+            }
+            else {
                 return FALSE;
             }
-
-            sawForwardCommand = TRUE;
         }
         else if (signature == 0x85FB) {
             if (payloadLength < 2 ||
@@ -1500,6 +1602,63 @@ LecIoctlCfDc2110(
                 }
                 else {
                     protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 0 && payload[2] == 0x42) {
+                NTSTATUS hwStatus = LecJtagWriteOnly(
+                    DevExt,
+                    payload + 3,
+                    payloadLength - 3);
+
+                if (NT_SUCCESS(hwStatus)) {
+                    protocolStatus = 0;
+                    LecWriteU32(pendingResponse, 0);
+                    LecWriteU16(pendingResponse + 4, 2);
+                    LecWriteU16(pendingResponse + 6, 0);
+                    pendingResponseLength = 8;
+                    pendingResponseReady = TRUE;
+                    hardwareResponsePending = FALSE;
+                }
+                else if (hwStatus == STATUS_INVALID_PARAMETER ||
+                         hwStatus == STATUS_INVALID_BUFFER_SIZE) {
+                    protocolStatus = 4;
+                }
+                else {
+                    protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 0 && payload[2] == 0x92) {
+                NTSTATUS hwStatus;
+                volatile ULONG* target;
+                ULONG offset;
+                ULONG value;
+
+                if (payloadLength != 10 || payload[3] != 1) {
+                    protocolStatus = 4;
+                }
+                else {
+                    offset = (ULONG)LecReadU16(payload + 4);
+                    RtlCopyMemory(&value, payload + 6, sizeof(value));
+
+                    hwStatus = LecGetBar1Register(
+                        DevExt,
+                        offset,
+                        &target);
+
+                    if (NT_SUCCESS(hwStatus)) {
+                        WRITE_REGISTER_ULONG(target, value);
+                        protocolStatus = 0;
+                    }
+                    else {
+                        protocolStatus = 8;
+                    }
+
+                    LecWriteU32(pendingResponse, 0);
+                    LecWriteU16(pendingResponse + 4, 2);
+                    LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
+                    pendingResponseLength = 8;
+                    pendingResponseReady = TRUE;
+                    hardwareResponsePending = FALSE;
                 }
             }
             else if (payload[1] == 0 && payload[2] == 0x84) {
