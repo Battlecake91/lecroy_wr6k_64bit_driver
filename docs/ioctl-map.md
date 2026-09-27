@@ -2656,3 +2656,33 @@ output buffer the legacy driver returns that size DWORD directly.
 The actual values are not hard-coded in the dispatchers. Their producer/helper
 functions still need to be exported before the x64 driver can return the exact
 legacy values without guessing.
+
+### Implemented legacy buffer-size queries
+
+The final helper exports resolve the concrete startup values for the two
+four-byte query IOCTLs.
+
+`0x00223004` -> legacy `FUN_00012A5E`:
+- the backing trace-control object at board-object `+0x11A2` allocates
+  `0x110` bytes;
+- the first DWORD of that allocation is initialized to `0x110`;
+- the four-byte query returns exactly that DWORD.
+
+Therefore the x64 compatibility result is:
+
+`0x00223004 -> 0x00000110`.
+
+`0x00223040` -> legacy `FUN_00012C18`:
+- `FUN_00012386` returns
+  `(maxInserted + 1) * 0x10A`;
+- static registration references show 43 distinct register objects are
+  inserted into the legacy register list during setup;
+- therefore `maxInserted = 42` and the required serialized size is
+  `43 * 0x10A = 0x2CAE`.
+
+Therefore the x64 compatibility result is:
+
+`0x00223040 -> 0x00002CAE`.
+
+Both IOCTLs are now implemented as exact four-byte METHOD_BUFFERED size
+queries.
