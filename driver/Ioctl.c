@@ -3007,6 +3007,318 @@ Exit:
 
 static
 NTSTATUS
+LecIoctlAcquireBufferedOneChannel(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_updates_bytes_(OutputLength) UCHAR* SystemBuffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _Out_ PULONG_PTR Information
+    )
+{
+    ULONG token;
+    UCHAR channelCount;
+    UCHAR pairMarker;
+    UCHAR channel;
+    ULONG config;
+    ULONG requestedBytes;
+    ULONG blockBytes;
+    ULONG launchCount;
+    ULONG currentMask;
+    ULONG cleanupMask;
+    ULONG gpioValue;
+    ULONG iimStatus;
+    ULONG mamValues[5];
+    USHORT sequenceValue;
+    PLECS65_TRANSFER transfer = NULL;
+    volatile ULONG* gpioData;
+    volatile ULONG* mamData;
+    volatile ULONG* mamPgo;
+    volatile ULONG* mamSeq;
+    volatile ULONG* mamRgo;
+    volatile ULONG* sgta;
+    volatile ULONG* iimtc;
+    volatile ULONG* iimcl;
+    volatile ULONG* iimst;
+    volatile ULONG* errs;
+    LARGE_INTEGER timeout;
+    NTSTATUS status;
+    NTSTATUS disableStatus;
+    BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferInterruptEnabled = FALSE;
+    ULONG i;
+
+    if (SystemBuffer == NULL ||
+        Information == NULL ||
+        InputLength != 15 ||
+        OutputLength != sizeof(ULONG)) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    RtlCopyMemory(&token, SystemBuffer, sizeof(token));
+    channelCount = SystemBuffer[4];
+    pairMarker = SystemBuffer[5];
+    channel = SystemBuffer[6];
+    config = LecReadU32(SystemBuffer + 7);
+    requestedBytes = LecReadU32(SystemBuffer + 11);
+
+    /*
+     * Stage only the exact CFDC2138 ABI shape seen in both complete legacy
+     * runtime traces. All 1902 calls in the 19:56 reference capture use one
+     * channel and pair-marker byte 1. The legacy parser consumes the second
+     * byte of that pair as the six-bit channel identifier.
+     */
+    if (channelCount != 1 ||
+        pairMarker != 1 ||
+        channel > 0x3FU ||
+        requestedBytes == 0 ||
+        requestedBytes >= 0x01000000UL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /*
+     * FUN_00013C84 requires the one-channel byte count to be a 0x400-byte
+     * multiple once it reaches 0x400 bytes. Smaller transfers are legal.
+     */
+    if (requestedBytes >= 0x400UL &&
+        (requestedBytes & 0x3FFUL) != 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    transfer = LecFindTransferOwned(
+        DevExt,
+        token,
+        PsGetCurrentProcessId());
+
+    if (transfer == NULL) {
+        status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+
+    if (DevExt->CurrentTransfer != NULL) {
+        status = STATUS_DEVICE_BUSY;
+        goto Exit;
+    }
+
+    if (transfer->DataBytes != requestedBytes) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Exit;
+    }
+
+    if (transfer->TotalDwords != requestedBytes / sizeof(ULONG)) {
+        status = STATUS_INTERNAL_ERROR;
+        goto Exit;
+    }
+
+    /*
+     * CFDC2124 builds the board descriptor chain before publishing the token.
+     * The x64 builder rejects every source or table physical address above
+     * 4 GiB, so a registered transfer reaching this point is representable by
+     * the board's legacy 32-bit descriptor ABI.
+     */
+    status = LecResolveRegister(DevExt, 1, 0x0C4, &gpioData);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 1, 0x040, &mamData);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 1, 0x044, &mamPgo);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 1, 0x060, &mamSeq);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 1, 0x064, &mamRgo);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 0, 0x040, &sgta);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 0, 0x044, &iimtc);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 0, 0x048, &iimcl);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 0, 0x04C, &iimst);
+    if (!NT_SUCCESS(status)) goto Exit;
+    status = LecResolveRegister(DevExt, 0, 0x004, &errs);
+    if (!NT_SUCCESS(status)) goto Exit;
+
+    /* FUN_000120DC clears GPIODAT bit 16 before acquisition setup. */
+    gpioValue = READ_REGISTER_ULONG(gpioData);
+    WRITE_REGISTER_ULONG(
+        gpioData,
+        gpioValue & 0xFFFEFFFFUL);
+
+    blockBytes = min(requestedBytes, 0x400UL);
+
+    /*
+     * FUN_00017D20/FUN_00017C16 generate five indexed MAMDAT words:
+     * channel selector, config low/high and block size low/high.
+     */
+    mamValues[0] = 0x0E00UL | (ULONG)channel;
+    mamValues[1] = config & 0xFFFFUL;
+    mamValues[2] = (config >> 16) & 0xFFFFUL;
+    mamValues[3] = blockBytes & 0xFFFFUL;
+    mamValues[4] = (blockBytes >> 16) & 0xFFFFUL;
+
+    if (!DevExt->LegacyMamShadowInitialized) {
+        RtlFillMemory(
+            DevExt->LegacyMamShadow,
+            sizeof(DevExt->LegacyMamShadow),
+            0xFF);
+        DevExt->LegacyMamShadowInitialized = TRUE;
+    }
+
+    for (i = 0; i < RTL_NUMBER_OF(mamValues); ++i) {
+        USHORT data = (USHORT)mamValues[i];
+
+        if (DevExt->LegacyMamShadow[i] != data) {
+            DevExt->LegacyMamShadow[i] = data;
+            WRITE_REGISTER_ULONG(
+                mamData,
+                (i << 16) | (ULONG)data);
+        }
+    }
+
+    WRITE_REGISTER_ULONG(mamPgo, 0x105UL);
+
+    /*
+     * FUN_00017EE0 encodes sequence index 0, final-entry bit 6 and channel.
+     * MAMSEQ owns a separate indexed shadow in the original driver.
+     */
+    sequenceValue = (USHORT)(0x40U | channel);
+
+    if (!DevExt->LegacyMamSeqShadowInitialized) {
+        RtlFillMemory(
+            DevExt->LegacyMamSeqShadow,
+            sizeof(DevExt->LegacyMamSeqShadow),
+            0xFF);
+        DevExt->LegacyMamSeqShadowInitialized = TRUE;
+    }
+
+    if (DevExt->LegacyMamSeqShadow[0] != sequenceValue) {
+        DevExt->LegacyMamSeqShadow[0] = sequenceValue;
+        WRITE_REGISTER_ULONG(mamSeq, (ULONG)sequenceValue);
+    }
+
+    /*
+     * FUN_00012D6A derives MAMRGO as:
+     * requested_bytes / min(requested_bytes, 0x400).
+     */
+    launchCount = requestedBytes / blockBytes;
+    if (launchCount == 0) {
+        status = STATUS_INVALID_PARAMETER;
+        goto Exit;
+    }
+
+    /*
+     * FUN_000171DE programs the selected transfer and then waits for INTST
+     * bit 0 to signal transfer->CompletionEvent.
+     */
+    WRITE_REGISTER_ULONG(
+        sgta,
+        transfer->DescriptorTablePhysical);
+    WRITE_REGISTER_ULONG(
+        iimtc,
+        transfer->TotalDwords);
+
+    KeResetEvent(&transfer->CompletionEvent);
+    (VOID)InterlockedAnd(
+        (volatile LONG*)&DevExt->InterruptPendingShadow,
+        ~1L);
+
+    (VOID)InterlockedExchangePointer(
+        (PVOID volatile*)&DevExt->CurrentTransfer,
+        transfer);
+    transferSelected = TRUE;
+
+    currentMask = (ULONG)InterlockedCompareExchange(
+        (volatile LONG*)&DevExt->InterruptEnableShadow,
+        0,
+        0);
+
+    status = LecCommitLegacyInterruptMask(
+        DevExt,
+        currentMask | 0x01UL);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
+    transferInterruptEnabled = TRUE;
+
+    WRITE_REGISTER_ULONG(iimcl, 1UL);
+    WRITE_REGISTER_ULONG(mamRgo, launchCount);
+
+    timeout.QuadPart = -50000000LL;
+    status = KeWaitForSingleObject(
+        &transfer->CompletionEvent,
+        Executive,
+        KernelMode,
+        FALSE,
+        &timeout);
+
+    if (status == STATUS_TIMEOUT) {
+        status = STATUS_IO_TIMEOUT;
+    }
+
+CleanupTransfer:
+    if (transferInterruptEnabled) {
+        cleanupMask = (ULONG)InterlockedCompareExchange(
+            (volatile LONG*)&DevExt->InterruptEnableShadow,
+            0,
+            0);
+
+        disableStatus = LecCommitLegacyInterruptMask(
+            DevExt,
+            cleanupMask & ~0x01UL);
+
+        if (NT_SUCCESS(status) &&
+            !NT_SUCCESS(disableStatus)) {
+            status = disableStatus;
+        }
+    }
+
+    if (transferSelected) {
+        (VOID)InterlockedExchangePointer(
+            (PVOID volatile*)&DevExt->CurrentTransfer,
+            NULL);
+    }
+
+    /*
+     * FUN_00012D6A performs this IIM status cleanup after the synchronous
+     * transfer and then reads ERRS.
+     */
+    iimStatus = READ_REGISTER_ULONG(iimst);
+    if ((iimStatus & 0x01UL) != 0) {
+        WRITE_REGISTER_ULONG(iimcl, 0UL);
+    }
+    (VOID)READ_REGISTER_ULONG(errs);
+
+    /*
+     * Once legacy validation reaches FUN_00012D6A, the handler reports the
+     * requested byte count through its four-byte output slot even when the
+     * synchronous hardware operation itself later fails.
+     */
+    LecWriteU32(SystemBuffer, requestedBytes);
+    *Information = sizeof(ULONG);
+
+    LecTrace(
+        "CFDC2138 one-channel DMA: token=%lu ch=%u config=0x%08lX bytes=%lu SGTA=0x%08lX IIMTC=%lu MAMRGO=%lu status=0x%08X\n",
+        token,
+        (ULONG)channel,
+        config,
+        requestedBytes,
+        transfer->DescriptorTablePhysical,
+        transfer->TotalDwords,
+        launchCount,
+        status);
+
+Exit:
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+    return status;
+}
+
+static
+NTSTATUS
 LecIoctlRegisterRead(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_updates_bytes_(OutputLength) PVOID SystemBuffer,
@@ -3667,15 +3979,12 @@ LecS65DeviceControl(
         break;
 
     case LECS65_IOCTL_ACQUIRE_BUFFERED:
-        /*
-         * The host-side ABI and MAM descriptor programming are decoded, but
-         * active acquisition stays gated until x64 DMA address-width and
-         * launch-count units are verified on the reference hardware.
-         */
-        status = STATUS_NOT_SUPPORTED;
-        information = 0;
-        LecTrace(
-            "CFDC2138 acquisition gated: trace captured, hardware launch disabled\n");
+        status = LecIoctlAcquireBufferedOneChannel(
+            devExt,
+            (UCHAR*)systemBuffer,
+            inputLength,
+            outputLength,
+            &information);
         break;
 
     case LECS65_IOCTL_ACQUIRE_NEITHER:

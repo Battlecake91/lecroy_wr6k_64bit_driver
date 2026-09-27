@@ -2220,3 +2220,34 @@ JTAG status request, `CFDC2124`, and `CFDC2138`.
 DMA execution remains gated; the purpose of the next test is to verify that
 XStream reaches the already implemented transfer registration and then the
 still-disabled acquisition handler.
+
+
+## Trace 230317: CAAcqDescBuilder reaches the gated CFDC2138 path
+
+`xstream_trace_20260927_230317.jsonl` reaches real transfer registration and
+buffered acquisition for the first time. XStream's new fatal dialog is:
+
+```text
+CAAcqDescBuilder::Init
+FAILED to Initialize Memory! NumSeg: 40
+```
+
+The failure is directly explained by the trace rather than by an unknown
+application inconsistency. `CFDC2124` successfully registers a 0x0C04-byte
+WOW64 buffer and returns opaque token 1. Its following 15-byte `CFDC2138`
+request asks for a one-channel 0x0C00-byte acquisition, but the x64 handler was
+still deliberately returning `STATUS_NOT_SUPPORTED`.
+
+The equivalent legacy request succeeds and returns `000C0000`.
+All 1902 CFDC2138 calls in the complete 19:56 original capture use a 15-byte
+one-channel request and a four-byte completed-byte output.
+
+The replacement now enables that exact proven path. It reuses the already
+validated CFDC2124 MDL/descriptor chain, programs the recovered one-channel MAM
+configuration, SGTA/IIMTC, IIMCL and MAMRGO sequence, waits up to five seconds
+for INTST bit 0 to signal the selected transfer event, disables transfer
+interrupt bit 0 and performs the legacy IIMST/IIMCL cleanup.
+
+Successful CFDC2124 remains a hard safety gate: source and descriptor-table
+physical addresses above 4 GiB are rejected before a token is published.
+Multi-channel CFDC2138 and CFDD219F remain disabled.

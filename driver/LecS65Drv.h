@@ -274,6 +274,10 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     BOOLEAN LegacyMamShadowInitialized;
     UCHAR ReservedMamShadow[3];
 
+    USHORT LegacyMamSeqShadow[256];
+    BOOLEAN LegacyMamSeqShadowInitialized;
+    UCHAR ReservedMamSeqShadow[3];
+
     KSPIN_LOCK TraceLock;
     ULONGLONG TraceNextSequence;
     ULONG TraceWriteIndex;

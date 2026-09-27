@@ -2988,3 +2988,54 @@ The masks belong to the command/status object used by family-0 control:
 Both full legacy runtime captures repeatedly return
 `000000000400BF028000` at the acquisition transition, corresponding to
 enabled mask `0x02BF` and pending mask `0x0080`.
+
+
+## CFDC2138 observed one-channel ABI and execution
+
+The first x64 runtime request is:
+
+```text
+0100000001010100000000000C0000
+```
+
+The observed 15-byte structure is:
+
+```text
+DWORD transfer_token
+BYTE  channel_count
+BYTE  pair_marker
+BYTE  channel_id
+DWORD config
+DWORD requested_data_bytes
+```
+
+Every CFDC2138 call in the complete working legacy runtime capture uses
+`channel_count=1` and `pair_marker=1`. The legacy parser consumes the
+second byte of the pair as a six-bit channel ID.
+
+For the staged one-channel path:
+
+```text
+MAMDAT[0] = 0x0E00 | channel
+MAMDAT[1] = config low 16
+MAMDAT[2] = config high 16
+MAMDAT[3] = min(requested_bytes,0x400) low 16
+MAMDAT[4] = same block size high 16
+MAMPGO    = 0x105
+MAMSEQ[0] = 0x40 | channel
+SGTA      = first descriptor-table physical address
+IIMTC     = requested_bytes / 4
+IIMCL     = 1
+MAMRGO    = requested_bytes / min(requested_bytes,0x400)
+```
+
+INTEN bit 0 gates the selected transfer's completion interrupt. The handler
+waits at most five seconds, then disables bit 0, performs IIMST/IIMCL cleanup,
+reads ERRS and returns the requested byte count in the four-byte output.
+
+The x64 implementation requires a process-owned token that was successfully
+created by CFDC2124. That registration rejects all source and descriptor-table
+physical addresses above 4 GiB before the board can see them.
+
+Only the observed one-channel form is enabled. CFDD219F and unobserved
+multi-channel CFDC2138 remain gated.

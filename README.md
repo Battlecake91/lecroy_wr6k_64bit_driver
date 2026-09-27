@@ -163,10 +163,15 @@ Current staged-runtime note:
   selector reads advance exactly like the legacy trace instead of looping on
   selector `0x20`;
 - the latest trace still stops before `CFDC2124` / `CFDC2138`;
-- restoring the recovered `CFDC2180` / `CFDC218C` event delivery wakes
-  XStream's acquisition-control path. The next exposed gate was standalone
-  85FB subcommand `0x01`, a local command-status query. Its enable/pending
-  mask state machine is now implemented from the recovered legacy code;
-- active `CFDC2138` / `CFDD219F` DMA launch remains intentionally gated
-  until the legacy transfer ABI and x64 physical-address constraints are
-  proven on hardware.
+- restoring the recovered `CFDC2180` / `CFDC218C` event delivery and
+  standalone 85FB/0x01 command-status state now advances XStream into real
+  transfer registration and buffered acquisition;
+- the first successful x64 `CFDC2124` runtime registration proves that the
+  selected source and descriptor-table pages fit the board's legacy 32-bit
+  DMA address format;
+- `CFDC2138` is now enabled only for the exact one-channel 15-byte ABI shape
+  observed in both complete original runtime captures. It reproduces the
+  recovered MAM setup, SGTA/IIMTC launch, interrupt-bit-0 completion and
+  five-second timeout path;
+- `CFDD219F` and unobserved multi-channel acquisition remain intentionally
+  gated rather than guessed.

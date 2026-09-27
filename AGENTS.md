@@ -2633,3 +2633,81 @@ Active DMA remains intentionally gated. The next retest is expected to expose
 `CFDC2124` and then reach `CFDC2138`; a controlled failure at the still
 unsupported acquisition handler is acceptable evidence and must not be hidden
 by fabricating DMA success.
+
+
+## 2026-09-27 trace 230317: first real acquisition call and one-channel DMA enablement
+
+Trace `xstream_trace_20260927_230317.jsonl` is the first x64 run after the
+stateful standalone 85FB/0x01 status implementation. The previous arm failure
+is gone. XStream reaches its acquisition-memory builder and reports:
+
+```text
+CAAcqDescBuilder::Init
+FAILED to Initialize Memory! NumSeg: 40
+```
+
+The trace exposes the direct cause. `CFDC2124` succeeds, then the deliberately
+gated `CFDC2138` returns `STATUS_NOT_SUPPORTED (0xC00000BB)` twice.
+
+First x64 pair:
+
+```text
+CFDC2124
+  input  = 48D6BB1F040C000000000000
+  output = 01000000
+  total bytes = 0x0C04
+  data bytes  = 0x0C00
+
+CFDC2138
+  input = 0100000001010100000000000C0000
+  token       = 1
+  count       = 1
+  pair marker = 1
+  channel     = 1
+  config      = 0
+  data bytes  = 0x0C00
+```
+
+The working original performs the same 15-byte CFDC2138 shape and returns the
+requested byte count as its four-byte output. The 19:56 complete legacy trace
+contains 1902 CFDC2138 calls; all have input length 15, channel count 1,
+pair-marker byte 1, output length/information 4 and successful completion.
+Observed channel IDs are 0, 1, 2, 0x30, 0x31 and 0x32; observed config DWORDs
+are 0, 0x200 and 0xC00.
+
+The static path is now sufficiently closed for that exact one-channel ABI:
+
+```text
+CFDC2138 / 0x141DC
+ -> 0x13C84 validation
+ -> 0x12D6A acquisition orchestrator
+ -> clear BAR1 GPIODAT bit 16
+ -> 0x17D20/0x17C16 MAMDAT + MAMPGO=0x105
+ -> 0x17CDC/0x17EE0 MAMSEQ
+ -> SGTA = descriptor-table PA
+ -> IIMTC = transfer dword count
+ -> reset transfer completion event
+ -> enable INTEN bit 0
+ -> IIMCL = 1
+ -> MAMRGO = requested/min(requested,0x400)
+ -> wait <= 5 s
+ -> disable INTEN bit 0
+ -> IIMST/IIMCL cleanup + ERRS read
+ -> return requested byte count
+```
+
+For one channel the five MAMDAT values are `0x0E00|channel`, config
+low/high, and `min(requested,0x400)` low/high. MAMSEQ is
+`0x40|channel`. For the first current 0xC00-byte transfer MAMRGO is 3.
+
+DMA address-width safety remains enforced before launch: CFDC2124 locks the
+pages, builds the legacy 8-byte descriptor chain and rejects every source or
+descriptor-table physical address above 4 GiB. Therefore the successful
+CFDC2124 in trace 230317 proves that this exact current transfer is
+representable by the board's 32-bit DMA ABI.
+
+The x64 driver now executes only this observed CFDC2138 one-channel form
+(input 15, output 4, count 1, pair marker 1, channel <= 0x3F). Timeout remains
+real and maps to STATUS_IO_TIMEOUT; no fake completion is returned.
+
+`CFDD219F` remains gated. Multi-channel CFDC2138 remains gated.
