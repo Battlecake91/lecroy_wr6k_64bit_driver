@@ -1,10 +1,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <winioctl.h>
+#include <setupapi.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#pragma comment(lib, "setupapi.lib")
 
 #define LECS65_IOCTL_CFDC2110          ((DWORD)0xCFDC2110)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((DWORD)0xCFDC21C8)
@@ -117,6 +120,13 @@ typedef struct LECS65_DEBUG_TRACE {
     uint64_t TotalSeen;
     LECS65_DEBUG_TRACE_ENTRY Entry[LECS65_TRACE_CAPACITY];
 } LECS65_DEBUG_TRACE;
+
+static const GUID g_interface_guids[] = {
+    {0x7AC34BE9,0xF766,0x4F15,{0x9E,0x88,0x85,0x4B,0xA5,0xE2,0x14,0x6E}},
+    {0x8D1103B8,0x5BF4,0x4B5C,{0xB2,0x1E,0xEE,0xAA,0xCE,0x97,0xD4,0x18}},
+    {0x9007C2BC,0xEDFD,0x4F2F,{0xA0,0x59,0xDF,0x11,0x31,0xCB,0x1A,0xE5}},
+    {0xFC5DF040,0xD6CD,0x4BA0,{0xB5,0xE0,0x25,0x61,0x97,0x29,0x63,0xA2}}
+};
 
 static const char* ioctl_name(DWORD code);
 static const char* method_name(unsigned method);
@@ -426,20 +436,115 @@ static void print_error(const char* what)
 
 static HANDLE open_driver(void)
 {
-    HANDLE h = CreateFileW(
-        L"\\\\.\\ALADDINAcqDriver0",
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL,
-        OPEN_EXISTING,
-        0,
-        NULL);
+    size_t guidIndex;
 
-    if (h == INVALID_HANDLE_VALUE) {
-        print_error("CreateFile(\\\\.\\ALADDINAcqDriver0)");
+    /*
+     * The replacement driver exposes a compatibility DOS link, but the
+     * original 32-bit driver is normally opened through one of its PnP
+     * interface GUIDs. Enumerate those first so the same lecdiag binary works
+     * with both drivers.
+     */
+    for (guidIndex = 0;
+         guidIndex < sizeof(g_interface_guids) / sizeof(g_interface_guids[0]);
+         ++guidIndex) {
+        HDEVINFO info = SetupDiGetClassDevsW(
+            &g_interface_guids[guidIndex],
+            NULL,
+            NULL,
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+
+        if (info != INVALID_HANDLE_VALUE) {
+            SP_DEVICE_INTERFACE_DATA iface;
+            DWORD index;
+
+            ZeroMemory(&iface, sizeof(iface));
+            iface.cbSize = sizeof(iface);
+
+            for (index = 0;
+                 SetupDiEnumDeviceInterfaces(
+                     info,
+                     NULL,
+                     &g_interface_guids[guidIndex],
+                     index,
+                     &iface);
+                 ++index) {
+                DWORD required = 0;
+                PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail;
+                HANDLE h;
+
+                SetupDiGetDeviceInterfaceDetailW(
+                    info,
+                    &iface,
+                    NULL,
+                    0,
+                    &required,
+                    NULL);
+
+                if (required == 0) {
+                    continue;
+                }
+
+                detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_W)HeapAlloc(
+                    GetProcessHeap(),
+                    HEAP_ZERO_MEMORY,
+                    required);
+                if (detail == NULL) {
+                    continue;
+                }
+
+                detail->cbSize = sizeof(*detail);
+
+                if (!SetupDiGetDeviceInterfaceDetailW(
+                        info,
+                        &iface,
+                        detail,
+                        required,
+                        NULL,
+                        NULL)) {
+                    HeapFree(GetProcessHeap(), 0, detail);
+                    continue;
+                }
+
+                h = CreateFileW(
+                    detail->DevicePath,
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    NULL,
+                    OPEN_EXISTING,
+                    0,
+                    NULL);
+
+                if (h != INVALID_HANDLE_VALUE) {
+                    wprintf(L"Opened device interface: %ls\n", detail->DevicePath);
+                    HeapFree(GetProcessHeap(), 0, detail);
+                    SetupDiDestroyDeviceInfoList(info);
+                    return h;
+                }
+
+                HeapFree(GetProcessHeap(), 0, detail);
+            }
+
+            SetupDiDestroyDeviceInfoList(info);
+        }
     }
 
-    return h;
+    {
+        HANDLE h = CreateFileW(
+            L"\\\\.\\ALADDINAcqDriver0",
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            0,
+            NULL);
+
+        if (h == INVALID_HANDLE_VALUE) {
+            print_error(
+                "CreateFile(device interface / \\\\.\\ALADDINAcqDriver0)");
+        }
+
+        return h;
+    }
 }
 
 static int query_build(HANDLE h)
