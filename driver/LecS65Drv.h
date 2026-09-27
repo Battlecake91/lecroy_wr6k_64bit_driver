@@ -266,7 +266,8 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     ULONG LegacyTimerDurationMs;
 
     USHORT LegacyMamShadow[256];
-    UCHAR LegacyMamShadowValid[256];
+    BOOLEAN LegacyMamShadowInitialized;
+    UCHAR ReservedMamShadow[3];
 
     KSPIN_LOCK TraceLock;
     ULONGLONG TraceNextSequence;
