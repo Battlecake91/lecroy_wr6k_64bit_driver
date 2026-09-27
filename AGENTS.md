@@ -1178,3 +1178,28 @@ The remaining probe path, family-0 opcode `0x90`, uses dispatcher field
 pointer assignment still needs a direct constructor proof before enabling MMIO
 writes. Ghidra targets now include the command-object constructor region around
 `0x159E2` and neighboring raw addresses.
+
+## Probe path resolved
+
+The constructor proof is now complete for family-0 opcode `0x90`.
+
+- CFDC2110 dispatcher object = board `+0xEA8`.
+- `FUN_000158EE` stores its second constructor parameter at dispatcher
+  `+0x19`.
+- `FUN_00014212` passes board `+0x106A` as that parameter.
+- `FUN_00014847` initializes board `+0x106A` with `FUN_0001340C` using
+  BAR1 SPICTL `0xA0`, SPIDAT `0xA4`, SPIDIN `0xA8`.
+- Initial legacy SPI control shadow is `0x001FF000`.
+
+Therefore family-0 opcode `0x90` is the local SPI helper path used by the
+probe sequence. The x64 driver now implements the decoded selector handling,
+SPI control-shadow updates, 16-bit-word bit reversal and SPIDAT writes.
+
+The captured probe request (selector `0x0E`, 144 bits, nine words) matches the
+legacy loop exactly.
+
+Family-0 opcode `0xA0` is independently proven as PFREG BAR1+`0xF4` and is
+already implemented.
+
+Next runtime validation should focus on whether "Problems reading probe
+Ch1-Ch5" disappears and where Auto/Single arm proceeds after these two paths.
