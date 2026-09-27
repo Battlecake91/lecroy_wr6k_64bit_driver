@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 3549b0ffc7b7a55bba199d8d47f24ad82eb74acd
+Source commit: b5ed270ceaefc0195edc01b5801a3728fdd8784d
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -30,6 +30,15 @@ Targets:
   1588e
   1236e
   16074
+  115c4
+  14847
+  159e2
+  1340c
+  15980
+  15990
+  159a0
+  159b0
+  159c0
 
 Exported files:
   00010380_FUN_00010380.c
