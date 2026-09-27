@@ -967,3 +967,20 @@ Latest trace `xstream_trace_20260927_020927.jsonl` exposes the next exact
 family-1 opcode-`0x81` selector forms: 6, 7 and 8. These are now admitted as
 byte-exact packets through the existing generic board-message transport.
 Unknown selectors remain blocked.
+
+## Latest staged trace: 2026-09-27 02:25
+
+This capture was terminated from the XStreamDSO startup error dialog. Treat it
+as the clean reference pattern for future protocol-discovery runs: stop at the
+dialog rather than skipping it.
+
+Trace `xstream_trace_20260927_022530.jsonl` contains 172 IOCTL records and
+161 CFDC2110 calls: 150 success and 11 rejected. The final 11 calls are exactly:
+
+- family-1 opcode-`0x81` selector 9: 5 times;
+- selector 10 (`0x0A`): 5 times;
+- selector 11 (`0x0B`): 1 time.
+
+No recovery traffic follows. These three exact packet forms are now admitted
+through the existing generic board-message transport. Unknown selectors remain
+blocked.
