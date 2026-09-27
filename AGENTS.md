@@ -1481,3 +1481,29 @@ Because 0x222400 is lower than the already mapped 0x222C00 branch, its
 dispatch must be in or before this missing region. Ghidra targets 11008,
 11010 and 11014 were added in commit
 3621ffa4b7e2c1800a1fb86aae1410955a9cc67e to close this final dispatcher gap.
+
+## Current blocker corrected: repeated family-1 opcode 0x42 JTAG poll
+
+Do not treat 0x00222400 as the primary blocker anymore. The complete legacy
+DeviceControl switch also lacks an explicit 0x222400 branch, so this is likely
+a tolerated probe.
+
+The actual visible stall in trace `xstream_trace_20260927_114916.jsonl` is an
+endless CFDC2110 family-1 opcode-0x42 JTAG scan:
+- mode 1;
+- requested data bytes 10;
+- 76 bits;
+- five chunks.
+
+Current x64 response data words:
+`0000 4014 0030 5000 0020`
+
+XStream immediately repeats the same transaction.
+
+Legacy FUN_00015C7E calls FUN_0001586E, whose raw assembly proves it reads
+JTAGDIN and writes the DWORD through a caller-provided pointer. Ghidra loses
+that data flow in the C decompilation, so the exact extraction into 16-bit
+response words still needs raw assembly from inside FUN_00015C7E.
+
+Targets 15CC0, 15CF0, 15D20, 15D50 and 15D70 were added in commit
+5160c65886d9e179af2986496d1f742db2ed86d1.
