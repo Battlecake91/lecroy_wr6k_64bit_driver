@@ -1376,7 +1376,9 @@ LecApplyMamConfigRecord(
     WRITE_REGISTER_ULONG(gpioData, gpioValue & 0xFFFEFFFFUL);
 
     for (i = 0; i < count; ++i) {
-        ULONG value = (ULONG)LecReadU16(Payload + i * 2UL);
+        ULONG value =
+            (i << 16) |
+            (ULONG)LecReadU16(Payload + i * 2UL);
         WRITE_REGISTER_ULONG(mamData, value);
     }
 
@@ -1385,6 +1387,84 @@ LecApplyMamConfigRecord(
         (((ULONG)Mode & 3UL) << 8) | count);
 
     return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+LecLegacyTimerArmOrExtend(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG RequestedMilliseconds
+    )
+{
+    LARGE_INTEGER zeroTimeout;
+    LARGE_INTEGER now;
+    LARGE_INTEGER dueTime;
+    NTSTATUS waitStatus;
+    ULONG requested = RequestedMilliseconds != 0 ?
+        RequestedMilliseconds : 1UL;
+
+    if (!DevExt->LegacyTimerInitialized) {
+        KeInitializeTimerEx(
+            &DevExt->LegacyTimer,
+            NotificationTimer);
+        DevExt->LegacyTimerStartTime.QuadPart = 0;
+        DevExt->LegacyTimerDurationMs = 0;
+        DevExt->LegacyTimerInitialized = TRUE;
+    }
+
+    zeroTimeout.QuadPart = 0;
+    waitStatus = KeWaitForSingleObject(
+        &DevExt->LegacyTimer,
+        Executive,
+        KernelMode,
+        FALSE,
+        &zeroTimeout);
+
+    KeQuerySystemTime(&now);
+
+    if (waitStatus == STATUS_SUCCESS) {
+        dueTime.QuadPart =
+            -((LONGLONG)requested * 10000LL);
+
+        (VOID)KeSetTimer(
+            &DevExt->LegacyTimer,
+            dueTime,
+            NULL);
+
+        DevExt->LegacyTimerStartTime = now;
+        DevExt->LegacyTimerDurationMs = requested;
+        return STATUS_SUCCESS;
+    }
+
+    if (waitStatus == STATUS_TIMEOUT) {
+        LONGLONG elapsed100ns =
+            now.QuadPart -
+            DevExt->LegacyTimerStartTime.QuadPart;
+        ULONG elapsedMs =
+            elapsed100ns > 0 ?
+            (ULONG)(elapsed100ns / 10000LL) :
+            0UL;
+        LONG remainingMs =
+            (LONG)DevExt->LegacyTimerDurationMs -
+            (LONG)elapsedMs;
+
+        if (remainingMs < (LONG)RequestedMilliseconds) {
+            dueTime.QuadPart =
+                -((LONGLONG)requested * 10000LL);
+
+            (VOID)KeSetTimer(
+                &DevExt->LegacyTimer,
+                dueTime,
+                NULL);
+
+            DevExt->LegacyTimerStartTime = now;
+            DevExt->LegacyTimerDurationMs = requested;
+        }
+
+        return STATUS_SUCCESS;
+    }
+
+    return waitStatus;
 }
 
 static
@@ -1483,6 +1563,13 @@ LecIsStructurallySupportedCfDc2110(
 
                 offset = (ULONG)LecReadU16(payload + 4);
                 if ((offset & 3UL) != 0) {
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
+            else if (family == 2 && opcode == 0x01) {
+                if (payloadLength < 8 || payload[3] != 1) {
                     return FALSE;
                 }
 
@@ -1937,6 +2024,34 @@ LecIoctlCfDc2110(
                 else {
                     protocolStatus = 8;
                 }
+            }
+            else if (payload[1] == 2 && payload[2] == 0x01) {
+                NTSTATUS timerStatus;
+                ULONG requestedMilliseconds;
+
+                if (payloadLength < 8 || payload[3] != 1) {
+                    protocolStatus = 4;
+                }
+                else {
+                    RtlCopyMemory(
+                        &requestedMilliseconds,
+                        payload + 4,
+                        sizeof(requestedMilliseconds));
+
+                    timerStatus = LecLegacyTimerArmOrExtend(
+                        DevExt,
+                        requestedMilliseconds);
+
+                    protocolStatus =
+                        NT_SUCCESS(timerStatus) ? 0 : 8;
+                }
+
+                LecWriteU32(pendingResponse, 0);
+                LecWriteU16(pendingResponse + 4, 2);
+                LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
+                pendingResponseLength = 8;
+                pendingResponseReady = TRUE;
+                hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 2 && payload[2] == 0x05) {
                 volatile ULONG* itmode;
