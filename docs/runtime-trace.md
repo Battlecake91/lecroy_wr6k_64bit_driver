@@ -1374,3 +1374,34 @@ Next discriminator: perform another full hardware power cycle, do not run any
 other lecdiag command and do not start XStream, then immediately run
 `lecdiag legacy-prepoll-replay`. This will show which replayed initialization
 step first moves the x64 board away from the all-ones cold state.
+
+## Cold x64 replay reaches the correct final hardware state
+
+A full power-cycle followed immediately by `lecdiag legacy-prepoll-replay`
+against the x64 replacement driver produced this initial state:
+
+`1400 2000 0000 0000 0020`
+
+This differs from the fresh legacy baseline
+`1400 2040 0000 0002 0020`.
+
+However, the replay then behaved coherently:
+- steps 1-7: unchanged at `1400 2000 0000 0000 0020`;
+- step 8, first JTAG write: `1400 3040 0000 0000 0020`;
+- steps 9-32: unchanged;
+- step 33, MTTCTL=1: unchanged at `1400 3040 0000 0000 0020`.
+
+The critical result is that the final x64 replay state exactly matches the
+legacy replay's final post-MTTCTL state:
+
+`1400 3040 0000 0000 0020`
+
+Therefore the individual replayed GPIO/SPI/JTAG/MAM/MTTCTL implementations are
+capable of establishing the expected final board status on x64. The previously
+observed XStream stall state `1400 3040 0000 0050 0020` is specific to the
+real XStream execution path and is not reproduced by the controlled replay.
+
+This shifts the investigation away from the basic implementations of these
+operations and toward differences between the replay and real startup:
+preceding commands, command batching/record boundaries, timing, timer state,
+or interactions with other host-side IOCTLs/events.
