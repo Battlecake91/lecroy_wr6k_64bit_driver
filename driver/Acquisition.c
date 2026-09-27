@@ -518,23 +518,36 @@ LecInterruptService(
         devExt->Bar[0] + LECS65_BAR0_INTST);
     status = READ_REGISTER_ULONG(intst);
 
-    if ((status & devExt->InterruptEnableShadow) == 0) {
+    status &= devExt->InterruptEnableShadow;
+    if (status == 0) {
         return FALSE;
     }
+
+    /*
+     * Legacy FUN_000108D6 accumulates every enabled interrupt source in a
+     * pending bitmap before it acknowledges the hardware and queues the DPC.
+     * Coalesce multiple interrupts safely when one DPC is already queued.
+     */
+    InterlockedOr(
+        (volatile LONG*)&devExt->InterruptPendingShadow,
+        (LONG)status);
 
     /*
      * Legacy hardware uses write-back-to-acknowledge semantics for INTST.
      * Only acknowledge sources that this replacement driver explicitly owns.
      */
-    status &= devExt->InterruptEnableShadow;
     WRITE_REGISTER_ULONG(intst, status);
 
-    if ((status & 0x01UL) != 0) {
-        KeInsertQueueDpc(
-            &devExt->InterruptDpc,
-            ULongToPtr(status),
-            NULL);
-    }
+    /*
+     * The original ISR queues deferred processing for every accepted source,
+     * not only acquisition-completion bit 0. This is required for the
+     * CFDC2180/CFDC218C user events that wake XStream's acquisition control
+     * threads before any CFDC2124/CFDC2138 request exists.
+     */
+    KeInsertQueueDpc(
+        &devExt->InterruptDpc,
+        NULL,
+        NULL);
 
     return TRUE;
 }
@@ -549,18 +562,61 @@ LecInterruptDpc(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeferredContext;
-    PLECS65_TRANSFER transfer;
+    ULONG pending;
 
     UNREFERENCED_PARAMETER(Dpc);
     UNREFERENCED_PARAMETER(SystemArgument1);
     UNREFERENCED_PARAMETER(SystemArgument2);
 
-    transfer = (PLECS65_TRANSFER)devExt->CurrentTransfer;
-    if (transfer != NULL) {
-        KeSetEvent(
-            &transfer->CompletionEvent,
-            IO_NO_INCREMENT,
-            FALSE);
+    /*
+     * Recovered legacy DPC mapping:
+     *
+     *   INTST 0x01 -> selected acquisition transfer completion event
+     *   INTST 0x02 -> CFDC218C event
+     *   INTST 0x04,
+     *         0x10,
+     *         0x20 -> CFDC2180 event
+     *
+     * INTST 0x08 belongs to the internal RX transport event in the original
+     * driver. The current transport implementation polls RX_CONTROL directly,
+     * so do not invent a mapping for it here.
+     */
+    pending = (ULONG)InterlockedExchange(
+        (volatile LONG*)&devExt->InterruptPendingShadow,
+        0);
+
+    if ((pending & 0x01UL) != 0) {
+        PLECS65_TRANSFER transfer =
+            (PLECS65_TRANSFER)devExt->CurrentTransfer;
+
+        if (transfer != NULL) {
+            KeSetEvent(
+                &transfer->CompletionEvent,
+                IO_NO_INCREMENT,
+                FALSE);
+        }
+    }
+
+    if ((pending & (0x02UL | 0x04UL | 0x10UL | 0x20UL)) != 0) {
+        KeAcquireSpinLockAtDpcLevel(&devExt->LegacyEventLock);
+
+        if ((pending & 0x02UL) != 0 &&
+            devExt->LegacyEvent1 != NULL) {
+            KeSetEvent(
+                devExt->LegacyEvent1,
+                IO_NO_INCREMENT,
+                FALSE);
+        }
+
+        if ((pending & (0x04UL | 0x10UL | 0x20UL)) != 0 &&
+            devExt->LegacyEvent0 != NULL) {
+            KeSetEvent(
+                devExt->LegacyEvent0,
+                IO_NO_INCREMENT,
+                FALSE);
+        }
+
+        KeReleaseSpinLockFromDpcLevel(&devExt->LegacyEventLock);
     }
 }
 
@@ -623,6 +679,9 @@ LecDisconnectInterrupt(
         DevExt->InterruptObject = NULL;
         DevExt->InterruptConnected = FALSE;
         DevExt->InterruptEnableShadow = 0;
+        InterlockedExchange(
+            (volatile LONG*)&DevExt->InterruptPendingShadow,
+            0);
         LecTrace("IRQ disconnected\n");
     }
 }

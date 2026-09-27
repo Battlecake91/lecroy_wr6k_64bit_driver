@@ -2513,3 +2513,53 @@ During the run, let XStream reach the no-waveform/acquiring state, leave it
 there long enough to execute the late JTAG polling block, then close XStream
 normally. The resulting trace should reveal the CFDC21C0 offsets and returned
 values that were hidden in earlier x64 captures.
+
+
+## 2026-09-27 trace 223910: trigger restart confirms missing legacy event wakeups
+
+Trace `xstream_trace_20260927_223910.jsonl` is the first x64 kernel capture
+after commit `ca75f36d17ba0789f818e3f9f2bd599370b58ba1` retained successful
+`CFDC21C0` reads.
+
+The newly visible register reads do **not** occur in the late Acquiring loop.
+All 11 successful reads are part of earlier initialization:
+
+- BAR0 offset `0x000` returns `2`;
+- BAR1 offset `0x00C` (ACQFVER) returns `3`.
+
+Therefore hidden `CFDC21C0` polling is not the missing transition.
+
+The user's Auto -> Stop -> Auto trigger change is visible in the trace. XStream
+leaves the JTAG poll, sends family-2 opcode `0x02 = 0`, reconfigures the
+board, re-arms with opcode `0x02 = 1`, and returns to the same
+`...0050...` JTAG state. No `CFDC2124`, `CFDC2138`, or `CFDD219F`
+appears. The stall is reproducible across a trigger restart.
+
+Static comparison then exposed a concrete x64 interrupt/event defect:
+
+- original ISR `FUN_000108D6` accumulates all enabled INTST sources and queues
+  its DPC for every accepted source;
+- previous x64 ISR queued its DPC only for INTST bit `0x01`;
+- original DPC `FUN_00011390` maps INTST bit `0x02` to the event registered
+  by `CFDC218C`;
+- INTST bits `0x04`, `0x10`, and `0x20` wake the event registered by
+  `CFDC2180`;
+- INTST bit `0x01` is the selected acquisition transfer completion event;
+- previous x64 DPC only signalled the transfer completion event and never
+  signalled either registered XStream event.
+
+The event registration mapping itself is statically confirmed:
+
+- `CFDC2180 -> FUN_000128F8 -> main+0x12DE`;
+- `CFDC218C -> FUN_00012B34 -> main+0x12EE`.
+
+The x64 driver now mirrors these proven event-delivery semantics. Event pointer
+replacement/release is protected by `LegacyEventLock`, and ISR sources are
+coalesced in `InterruptPendingShadow`. INTST bit `0x08` remains intentionally
+unmapped because the original uses it for an internal RX transport event while
+the replacement transport currently polls RX_CONTROL synchronously.
+
+This change does **not** enable DMA. `CFDC2138` and `CFDD219F` remain
+gated. The next test should determine whether restoring the legacy wakeup path
+causes XStream to issue `CFDC2124` and then reach the already-gated
+acquisition IOCTL.

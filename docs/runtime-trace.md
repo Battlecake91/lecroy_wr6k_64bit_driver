@@ -2122,3 +2122,46 @@ This commit changes tracing only. Register-read behavior, hardware accesses,
 and all acquisition/control semantics are unchanged. Existing traces remain
 valid, but successful CFDC21C0 absence in any capture made before this commit
 must be treated as an instrumentation limitation.
+
+
+## Trigger restart trace exposes missing interrupt-to-event delivery
+
+Trace `xstream_trace_20260927_223910.jsonl` includes successful
+`CFDC21C0` reads after the diagnostic suppression was removed.
+
+Those reads occur only during initialization: BAR0/FVER returns `2`, and one
+extended BAR1/ACQFVER read at offset `0x00C` returns `3`. There are no
+successful register reads in the late Acquiring/JTAG loop, so the earlier
+instrumentation gap is not the cause of the stall.
+
+The user changed Trigger from Auto to Stop and back to Auto during this
+capture. The transition is visible: XStream exits the poll, disables
+family-2/opcode-`0x02`, performs another configuration sequence, re-enables
+it, and returns to the identical `...0050...` 76-bit JTAG status. No
+`CFDC2124`, `CFDC2138`, or `CFDD219F` is issued in either arm cycle.
+
+Static legacy analysis identifies a missing host wakeup path in the x64
+interrupt implementation. Original `FUN_000108D6` accumulates all enabled
+INTST sources and queues `FUN_00011390` for every accepted interrupt.
+`FUN_00011390` then performs these relevant event deliveries:
+
+```text
+INTST 0x01          -> selected transfer CompletionEvent
+INTST 0x02          -> CFDC218C registered event
+INTST 0x04/10/20    -> CFDC2180 registered event
+INTST 0x08          -> internal RX transport event
+```
+
+The previous x64 ISR queued its DPC only for bit `0x01`, and its DPC only
+signalled the transfer completion event. Before transfer registration,
+`CurrentTransfer` is null, so non-transfer interrupts could be acknowledged
+without ever waking the XStream event threads.
+
+The replacement now coalesces enabled INTST sources in a pending bitmap, queues
+the DPC for every accepted source, signals the proven CFDC2180/CFDC218C event
+mappings, and synchronizes event-object replacement/release with a spin lock.
+The bit-`0x08` internal RX event is deliberately not emulated because the
+current board transport uses direct RX_CONTROL polling.
+
+Active DMA remains disabled. The purpose of the next hardware run is to see
+whether XStream finally progresses into `CFDC2124` / `CFDC2138`.

@@ -57,19 +57,35 @@ LecReleaseLegacyEvents(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
     )
 {
-    PKEVENT* events[] = {
-        &DevExt->LegacyEvent0,
-        &DevExt->LegacyEvent1,
-        &DevExt->LegacyEvent2,
-        &DevExt->LegacyEvent3,
-        &DevExt->LegacyEvent4
-    };
+    PKEVENT released[5];
+    KIRQL oldIrql;
     ULONG i;
 
-    for (i = 0; i < RTL_NUMBER_OF(events); ++i) {
-        if (*events[i] != NULL) {
-            ObDereferenceObject(*events[i]);
-            *events[i] = NULL;
+    /*
+     * A queued DPC may still be inspecting the registered event pointers
+     * while a handle is closed or the device is stopped. Detach all pointers
+     * under the same spin lock used by the DPC, then drop object references
+     * after leaving the lock.
+     */
+    KeAcquireSpinLock(&DevExt->LegacyEventLock, &oldIrql);
+
+    released[0] = DevExt->LegacyEvent0;
+    released[1] = DevExt->LegacyEvent1;
+    released[2] = DevExt->LegacyEvent2;
+    released[3] = DevExt->LegacyEvent3;
+    released[4] = DevExt->LegacyEvent4;
+
+    DevExt->LegacyEvent0 = NULL;
+    DevExt->LegacyEvent1 = NULL;
+    DevExt->LegacyEvent2 = NULL;
+    DevExt->LegacyEvent3 = NULL;
+    DevExt->LegacyEvent4 = NULL;
+
+    KeReleaseSpinLock(&DevExt->LegacyEventLock, oldIrql);
+
+    for (i = 0; i < RTL_NUMBER_OF(released); ++i) {
+        if (released[i] != NULL) {
+            ObDereferenceObject(released[i]);
         }
     }
 }

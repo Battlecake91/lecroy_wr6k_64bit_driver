@@ -143,6 +143,7 @@ LecS65AddDevice(
     devExt->NextTransferToken = 0;
     devExt->CurrentTransfer = NULL;
     KeInitializeDpc(&devExt->InterruptDpc, LecInterruptDpc, devExt);
+    KeInitializeSpinLock(&devExt->LegacyEventLock);
     KeInitializeSpinLock(&devExt->TraceLock);
 
     devExt->Self = deviceObject;

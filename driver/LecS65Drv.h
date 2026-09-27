@@ -249,8 +249,10 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     BOOLEAN InterruptConnected;
     USHORT ReservedInterrupt;
     volatile ULONG InterruptEnableShadow;
+    volatile ULONG InterruptPendingShadow;
     KDPC InterruptDpc;
 
+    KSPIN_LOCK LegacyEventLock;
     PKEVENT LegacyEvent0;
     PKEVENT LegacyEvent1;
     PKEVENT LegacyEvent2;

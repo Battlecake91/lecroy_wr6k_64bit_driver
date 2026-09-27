@@ -2931,3 +2931,30 @@ not type 0.
 
 Commit `9ec5723466f06d3d60d8846b89b919715e79c010` updates these early
 startup ABI details in the x64 driver.
+
+## Recovered interrupt-to-user-event mapping
+
+The event-related control path is now tied directly to the original ISR/DPC
+implementation.
+
+DeviceControl dispatch proves:
+
+- `0xCFDC2180 -> FUN_000128F8`, which registers the event stored at
+  `main+0x12DE`;
+- `0xCFDC218C -> FUN_00012B34`, which registers the event stored at
+  `main+0x12EE`;
+- `0xCFDC2184` remains an inline success/no-data control.
+
+The original ISR `FUN_000108D6` accumulates enabled INTST sources and queues
+the deferred handler `FUN_00011390`. Its recovered event mapping is:
+
+| INTST source | Deferred action |
+|---:|---|
+| `0x01` | signal the selected acquisition transfer's completion event |
+| `0x02` | signal the event registered by `CFDC218C` |
+| `0x04`, `0x10`, `0x20` | update internal status and signal the event registered by `CFDC2180` |
+| `0x08` | service/signal the driver's internal RX transport event |
+
+The x64 replacement implements the externally visible `0x01`, `0x02`,
+and `0x04/0x10/0x20` event deliveries. It does not invent an `0x08`
+user-event mapping; its current RX transport polls RX_CONTROL directly.

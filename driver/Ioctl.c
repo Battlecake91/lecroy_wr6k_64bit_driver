@@ -468,12 +468,15 @@ Exit:
 static
 NTSTATUS
 LecCaptureLegacyEvent(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PKEVENT* Slot,
     _In_ ULONG HandleValue,
     _In_ KPROCESSOR_MODE AccessMode
     )
 {
     PKEVENT eventObject = NULL;
+    PKEVENT oldEvent;
+    KIRQL oldIrql;
     NTSTATUS status;
 
     status = ObReferenceObjectByHandle(
@@ -488,18 +491,24 @@ LecCaptureLegacyEvent(
         return status;
     }
 
-    if (*Slot != NULL) {
-        ObDereferenceObject(*Slot);
+    KeClearEvent(eventObject);
+
+    KeAcquireSpinLock(&DevExt->LegacyEventLock, &oldIrql);
+    oldEvent = *Slot;
+    *Slot = eventObject;
+    KeReleaseSpinLock(&DevExt->LegacyEventLock, oldIrql);
+
+    if (oldEvent != NULL) {
+        ObDereferenceObject(oldEvent);
     }
 
-    *Slot = eventObject;
-    KeClearEvent(eventObject);
     return STATUS_SUCCESS;
 }
 
 static
 NTSTATUS
 LecIoctlSetSingleEvent(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PKEVENT* Slot,
     _In_reads_bytes_(InputLength) PVOID SystemBuffer,
     _In_ ULONG InputLength,
@@ -517,6 +526,7 @@ LecIoctlSetSingleEvent(
 
     handleValue = *(PULONG)SystemBuffer;
     return LecCaptureLegacyEvent(
+        DevExt,
         Slot,
         handleValue,
         AccessMode);
@@ -536,6 +546,10 @@ LecIoctlSetThreeEvents(
     PKEVENT event2 = NULL;
     PKEVENT event3 = NULL;
     PKEVENT event4 = NULL;
+    PKEVENT oldEvent2 = NULL;
+    PKEVENT oldEvent3 = NULL;
+    PKEVENT oldEvent4 = NULL;
+    KIRQL oldIrql;
     NTSTATUS status;
 
     if (SystemBuffer == NULL ||
@@ -579,26 +593,35 @@ LecIoctlSetThreeEvents(
         goto Exit;
     }
 
-    if (DevExt->LegacyEvent2 != NULL) {
-        ObDereferenceObject(DevExt->LegacyEvent2);
-    }
-    if (DevExt->LegacyEvent3 != NULL) {
-        ObDereferenceObject(DevExt->LegacyEvent3);
-    }
-    if (DevExt->LegacyEvent4 != NULL) {
-        ObDereferenceObject(DevExt->LegacyEvent4);
-    }
+    KeClearEvent(event2);
+    KeClearEvent(event3);
+    KeClearEvent(event4);
+
+    KeAcquireSpinLock(&DevExt->LegacyEventLock, &oldIrql);
+
+    oldEvent2 = DevExt->LegacyEvent2;
+    oldEvent3 = DevExt->LegacyEvent3;
+    oldEvent4 = DevExt->LegacyEvent4;
 
     DevExt->LegacyEvent2 = event2;
     DevExt->LegacyEvent3 = event3;
     DevExt->LegacyEvent4 = event4;
+
+    KeReleaseSpinLock(&DevExt->LegacyEventLock, oldIrql);
+
     event2 = NULL;
     event3 = NULL;
     event4 = NULL;
 
-    KeClearEvent(DevExt->LegacyEvent2);
-    KeClearEvent(DevExt->LegacyEvent3);
-    KeClearEvent(DevExt->LegacyEvent4);
+    if (oldEvent2 != NULL) {
+        ObDereferenceObject(oldEvent2);
+    }
+    if (oldEvent3 != NULL) {
+        ObDereferenceObject(oldEvent3);
+    }
+    if (oldEvent4 != NULL) {
+        ObDereferenceObject(oldEvent4);
+    }
 
     status = STATUS_SUCCESS;
 
@@ -3332,6 +3355,7 @@ LecS65DeviceControl(
 
     case LECS65_IOCTL_SET_EVENT_0:
         status = LecIoctlSetSingleEvent(
+            devExt,
             &devExt->LegacyEvent0,
             systemBuffer,
             inputLength,
@@ -3342,6 +3366,7 @@ LecS65DeviceControl(
 
     case LECS65_IOCTL_SET_EVENT_1:
         status = LecIoctlSetSingleEvent(
+            devExt,
             &devExt->LegacyEvent1,
             systemBuffer,
             inputLength,
