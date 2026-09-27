@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 /* LeCroy / S65 controls */
+#define LECS65_IOCTL_00222400                    UINT32_C(0x00222400)
 #define LECS65_IOCTL_00222C00                    UINT32_C(0x00222C00)
 #define LECS65_IOCTL_00222C04                    UINT32_C(0x00222C04)
 #define LECS65_IOCTL_00223000                    UINT32_C(0x00223000)
