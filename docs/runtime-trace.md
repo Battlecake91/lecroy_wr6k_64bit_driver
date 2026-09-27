@@ -1353,3 +1353,24 @@ A true cold-hardware baseline is required next. Restarting/reloading the driver
 is insufficient if FPGA/JTAG state survives PCI driver reload. Power-cycle the
 scope/hardware, do not start XStream, and immediately run only
 `lecdiag legacy-jtag-poll` against the x64 driver.
+
+## True cold x64 baseline after full power cycle
+
+After fully powering the scope off and back on, with XStream not started, the
+first direct x64 `legacy-jtag-poll` returned:
+
+`000000000000000000000C00000000FFFFFFFFFFFFFFFFFF0F`
+
+The 10-byte JTAG data field is therefore all ones apart from the final unused
+high bits. This is not the fresh legacy-driver baseline
+`1400 2040 0000 0002 0020`.
+
+Important consequence: the x64 replacement does not establish the same JTAG /
+board state as the original driver before user-mode initialization. The earlier
+x64 replay that started at `1400 3040 0000 0050 0020` was therefore already
+after some later state-changing activity.
+
+Next discriminator: perform another full hardware power cycle, do not run any
+other lecdiag command and do not start XStream, then immediately run
+`lecdiag legacy-prepoll-replay`. This will show which replayed initialization
+step first moves the x64 board away from the all-ones cold state.
