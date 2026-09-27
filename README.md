@@ -162,8 +162,9 @@ Current staged-runtime note:
 - the corrected 85FB length rule now lets the 120 family-1 opcode-`0x96`
   selector reads advance exactly like the legacy trace instead of looping on
   selector `0x20`;
-- trace `xstream_trace_20260927_230317.jsonl` reaches `CFDC2124` and
-  `CFDC2138` for the first time;
+- trace `xstream_trace_20260927_235712.jsonl` proves the first real
+  one-channel `CFDC2138` MAM DMA completes successfully and returns the
+  requested 0x0C00-byte count;
 - restoring the recovered `CFDC2180` / `CFDC218C` event delivery and
   standalone 85FB/0x01 command-status state now advances XStream into real
   transfer registration and buffered acquisition;
@@ -174,5 +175,9 @@ Current staged-runtime note:
   observed in both complete original runtime captures. It reproduces the
   recovered MAM setup, SGTA/IIMTC launch, interrupt-bit-0 completion and
   five-second timeout path;
+- the next exposed memory-builder operation is family-1 opcode `0x51`.
+  Static recovery shows opcodes `0x50/0x51` resolve a CFDC2124 transfer token
+  and launch its descriptor chain through MTTRGO; this proven local MTT path is
+  now implemented;
 - `CFDD219F` and unobserved multi-channel acquisition remain intentionally
   gated rather than guessed.

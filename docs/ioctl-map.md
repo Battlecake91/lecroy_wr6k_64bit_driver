@@ -3039,3 +3039,61 @@ physical addresses above 4 GiB before the board can see them.
 
 Only the observed one-channel form is enabled. CFDD219F and unobserved
 multi-channel CFDC2138 remain gated.
+
+
+## Family-1 opcodes 0x50 / 0x51: registered-buffer MTT transfer
+
+`FUN_000165A6` dispatches both family-1 opcodes `0x50` and `0x51` to
+`FUN_000160DC`. These commands are **not** generic firmware forwarding.
+
+The payload following the opcode is seven bytes:
+
+```text
+BYTE  control/unused
+DWORD registered-transfer token
+WORD  MTTRGO launch value
+```
+
+`FUN_000160DC` resolves the transfer entry through `FUN_00018168` and
+requires:
+
+```text
+launch_value << 3 >= transfer_data_bytes
+```
+
+On a valid request it calls `FUN_00017478(..., launch_value, false)`.
+The false selector makes `FUN_000171DE` use BAR1 `MTTRGO` at offset 0x084
+instead of MAMRGO:
+
+```text
+SGTA  <- descriptor-table physical address
+IIMTC <- transfer TotalDwords
+reset transfer CompletionEvent
+enable INTEN bit 0
+IIMCL <- 1
+MTTRGO <- launch_value
+wait <= 5 s for interrupt-bit-0 completion
+disable INTEN bit 0
+```
+
+After an attempted transfer the local pending response is eight bytes:
+
+```text
+DWORD NTSTATUS
+WORD  2
+WORD  protocol_status   // 0 success, 8 hardware/timeout failure
+```
+
+Runtime evidence:
+
+- both complete original traces use opcode 0x51 only;
+- 279 and 286 captured calls respectively;
+- payload length is always 10 bytes including `40 01 51`;
+- control byte is always zero;
+- launch value is normally 0x0080, with one 0x0180 call per trace;
+- all referenced CFDC2124 data buffers are 0x400 bytes;
+- all captured calls return success and the combined 14-byte response
+  `0000000000000000000002000000`.
+
+Trace `xstream_trace_20260927_235712.jsonl` is the first x64 runtime request
+for this path: opaque transfer token 2, launch value 0x0080.

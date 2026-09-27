@@ -277,17 +277,16 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Hardware-test commit `124785ccd65e190fe73494394ea0ebc0502be8c5`,
-   the first x64 build that executes the proven one-channel `CFDC2138` DMA
-   path.
-2. Use the normal desktop trace helper and determine whether the first
-   0x0C00-byte transfer completes through INTST bit 0, times out, or exposes a
-   new deterministic IOCTL/hardware state.
-3. If `CFDC2138` succeeds, compare the subsequent transfer sizes/channels and
-   returned data flow against the existing full original traces before
-   broadening any ABI shape.
+1. Hardware-test the family-1 opcode-`0x50/0x51` MTTRGO path added after
+   `xstream_trace_20260927_235712.jsonl`.
+2. The first one-channel `CFDC2138` MAM acquisition is already proven on x64:
+   trace 235712 returns SUCCESS, Information=4 and `000C0000` for the
+   0x0C00-byte request. Do not regress or re-gate that path.
+3. The immediate next discriminator is whether the second registered 0x400-byte
+   transfer completes through family-1 opcode `0x51` and lets
+   `CAAcqDescBuilder::Init` continue to its subsequent transfer set.
 4. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated.
-5. Preserve the below-4-GiB descriptor safety check. Do not truncate x64
+5. Preserve the below-4-GiB descriptor safety check. Never truncate x64
    physical addresses into the legacy DWORD descriptor format.
 
 
@@ -429,7 +428,12 @@ The native x64 driver has been advanced beyond the original bring-up prototype:
 - `0xCFDD219F` and unobserved multi-channel `0xCFDC2138` remain
   `STATUS_NOT_SUPPORTED`;
 - recovered `0xCFDC2110` classes execute their proven local or board-forwarded
-  behavior, while unknown/unproven classes remain rejected.
+  behavior, while unknown/unproven classes remain rejected;
+- family-1 opcodes `0x50/0x51` now execute the statically recovered local
+  MTT transfer path: resolve an owner-checked CFDC2124 token, validate
+  `launch_word << 3 >= DataBytes`, program SGTA/IIMTC, enable transfer
+  interrupt bit 0, write IIMCL=1, launch through BAR1 MTTRGO and wait up to
+  five seconds for the same completion event used by CFDC2138.
 
 Passive runtime tracing has been upgraded:
 
@@ -2737,3 +2741,75 @@ The failed build never reached signing or driver reload, so no DMA-capable
 driver from commit 124785c was loaded during that attempt. Retest using the
 normal `Run-LeCroy-XStream-Trace.ps1 -Configuration Debug` workflow after
 pulling the fix.
+
+
+## 2026-09-27 trace 235712: CFDC2138 succeeds; family-1 opcode 0x51 is next blocker
+
+`xstream_trace_20260927_235712.jsonl` proves that the first enabled x64
+one-channel CFDC2138 DMA path completes successfully:
+
+```text
+CFDC2124 seq 739
+  input  1076BC1C040C000000000000
+  output 01000000
+  status SUCCESS
+
+CFDC2138 seq 740
+  input  0100000001010100000000000C0000
+  output 000C0000
+  Information = 4
+  status SUCCESS
+```
+
+Therefore the unchanged XStream dialog
+`CAAcqDescBuilder::Init / FAILED to Initialize Memory! NumSeg: 40` no longer
+indicates failure of the first MAM acquisition. The failure has moved to the
+next memory-builder step.
+
+Immediately after the successful 0x0C00-byte CFDC2138, XStream registers a
+second transfer:
+
+```text
+CFDC2124 seq 741
+  total bytes = 0x404
+  data bytes  = 0x400
+  output token = 2
+  status SUCCESS
+```
+
+It then sends:
+
+```text
+06000A000300FBA540015100020000008000
+080002000300FB854000
+```
+
+This is family 1 opcode `0x51`, payload layout after the opcode:
+
+```text
+BYTE  control/unused = 0
+DWORD transfer token = 2
+WORD  launch value   = 0x0080
+```
+
+The pre-fix x64 gate rejected it with `STATUS_INVALID_DEVICE_REQUEST`.
+
+Both complete original traces contain this exact semantic operation repeatedly:
+
+- 19:56 trace: 279 opcode-0x51 calls;
+- 18:52 trace: 286 opcode-0x51 calls;
+- every captured call succeeds with 14 output bytes
+  `0000000000000000000002000000`;
+- every runtime request has payload length 10 and control byte 0;
+- 278/279 and 285/286 calls respectively use launch value `0x0080`;
+- one call in each trace uses `0x0180`;
+- all referenced CFDC2124 entries have 0x400 data bytes.
+
+Static dispatch in `FUN_000165A6` sends both family-1 opcodes `0x50` and
+`0x51` to `FUN_000160DC`. That helper resolves the DWORD transfer token,
+rejects the request when `launch_word << 3 < registered_data_bytes`, then
+calls `FUN_00017478 -> FUN_000171DE` with the final selector choosing
+MTTRGO rather than MAMRGO.
+
+The x64 implementation now mirrors that proven path and uses the same
+owner-checked below-4-GiB descriptor object already built by CFDC2124.

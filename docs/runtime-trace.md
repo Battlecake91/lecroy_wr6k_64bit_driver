@@ -2251,3 +2251,46 @@ interrupt bit 0 and performs the legacy IIMST/IIMCL cleanup.
 Successful CFDC2124 remains a hard safety gate: source and descriptor-table
 physical addresses above 4 GiB are rejected before a token is published.
 Multi-channel CFDC2138 and CFDD219F remain disabled.
+
+
+## Trace 235712: first CFDC2138 success and next MTT gate
+
+The visible XStream fatal dialog remains
+`CAAcqDescBuilder::Init / FAILED to Initialize Memory! NumSeg: 40`, but the
+new trace proves that its cause has moved.
+
+The first real x64 MAM DMA now succeeds:
+
+```text
+seq 739 CFDC2124 -> token 1, SUCCESS
+seq 740 CFDC2138 -> SUCCESS, Information=4, output=000C0000
+```
+
+This matches the legacy four-byte completed-byte result for the 0x0C00-byte
+one-channel request.
+
+XStream then registers a second transfer with 0x404 total bytes / 0x400 data
+bytes and receives token 2. Its next request is family-1 opcode `0x51`:
+
+```text
+06000A000300FBA540015100020000008000
+080002000300FB854000
+```
+
+The previous x64 validated gate rejected this packet with
+`STATUS_INVALID_DEVICE_REQUEST`.
+
+The two full original runtime captures contain 279 and 286 successful
+opcode-0x51 calls respectively. Their transfer-token DWORD is the legacy
+registered-transfer pointer; the x64 packet correctly carries opaque token 2
+in the same field. The final WORD is normally 0x0080 and once per trace 0x0180.
+Every referenced transfer contains 0x400 data bytes.
+
+Recovered `FUN_000160DC` validates that
+`launch_word << 3 >= registered_data_bytes`, then
+`FUN_00017478 -> FUN_000171DE` programs SGTA/IIMTC, resets the transfer
+event, enables interrupt bit 0, writes IIMCL=1 and launches via BAR1 MTTRGO.
+The synchronous wait is the same five-second event wait used by the MAM path.
+
+The x64 driver now admits and executes both statically equivalent family-1
+opcodes 0x50 and 0x51 with that local MTTRGO path.

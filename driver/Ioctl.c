@@ -1780,6 +1780,128 @@ LecLegacyTimerArmOrExtend(
 }
 
 static
+NTSTATUS
+LecExecuteLegacyMttTransferLocked(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _In_ USHORT LaunchUnits
+    )
+{
+    volatile ULONG* sgta;
+    volatile ULONG* iimtc;
+    volatile ULONG* iimcl;
+    volatile ULONG* mttrgo;
+    ULONG currentMask;
+    ULONG cleanupMask;
+    LARGE_INTEGER timeout;
+    NTSTATUS status;
+    NTSTATUS disableStatus;
+    BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferInterruptEnabled = FALSE;
+
+    if (Transfer == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /*
+     * Caller holds TransferMutex.  Legacy FUN_000160DC resolves the transfer
+     * entry first, then FUN_00017478/FUN_000171DE uses that selected entry for
+     * the synchronous MTTRGO launch.
+     */
+    if (DevExt->CurrentTransfer != NULL) {
+        return STATUS_DEVICE_BUSY;
+    }
+
+    status = LecResolveRegister(DevExt, 0, 0x040, &sgta);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 0, 0x044, &iimtc);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 0, 0x048, &iimcl);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecResolveRegister(DevExt, 1, 0x084, &mttrgo);
+    if (!NT_SUCCESS(status)) return status;
+
+    WRITE_REGISTER_ULONG(
+        sgta,
+        Transfer->DescriptorTablePhysical);
+    WRITE_REGISTER_ULONG(
+        iimtc,
+        Transfer->TotalDwords);
+
+    KeResetEvent(&Transfer->CompletionEvent);
+    (VOID)InterlockedAnd(
+        (volatile LONG*)&DevExt->InterruptPendingShadow,
+        ~1L);
+
+    (VOID)InterlockedExchangePointer(
+        (PVOID volatile*)&DevExt->CurrentTransfer,
+        Transfer);
+    transferSelected = TRUE;
+
+    currentMask = (ULONG)InterlockedCompareExchange(
+        (volatile LONG*)&DevExt->InterruptEnableShadow,
+        0,
+        0);
+
+    status = LecCommitLegacyInterruptMask(
+        DevExt,
+        currentMask | 0x01UL);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
+    transferInterruptEnabled = TRUE;
+
+    WRITE_REGISTER_ULONG(iimcl, 1UL);
+    WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
+
+    timeout.QuadPart = -50000000LL;
+    status = KeWaitForSingleObject(
+        &Transfer->CompletionEvent,
+        Executive,
+        KernelMode,
+        FALSE,
+        &timeout);
+
+    if (status == STATUS_TIMEOUT) {
+        status = STATUS_IO_TIMEOUT;
+    }
+
+Cleanup:
+    if (transferInterruptEnabled) {
+        cleanupMask = (ULONG)InterlockedCompareExchange(
+            (volatile LONG*)&DevExt->InterruptEnableShadow,
+            0,
+            0);
+
+        disableStatus = LecCommitLegacyInterruptMask(
+            DevExt,
+            cleanupMask & ~0x01UL);
+
+        if (NT_SUCCESS(status) &&
+            !NT_SUCCESS(disableStatus)) {
+            status = disableStatus;
+        }
+    }
+
+    if (transferSelected) {
+        (VOID)InterlockedExchangePointer(
+            (PVOID volatile*)&DevExt->CurrentTransfer,
+            NULL);
+    }
+
+    LecTrace(
+        "CFDC2110 family1 MTT DMA: token=%lu bytes=%lu SGTA=0x%08lX IIMTC=%lu MTTRGO=%u status=0x%08X\n",
+        Transfer->Token,
+        Transfer->DataBytes,
+        Transfer->DescriptorTablePhysical,
+        Transfer->TotalDwords,
+        (ULONG)LaunchUnits,
+        status);
+
+    return status;
+}
+
+static
 BOOLEAN
 LecIsStructurallySupportedCfDc2110(
     _In_reads_bytes_(InputLength) const UCHAR* Buffer,
@@ -1790,17 +1912,16 @@ LecIsStructurallySupportedCfDc2110(
     BOOLEAN sawForwardCommand = FALSE;
 
     /*
-     * Legacy static analysis shows that these command classes are not
-     * interpreted by the host driver. They are forwarded to the board through
-     * the generic BAR1 message transport:
-     *
-     *   family 0: opcode 0x84
-     *   family 1: opcodes 0x81, 0x90, 0x99
-     *
      * Admit statically decoded command classes rather than individual captured
-     * payloads, while still validating the packed CFDC2110 record framing
-     * before hardware is touched. 85FB fetch records are allowed only as
-     * companions to a supported request.
+     * packet literals, while still validating the packed CFDC2110 framing
+     * before hardware is touched.
+     *
+     * Most admitted family-1 classes are direct board-forwarding commands.
+     * Opcodes 0x50/0x51 are different: FUN_000165A6 dispatches both to local
+     * host handler FUN_000160DC, which resolves a registered transfer token and
+     * launches the already-built descriptor chain through MTTRGO.
+     *
+     * 85FB fetch records are allowed only as companions to a supported request.
      */
     if (Buffer == NULL || InputLength < 8) {
         return FALSE;
@@ -1956,6 +2077,19 @@ LecIsStructurallySupportedCfDc2110(
                 case 0x0E:
                     break;
                 default:
+                    return FALSE;
+                }
+
+                sawForwardCommand = TRUE;
+            }
+            else if (family == 1 &&
+                     (opcode == 0x50 || opcode == 0x51)) {
+                /*
+                 * FUN_000160DC consumes exactly seven bytes after the opcode:
+                 * one ignored/control byte, DWORD transfer token and WORD
+                 * MTTRGO launch value.
+                 */
+                if (payloadLength != 10) {
                     return FALSE;
                 }
 
@@ -2754,6 +2888,78 @@ LecIoctlCfDc2110(
                 else {
                     protocolStatus = 8;
                 }
+            }
+            else if (payload[1] == 1 &&
+                     (payload[2] == 0x50 ||
+                      payload[2] == 0x51)) {
+                PLECS65_TRANSFER transfer = NULL;
+                ULONG token = 0;
+                USHORT launchUnits = 0;
+                NTSTATUS hwStatus = STATUS_INVALID_PARAMETER;
+
+                if (payloadLength != 10) {
+                    protocolStatus = 4;
+                }
+                else {
+                    token = LecReadU32(payload + 4);
+                    launchUnits = LecReadU16(payload + 8);
+
+                    transfer = LecFindTransferOwned(
+                        DevExt,
+                        token,
+                        PsGetCurrentProcessId());
+
+                    /*
+                     * FUN_000160DC accepts the selected transfer only when
+                     * (launchUnits << 3) covers at least the registered data
+                     * byte count. Runtime uses 0x80 for the 0x400-byte helper
+                     * buffer, with one observed 0x180 launch value also
+                     * accepted for that same 0x400-byte registration.
+                     */
+                    if (transfer == NULL ||
+                        (((ULONG)launchUnits << 3) <
+                         transfer->DataBytes)) {
+                        protocolStatus = 4;
+                    }
+                    else {
+                        hwStatus = LecExecuteLegacyMttTransferLocked(
+                            DevExt,
+                            transfer,
+                            launchUnits);
+
+                        protocolStatus =
+                            NT_SUCCESS(hwStatus) ? 0 : 8;
+
+                        /*
+                         * FUN_000160DC installs an eight-byte local response
+                         * after attempting the synchronous transfer:
+                         *   DWORD NTSTATUS
+                         *   WORD  2
+                         *   WORD  protocol status (0 or 8)
+                         */
+                        LecWriteU32(
+                            pendingResponse,
+                            (ULONG)hwStatus);
+                        LecWriteU16(
+                            pendingResponse + 4,
+                            2);
+                        LecWriteU16(
+                            pendingResponse + 6,
+                            protocolStatus);
+                        pendingResponseLength = 8;
+                        pendingResponseReady = TRUE;
+                        pendingResponseIsRawHardware = FALSE;
+                        hardwareResponsePending = FALSE;
+                    }
+                }
+
+                LecTrace(
+                    "CFDC2110 family1/0x%02X MTT token=%lu launch=%u -> protocol=%u hw=0x%08X\n",
+                    (ULONG)payload[2],
+                    token,
+                    (ULONG)launchUnits,
+                    (ULONG)protocolStatus,
+                    hwStatus);
             }
             else if (payload[1] == 1 && payload[2] == 0x42) {
                 NTSTATUS hwStatus;
