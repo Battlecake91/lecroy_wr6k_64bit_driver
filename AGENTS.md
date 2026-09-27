@@ -1436,3 +1436,28 @@ Relevant implementation commits:
 
 Next trace should show whether CFDC2124 / CFDC2138 / CFDD219F finally appear
 after the full payload queries succeed.
+
+## Latest trace: full query buffers pass; two new ABI forms implemented
+
+Trace `xstream_trace_20260927_114152.jsonl`:
+- 1102 IOCTL events;
+- 1072 CFDC2110 calls, all successful;
+- 0x223004 size/full payload reads all succeed;
+- 0x223040 size/full-list reads all succeed.
+
+Only three failures remain:
+- 0x00222400 out=4 (still unmapped);
+- 0x00223000 in=0x108 out=0;
+- 0x00223040 in=4 out=0x10A.
+
+New static mappings:
+- 0x223000 -> FUN_00012ADA -> FUN_00012290(traceControl,index,level).
+  This is software trace verbosity only, no hardware side effect.
+- 0x223040 indexed form -> FUN_000124C2; input DWORD is register index and
+  output is exactly one refreshed 0x10A-byte serialized register entry.
+
+Both new forms are implemented in commit 766d6c896208279cc69d777cb534d47657da4446.
+
+No CFDC2124 / CFDC2138 / CFDD219F is reached in this trace yet. The next
+hardware run will determine whether the only remaining startup failure,
+0x00222400, is still gating acquisition.
