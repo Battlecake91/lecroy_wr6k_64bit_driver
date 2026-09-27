@@ -995,3 +995,33 @@ now been addressed in the x64 driver.
 The next hardware capture should determine whether XStream proceeds from the
 visible "Acquiring" wait to CFDC2124 transfer registration and then to
 CFDC2138 / CFDD219F acquisition execution.
+
+## Twenty-seventh runtime capture: full buffers succeed, indexed query reached
+
+Trace `xstream_trace_20260927_114152.jsonl` contains 1102 IOCTL events.
+
+Important progress:
+
+- all four 0x223004 calls succeed, including both 272-byte full payload reads;
+- all full 0x223040 register-list reads succeed, including the 11438-byte
+  serialized list;
+- 1072 CFDC2110 calls are present and succeed.
+
+Only three IOCTL failures remain:
+
+- `0x00222400`, out=4, still unmapped;
+- `0x00223000`, in=264, out=0;
+- `0x00223040`, in=4, out=266.
+
+The new `0x00223040` form is the indexed single-register query. Legacy
+`FUN_00012C18` accepts a four-byte register index in the shared buffered IOCTL
+buffer and calls `FUN_000124C2` to refresh and serialize exactly one 0x10A-byte
+register entry into that same buffer. The captured request asks for index 0.
+
+The new `0x00223000` form maps to legacy `FUN_00012ADA`. It accepts exactly
+0x108 input bytes and passes the final two DWORDs to
+`FUN_00012290(traceControl, index, level)`. This changes only driver tracing
+verbosity; the captured input is entirely zero, i.e. index 0 / level 0.
+
+The x64 driver now implements both forms. No CFDC2124, CFDC2138 or CFDD219F is
+present in this capture yet.
