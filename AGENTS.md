@@ -1507,3 +1507,26 @@ response words still needs raw assembly from inside FUN_00015C7E.
 
 Targets 15CC0, 15CF0, 15D20, 15D50 and 15D70 were added in commit
 5160c65886d9e179af2986496d1f742db2ed86d1.
+
+## Current fix before next trace: MTTCTL must wait on command timer
+
+Full asm for FUN_00015C7E proves the JTAG response extraction itself matches
+legacy:
+- 16-bit chunk -> JTAGDIN >> 16;
+- final partial chunk -> JTAGDIN >> (32 - bits).
+
+The repeated mode-1 76-bit JTAG poll is therefore waiting on a hardware state
+that should have been established earlier.
+
+Critical mismatch found in family-2 opcode 0x02:
+- legacy FUN_000163B2 waits on the KTIMER armed by opcode 0x01 before writing
+  MTTCTL;
+- previous x64 code incorrectly waited on CurrentTransfer->CompletionEvent;
+- before transfer registration this effectively removed the required delay.
+
+Fixed in commit 45ca142cce4b25f18eccd029251726314d9c6759:
+- opcode 0x02 now waits on LegacyTimer before MTTCTL;
+- packed type-1/type-2 MAM records now always use mode 1, matching FUN_00012F30.
+
+Next trace should show whether the 76-bit JTAG status finally changes and
+XStream advances toward CFDC2124 / acquisition IOCTLs.
