@@ -1237,8 +1237,50 @@ LecJtagExecute(
     RtlZeroMemory(Response, 8 + requestedDataBytes);
     remainingBits = bitCount;
 
-    while (remainingBits != 0) {
-        ULONG thisBits = min(remainingBits, 16UL);
+    /*
+     * Legacy FUN_00015C7E programs JTAGNUM once for the entire run of
+     * full 16-bit chunks. It then streams JTAGDAT words without touching
+     * JTAGNUM again. Only the final partial chunk reprograms JTAGNUM.
+     * Rewriting JTAGNUM for every 16-bit word restarts the FPGA JTAG shift
+     * operation and is not equivalent.
+     */
+    if (remainingBits >= 16UL) {
+        WRITE_REGISTER_ULONG(
+            jtagNum,
+            ((mode != 0) ? 0x100UL : 0UL));
+
+        while (remainingBits >= 16UL) {
+            USHORT firstWord;
+            USHORT secondWord;
+            ULONG dataValue;
+            ULONG inputValue;
+            USHORT outputWord;
+
+            if (inputOffset + 4 > RequestLength ||
+                outputOffset + 2 > 8 + requestedDataBytes) {
+                return STATUS_INVALID_BUFFER_SIZE;
+            }
+
+            firstWord = LecReadU16(Request + inputOffset);
+            secondWord = LecReadU16(Request + inputOffset + 2);
+
+            dataValue =
+                ((ULONG)firstWord << 16) |
+                (ULONG)secondWord;
+            WRITE_REGISTER_ULONG(jtagData, dataValue);
+
+            inputValue = READ_REGISTER_ULONG(jtagIn);
+            outputWord = (USHORT)(inputValue >> 16);
+            LecWriteU16(Response + outputOffset, outputWord);
+
+            inputOffset += 4;
+            outputOffset += 2;
+            produced += 2;
+            remainingBits -= 16UL;
+        }
+    }
+
+    if (remainingBits != 0) {
         USHORT firstWord;
         USHORT secondWord;
         ULONG dataValue;
@@ -1256,7 +1298,7 @@ LecJtagExecute(
         WRITE_REGISTER_ULONG(
             jtagNum,
             ((mode != 0) ? 0x100UL : 0UL) |
-            (thisBits & 0x0FUL));
+            (remainingBits & 0x0FUL));
 
         dataValue =
             ((ULONG)firstWord << 16) |
@@ -1264,21 +1306,12 @@ LecJtagExecute(
         WRITE_REGISTER_ULONG(jtagData, dataValue);
 
         inputValue = READ_REGISTER_ULONG(jtagIn);
-
-        if (thisBits == 16) {
-            outputWord = (USHORT)(inputValue >> 16);
-        }
-        else {
-            outputWord = (USHORT)(
-                inputValue >> (32 - thisBits));
-        }
-
+        outputWord = (USHORT)(
+            inputValue >> (32 - remainingBits));
         LecWriteU16(Response + outputOffset, outputWord);
 
-        inputOffset += 4;
         outputOffset += 2;
         produced += 2;
-        remainingBits -= thisBits;
     }
 
     LecWriteU32(Response, 0);
@@ -1328,8 +1361,38 @@ LecJtagWriteOnly(
         &jtagData);
     if (!NT_SUCCESS(status)) return status;
 
-    while (remainingBits != 0) {
-        ULONG thisBits = min(remainingBits, 16UL);
+    /*
+     * Match legacy FUN_00015ACC: program JTAGNUM once for all complete
+     * 16-bit chunks, stream JTAGDAT, then reprogram JTAGNUM only for a
+     * final partial chunk.
+     */
+    if (remainingBits >= 16UL) {
+        WRITE_REGISTER_ULONG(
+            jtagNum,
+            ((mode != 0) ? 0x100UL : 0UL));
+
+        while (remainingBits >= 16UL) {
+            USHORT firstWord;
+            USHORT secondWord;
+            ULONG dataValue;
+
+            if (inputOffset + 4 > RequestLength) {
+                return STATUS_INVALID_BUFFER_SIZE;
+            }
+
+            firstWord = LecReadU16(Request + inputOffset);
+            secondWord = LecReadU16(Request + inputOffset + 2);
+            dataValue =
+                ((ULONG)firstWord << 16) |
+                (ULONG)secondWord;
+            WRITE_REGISTER_ULONG(jtagData, dataValue);
+
+            inputOffset += 4;
+            remainingBits -= 16UL;
+        }
+    }
+
+    if (remainingBits != 0) {
         USHORT firstWord;
         USHORT secondWord;
         ULONG dataValue;
@@ -1344,15 +1407,12 @@ LecJtagWriteOnly(
         WRITE_REGISTER_ULONG(
             jtagNum,
             ((mode != 0) ? 0x100UL : 0UL) |
-            (thisBits & 0x0FUL));
+            (remainingBits & 0x0FUL));
 
         dataValue =
             ((ULONG)firstWord << 16) |
             (ULONG)secondWord;
         WRITE_REGISTER_ULONG(jtagData, dataValue);
-
-        inputOffset += 4;
-        remainingBits -= thisBits;
     }
 
     return STATUS_SUCCESS;
