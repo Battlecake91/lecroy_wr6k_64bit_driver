@@ -1530,3 +1530,31 @@ Fixed in commit 45ca142cce4b25f18eccd029251726314d9c6759:
 
 Next trace should show whether the 76-bit JTAG status finally changes and
 XStream advances toward CFDC2124 / acquisition IOCTLs.
+
+## Latest fix: suppress duplicate MAMDAT writes
+
+Trace `xstream_trace_20260927_121112.jsonl` still stalls in the same
+family-1 opcode-0x42 76-bit JTAG poll after the timer-barrier fix.
+
+Immediately before the poll:
+- seq 893-898: six type-1 MAM records;
+- seq 899-904: exact duplicate of those six records;
+- seq 905: MTTCTL=1;
+- seq 906+: repeated JTAG status scan.
+
+Legacy FUN_000179E2 keeps a per-index 16-bit shadow and does not write MAMDAT
+again when the indexed value is unchanged. Previous x64 code always rewrote
+the values.
+
+Implemented:
+- device extension now has LegacyMamShadow[256] and valid flags;
+- LecApplyMamConfigRecord writes MAMDAT only when index data changes;
+- MAMPGO is still written every record;
+- type1/type2 records remain fixed to legacy mode 1.
+
+Relevant commits:
+- 46fc30c660724e3c1cd7c5c172c3bb1d9b62ef82
+- 6c84c1860f376cc51bb2a1a5ae38f40269f75cdf
+
+Next trace should show whether avoiding the second identical MAMDAT programming
+block allows the post-MTTCTL JTAG status to advance.
