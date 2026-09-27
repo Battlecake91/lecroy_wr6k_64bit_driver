@@ -1656,3 +1656,19 @@ the build. The script now checks the Machine field and requires:
 It also prints the verified architecture and PE machine value. If a user still
 sees the old output path, their local checkout/script is stale or locally
 modified; pull/reset before rebuilding.
+
+
+## Legacy lecdiag device opening
+
+On the original 32-bit system, the x86 lecdiag binary ran correctly but
+`CreateFile(\\\\.\\ALADDINAcqDriver0)` returned ERROR_FILE_NOT_FOUND.
+This confirms the fixed DOS compatibility link used by the replacement driver
+is not necessarily published by the legacy driver.
+
+Commit `fffd5209ab993e3162a4f503c899629ab2d0efe1` changes lecdiag to enumerate
+all four recovered LeCroy PnP interface GUIDs through SetupAPI first and open
+the first present interface. The fixed `\\\\.\\ALADDINAcqDriver0` path remains
+as a fallback for the replacement driver.
+
+Rebuild the x86 diagnostic after pulling and retry `lecdiag.exe build` then
+`lecdiag.exe legacy-jtag-poll` on the original driver system.
