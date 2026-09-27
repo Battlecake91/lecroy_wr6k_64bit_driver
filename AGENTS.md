@@ -1230,3 +1230,19 @@ without introducing out-of-buffer reads.
 
 Next runtime test should show whether Auto/Single reaches the acquisition IOCTL
 path after these arm-stage commands.
+
+## Latest runtime trace: 2026-09-27 09:58
+
+Trace `xstream_trace_20260927_095816.jsonl` contains 535 CFDC2110 calls:
+524 success and 11 rejected. Every rejection is family 0 / opcode `0x4A`
+(selector 0 x5, selector 1 x5, selector 2 x1).
+
+No CFDC2138 or CFDD219F acquisition launch is reached before this blocker.
+
+Legacy `FUN_00016A66` proves family-0 opcode `0x4A` is a pure generic
+board forwarder via `FUN_00016168(...,1)`. The complete statically confirmed
+family-0 forward-only set is now admitted semantically:
+`4A,84,86,87,96,97,A1,A2`.
+
+Previously implemented family-0 opcode `0x90` SPI/probe and opcode `0xA0`
+PFREG paths continue to succeed in this trace.
