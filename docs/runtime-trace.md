@@ -2468,3 +2468,19 @@ It does not yet validate external ProBus I2C operation. No direct I2C register
 or SDA/SCL-level transaction is visible in the recovered driver ABI; the
 Windows driver programs SPICTL/SPIDAT/SPIDIN instead. A connected ProBus probe
 must therefore be used to validate recognition and probe-side communication.
+
+
+## Developer menu: Run Link Tests currently rejected by XStream
+
+On the known-good x64 waveform baseline, XStream's developer menu action
+`Run Link Tests` currently logs `WaveRunner Driver Not Supported`.
+
+The replacement already implements `CFDC21C8` and returns legacy build 1002,
+so the visible rejection is not explained by the public build number alone.
+No trace has yet been captured around the menu action, so it is not known
+whether XStream sends a link-test IOCTL and receives an unsupported result, or
+rejects the replacement entirely in user mode before touching the driver.
+
+The next required evidence is a passive x64 trace containing one deliberate
+`Run Link Tests` invocation. Preserve the current working waveform baseline
+while investigating this.
