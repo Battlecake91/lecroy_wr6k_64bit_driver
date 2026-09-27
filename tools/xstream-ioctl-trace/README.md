@@ -11,6 +11,10 @@ Components:
 The hook forwards calls unchanged and records JSONL with exact IOCTL input bytes
 before the call and output bytes after synchronous completion.
 
+The launcher keeps XStream suspended until the hook DLL has been loaded and its
+exported `InitializeXStreamTrace` routine has completed successfully. Hook setup
+therefore runs outside `DllMain` and outside the loader lock.
+
 ## Build
 
 From the repository root on a machine with MSVC x86 tools:
@@ -60,3 +64,25 @@ yet hook completion APIs, so pending calls do not contain final completion outpu
 
 The capture is intentionally user-mode only. The original legacy kernel driver
 is not patched or replaced.
+
+## Expected first test
+
+Build on the 64-bit development system:
+
+```powershell
+cd C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver
+git pull
+.\scripts\build-xstream-ioctl-trace.ps1
+```
+
+Copy both files from `tools\xstream-ioctl-trace\build\x86\` to the original
+32-bit system. Keep them together, then start the original XStream only through
+the launcher:
+
+```powershell
+.\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe"
+```
+
+Dismiss the normal probe warning with OK if it appears, let startup settle, then
+close XStream normally. Upload the resulting `legacy_xstream_trace_*.jsonl` for
+comparison with the x64 trace.
