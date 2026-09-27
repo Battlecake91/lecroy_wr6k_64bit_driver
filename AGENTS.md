@@ -1113,3 +1113,19 @@ Static legacy semantics:
 The x64 driver now implements opcode `0x42` structurally and opcode `0x92`
 selector 1 as an aligned BAR1 write with BAR resource bounds checked at runtime.
 Selectors 0 and 2 remain gated until their legacy base mappings are confirmed.
+
+## Latest staged trace: 2026-09-27 02:56
+
+Trace `xstream_trace_20260927_025600.jsonl` contains 421 CFDC2110 calls:
+420 successful and exactly one rejected. The previous family-0 opcode-`0x42`
+JTAG and opcode-`0x92` BAR1-write implementations therefore pass this startup
+stage.
+
+The sole blocker is family 2 / opcode `0x02`, observed with body byte
+`0x00`.
+
+Legacy `FUN_000163B2` accepts body 0 or 1, optionally waits on an active
+internal transfer, and writes 0/1 to BAR1 offset `0x80` (MTTCTL), then
+creates a local status response. The x64 implementation now maps the optional
+wait to `CurrentTransfer->CompletionEvent` and implements both valid body
+values structurally.
