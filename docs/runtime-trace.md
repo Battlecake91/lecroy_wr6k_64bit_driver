@@ -1113,3 +1113,31 @@ normally absent at this stage.
 
 This timer barrier is now corrected. Type-1/type-2 MAM records are also fixed
 to always use legacy MAM mode 1.
+
+## Twenty-ninth runtime capture: JTAG poll unchanged after timer fix
+
+Trace `xstream_trace_20260927_121112.jsonl` contains 950 IOCTL events.
+
+Results:
+- 949 successful IOCTLs;
+- the only failing IOCTL is still the tolerated `0x00222400` probe;
+- 930 CFDC2110 calls;
+- no CFDC2124 / CFDC2138 / CFDD219F.
+
+The family-2 opcode-0x02 timer-barrier correction does not by itself resolve
+the acquisition stall. The trace still enters the same repeated family-1
+opcode-0x42 JTAG scan after sequence 905.
+
+The exact pre-poll sequence is now especially informative:
+- seq 893-898: six type-1 MAM configuration records;
+- seq 899-904: the same six type-1 records repeated byte-for-byte;
+- seq 905: family-2 opcode 0x02, MTTCTL=1;
+- seq 906 onward: repeated mode-1 76-bit JTAG status scan.
+
+Legacy `FUN_000179E2` maintains a 16-bit shadow per MAM index and suppresses
+MAMDAT writes when the indexed value is unchanged. The previous x64 driver
+wrote every indexed value again on the repeated 899-904 block.
+
+The x64 driver now tracks a per-index MAM shadow plus validity and suppresses
+duplicate MAMDAT writes while still issuing MAMPGO for each record, matching
+legacy semantics.
