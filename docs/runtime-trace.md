@@ -768,3 +768,29 @@ Observed application-level failures now split into two distinct groups:
 No `CFDC2138` or `CFDD219F` acquisition launch IOCTL occurs in this trace.
 Therefore the current "unable to arm acquisition board" message happens before
 the still-gated DMA acquisition path is entered.
+
+## Probe SPI path resolved after constructor export
+
+The follow-up Ghidra export after trace
+`xstream_trace_20260927_025927.jsonl` resolves the previously ambiguous
+family-0 opcode-`0x90` helper mapping.
+
+The constructor chain proves that dispatcher field `+0x19` points at the SPI
+helper initialized from BAR1 registers `SPICTL 0xA0`, `SPIDAT 0xA4`, and
+`SPIDIN 0xA8`.
+
+The five rejected probe requests in the trace all use the same structurally
+valid opcode-`0x90` form:
+
+- selector `0x0E`;
+- bit count 144;
+- nine 16-bit payload words.
+
+This matches legacy `FUN_00015E80` exactly. The x64 driver now implements the
+decoded SPI-write/control sequence semantically instead of rejecting the
+request.
+
+Together with the already resolved opcode-`0xA0` -> PFREG mapping, the next
+runtime test should show whether the application-visible probe errors disappear
+and whether the trigger/arm sequence progresses beyond its previous failure
+point.
