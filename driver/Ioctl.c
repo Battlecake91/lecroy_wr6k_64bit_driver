@@ -2160,6 +2160,7 @@ LecIoctlCfDc2110(
     BOOLEAN pendingResponseReady = FALSE;
     BOOLEAN hardwareResponsePending = FALSE;
     BOOLEAN pendingResponseIsRawHardware = FALSE;
+    USHORT pendingResponseLengthOverride = 0;
     ULONG inputOffset;
     ULONG outputOffset;
     ULONG totalOutput = 0;
@@ -2306,6 +2307,8 @@ LecIoctlCfDc2110(
                     hardwareResponsePending = TRUE;
                     pendingResponseReady = FALSE;
                     pendingResponseIsRawHardware = FALSE;
+                    pendingResponseLengthOverride =
+                        (payload[2] == 0x99) ? 2U : 0U;
                     pendingResponseLength = 0;
                     protocolStatus = 0;
                 }
@@ -2825,7 +2828,11 @@ LecIoctlCfDc2110(
                     }
 
                     LecWriteU32(recordResult, 0);
-                    LecWriteU16(recordResult + 4, 2);
+                    LecWriteU16(
+                        recordResult + 4,
+                        pendingResponseLengthOverride != 0
+                            ? pendingResponseLengthOverride
+                            : (USHORT)(recordOutput - 6));
 
                     payloadCapacity = recordOutput - 6;
                     copyLength = min(
@@ -2856,6 +2863,7 @@ LecIoctlCfDc2110(
 
                 pendingResponseReady = FALSE;
                 pendingResponseIsRawHardware = FALSE;
+                pendingResponseLengthOverride = 0;
                 pendingResponseLength = 0;
             }
         }
