@@ -3180,3 +3180,47 @@ PCI/DMA behavior.
 
 Do not modify the known-good acquisition path merely to make this developer
 menu entry advance.
+
+
+## 2026-09-28 trace 013644: Developer Run Link Tests is gated in XStream
+
+Important test-procedure correction from the user:
+
+- XStream's Developer -> Run Link Tests must be executed with acquisition
+  stopped.
+- Do not instruct future tests to invoke it while waveform acquisition is
+  running.
+
+Trace `xstream_trace_20260928_013644.jsonl` captures the developer link-test
+attempt in the required stopped-acquisition state.
+
+Result:
+
+- XStream logs `WaveRunner Driver Not Supported`.
+- 572 IOCTLs are captured and every IOCTL returns NTSTATUS success.
+- No new/unknown IOCTL code appears.
+- No new unsupported CFDC2110 opcode appears.
+- `CFDC21C8` is not issued during the captured XStream session, so this
+  rejection is not a runtime comparison of the public build-query result 1002.
+- During the long stopped interval the only non-CFDC2110 traffic consists of
+  already-known `SET_FLAG_BYTE (0x00222C04)` and
+  `DELAY_MS (0x00222C00)` calls, all successful.
+- The nearby CFDC2110 traffic is the already-known family-1 opcode-0x42 JTAG
+  status poll and also succeeds.
+
+This strongly indicates that `WaveRunner Driver Not Supported` is an
+XStream/user-mode capability or driver-type gate that rejects the replacement
+before an actual link-test transaction is sent to the acquisition driver.
+
+Do not alter the known-good PCI/DMA path to address this message.
+
+Next investigation should locate the literal string
+`WaveRunner Driver Not Supported` in the installed XStream EXE/DLL set and
+reverse the surrounding user-mode support check. If the check ultimately
+depends on a driver-visible identity/capability field, reproduce that recovered
+field in the replacement driver; otherwise document or patch only the XStream
+developer diagnostic path as appropriate.
+
+Trace 013644 is the canonical evidence file for this developer-menu gate. Do
+not request another Run Link Tests driver trace unless a changed XStream-side
+or identity implementation needs validation.
