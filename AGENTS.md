@@ -984,3 +984,19 @@ Trace `xstream_trace_20260927_022530.jsonl` contains 172 IOCTL records and
 No recovery traffic follows. These three exact packet forms are now admitted
 through the existing generic board-message transport. Unknown selectors remain
 blocked.
+
+## Latest staged trace: 2026-09-27 02:29
+
+Trace `xstream_trace_20260927_022954.jsonl` was terminated at the XStreamDSO
+startup error dialog and ends on the true startup failure boundary.
+
+The final 11 rejected family-1 opcode-`0x81` packets use selectors:
+
+- `0x0C`: 5 times;
+- `0x0D`: 5 times;
+- `0x17`: 1 time.
+
+The selector jump from 13 to 23 means this byte is not merely an incrementing
+mode counter. Treat it as an opaque board selector/index until board semantics
+are known. These three exact packet forms are now admitted through the existing
+generic BAR1 transport. Unknown `0x81` selectors remain blocked.
