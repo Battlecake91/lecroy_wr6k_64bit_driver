@@ -2798,3 +2798,20 @@ A second static correction was made to type-1/type-2 packed MAM records:
 legacy `FUN_00012F30` always calls `FUN_00017BC8(..., mode=1)` regardless
 of whether the packed record type is 1 or 2. The x64 path now always programs
 MAMPGO mode 1 for both record types.
+
+### MAMDAT shadow semantics
+
+Legacy `FUN_000179E2` treats MAMDAT as a stateful indexed register window.
+
+For each MAM index, the driver stores the last 16-bit value. A new MAMDAT write
+is issued only when that value changes. Repeating the same value for the same
+index updates no hardware state. The subsequent MAMPGO write still occurs for
+every packed MAM record.
+
+The x64 driver previously emitted all MAMDAT writes unconditionally. This was
+observable in trace `xstream_trace_20260927_121112.jsonl`, where the six
+type-1 records at seq 893-898 are repeated byte-for-byte at seq 899-904.
+
+The x64 driver now maintains a 256-entry 16-bit MAM shadow plus valid flags and
+suppresses duplicate indexed writes, while preserving the MAMPGO launch for
+every record.
