@@ -2276,15 +2276,104 @@ Latest x64 kernel trace: `xstream_trace_20260927_212113.jsonl`.
 Next action: obtain complete original-32-bit and x64 Family-1 opcode-`0x96` responses and compare them byte-for-byte plus the subsequent request sequence.
 
 
-### 2026-09-27 opcode 0x96 legacy comparison result
+## Trace evidence retention and reuse
 
-Full legacy user-mode traces establish the current pre-DMA blocker more precisely:
+Recorded traces are durable project evidence. Do not ask for a trace to be
+recorded again merely because it is not attached to the current chat.
 
-- Request: `06000A000300FBA540019604002000000002080202000300FB854000`.
-- Legacy response starts `0000000000000000000002020000...`.
-- Current x64 response preview starts `0000000000000000000002000000...`.
-- First visible mismatch is output offset 11: legacy `0x02`, x64 `0x00`. It lies after the six-byte host header and is therefore firmware-side state, not the 85FB host-header prefix.
-- Legacy advances the request selector `0x20 -> 0x22 -> 0x24 -> 0x26 -> ...`; x64 remains on `0x20` while the readiness/status byte stays zero.
-- Two independent legacy captures agree on the complete 526-byte `0x20` response.
+Before requesting a new capture:
 
-Investigate the post-fix x64 command sequence immediately before the first Family-1 opcode-`0x96 / 0x20` call and compare its hardware side effects with legacy. Do not modify DMA/MDL handling yet.
+1. Check this file and `docs/runtime-trace.md` for an existing trace that
+   contains the required information layer.
+2. If the trace already exists but is not attached in the current chat, ask
+   for that exact filename.
+3. Request a new capture only when testing a newer driver state, when the old
+   tracer did not capture the required field, or when a materially different
+   hardware/application state is required. State which of those reasons
+   applies.
+
+Important trace-format distinction:
+
+- x64 `xstream_trace_*.jsonl` files produced from the in-kernel diagnostic
+  ring store only 128 output bytes per IOCTL and intentionally suppress
+  successful `CFDC21C0` / `LECS65_IOCTL_REGISTER_READ` entries. Therefore
+  the absence of successful `CFDC21C0` calls in those files is not evidence
+  that XStream did not issue them.
+- legacy/user-mode `legacy_xstream_trace_*.jsonl` captures can contain full
+  `NtDeviceIoControlFile` buffers. Format-version-3 captures also contain
+  `NtCreateFile` records and therefore preserve interface/handle mapping.
+
+### High-value trace registry
+
+- `legacy_xstream_trace_20260927_165243.jsonl`
+  - first successful injected user-mode capture;
+  - Win32-only capture proved the LeCroy path bypasses the hooked
+    `DeviceIoControl` surface and motivated Native-API interception.
+- `legacy_xstream_trace_20260927_185222.jsonl`
+  - large original 32-bit Native-API runtime/acquisition reference;
+  - contains real `CFDC2124`, `CFDC2128`, and `CFDC2138` traffic;
+  - use this when comparing the functional acquisition path after startup.
+- `legacy_xstream_trace_20260927_195608.jsonl`
+  - primary original 32-bit format-v3 reference;
+  - includes `NtCreateFile` and maps IOCTL handles to the five recovered
+    interfaces;
+  - contains complete `CFDC2110` outputs, including the opcode-`0x90` and
+    opcode-`0x96` response framing used for the current comparison.
+- `legacy_xstream_trace_20260927_203017.jsonl`
+  - x86 user-mode tracer running against the x64 replacement driver;
+  - proves that publishing `\\??\\ALADDINAcqDriver0` made XStream select a
+    different main-control endpoint even though all five PnP interfaces were
+    available.
+- `xstream_trace_20260927_204139.jsonl`
+  - first x64 kernel trace after removing the DOS alias;
+  - exposes missing `CFDC2190` as the next startup gate.
+- `xstream_trace_20260927_210024.jsonl`
+  - first x64 trace after `CFDC2190` succeeds;
+  - exposes missing six-byte 85FB host framing.
+- `xstream_trace_20260927_211141.jsonl`
+  - x64 trace after the first 85FB framing fix but before generic
+    family-0 opcode-`0x88 / 0x001F` admission;
+  - contains the ten link-reset-triggering `0x88` failures.
+- `xstream_trace_20260927_212113.jsonl`
+  - best x64 trace after the opcode-`0x88` fix and before commit
+    `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd`;
+  - trigger starts and probe/link errors are gone, but XStream repeats
+    family-1 opcode-`0x96` selector `0x20` and never reaches
+    `CFDC2124/CFDC2138`;
+  - this trace contains the pre-fix hard-coded 85FB length value `2` and must
+    not be used to judge the post-`d51dbe2` driver state.
+
+The older milestone traces from `xstream_trace_20260927_023951.jsonl` through
+`xstream_trace_20260927_151006.jsonl` remain indexed chronologically in
+`docs/runtime-trace.md`. Consult that history before asking the user to
+reproduce an already captured startup stage.
+
+### 2026-09-27 corrected opcode-0x96 comparison and next retest
+
+The apparent opcode-`0x96` mismatch in `xstream_trace_20260927_212113.jsonl`
+was initially misidentified as firmware state. Full record framing shows that
+output offset 10/11 belongs to the **second record's 85FB host header**, because
+the preceding A5FB record contributes the first six output bytes.
+
+Legacy reference values:
+
+- family-1 opcode-`0x90`: second-record 85FB length = `0x0006`;
+- family-1 opcode-`0x96`: second-record 85FB length = `0x0202` (514);
+- family-1 opcode-`0x99`: legacy special case, length = `0x0002`.
+
+The 21:21 x64 trace wrote `0x0002` for the opcode-`0x90` and opcode-`0x96`
+fetch records as well. Commit
+`d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` (created after that trace)
+already fixes this by using `recordOutput - 6` for normal raw-hardware 85FB
+responses while preserving opcode-`0x99` as a length-2 exception.
+
+Do not infer from the kernel trace that the legacy `CFDC21C0` polling block is
+missing: successful register-read IOCTLs are deliberately omitted by
+`LecRecordIoctlTrace`.
+
+Next hardware test: build/install current `main` including `d51dbe2` and run
+XStream. A useful success discriminator is that legacy performs 120 contiguous
+family-1 opcode-`0x96` reads beginning with selectors `0x20, 0x22, 0x24,
+0x26, ...`, rather than repeating `0x20`. The original traces later reach
+`CFDC2124` followed immediately by `CFDC2138`. Only a post-`d51dbe2` trace
+can determine the next blocker if acquisition still does not start.
