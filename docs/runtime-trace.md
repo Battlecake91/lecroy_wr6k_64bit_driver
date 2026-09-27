@@ -942,3 +942,39 @@ the registered-buffer/acquisition execution path.
 Additional Ghidra targets around the earlier DeviceControl dispatch tree and
 the candidate handler functions were added to resolve the exact semantics of
 `0x00222400`, `0x00223004`, and `0x00223040`.
+
+## Twenty-sixth runtime capture: calibration passes, acquisition waits
+
+Trace `xstream_trace_20260927_112352.jsonl` is the first capture where XStream
+progresses past the visible "Calibrating" phase and then remains at
+"Acquiring".
+
+The capture contains 943 IOCTL records after the trace header. All 924
+CFDC2110 calls succeed.
+
+The two previously implemented size queries now behave exactly as intended for
+their first four-byte calls:
+
+- `0x00223004` returns `0x00000110`;
+- `0x00223040` returns `0x00002CAE`.
+
+XStream immediately follows each size query with a second call to the same
+IOCTL using the returned size as the output length:
+
+- `0x00223004`, output length 272;
+- `0x00223040`, output length 11438.
+
+Those second-stage full-buffer retrieval calls still fail with
+`STATUS_INVALID_BUFFER_SIZE (0xC0000206)` in the x64 driver.
+
+No `CFDC2124` transfer registration, `CFDC2138` buffered acquisition, or
+`CFDD219F` METHOD_NEITHER acquisition call appears afterward. This makes the
+missing full-buffer query responses the current leading blocker between
+successful board calibration/arming and actual acquisition data.
+
+Static analysis confirms the 272-byte first buffer is the legacy trace-control
+descriptor block. The 11438-byte second buffer is the serialized register list
+with 43 entries of 0x10A bytes each.
+
+Additional Ghidra targets were added for the remaining serialization helper
+functions needed to reconstruct these payloads byte-for-byte.
