@@ -1,4 +1,7 @@
-param()
+param(
+    [ValidateSet("x64", "x86")]
+    [string]$Architecture = "x64"
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -6,7 +9,13 @@ $repo = Split-Path -Parent $PSScriptRoot
 $srcDir = Join-Path $repo "tools\lecdiag"
 $src = Join-Path $srcDir "lecdiag.c"
 $outDir = Join-Path $srcDir "build"
-$out = Join-Path $outDir "lecdiag.exe"
+if ($Architecture -eq "x64") {
+    $out = Join-Path $outDir "lecdiag.exe"
+}
+else {
+    $outDir = Join-Path $outDir "x86"
+    $out = Join-Path $outDir "lecdiag.exe"
+}
 
 if (-not (Test-Path $src)) {
     throw "lecdiag source not found: $src"
@@ -15,11 +24,14 @@ if (-not (Test-Path $src)) {
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 function Invoke-LecdiagBuildWithCl {
-    param([string]$ClPath = "cl.exe")
+    param(
+        [string]$ClPath = "cl.exe",
+        [string]$OutputPath
+    )
 
     Push-Location $srcDir
     try {
-        & $ClPath /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:build\lecdiag.exe lecdiag.c
+        & $ClPath /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:$OutputPath lecdiag.c
         if ($LASTEXITCODE -ne 0) {
             throw "cl.exe failed with exit code $LASTEXITCODE."
         }
@@ -30,8 +42,8 @@ function Invoke-LecdiagBuildWithCl {
 }
 
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-if ($cl) {
-    Invoke-LecdiagBuildWithCl $cl.Source
+if ($cl -and $Architecture -eq "x64") {
+    Invoke-LecdiagBuildWithCl $cl.Source $out
 }
 else {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -44,12 +56,13 @@ else {
         throw "Visual Studio C++ x64 build tools were not found."
     }
 
-    $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
+    $vcvarsName = if ($Architecture -eq "x86") { "vcvars32.bat" } else { "vcvars64.bat" }
+    $vcvars = Join-Path $vs "VC\Auxiliary\Build\$vcvarsName"
     if (-not (Test-Path $vcvars)) {
-        throw "vcvars64.bat not found: $vcvars"
+        throw "$vcvarsName not found: $vcvars"
     }
 
-    $cmd = "`"$vcvars`" >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:build\lecdiag.exe lecdiag.c"
+    $cmd = "`"$vcvars`" >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:`"$out`" lecdiag.c"
     & $env:ComSpec /d /s /c $cmd
     if ($LASTEXITCODE -ne 0) {
         throw "lecdiag build failed with exit code $LASTEXITCODE."
