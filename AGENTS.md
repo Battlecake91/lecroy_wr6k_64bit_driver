@@ -1000,3 +1000,16 @@ The selector jump from 13 to 23 means this byte is not merely an incrementing
 mode counter. Treat it as an opaque board selector/index until board semantics
 are known. These three exact packet forms are now admitted through the existing
 generic BAR1 transport. Unknown `0x81` selectors remain blocked.
+
+## Latest staged trace: 2026-09-27 02:31
+
+Trace `xstream_trace_20260927_023142.jsonl` was terminated at the XStreamDSO
+startup error dialog. It contains 181 IOCTL records and 170 CFDC2110 calls; the
+final 11 rejected calls are three exact family-0 opcode-`0x84` packet forms
+with counts 5, 5 and 1.
+
+Legacy `FUN_00016A66` routes family-0 opcode `0x84` directly through
+`FUN_00016168`, the generic BAR1 board-message transport, with no additional
+host-side register action. These three exact captured 54-byte packets are now
+admitted through the existing generic transport implementation. Board-firmware
+semantics remain unknown and uncaptured opcode-`0x84` forms stay rejected.
