@@ -2527,3 +2527,18 @@ The x64 implementation reproduces that ABI quirk safely by allowing the JTAG
 parser to consume the remainder of the already validated complete IOCTL input
 buffer, while still rejecting any required read that would exceed the total
 buffer.
+
+### Family 0 pure-forwarding class
+
+Legacy `FUN_00016A66` identifies the following family-0 opcodes as direct
+generic board-message forwarders with no additional host-side semantics:
+
+`0x4A, 0x84, 0x86, 0x87, 0x96, 0x97, 0xA1, 0xA2`.
+
+These commands call `FUN_00016168(..., 1)` directly. The x64 driver now
+admits and executes this complete statically confirmed class through
+`LecTransportSend`.
+
+This is distinct from family-0 opcode `0x85`, which also forwards but first
+updates host-side interrupt-mask state, and from local commands such as
+`0x90`, `0x92`, and `0xA0`.
