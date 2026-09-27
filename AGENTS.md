@@ -1318,3 +1318,26 @@ renaming the inner opcode-`0x92` register offset variable.
 ## Second timer build fix
 
 The current WDK also did not expose `KeQueryInterruptTime` as a linkable symbol in this project configuration. The family-2 opcode-`0x01` timer helper now uses `KeQueryPerformanceCounter(&frequency)` for monotonic elapsed-time measurement. The legacy timer due time itself still uses the normal relative 100-ns `KeSetTimer` interval.
+
+
+## Latest runtime state: board arms, measurement data absent
+
+Trace `xstream_trace_20260927_104718.jsonl` is the first capture where the
+application no longer reports "unable to arm acquisition board".
+
+- 1033 CFDC2110 calls, all successful.
+- Only three IOCTL failures remain in the entire trace:
+  - `0x00222400`, out=4;
+  - `0x00223004` QUERY_BUFFER_A, out=4;
+  - `0x00223040` QUERY_BUFFER_B, out=4.
+- Both buffer queries occur immediately after event registration.
+- No CFDC2124 transfer registration, CFDC2138 acquisition, or CFDD219F
+  acquisition call occurs afterward.
+
+Current hypothesis, pending static proof: the missing four-byte buffer/query
+values prevent XStream from entering the registered transfer/acquisition path,
+which explains why arming succeeds but no waveform data appears.
+
+Ghidra targets now include raw DeviceControl windows around 0x10FC0-0x11080 and
+candidate handlers 0x128BC, 0x12ADA, 0x12A5E, 0x12CAC, 0x12C18, 0x12D24 to map
+these IOCTLs exactly before implementing them.
