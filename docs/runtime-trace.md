@@ -437,3 +437,34 @@ Because legacy `FUN_00015C7E` treats every mode value above 1 as the same
 local protocol-error path without JTAG MMIO, and this exact mode-5 request is
 now captured, the byte-exact runtime gate adds only this complete 94-byte
 packet. No general `mode >= 2` admission rule is introduced.
+
+## Tenth staged startup capture
+
+The 2026-09-27 01:57 capture contains 176 IOCTL records, including 155
+`0xCFDC2110` calls.
+
+Results:
+
+- 144 CFDC2110 calls completed successfully.
+- 11 were rejected by the byte-exact gate.
+- The newly admitted mode-5 / 256-bit local-error packet now completes
+  successfully.
+- XStream then leaves the mode-count sequence and issues family-1 opcode
+  `0x81`.
+- Three exact 22-byte opcode-`0x81` forms were observed:
+  - selector byte `0x00`: 5 rejected calls;
+  - selector byte `0x01`: 5 rejected calls;
+  - selector byte `0x02`: 1 rejected call.
+- Each form contains a following 85FB fetch record requesting a 10-byte
+  record output.
+- After the rejected `0x81` block, XStream still reaches the admitted
+  family-1 opcode-`0x90` request and the known mode-1 / 58-bit JTAG requests.
+- No acquisition-launch IOCTL appears.
+
+Legacy `FUN_000165A6` routes family-1 opcode `0x81` through the same generic
+board-message transmitter used by the already exercised `0x90` and `0x99`
+forms. No separate host-side register or state update is performed by the
+legacy dispatcher. The x64 driver therefore adds only the three exact captured
+22-byte packet forms to the runtime gate and routes opcode `0x81` through the
+existing generic transport path. Board-firmware semantics remain unknown and no
+opcode-wide admission rule is introduced.
