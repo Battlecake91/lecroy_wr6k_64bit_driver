@@ -1506,7 +1506,15 @@ LecIsStructurallySupportedCfDc2110(
 
                 sawForwardCommand = TRUE;
             }
-            else if ((family == 0 && opcode == 0x84) ||
+            else if ((family == 0 &&
+                      (opcode == 0x4A ||
+                       opcode == 0x84 ||
+                       opcode == 0x86 ||
+                       opcode == 0x87 ||
+                       opcode == 0x96 ||
+                       opcode == 0x97 ||
+                       opcode == 0xA1 ||
+                       opcode == 0xA2)) ||
                      (family == 1 &&
                       (opcode == 0x4A ||
                        opcode == 0x81 ||
@@ -1992,7 +2000,15 @@ LecIoctlCfDc2110(
                     hardwareResponsePending = FALSE;
                 }
             }
-            else if (payload[1] == 0 && payload[2] == 0x84) {
+            else if (payload[1] == 0 &&
+                     (payload[2] == 0x4A ||
+                      payload[2] == 0x84 ||
+                      payload[2] == 0x86 ||
+                      payload[2] == 0x87 ||
+                      payload[2] == 0x96 ||
+                      payload[2] == 0x97 ||
+                      payload[2] == 0xA1 ||
+                      payload[2] == 0xA2)) {
                 NTSTATUS hwStatus = LecTransportSend(
                     DevExt,
                     record + 6,
