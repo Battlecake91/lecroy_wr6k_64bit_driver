@@ -91,6 +91,20 @@ static BOOL WINAPI HookCloseHandle(HANDLE);
 static HMODULE WINAPI HookLoadLibraryW(LPCWSTR);
 static HMODULE WINAPI HookLoadLibraryA(LPCSTR);
 static FARPROC WINAPI HookGetProcAddress(HMODULE,LPCSTR);
+static void write_text(const char* s);
+static void maybe_flush_log(void);
+static void write_u32(DWORD value);
+static void write_u64(ULONGLONG value);
+static void write_hex_u32(DWORD value);
+static void write_hex_ptr(const void* value);
+static void write_json_string(const char* s);
+static char* copy_object_name_utf8(
+    const LECS65_OBJECT_ATTRIBUTES* attributes);
+static ULONG_PTR safe_read_information(
+    const LECS65_IO_STATUS_BLOCK* p);
+static LONG NTAPI HookNtDeviceIoControlFile(
+    HANDLE,HANDLE,PVOID,PVOID,PLECS65_IO_STATUS_BLOCK,ULONG,
+    PVOID,ULONG,PVOID,ULONG);
 static LONG NTAPI HookNtCreateFile(
     PHANDLE fileHandle,
     ACCESS_MASK desiredAccess,
@@ -142,13 +156,6 @@ static LONG NTAPI HookNtCreateFile(
     if (objectName) HeapFree(GetProcessHeap(),0,objectName);
     return status;
 }
-
-static LONG NTAPI HookNtDeviceIoControlFile(
-    HANDLE,HANDLE,PVOID,PVOID,PLECS65_IO_STATUS_BLOCK,ULONG,
-    PVOID,ULONG,PVOID,ULONG);
-static LONG NTAPI HookNtCreateFile(
-    PHANDLE,ACCESS_MASK,PLECS65_OBJECT_ATTRIBUTES,PLECS65_IO_STATUS_BLOCK,
-    PLARGE_INTEGER,ULONG,ULONG,ULONG,ULONG,PVOID,ULONG);
 
 static DWORD text_len(const char* s)
 {
