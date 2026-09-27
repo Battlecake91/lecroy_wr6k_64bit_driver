@@ -3144,3 +3144,39 @@ direct I2C controller, so a real ProBus-device recognition/configuration test is
 still required.
 
 Treat trace 011938 as the primary normal-operation functional-regression trace.
+
+
+## Developer-menu compatibility: Run Link Tests
+
+After normal waveform operation and the broad regression trace
+`xstream_trace_20260928_011938.jsonl`, the user tested XStream's developer
+menu item `Run Link Tests`. XStream logs:
+
+```text
+WaveRunner Driver Not Supported
+```
+
+This is currently an application-visible compatibility gap, but it is not yet
+known whether the message is caused by a missing driver capability or by an
+XStream-side support gate that rejects the replacement before any link-test
+IOCTL is issued.
+
+Important discriminator: the x64 replacement already returns the recovered
+legacy driver build value `1002` through `CFDC21C8`. Therefore the message
+must not be casually attributed to the public build-query value alone.
+
+Next investigation must be passive:
+1. run the normal x64 XStream trace helper on the working waveform baseline;
+2. wait until normal waveform acquisition is active;
+3. invoke Developer -> Run Link Tests exactly once;
+4. wait a few seconds and close XStream normally;
+5. compare IOCTL traffic immediately around the menu action.
+
+If a new IOCTL/packet sequence appears and fails, recover that ABI from the
+legacy driver/trace before implementing it. If no new driver traffic appears,
+the "not supported" result is an XStream-side capability/identity gate and
+should be investigated in the user-mode binary rather than by changing working
+PCI/DMA behavior.
+
+Do not modify the known-good acquisition path merely to make this developer
+menu entry advance.
