@@ -1228,3 +1228,28 @@ IOCTL is private to the replacement driver.
 
 The build helper also supports `-Architecture x86` so the same diagnostic can
 be run on a 32-bit Windows installation with the original driver.
+
+## Legacy-driver reference for the repeated 76-bit JTAG poll
+
+The new x86 `lecdiag legacy-jtag-poll` command was run successfully against
+the original 32-bit LeCroy driver through interface
+`{7AC34BE9-F766-4F15-9E88-854BA5E2146E}`.
+
+The exact CFDC2110 request used by the x64 stall returned 24 bytes:
+
+`000000000000000000000C00000000144020000002002000`
+
+The second-record payload header is identical to the x64 response. Interpreting
+the ten JTAG data bytes as five little-endian 16-bit words gives:
+
+- legacy: `1400 2040 0000 0002 0020`
+- x64:    `1400 3040 0000 0050 0020`
+
+Therefore words 1, 3 and 5 match exactly. Only words 2 and 4 differ:
+- `0x2040` vs `0x3040`;
+- `0x0002` vs `0x0050`.
+
+This strongly indicates that the JTAG transfer framing/readback path is now
+correct and that the FPGA/device is in a different state before the poll. The
+remaining work should focus on upstream initialization/state transitions rather
+than response packing.
