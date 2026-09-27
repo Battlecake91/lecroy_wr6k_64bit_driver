@@ -1045,3 +1045,19 @@ The final rejected block is family-0 opcode `0x84`:
 The complete 54-byte request buffer is significant. These three exact captured
 forms are now admitted through the existing generic BAR1 transport. Do not
 generalize admission by selector alone.
+
+## Latest staged trace: 2026-09-27 02:37
+
+Trace `xstream_trace_20260927_023753.jsonl` was terminated at the XStreamDSO
+startup error dialog. It contains 224 CFDC2110 calls: 213 successful and 11
+rejected.
+
+The final rejected family-0 opcode-`0x84` forms are:
+
+- selector `0x09`: 5 times, payload words `0x00A5`, `0x00D5`;
+- selector `0x0A`: 5 times, payload words `0x0043`, `0x0075`;
+- selector `0x0B`: 1 time, payload words `0x0000`, `0x0000`.
+
+These three complete 54-byte buffers are now admitted through the existing
+generic BAR1 transport. Keep matching byte-exactly; the selector alone is not
+sufficient because the payload also varies.
