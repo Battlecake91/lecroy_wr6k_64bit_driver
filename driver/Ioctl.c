@@ -1014,12 +1014,13 @@ LecFillLegacyRegisterList(
         UCHAR* target =
             Buffer + i * LECS65_LEGACY_REGISTER_ENTRY_BYTES;
         ULONG data = 0;
-        SIZE_T nameLength = strlen(source->Name);
+        SIZE_T nameLength = 0;
         volatile ULONG* reg;
         NTSTATUS status;
 
-        if (nameLength > 0xFF) {
-            nameLength = 0xFF;
+        while (source->Name[nameLength] != '\0' &&
+               nameLength < 0xFF) {
+            ++nameLength;
         }
 
         if (nameLength != 0) {
