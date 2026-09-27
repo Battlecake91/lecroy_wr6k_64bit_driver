@@ -1750,3 +1750,39 @@ CFDC2110/JTAG startup behavior: XStream was already sending that traffic through
 No active acquisition IOCTLs such as `0xCFDC2138` are reached in this failing
 x64 startup trace, consistent with XStream stalling earlier during board
 initialization.
+
+## Root-cause candidate: x64 published a DOS alias that the original system does not
+
+A direct comparison of the injected user-mode traces exposed a crucial endpoint-selection difference.
+
+On the original 32-bit system, XStream probes:
+
+`\??\ALADDINAcqDriver0`
+
+twice, but both opens fail with:
+
+`STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)`
+
+After that failure, XStream opens the PCI device interface
+`{958695A4-693A-435E-8297-66F805D8E46A}` and sends the main acquisition /
+control stream through that interface handle.
+
+On the x64 replacement system, the driver explicitly created a DOS symbolic
+link named `ALADDINAcqDriver0`. Therefore the same probe succeeds and XStream
+continues on a different endpoint-selection path. In the x64 user-mode trace,
+the main CFDC2110/register stream is then sent through the DOS-link handle.
+
+This is the first proven startup control-flow difference caused directly by the
+replacement driver rather than by board state.
+
+Commit `0534482a6e00463b12420e03a28c83e9465801a6` removes publication of the
+legacy DOS alias from the x64 driver. The internal device name remains unchanged
+for the driver object itself, but no user-visible `\\.\ALADDINAcqDriver0`
+symbolic link is created.
+
+Expected result after this change:
+1. XStream's DOS-name probe should fail as on the original system.
+2. XStream should fall back to the 958695A4 PnP interface.
+3. The main CFDC2110/control stream should move onto that interface handle.
+4. Only after this endpoint-selection behavior matches should later JTAG /
+transport responses be compared again.
