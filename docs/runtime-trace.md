@@ -580,3 +580,26 @@ The replacement driver therefore adds only the three exact captured opcode
 `0x84` packet buffers to the byte-exact runtime gate and forwards them through
 the existing generic transport path. Their board-firmware meaning remains
 unknown.
+
+## Sixteenth staged startup capture
+
+The 2026-09-27 02:34 capture was terminated at the XStreamDSO startup error
+dialog and ends cleanly at the next blocked startup stage.
+
+The trace contains 200 IOCTL records, including 188 `0xCFDC2110` calls:
+
+- 177 CFDC2110 calls completed successfully;
+- 11 were rejected by the byte-exact gate;
+- every rejection is family-0 opcode `0x84`;
+- selector `0x03`: 5 rejections;
+- selector `0x04`: 5 rejections;
+- selector `0x05`: 1 rejection.
+
+These packets use the same 54-byte opcode-`0x84` structure as the already
+admitted forms, with the selector byte changed and the payload matching the
+captured runtime values. Legacy `FUN_00016A66` still routes opcode `0x84`
+through the generic BAR1 board-message transport without additional host-side
+state changes.
+
+The exact selector-3, selector-4, and selector-5 packet buffers are now added
+to the byte-exact runtime gate. Unknown opcode-`0x84` forms remain rejected.
