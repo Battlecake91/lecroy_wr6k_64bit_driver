@@ -1895,3 +1895,47 @@ present. This admits both observed masks (0xFFDF and 0x001F) without weakening
 record framing validation.
 
 This is now the next x64 retest target.
+
+## Trigger starts; probe failures gone; runtime poll blocked by 85FB length field
+
+Fresh x64 trace: `xstream_trace_20260927_212113.jsonl`.
+
+Visible XStream state improved materially:
+- previous acquisition-link error is gone;
+- channel probe failure messages are gone;
+- trigger can be started;
+- no waveform/acquisition data is transferred yet.
+
+The trace contains 3153 IOCTLs, of which 3125 are `0xCFDC2110`. There are
+still **no** `0xCFDC2124`, `0xCFDC2138`, or `0xCFDD219F` calls. This means
+XStream has not yet entered the DMA/acquisition-buffer path.
+
+After trigger start, XStream polls family-1 opcode `0x96` 2473 times with:
+
+`06000A000300FBA540019604002000000002080202000300FB854000`
+
+The original 32-bit trace contains the exact same request. Comparing the first
+128 response bytes shows only one differing byte:
+
+- original: `...0000000002020000546573745F496E666F726D6174696F6E...`
+- x64:      `...0000000002000000546573745F496E666F726D6174696F6E...`
+
+The `Test_Information` payload and all following captured bytes are otherwise
+identical. Therefore transport/content are correct; the remaining difference is
+the 16-bit payload-length field in the 85FB host response header.
+
+Cross-checking other original responses establishes the legacy rule:
+- family1/op81: fetch output 10 -> header length 4;
+- family1/op90: fetch output 12 -> header length 6;
+- family1/op96: fetch output 520 -> header length 514 (0x0202);
+- local JTAG responses follow the same `recordOutput - 6` rule;
+- family1/op99 is a special legacy case and reports length 2 despite a larger
+  output record.
+
+Commit `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` updates raw-hardware 85FB
+framing to emit `recordOutput - 6` and preserves opcode-0x99 as an explicit
+length-2 exception.
+
+This is now the next x64 retest target. If XStream accepts the corrected opcode
+0x96 status response, it should be able to progress toward transfer registration
+and the first `CFDC2124/2138` acquisition requests.
