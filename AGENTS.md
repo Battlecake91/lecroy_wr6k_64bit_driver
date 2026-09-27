@@ -2207,3 +2207,31 @@ rejected non-literal mask variants. Commit
 records with payloadLength >= 6.
 
 Retest x64 before any further JTAG/transport changes.
+
+## Current next retest: 85FB payload-length field
+
+Trace `xstream_trace_20260927_212113.jsonl` is the first run where:
+- probe-failure messages are gone;
+- link/acquisition error is gone;
+- trigger can be started;
+- no waveform data appears.
+
+There are still zero CFDC2124 / CFDC2138 / CFDD219F calls. XStream polls
+family1/opcode96 2473 times instead.
+
+Exact op96 request:
+`06000A000300FBA540019604002000000002080202000300FB854000`
+
+Original vs x64 first 128 response bytes differ at exactly one byte:
+original 85FB header length = 0x0202 (514), x64 = 0x0002.
+
+Legacy rule recovered from multiple exact matches:
+- 85FB host length normally equals fetch recordOutput - 6;
+- op81: 4, op90: 6, op96: 514;
+- JTAG follows same rule;
+- op99 is a known exception with length 2.
+
+Commit `d51dbe2f5098c2797094b7c1681bf7a2e65d8acd` implements this generic rule
+for raw hardware responses while preserving op99's length-2 override.
+
+Retest before touching DMA/acquisition code.
