@@ -178,11 +178,12 @@ Current staged-runtime note:
 - family-1 opcodes `0x50/0x51` now execute the recovered MTTRGO path; trace
   `xstream_trace_20260928_000706.jsonl` shows all 114 observed opcode-0x51
   transfers succeeding;
-- that trace reaches sustained calibration/front-end activity. 798 of 804
-  CFDC2138 acquisitions succeed; six channel-0x30 transfers hit the five-second
-  completion timeout and then succeed on an immediate identical retry;
-- static recovery shows the original ISR clears BAR0 IIMCL immediately when
-  transfer-completion INTST bit 0 arrives. The x64 ISR now mirrors that missing
-  hardware acknowledge before DPC event delivery;
+- trace `xstream_trace_20260928_002537.jsonl` confirms the ISR-side
+  IIMCL fix: all 1261 CFDC2138 acquisitions and all 114 observed opcode-0x51
+  MTTRGO transfers succeed, with no failed IOCTL in the capture;
+- calibration still loops because family-0 opcode `0x88 / mask 0x0080` was
+  incorrectly being forwarded to firmware. The original handles masks 0x0080
+  and 0x0800 locally and returns `{0,2,0}`; the x64 driver now mirrors that
+  split while keeping other masks firmware-forwarded;
 - `CFDD219F` and unobserved multi-channel acquisition remain intentionally
   gated rather than guessed.

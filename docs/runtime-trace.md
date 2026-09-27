@@ -2328,3 +2328,37 @@ IIMCL immediately on transfer completion, before deferred event signalling.
 
 The x64 ISR now reproduces that immediate `IIMCL=0` write. Its existing
 post-wait IIMST/IIMCL cleanup remains as the later defensive cleanup path.
+
+
+## Trace 002537: no DMA failures, but calibration loops due to wrong opcode-0x88 routing
+
+`xstream_trace_20260928_002537.jsonl` contains no failed IOCTL. The ISR-side
+IIMCL completion acknowledge fixed the intermittent transfer problem from the
+previous run: all 1261 CFDC2138 calls and all 114 family-1 opcode-0x51 MTTRGO
+calls complete successfully.
+
+XStream still remains in `Calibrating...`, producing sustained acquisition
+and front-end traffic for the remainder of the 254-second capture.
+
+The decisive new divergence is family-0 opcode `0x88` with mask `0x0080`.
+The x64 trace issues it 5660 times. Because the previous implementation
+forwarded all 0x88 requests to board firmware, 352 of those calls return raw
+firmware payload `0x002C`. Trace 000706 similarly exposed `0x002D`.
+
+This does not occur on the original stack. Both complete original runtime
+captures return zero for every opcode-0x88 request.
+
+Static `FUN_00016A66` explains why: it clears the local pending mask for all
+0x88 requests, then treats masks `0x0080` and `0x0800` specially. Those
+two values call `FUN_00015A88(this,0)`, creating a local
+`{DWORD 0, WORD 2, WORD 0}` response, and skip firmware forwarding entirely.
+Other masks use the normal board transport.
+
+The x64 driver now implements this exact split. This is the next required
+hardware retest before any further calibration or DMA changes.
+
+Type-1/type-2 record outputs were also compared because legacy captures often
+show `...0400` where x64 returns zero. Static analysis shows the original
+type-1/type-2 MAM-config path does not initialize those output bytes; they are
+allocator residue from the temporary output pool. The x64 driver's zeroing is
+intentional and should remain unless application dependence is proven.

@@ -2767,15 +2767,20 @@ LecIoctlCfDc2110(
                 }
             }
             else if (payload[1] == 0 && payload[2] == 0x88) {
-                NTSTATUS hwStatus;
+                NTSTATUS hwStatus = STATUS_SUCCESS;
+                USHORT mask = 0;
 
-                if (payloadLength >= 6) {
-                    USHORT mask = LecReadU16(payload + 4);
+                if (payloadLength < 6) {
+                    protocolStatus = 4;
+                }
+                else {
                     KIRQL oldIrql;
 
+                    mask = LecReadU16(payload + 4);
+
                     /*
-                     * Legacy FUN_00016A66 clears sticky command-status bits
-                     * before forwarding opcode 0x88 to board firmware.
+                     * Legacy FUN_00016A66 first clears sticky command-status
+                     * bits for every opcode-0x88 request.
                      */
                     KeAcquireSpinLock(
                         &DevExt->LegacyEventLock,
@@ -2785,22 +2790,54 @@ LecIoctlCfDc2110(
                     KeReleaseSpinLock(
                         &DevExt->LegacyEventLock,
                         oldIrql);
+
+                    /*
+                     * Critical legacy special case:
+                     *
+                     *   mask == 0x0080 or 0x0800
+                     *
+                     * is handled entirely in the host driver. FUN_00016A66
+                     * calls FUN_00015A88(this, 0), which installs the local
+                     * eight-byte response { DWORD 0, WORD 2, WORD 0 }, and
+                     * does NOT forward the command to board firmware.
+                     *
+                     * Other masks keep the normal firmware-forwarded path.
+                     */
+                    if (mask == 0x0080U || mask == 0x0800U) {
+                        LecWriteU32(pendingResponse, 0);
+                        LecWriteU16(pendingResponse + 4, 2);
+                        LecWriteU16(pendingResponse + 6, 0);
+                        pendingResponseLength = 8;
+                        pendingResponseReady = TRUE;
+                        pendingResponseIsRawHardware = FALSE;
+                        hardwareResponsePending = FALSE;
+                        protocolStatus = 0;
+                    }
+                    else {
+                        hwStatus = LecTransportSend(
+                            DevExt,
+                            record + 6,
+                            payloadLength + 2);
+
+                        if (NT_SUCCESS(hwStatus)) {
+                            hardwareResponsePending = TRUE;
+                            pendingResponseReady = FALSE;
+                            pendingResponseLength = 0;
+                            protocolStatus = 0;
+                        }
+                        else {
+                            protocolStatus = 8;
+                        }
+                    }
                 }
 
-                hwStatus = LecTransportSend(
-                    DevExt,
-                    record + 6,
-                    payloadLength + 2);
-
-                if (NT_SUCCESS(hwStatus)) {
-                    hardwareResponsePending = TRUE;
-                    pendingResponseReady = FALSE;
-                    pendingResponseLength = 0;
-                    protocolStatus = 0;
-                }
-                else {
-                    protocolStatus = 8;
-                }
+                LecTrace(
+                    "CFDC2110 family0/0x88 mask=0x%04X -> %s protocol=%u hw=0x%08X\n",
+                    (ULONG)mask,
+                    (mask == 0x0080U || mask == 0x0800U) ?
+                        "local" : "firmware",
+                    (ULONG)protocolStatus,
+                    hwStatus);
             }
             else if (payload[1] == 0 && payload[2] == 0x85) {
                 NTSTATUS hwStatus;

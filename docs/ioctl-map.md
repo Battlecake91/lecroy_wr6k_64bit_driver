@@ -3134,3 +3134,41 @@ write as well. This change is motivated by trace
 transfers wait the full five seconds for completion, while their identical
 retries succeed immediately. Both complete original traces have zero captured
 CFDC2138 failures.
+
+
+## Family-0 opcode 0x88 local-vs-firmware split
+
+`FUN_00016A66` gives opcode `0x88` two distinct behaviors.
+
+For every request it first clears the selected bits in the local sticky command
+pending mask:
+
+```text
+pending_mask &= ~request_mask
+```
+
+Then:
+
+```text
+if request_mask == 0x0080 or request_mask == 0x0800:
+    FUN_00015A88(this, 0)
+    // local response only; no firmware send
+else:
+    FUN_00016168(...)
+    // normal board-firmware forwarding
+```
+
+`FUN_00015A88(this,0)` installs an eight-byte response:
+
+```text
+DWORD 0
+WORD  2
+WORD  0
+```
+
+This distinction is runtime-critical. Before the x64 fix,
+`xstream_trace_20260928_002537.jsonl` forwarded 5660 mask-0x0080 commands to
+firmware; 352 returned payload 0x002C. The original traces never expose this:
+all captured opcode-0x88 responses are zero.
+
+Startup masks such as 0xFFDF and 0x001F remain on the firmware-forwarded path.

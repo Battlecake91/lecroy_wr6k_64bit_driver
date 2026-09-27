@@ -277,19 +277,23 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Hardware-test the immediate IIMCL clear added to the x64 ISR after
-   `xstream_trace_20260928_000706.jsonl`.
-2. Trace 000706 proves that both DMA launch paths now execute: all 114
-   family-1 opcode-`0x51` MTTRGO calls succeed, and 798 of 804 CFDC2138
-   MAM acquisitions succeed.
-3. The only non-success IOCTLs in that trace are six CFDC2138
-   `STATUS_IO_TIMEOUT (0xC00000B5)` results. Each timed-out request targets
-   channel `0x30`, and the identical retry succeeds immediately afterwards.
-4. The two complete original traces contain 1902 and 1984 CFDC2138 calls
-   respectively and every captured call succeeds, so these x64 timeouts are a
-   real compatibility defect, not expected calibration behavior.
-5. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated. Preserve
-   the below-4-GiB descriptor safety check.
+1. Hardware-test the corrected family-0 opcode-`0x88` special case added after
+   `xstream_trace_20260928_002537.jsonl`.
+2. Trace 002537 proves the previous immediate IIMCL-completion fix removed the
+   six intermittent DMA timeouts: all 1261 CFDC2138 calls succeed, all 114
+   family-1 opcode-`0x51` MTTRGO calls succeed, and the trace contains no
+   failed IOCTL.
+3. XStream nevertheless remains indefinitely in `Calibrating...`. The first
+   strong semantic divergence is family-0 opcode `0x88 / mask 0x0080`:
+   original handles this mask locally, whereas x64 was incorrectly forwarding
+   it to firmware thousands of times.
+4. Both full original traces show every opcode-`0x88` response as zero. In
+   trace 002537, 352 forwarded `0x0080` requests return firmware value
+   `0x002C`; trace 000706 also showed `0x002D`. Treat those as evidence of
+   the wrong forwarding path, not as a firmware status to emulate.
+5. Keep the now-proven DMA/MTT paths intact. Keep `CFDD219F` and unobserved
+   multi-channel `CFDC2138` gated, and preserve the below-4-GiB descriptor
+   safety check.
 
 
 ## Latest dispatch recovery
@@ -2876,3 +2880,74 @@ resumed. The x64 ISR now mirrors the original bit-0 behavior and writes
 Trace 000706 is now the primary evidence file for the post-MTT calibration
 stage. Do not ask for memory-initialization or opcode-0x51 traces again unless a
 newer driver state specifically needs regression comparison.
+
+
+## 2026-09-28 trace 002537: DMA timeouts gone; opcode-0x88 local special case identified
+
+`xstream_trace_20260928_002537.jsonl` is the first x64 capture after the
+immediate ISR-side `IIMCL=0` completion acknowledge.
+
+Observed runtime state:
+
+- XStream no longer reports the earlier memory-initialization fatal dialog.
+- It remains indefinitely in `Calibrating...`.
+- The run contains 30,931 traced IOCTLs and no non-success NTSTATUS.
+- `CFDC2138`: 1261 calls, all success.
+- family-1 opcode `0x51`: 114 calls, all success.
+- `CFDC2124`: 336 registrations; `CFDC2128`: 324 explicit removals.
+- The previous six 5-second CFDC2138 timeouts are completely gone.
+
+The user terminated XStream after the calibration hang. Relays were then heard
+clicking roughly 10-20 seconds later. The trace does not prove whether those
+clicks came from process-shutdown commands or autonomous board firmware state,
+but the same run exposes a major command-routing error capable of perturbing
+firmware state.
+
+Family-0 opcode `0x88` distribution:
+
+```text
+mask 0x0080 : 5660 calls
+mask 0xFFDF :    1 call
+mask 0x001F :    1 call
+```
+
+The two complete original traces contain only about 280/289 runtime
+`0x0080` calls because calibration completes. Every original opcode-0x88
+combined response is:
+
+```text
+0000000000000000000002000000
+```
+
+The pre-fix x64 implementation forwarded every opcode-0x88 to firmware.
+In trace 002537, 352 of the mask-0x0080 calls return:
+
+```text
+0000000000000000000002002C00
+```
+
+and trace 000706 previously showed mostly `...2D00`.
+
+Static legacy code proves this forwarding is wrong. `FUN_00016A66` always
+clears the local pending mask first, but when the opcode-0x88 mask is exactly
+`0x0080` or `0x0800`, it calls `FUN_00015A88(this, 0)` and exits without
+calling the firmware transport. `FUN_00015A88` installs the local response:
+
+```text
+DWORD 0
+WORD  2
+WORD  0
+```
+
+Only other masks continue through the board-forwarding helper.
+
+The x64 implementation now mirrors that branch: masks 0x0080/0x0800 are local
+and never reach firmware; other masks such as the startup 0xFFDF and 0x001F
+remain firmware-forwarded.
+
+A separate comparison found that original type-1/type-2 CFDC2110 output bytes
+often contain nonzero pool residue while the x64 driver deliberately zeroes
+them. Static `FUN_00013AE2 -> FUN_00012F30` shows those record outputs are not
+initialized by the original host handler. Do not reproduce that kernel-pool
+information leak or treat those bytes as a defined ABI unless future user-mode
+evidence proves XStream depends on them.
