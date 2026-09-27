@@ -1013,3 +1013,19 @@ Legacy `FUN_00016A66` routes family-0 opcode `0x84` directly through
 host-side register action. These three exact captured 54-byte packets are now
 admitted through the existing generic transport implementation. Board-firmware
 semantics remain unknown and uncaptured opcode-`0x84` forms stay rejected.
+
+## Latest staged trace: 2026-09-27 02:34
+
+Trace `xstream_trace_20260927_023415.jsonl` was terminated at the XStreamDSO
+startup error dialog. It contains 200 IOCTL records and 188 CFDC2110 calls:
+177 successful and 11 rejected.
+
+The final rejected block is family-0 opcode `0x84` with selectors:
+
+- `0x03`: 5 times;
+- `0x04`: 5 times;
+- `0x05`: 1 time.
+
+These exact observed 54-byte packet forms are now admitted through the existing
+generic BAR1 board-message transport. No broader opcode-`0x84` rule is
+introduced. Unknown forms remain blocked.
