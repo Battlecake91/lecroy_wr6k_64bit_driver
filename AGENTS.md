@@ -1246,3 +1246,30 @@ family-0 forward-only set is now admitted semantically:
 
 Previously implemented family-0 opcode `0x90` SPI/probe and opcode `0xA0`
 PFREG paths continue to succeed in this trace.
+
+## Latest runtime trace: 2026-09-27 10:09
+
+Trace `xstream_trace_20260927_100938.jsonl` contains 790 CFDC2110 calls:
+779 successful and 11 rejected.
+
+The rejected set is now:
+- family 2 / opcode `0x10`: 1;
+- family 2 / opcode `0x05`: 1;
+- family 2 / opcode `0x01`: 3;
+- CFDC2110 type-1 records: 6.
+
+No CFDC2138 or CFDD219F is reached yet.
+
+Newly implemented:
+- family2/0x10 -> BAR1 LEDCTL 0xE0, value from two boolean request bytes;
+- family2/0x05 -> BAR1 ITMODE pulse 7 then 3;
+- CFDC2110 type 1/2 records -> clear GPIODAT bit16, stream 16-bit payload
+  values to MAMDAT 0x40, then MAMPGO 0x44 with
+  `((type & 3) << 8) | count`.
+
+Captured type-1 payload length is 42 bytes = 21 words, so MAMPGO=0x115.
+
+Family2/0x01 remains gated. Legacy `FUN_0001621A` controls an internal
+restartable timer object at dispatcher+0x186 and is observed with 1 ms and
+100 ms requests. `ghidra_scripts/targets.txt` now includes `157c4` so the
+timer object's implementation can be exported next.
