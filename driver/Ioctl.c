@@ -2145,6 +2145,7 @@ LecIoctlCfDc2110(
     ULONG pendingResponseLength = 0;
     BOOLEAN pendingResponseReady = FALSE;
     BOOLEAN hardwareResponsePending = FALSE;
+    BOOLEAN pendingResponseIsRawHardware = FALSE;
     ULONG inputOffset;
     ULONG outputOffset;
     ULONG totalOutput = 0;
@@ -2290,6 +2291,7 @@ LecIoctlCfDc2110(
                 if (NT_SUCCESS(hwStatus)) {
                     hardwareResponsePending = TRUE;
                     pendingResponseReady = FALSE;
+                    pendingResponseIsRawHardware = FALSE;
                     pendingResponseLength = 0;
                     protocolStatus = 0;
                 }
@@ -2323,6 +2325,7 @@ LecIoctlCfDc2110(
                 LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
                 pendingResponseLength = 8;
                 pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 2 && payload[2] == 0x05) {
@@ -2346,6 +2349,7 @@ LecIoctlCfDc2110(
                 LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
                 pendingResponseLength = 8;
                 pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 2 && payload[2] == 0x10) {
@@ -2383,6 +2387,7 @@ LecIoctlCfDc2110(
                 LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
                 pendingResponseLength = 8;
                 pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 2 && payload[2] == 0x02) {
@@ -2426,6 +2431,7 @@ LecIoctlCfDc2110(
                 LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
                 pendingResponseLength = 8;
                 pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 0 && payload[2] == 0x42) {
@@ -2507,6 +2513,7 @@ LecIoctlCfDc2110(
                 LecWriteU16(pendingResponse + 6, (USHORT)protocolStatus);
                 pendingResponseLength = 8;
                 pendingResponseReady = TRUE;
+                pendingResponseIsRawHardware = FALSE;
                 hardwareResponsePending = FALSE;
             }
             else if (payload[1] == 0 && payload[2] == 0xA0) {
@@ -2764,6 +2771,7 @@ LecIoctlCfDc2110(
 
                     pendingResponseLength = received;
                     pendingResponseReady = TRUE;
+                    pendingResponseIsRawHardware = TRUE;
                     hardwareResponsePending = FALSE;
                 }
 
@@ -2780,20 +2788,60 @@ LecIoctlCfDc2110(
                     pendingResponseReady = TRUE;
                 }
 
-                if (pendingResponseLength > recordOutput) {
-                    RtlCopyMemory(
-                        recordResult,
-                        pendingResponse,
-                        recordOutput);
+                if (pendingResponseIsRawHardware) {
+                    ULONG payloadCapacity;
+                    ULONG copyLength;
+
+                    /*
+                     * The legacy 85FB fetch path does not expose the raw BAR1
+                     * receive buffer directly. It prepends the six-byte host
+                     * response header used by type-3 records:
+                     *
+                     *   DWORD 0
+                     *   WORD  2
+                     *
+                     * and then appends the firmware response bytes.
+                     *
+                     * Passive original-driver captures prove this framing for
+                     * family-1 opcode 0x99 and family-0 opcodes 0x88/0x85.
+                     */
+                    if (recordOutput < 6) {
+                        status = STATUS_BUFFER_TOO_SMALL;
+                        break;
+                    }
+
+                    LecWriteU32(recordResult, 0);
+                    LecWriteU16(recordResult + 4, 2);
+
+                    payloadCapacity = recordOutput - 6;
+                    copyLength = min(
+                        pendingResponseLength,
+                        payloadCapacity);
+
+                    if (copyLength != 0) {
+                        RtlCopyMemory(
+                            recordResult + 6,
+                            pendingResponse,
+                            copyLength);
+                    }
                 }
                 else {
-                    RtlCopyMemory(
-                        recordResult,
-                        pendingResponse,
-                        pendingResponseLength);
+                    if (pendingResponseLength > recordOutput) {
+                        RtlCopyMemory(
+                            recordResult,
+                            pendingResponse,
+                            recordOutput);
+                    }
+                    else {
+                        RtlCopyMemory(
+                            recordResult,
+                            pendingResponse,
+                            pendingResponseLength);
+                    }
                 }
 
                 pendingResponseReady = FALSE;
+                pendingResponseIsRawHardware = FALSE;
                 pendingResponseLength = 0;
             }
         }
