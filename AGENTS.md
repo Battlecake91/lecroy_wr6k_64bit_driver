@@ -2187,3 +2187,23 @@ Fixed in commit `33e24638d72bd5ae587ff80d6bebea4702a112cb`.
 Retest x64 before changing transport or JTAG logic. If opcode-0x99 still differs
 after the framing shift is corrected, focus next on why its raw 256-byte payload
 is zeros on x64 versus 0xFF on the original reference.
+
+## Current next retest: generic family-0 opcode 0x88 admission
+
+Trace `xstream_trace_20260927_211141.jsonl` reaches a new XStream state:
+"Stopped the Acquisition, Go to service Menu, Internals to Reset the Link".
+
+Root cause in trace:
+- seq 334..343: ten identical CFDC2110 calls fail C0000010;
+- request = `060006000300FBA5400088001F00080002000300FB854000`;
+- this is family0/opcode88, mask 0x001F.
+
+Original legacy trace has the exact same request at seq 3375 and succeeds,
+returning `0000000000000000000002000000`.
+
+The opcode88 execution handler already existed. Only the structural safety gate
+rejected non-literal mask variants. Commit
+`cf90d85d3ee6d13710251ffc4edd6a2735ada579` admits generic recovered opcode88
+records with payloadLength >= 6.
+
+Retest x64 before any further JTAG/transport changes.
