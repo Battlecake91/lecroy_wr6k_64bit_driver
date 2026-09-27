@@ -2857,6 +2857,34 @@ LecS65DeviceControl(
             (ULONG)devExt->LegacyFlagByte);
         break;
 
+    case LECS65_IOCTL_QUERY_BUFFER_A:
+        if (systemBuffer == NULL || outputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+
+        *(PULONG)systemBuffer = 0x00000110UL;
+        information = sizeof(ULONG);
+        status = STATUS_SUCCESS;
+        LecTrace("legacy 0x00223004 buffer size -> 0x%08lX\n",
+                 *(PULONG)systemBuffer);
+        break;
+
+    case LECS65_IOCTL_QUERY_BUFFER_B:
+        if (systemBuffer == NULL || outputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+
+        *(PULONG)systemBuffer = 0x00002CAEUL;
+        information = sizeof(ULONG);
+        status = STATUS_SUCCESS;
+        LecTrace("legacy 0x00223040 register-list size -> 0x%08lX\n",
+                 *(PULONG)systemBuffer);
+        break;
+
     case LECS65_IOCTL_SET_EVENT_0:
         status = LecIoctlSetSingleEvent(
             &devExt->LegacyEvent0,
