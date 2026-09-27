@@ -1397,8 +1397,8 @@ LecLegacyTimerArmOrExtend(
     )
 {
     LARGE_INTEGER zeroTimeout;
-    LARGE_INTEGER now;
     LARGE_INTEGER dueTime;
+    ULONGLONG now100ns;
     NTSTATUS waitStatus;
     ULONG requested = RequestedMilliseconds != 0 ?
         RequestedMilliseconds : 1UL;
@@ -1420,7 +1420,7 @@ LecLegacyTimerArmOrExtend(
         FALSE,
         &zeroTimeout);
 
-    KeQuerySystemTime(&now);
+    now100ns = KeQueryInterruptTime();
 
     if (waitStatus == STATUS_SUCCESS) {
         dueTime.QuadPart =
@@ -1431,14 +1431,14 @@ LecLegacyTimerArmOrExtend(
             dueTime,
             NULL);
 
-        DevExt->LegacyTimerStartTime = now;
+        DevExt->LegacyTimerStartTime.QuadPart = (LONGLONG)now100ns;
         DevExt->LegacyTimerDurationMs = requested;
         return STATUS_SUCCESS;
     }
 
     if (waitStatus == STATUS_TIMEOUT) {
         LONGLONG elapsed100ns =
-            now.QuadPart -
+            (LONGLONG)now100ns -
             DevExt->LegacyTimerStartTime.QuadPart;
         ULONG elapsedMs =
             elapsed100ns > 0 ?
@@ -1457,7 +1457,7 @@ LecLegacyTimerArmOrExtend(
                 dueTime,
                 NULL);
 
-            DevExt->LegacyTimerStartTime = now;
+            DevExt->LegacyTimerStartTime.QuadPart = (LONGLONG)now100ns;
             DevExt->LegacyTimerDurationMs = requested;
         }
 
@@ -1555,14 +1555,14 @@ LecIsStructurallySupportedCfDc2110(
                 sawForwardCommand = TRUE;
             }
             else if (family == 0 && opcode == 0x92) {
-                ULONG offset;
+                ULONG registerOffset;
 
                 if (payloadLength != 10 || payload[3] != 1) {
                     return FALSE;
                 }
 
-                offset = (ULONG)LecReadU16(payload + 4);
-                if ((offset & 3UL) != 0) {
+                registerOffset = (ULONG)LecReadU16(payload + 4);
+                if ((registerOffset & 3UL) != 0) {
                     return FALSE;
                 }
 
