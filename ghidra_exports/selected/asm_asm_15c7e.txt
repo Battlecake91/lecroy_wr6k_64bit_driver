@@ -1,0 +1,158 @@
+FUNCTION_ASM 00015c7e FUN_00015c7e
+00015c7e  PUSH EBP
+00015c7f  MOV EBP,ESP
+00015c81  SUB ESP,0x18
+00015c84  PUSH EBX
+00015c85  MOV EBX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00015c88  PUSH ESI
+00015c89  PUSH EDI
+00015c8a  XOR EDI,EDI
+00015c8c  MOV DI,word ptr [EBX + 0x3]
+00015c90  ADD DI,0x8
+00015c94  MOVZX EAX,DI
+00015c97  PUSH EAX
+00015c98  MOV ESI,ECX
+00015c9a  MOV dword ptr [EBP + -0x18],EDI
+    -> Stack[-0x1c]
+00015c9d  CALL 0x00010380
+    -> 00010380 FUN_00010380
+00015ca2  AND dword ptr [EBP + -0x8],0x0
+    -> Stack[-0xc]
+00015ca6  POP ECX
+00015ca7  MOV CL,byte ptr [EBX]
+00015ca9  CMP CL,0x1
+00015cac  MOV dword ptr [EBP + -0xc],EAX
+    -> Stack[-0x10]
+00015caf  JBE 0x00015cb9
+    -> 00015cb9
+00015cb1  PUSH 0x4
+00015cb3  POP EBX
+00015cb4  JMP 0x00015d8b
+    -> 00015d8b
+00015cb9  LEA EDX,[EAX + 0x8]
+00015cbc  MOV dword ptr [EBP + -0x4],EDX
+    -> Stack[-0x8]
+00015cbf  XOR EDX,EDX
+00015cc1  MOV DX,word ptr [EBX + 0x5]
+00015cc5  CMP DX,0x10
+00015cc9  LEA EDI,[EBX + 0x9]
+00015ccc  MOV dword ptr [EBP + 0x8],EDX
+    -> Stack[0x4]
+00015ccf  JC 0x00015d32
+    -> 00015d32
+00015cd1  PUSH ECX
+00015cd2  MOV ECX,dword ptr [ESI + 0x15]
+00015cd5  PUSH 0x10
+00015cd7  CALL 0x00015802
+    -> 00015802 FUN_00015802
+00015cdc  MOVZX EAX,word ptr [EBP + 0x8]
+    -> Stack[0x4]
+00015ce0  SHR EAX,0x4
+00015ce3  MOV dword ptr [EBP + -0x14],EAX
+    -> Stack[-0x18]
+00015ce6  ADD EAX,EAX
+00015ce8  MOV dword ptr [EBP + -0x8],EAX
+    -> Stack[-0xc]
+00015ceb  MOV ECX,dword ptr [ESI + 0x15]
+00015cee  XOR EAX,EAX
+00015cf0  MOV AX,word ptr [EDI + 0x2]
+00015cf4  PUSH EAX
+00015cf5  XOR EAX,EAX
+00015cf7  MOV AX,word ptr [EDI]
+00015cfa  PUSH EAX
+00015cfb  CALL 0x00015848
+    -> 00015848 FUN_00015848
+00015d00  MOV ECX,dword ptr [ESI + 0x15]
+00015d03  AND dword ptr [EBP + -0x10],0x0
+    -> Stack[-0x14]
+00015d07  LEA EAX,[EBP + -0x10]
+    -> Stack[-0x14]
+00015d0a  PUSH EAX
+00015d0b  ADD EDI,0x4
+00015d0e  CALL 0x0001586e
+    -> 0001586e FUN_0001586e
+00015d13  MOV EAX,dword ptr [EBP + -0x10]
+    -> Stack[-0x14]
+00015d16  MOV ECX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00015d19  ADD dword ptr [EBP + -0x4],0x2
+    -> Stack[-0x8]
+00015d1d  ADD dword ptr [EBP + 0x8],0xfff0
+    -> Stack[0x4]
+00015d24  SHR EAX,0x10
+00015d27  DEC dword ptr [EBP + -0x14]
+    -> Stack[-0x18]
+00015d2a  MOV word ptr [ECX],AX
+00015d2d  JNZ 0x00015ceb
+    -> 00015ceb
+00015d2f  MOV EAX,dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+00015d32  CMP word ptr [EBP + 0x8],0x0
+    -> Stack[0x4]
+00015d37  JBE 0x00015d86
+    -> 00015d86
+00015d39  MOV ECX,dword ptr [ESI + 0x15]
+00015d3c  XOR EAX,EAX
+00015d3e  MOV AL,byte ptr [EBX]
+00015d40  PUSH EAX
+00015d41  PUSH dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00015d44  CALL 0x00015802
+    -> 00015802 FUN_00015802
+00015d49  MOV ECX,dword ptr [ESI + 0x15]
+00015d4c  XOR EAX,EAX
+00015d4e  MOV AX,word ptr [EDI + 0x2]
+00015d52  PUSH EAX
+00015d53  XOR EAX,EAX
+00015d55  MOV AX,word ptr [EDI]
+00015d58  PUSH EAX
+00015d59  CALL 0x00015848
+    -> 00015848 FUN_00015848
+00015d5e  MOV ECX,dword ptr [ESI + 0x15]
+00015d61  AND dword ptr [EBP + -0x14],0x0
+    -> Stack[-0x18]
+00015d65  LEA EAX,[EBP + -0x14]
+    -> Stack[-0x18]
+00015d68  PUSH EAX
+00015d69  CALL 0x0001586e
+    -> 0001586e FUN_0001586e
+00015d6e  MOV EAX,dword ptr [EBP + -0x14]
+    -> Stack[-0x18]
+00015d71  PUSH 0x20
+00015d73  POP ECX
+00015d74  SUB ECX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00015d77  SHR EAX,CL
+00015d79  MOV ECX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00015d7c  ADD dword ptr [EBP + -0x8],0x2
+    -> Stack[-0xc]
+00015d80  MOV word ptr [ECX],AX
+00015d83  MOV EAX,dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+00015d86  MOV EDI,dword ptr [EBP + -0x18]
+    -> Stack[-0x1c]
+00015d89  XOR EBX,EBX
+00015d8b  MOV ECX,dword ptr [EBP + -0x8]
+    -> Stack[-0xc]
+00015d8e  AND dword ptr [EAX],0x0
+00015d91  ADD ECX,0x2
+00015d94  PUSH EDI
+00015d95  MOV word ptr [EAX + 0x4],CX
+00015d99  PUSH EAX
+00015d9a  MOV ECX,ESI
+00015d9c  MOV word ptr [EAX + 0x6],BX
+00015da0  CALL 0x00015a26
+    -> 00015a26 FUN_00015a26
+00015da5  PUSH dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+00015da8  CALL dword ptr [0x0001c42c]
+    -> 0001c42c
+    -> EXTERNAL:00000047 ExFreePool
+00015dae  POP EDI
+00015daf  POP ESI
+00015db0  MOV AX,BX
+00015db3  POP EBX
+00015db4  LEAVE
+00015db5  RET 0x8
