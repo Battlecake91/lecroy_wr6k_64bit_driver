@@ -829,3 +829,28 @@ behavior while bounding the read by the complete validated IOCTL input buffer,
 so no out-of-buffer access is possible.
 
 No acquisition launch IOCTL is reached before these final rejections.
+
+## Twenty-third runtime capture: family-0 0x4A is the only blocker
+
+Trace `xstream_trace_20260927_095816.jsonl` contains 559 IOCTL records and
+535 CFDC2110 calls:
+
+- 524 CFDC2110 calls succeeded;
+- 11 were rejected;
+- every rejected request is family 0 / opcode `0x4A`.
+
+The rejected forms are selector 0 (five times), selector 1 (five times), and
+selector 2 (once). No acquisition-launch IOCTL is reached before this point.
+
+All previously implemented probe/arm support continues to execute
+successfully, including family-0 opcode `0x90` SPI requests and opcode
+`0xA0` PFREG writes.
+
+Legacy family-0 dispatcher `FUN_00016A66` routes opcode `0x4A` directly to
+`FUN_00016168(..., 1)`, the generic board-message transport. The same
+statically confirmed pure-forwarding class is:
+
+`0x4A, 0x84, 0x86, 0x87, 0x96, 0x97, 0xA1, 0xA2`.
+
+The x64 semantic gate and execution path now admit that complete family-0
+forward-only class rather than requiring individual captured packets.
