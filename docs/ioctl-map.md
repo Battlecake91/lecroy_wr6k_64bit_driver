@@ -2686,3 +2686,33 @@ Therefore the x64 compatibility result is:
 
 Both IOCTLs are now implemented as exact four-byte METHOD_BUFFERED size
 queries.
+
+### Second-stage payload retrieval for 0x00223004 / 0x00223040
+
+The legacy size-query IOCTLs are two-stage APIs.
+
+After the initial four-byte size result, XStream reissues the same IOCTL with
+an output buffer exactly equal to the returned size.
+
+For `0x00223004`:
+- first call out=4 -> size `0x110`;
+- second call out=`0x110` -> legacy copies the complete 272-byte
+  trace-control descriptor block.
+
+For `0x00223040`:
+- first call out=4 -> size `0x2CAE`;
+- second call out=`0x2CAE` -> legacy refreshes and returns the complete
+  serialized register list.
+
+Each register-list entry is `0x10A` bytes:
+- 256-byte zero-terminated register name field;
+- one BAR selector byte;
+- unaligned 32-bit register offset;
+- one register-type byte;
+- unaligned 32-bit current/shadow data field.
+
+There are 43 entries, giving `43 * 0x10A = 0x2CAE`.
+
+The x64 driver currently implements only the first-stage four-byte size query.
+The full payload retrieval remains to be implemented once the last serializer
+details are statically closed.
