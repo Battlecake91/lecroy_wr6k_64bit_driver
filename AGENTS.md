@@ -2122,3 +2122,23 @@ the actual acquisition/control path.
 Adding 958695A4 therefore could not by itself fix the JTAG startup loop. The
 next work should compare byte-for-byte CFDC2110 request/response behavior over
 ALADDINAcqDriver0 against the original 32-bit driver.
+
+## Critical endpoint-selection fix: do not expose ALADDINAcqDriver0
+
+Comparing legacy trace 20260927_195608 with x64 user trace 20260927_203017
+revealed the first direct control-flow mismatch caused by our replacement:
+
+Original 32-bit XStream probes `\\??\\ALADDINAcqDriver0`, but that open
+fails with `STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034)`. XStream then opens
+interface GUID `958695A4-693A-435E-8297-66F805D8E46A` and uses that handle for
+CFDC2110/acquisition traffic.
+
+Our x64 driver created a DOS symbolic link for ALADDINAcqDriver0, so the probe
+succeeded and XStream stayed on a different endpoint path. This explains why
+adding the 958695A4 GUID did not help: XStream never needed to fall back to it.
+
+Commit `0534482a6e00463b12420e03a28c83e9465801a6` removes publication of the
+DOS alias. Retest x64 before making any further JTAG/transport changes.
+
+Expected next trace: ALADDINAcqDriver0 open fails; main IOCTL stream moves to
+958695A4 handle.
