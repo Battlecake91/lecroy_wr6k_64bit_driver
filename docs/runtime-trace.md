@@ -1643,3 +1643,37 @@ tracer with `ntdll!NtCreateFile` interception. New `nt_create_file` records
 capture the native object path and returned handle so the next legacy run can
 map each IOCTL family to its actual device/interface path. Trace format version
 is now 3.
+
+## Device-interface mapping recovered from NtCreateFile trace
+
+Trace `legacy_xstream_trace_20260927_195608.jsonl` (format version 3) finally
+maps native file opens to the IOCTL handles used by original 32-bit XStream.
+
+Recovered interface roles:
+
+- `{958695A4-693A-435E-8297-66F805D8E46A}`
+  - main acquisition/control interface;
+  - carries CFDC2110, CFDC2138, CFDC2124, CFDC2128, CFDC2184,
+    CFDC21C0, 0x00223040, CFDC2180/218C/2190 and related controls.
+- `{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}`
+  - Dallas/board-identification interface;
+  - carries 0x00223080, 0x00222400, 0x00223084.
+- `{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}`
+  - trace-control interface;
+  - carries 0x00223004 and 0x00223000.
+- `{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}`
+  - three-event registration interface;
+  - carries 0x00223100.
+- `{7AC34BE9-F766-4F15-9E88-854BA5E2146E}`
+  - delay/flag helper interface;
+  - carries 0x00222C00 and 0x00222C04.
+
+The x64 driver had registered only the latter four interfaces. The actual
+acquisition GUID `958695A4-...` was completely missing. This is a high-value
+root-cause candidate for XStream taking a different startup/control path under
+x64 despite many individual IOCTL handlers being correct.
+
+Commits:
+- `45a4abe9cf08ec055b6b631881ec139575d80ca1`: increase interface count to 5;
+- `65525e75c557c0e58b685b6c64c1a5d340c8c6aa`: register the recovered main
+  acquisition GUID.
