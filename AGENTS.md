@@ -2261,3 +2261,16 @@ Do not undo the following now-proven fixes:
 - CFDC2190 implemented;
 - 85FB hardware-response host framing fixed;
 - generic family-0 opcode 0x88 masks admitted.
+
+## 2026-09-27 runtime checkpoint: Family 1 opcode 0x96
+
+Latest x64 kernel trace: `xstream_trace_20260927_212113.jsonl`.
+
+- XStream now starts acquisition without the previous link-reset or probe-reading failures, but no waveform data appears.
+- The trace contains 3,125 `CFDC2110` calls; 2,473 are the identical Family-1 opcode-`0x96` request `06000A000300FBA540019604002000000002080202000300FB854000`.
+- Each observed opcode-`0x96` call succeeds at the NTSTATUS layer and reports 526 output bytes.
+- The kernel trace records only a 128-byte output preview, not the complete 526-byte response. Full legacy-vs-x64 semantic comparison therefore requires the user-mode XStream trace (or another complete response capture).
+- `CFDC2124`, `CFDC2138`, and `CFDD219F` remain absent. Do not debug DMA/MDLs yet.
+- Preserve the established baseline: no `ALADDINAcqDriver0` DOS alias, register `958695A4-693A-435E-8297-66F805D8E46A`, keep `CFDC2190`, keep the 85FB six-byte host header, and keep generic Family-0 opcode `0x88` acceptance.
+
+Next action: obtain complete original-32-bit and x64 Family-1 opcode-`0x96` responses and compare them byte-for-byte plus the subsequent request sequence.
