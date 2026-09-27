@@ -1989,3 +1989,33 @@ flush every 256 records plus detach.
 
 Native legacy trace 20260927_185222 is successful and contains real LeCroy
 traffic: about 9158 CFDC2110, 1984 CFDC2138, 90 CFDC2124, and 74 CFDC2128 calls.
+
+
+## Passive trace overturned early startup assumptions
+
+Ground-truth legacy trace: `legacy_xstream_trace_20260927_185222.jsonl`.
+Comparator added: `tools/trace-diff/compare_xstream_traces.py`, commit
+`6619c9527511c1cb5abd1177a0c0327427cadbd7`.
+
+Earliest proven divergences vs x64 trace 20260927_151006:
+- 0x00222400 succeeds on original (STATUS_SUCCESS, Information=0); x64 used to
+  return C0000010.
+- x64 then shows three CFDC21C4 BAR0+0x0C writes values 4,2,1 which are absent
+  from original stream.
+- 0x00223004 legacy name is exactly "CKeTraceControl: ".
+- 0x00223040 original list order begins TxControl, RxControl, TxCount, RxCount,
+  SetIRQ, HWInt, then FVER...; x64 previously placed these six at the end.
+- original indexed 0x00223040 index 0 returns TxControl.
+- INTEN list entry type is 2 in live original output, not 0.
+- same family1/op99 request already returns different board payload in x64, but
+  retest after correcting earlier control flow before changing transport logic.
+
+Implemented:
+- 0x00222400 success no-op;
+- exact trace-control name;
+- live register-list order and INTEN type.
+Driver commit: `9ec5723466f06d3d60d8846b89b919715e79c010`.
+ABI constants: `4608e757...` and `d800ecf8...`.
+
+Next: build/load x64 with CPU maximum processor state matched to legacy 5%,
+capture a fresh XStream trace, then compare again before touching op99 transport.
