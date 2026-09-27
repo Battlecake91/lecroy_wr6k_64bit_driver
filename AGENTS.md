@@ -1314,3 +1314,7 @@ suitable for the legacy remaining-time calculation.
 
 The unrelated C4456 warning in the CFDC2110 validator was also cleaned up by
 renaming the inner opcode-`0x92` register offset variable.
+
+## Second timer build fix
+
+The current WDK also did not expose `KeQueryInterruptTime` as a linkable symbol in this project configuration. The family-2 opcode-`0x01` timer helper now uses `KeQueryPerformanceCounter(&frequency)` for monotonic elapsed-time measurement. The legacy timer due time itself still uses the normal relative 100-ns `KeSetTimer` interval.
