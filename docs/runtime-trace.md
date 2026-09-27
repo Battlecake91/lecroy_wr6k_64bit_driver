@@ -1025,3 +1025,28 @@ verbosity; the captured input is entirely zero, i.e. index 0 / level 0.
 
 The x64 driver now implements both forms. No CFDC2124, CFDC2138 or CFDD219F is
 present in this capture yet.
+
+## Twenty-eighth runtime capture: only 0x00222400 still fails
+
+Trace `xstream_trace_20260927_114916.jsonl` contains 959 IOCTL events after
+the trace header.
+
+All newly implemented query forms now succeed:
+- 0x223000 trace-control setter;
+- 0x223004 size and full 0x110-byte payload;
+- 0x223040 size, full 0x2CAE-byte register list, and indexed 0x10A-byte
+  single-entry query.
+
+There are 937 CFDC2110 calls and all succeed.
+
+Exactly one IOCTL fails in the entire capture:
+- `0x00222400`, input length 0, output length 4,
+  STATUS_INVALID_DEVICE_REQUEST.
+
+No CFDC2124, CFDC2138 or CFDD219F appears afterward. At this point
+`0x00222400` is the only remaining visible startup/acquisition gate.
+
+The existing raw DeviceControl export has a gap from 0x10F8F to 0x11018,
+which is the only remaining region that can contain the dispatch handling for
+the lower 0x222400 code before the 0x222C00 branch. Additional Ghidra raw
+targets were added at 0x11008, 0x11010 and 0x11014 to recover that final gap.
