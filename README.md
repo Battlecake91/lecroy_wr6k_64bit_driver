@@ -162,7 +162,8 @@ Current staged-runtime note:
 - the corrected 85FB length rule now lets the 120 family-1 opcode-`0x96`
   selector reads advance exactly like the legacy trace instead of looping on
   selector `0x20`;
-- the latest trace still stops before `CFDC2124` / `CFDC2138`;
+- trace `xstream_trace_20260927_230317.jsonl` reaches `CFDC2124` and
+  `CFDC2138` for the first time;
 - restoring the recovered `CFDC2180` / `CFDC218C` event delivery and
   standalone 85FB/0x01 command-status state now advances XStream into real
   transfer registration and buffered acquisition;
