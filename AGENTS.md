@@ -915,3 +915,25 @@ Mode 5 is now admitted as one exact observed 94-byte packet. It follows the
 already proven legacy `mode > 1` local-error path and therefore performs no
 JTAG MMIO. Do not replace the exact packet gate with a broad mode rule. Next
 scope run should identify the request immediately after mode 5.
+
+## Latest staged trace: 2026-09-27 01:57
+
+Raw capture `xstream_trace_20260927_015757.jsonl` contains 176 IOCTL records
+and 155 CFDC2110 calls: 144 successful and 11 rejected.
+
+The mode-5 / 256-bit local-response packet now succeeds. XStream then enters a
+new stage using family-1 opcode `0x81`. The rejected exact forms are:
+
+```text
+06 00 04 00 03 00 FB A5 40 01 81 00 0A 00 02 00 03 00 FB 85 40 00
+06 00 04 00 03 00 FB A5 40 01 81 01 0A 00 02 00 03 00 FB 85 40 00
+06 00 04 00 03 00 FB A5 40 01 81 02 0A 00 02 00 03 00 FB 85 40 00
+```
+
+Counts are 5, 5 and 1 respectively. Legacy `FUN_000165A6` routes opcode
+`0x81` through the same generic BAR1 board-message transport used by
+family-1 `0x90`/`0x99`, with no extra host-side register action. These
+three exact observed packets are now admitted and routed through the existing
+generic transport implementation. Their board-firmware meaning remains
+unknown; keep all uncaptured `0x81` forms rejected. No acquisition-launch
+IOCTL appears yet.
