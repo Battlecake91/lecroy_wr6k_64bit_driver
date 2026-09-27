@@ -680,3 +680,33 @@ were opcode-`0x84` selector `0x0C` five times, selector `0x0D` five
 times, and family-1 opcode-`0x81` selector `0x0E` once. These requests are
 now covered by the semantic forward-only gate without adding more per-packet
 whitelist entries.
+
+## Nineteenth staged startup capture
+
+Trace `xstream_trace_20260927_025005.jsonl` is the first capture after
+replacing byte-exact admission for the confirmed pure forwarding classes with
+semantic structural validation.
+
+It contains 439 trace records, including 427 CFDC2110 calls:
+
+- 416 CFDC2110 calls succeeded;
+- 11 were rejected;
+- no rejection is an opcode-`0x81` or opcode-`0x84` selector variant.
+
+The final blocked stage is instead:
+
+- family 0 / opcode `0x42`: 5 identical requests;
+- family 0 / opcode `0x92`, selector 1, offset `0x00C0`, value
+  `0xFFFFFFFF`: 5 requests;
+- family 0 / opcode `0x92`, selector 1, offset `0x00C4`, value
+  `0x00000460`: 1 request.
+
+Static analysis confirms that these are not generic forwarders.
+Legacy `FUN_00015ACC` implements opcode `0x42` as direct BAR1 JTAGNUM/JTAGDAT
+writes and returns a local status response. Legacy `FUN_0001600E` implements
+opcode `0x92` as a selector-based direct MMIO write. Selector 1 is confirmed
+as BAR1 by the observed `0xC0`/`0xC4` GPIO register offsets.
+
+The x64 driver now implements the decoded opcode-`0x42` JTAG-write semantics
+and opcode-`0x92` selector-1 BAR1 writes structurally rather than admitting
+only the captured packets.
