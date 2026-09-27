@@ -1760,3 +1760,28 @@ changes.
 
 Focus next on exact family2/op02 implementation and preconditions. Stop spending
 time on JTAG response packing unless new evidence appears.
+
+## x64 replay was not from a fresh board baseline
+
+The x64 `legacy-prepoll-replay` run started already at:
+- 1400 3040 0000 0050 0020
+
+and stayed there for all 33 steps.
+
+Do NOT infer from this run that MTTCTL in the x64 handler causes 0x0050. The
+board was already in the divergent state before replay and may retain FPGA/JTAG
+state across driver reload/restart.
+
+Static re-check confirms LecRunLegacyStartupProbe matches legacy FUN_00012FDE
+for START, delays, buzzer pulses and ITMODE 7->3.
+
+Next required discriminator:
+1. fully power-cycle the scope/hardware;
+2. ensure XStream never starts;
+3. load x64 driver;
+4. immediately run `lecdiag legacy-jtag-poll` only.
+
+If cold x64 baseline is 1400 2040 0000 0002 0020, the bad state is created by
+later XStream commands and persisted into the previous replay.
+If cold x64 baseline is already 1400 3040 0000 0050 0020, investigate driver
+start / board reset state before any XStream IOCTLs.
