@@ -1,5 +1,9 @@
 # 2026-09-28: calibration and ProBus A/B comparison
 
+> Historical sections below describe successive driver revisions. In particular,
+> the earlier statement that x64 has no pending-0x0200 producer applies only
+> before commit `70716ba`, not to the untested current HWInt patch.
+
 This comparison uses four captured XStream sessions on the same instrument.
 
 | Run | Trace file | User workflow |
@@ -301,3 +305,37 @@ remains unnecessary for the existing bounded polling helper.
 A single controlled post-patch recognition test is required before declaring
 ProBus hotplug repaired. It must also verify waveforms remain present after
 removal and reinsertion.
+
+
+## Four-trace ZIP revalidation and post-patch discriminator (2026-09-28)
+
+The new-chat ZIP `lecroy_probus_handoff_20260928(1).zip` contains precisely
+these four historical traces: legacy hotplug `183409`, x64 hotplug `183807`,
+x64 preconnected `193741`, and x64 removal/reinsertion `213834`. The ZIP
+contains **no post-70716ba trace**. A separate offline JSONL parse confirmed
+these discriminators (count only legacy `nt_ioctl`, not overlapping `ioctl`):
+
+| Trace | Standalone 85FB/0x01 pending 0x0200 | Family-1/0x82 | Family-0/0x4A | Family-1/0x4A | CFDC2138 |
+|---|---:|---:|---:|---:|---:|
+| Legacy hotplug 183409 | 3 | 3 | 16 | 19 | 4,250 |
+| x64 hotplug 183807 | 0 | 0 | 0 | 0 | 3,824 |
+| x64 preconnected 193741 | 0 | 0 | 11 | 8 | 3,875 |
+| x64 unplug/replug 213834 | 0 | 0 | 1 | 1 | 6,987 |
+
+The three real legacy pending transitions occur at seq **14552, 14588,
+14616**, enabled mask `0x02BF`, pending `0x0200`. The corresponding
+family-0/0x88 acknowledgements carrying mask `0x0200` occur at seq
+**14553, 14589, 14620**. The first family-1/0x82 follows at seq
+**14560**, and the AP015 metadata is returned in subsequent opcode-0x4A
+traffic. There is no requirement that a new session reproduce the same
+number of physical events or sequence distances.
+
+For the focused first post-patch test, distinguish a genuine unsolicited
+status transition from preconnected startup enumeration: inspect the output
+of *standalone* 85FB/0x01 status requests (`output_hex` offsets 6..7 =
+enabled WORD; 8..9 = pending WORD, both little endian), not arbitrary
+occurrences of byte sequence `0002` inside firmware payloads. Inspect the
+subsequent family-0/0x88 mask, family-1/0x82 handshake, family-0/1 opcode
+0x4A, IOCTL NTSTATUS and continuous CFDC2138 transfers. A successful DMA
+return length alone does not prove a visible waveform. Correlate any
+acquisition pattern transition to separately noted physical action times.
