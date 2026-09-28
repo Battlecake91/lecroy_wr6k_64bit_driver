@@ -421,3 +421,112 @@ Related:
 [`hardware-register-map.md`](hardware-register-map.md),
 [`ioctl-map.md`](ioctl-map.md),
 [`next-chat-handoff.md`](next-chat-handoff.md).
+
+## 2026-09-29 01:18: XStream delete attempt proves missing x64 write dispatch
+
+**Decisive new REAL scope evidence:**
+The user clicked Delete for a license in current XStream
+under the replacement x64 driver, but XStream still showed
+the key after application restart. Uploaded private trace
+`xstream_trace_20260929_011858.jsonl` records the
+attempt directly. It is **SENSITIVE**: the existing
+unredacted trace contains a preview of the intended
+write image, possibly exposing actual license keys;
+do not publish/commit/re-share the raw JSONL or
+actual serial/license values.
+
+This is a short, **continuous** 63.0224566-second
+capture of **608 IOCTLs**, sequence 1..608,
+no snapshot omissions:
+
+| Seq and relative time | Observed transaction | Result |
+|---|---|---|
+| 1, t=0 | `GET_DALLAS_ID` 0x00223080 | success, Information 8 |
+| 3, t~0.804498 s | `READ_DALLAS_MEMORY` 0x00223084 | success, 512 bytes returned |
+| **522, t~57.303140 s** | **`WRITE_DALLAS_MEMORY` 0x00223088**, XStream WOW64 process, **512-byte input, zero output** | **0xC0000010 / STATUS_INVALID_DEVICE_REQUEST**, Information=0 |
+| **523, t~57.824097 s** | immediate `READ_DALLAS_MEMORY` 0x00223084 | success, 512 bytes returned |
+| 607, t~63.022424 s | final `GET_DALLAS_ID` | success, Information 8 |
+
+Of 608 captured IOCTLs **607 returned NTSTATUS
+success; the SINGLE failure is XStream's
+512-byte Dallas WRITE**. The returned READ response
+at seq 523 has the **same captured first 128 bytes**
+as baseline seq 3 (the JSONL caps output preview
+at 128, so full 512-byte post-state cannot be
+deduced solely from this comparison).
+The intended write request is 512 bytes (preview
+includes first 256, redacted here).
+Within the **first 128 bytes available from both
+the baseline READ and attempted WRITE**,
+93 byte positions differ, across 32-byte
+pages 0..3. That comparison is
+offset/count-only, and the intended full
+new 512-byte image is NOT reconstructible
+from the trace preview alone. These differences
+support the interpretation that XStream prepared
+a modified full-memory candidate, but do not
+prove its complete format or actual persistent
+write (the kernel rejected the IOCTL first).
+
+**Root cause is directly source-backed:** native
+`driver/Ioctl.c` currently has case labels for
+Dallas ID 0x80 and READ 0x84, but no
+`0x00223088` write case/define; dispatch
+initializes `status = STATUS_INVALID_DEVICE_REQUEST`
+and leaves that status in the default branch.
+The trace matches this exactly. Therefore
+the failed XStream Delete action **is not
+evidence of an EEPROM write/erase failure,
+a wrong license parser or no free slot**.
+The current x64 replacement simply does not
+implement the original ABI for Dallas memory
+writes. The post-failure successful read and
+persisting UI key are consistent with the
+hardware remaining unchanged.
+
+**Next implementation step, before another live delete:**
+The original x86 IOCTL dispatch handler is
+documented at decompiler VA `0x11F54`,
+with 1..512-byte input and 32-byte chunks
+plus readback verification. Added
+`11f54`, `asm:11f54`, `xref:11f54`
+to `ghidra_scripts/targets.txt` so the
+PC-side Ghidra export can recover the
+actual DS2433 scratchpad/copy sequence.
+Export through `scripts/run-ghidra-analysis.ps1`
+on the Ghidra PC, review commands, timing,
+authorization, retries and failure semantics,
+then implement a separately gated native
+x64 write path. Do NOT fabricate a STATUS_SUCCESS
+stub, blindly copy a full image, or reattempt
+live XStream deletion before the writer and
+safe restore procedure are independently validated.
+An existing Dallas 512-byte backup is a read
+result, not proof of a functioning restore path.
+
+**Privacy improvement committed to the diagnostic
+EXE only:** `tools/lecdiag/lecdiag.c`
+now writes empty `input_hex` for
+WRITE_DALLAS_MEMORY 0x88, empty `output_hex`
+for READ_DALLAS_MEMORY 0x84 and
+GET_DALLAS_ID 0x80, while preserving
+the IOCTL code, input/output lengths, status,
+ordering, and adding
+`sensitive_payload_redacted=true`.
+This applies only to newly **rebuilt lecdiag
+trace-save/trace-capture JSONL**, not the
+existing private raw trace or kernel
+debugger/trace-ring internals. The replacement
+driver itself is NOT modified by this redaction.
+
+**Optional strictly read-only follow-up:** after
+closing XStream, a new `dallas-backup` to
+a unique private filename can compare the
+entire persistent 512-byte image with
+`original-a.bin` via
+`inspect-dallas-image.ps1 -Before ...
+-After ...`, without displaying keys.
+This full comparison is not needed to explain
+the failed write status: the missing x64
+dispatch is already decisive.
+
