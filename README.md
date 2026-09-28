@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [AP015 raw-reply fix and jaw-event follow-up, 2026-09-28](docs/next-chat-handoff.md). Original HWInt/0x0200 notifications passed real-hardware tests (`230614`, `231656`). The subsequent source-proven raw 85FB reply-length/FF-padding fix (`3490709`) was verified for the legacy `47 00` response on hardware in `233125`. This last run, however, recorded **no spontaneous jaw-change pending 0x0200 or family-1/0x82** despite reported clamp movements. A controlled jaw-only-before/after-calibration trace is next; no speculative interrupt or DMA modifications.
+**Current engineering handoff:** [AP015 response parity / unresolved jaw notification, 2026-09-28](docs/next-chat-handoff.md). Authentic HWInt/0x0200 was hardware-tested in `230614` (physical hotplug) and `231656` (clamp state). Raw 85FB length/FF-padding correction `3490709` is now also hardware-confirmed against original x86 for `47 00` and startup `0x99` responses. Two consecutive post-formatting runs, `233125` and **controlled pre/post-calibration clamp run `235314`**, show **zero** pending 0x0200 despite jaw movements. Next discriminator: one physical AP015 unplug/replug with the **unchanged current driver**; no speculative PCI/IRQ/DMA modifications.
 
 ## Current state
 
@@ -415,10 +415,52 @@ CPU metrics or raw interrupt latch counts. It is not yet established
 whether the behavior depends on probe calibration state or another
 runtime condition, or is indirectly related to host reply framing.
 
-For the next controlled run, test one jaw open/close pair **before**
-Degauss/Auto Zero, then, if stable, another pair after Degauss and
-manually triggered Auto Zero. Keep the verified IRQ, transport, PCI,
-DMA and 32-bit descriptor safety paths unchanged until the event
-source is discriminated; CPU limit <=5%. See
-`docs/next-chat-handoff.md` and the trace comparison for the exact
-procedure and signal markers.
+That requested **before/after calibration** A/B has now been completed
+in the next `235314` capture. None of 622 pre-Degauss, 381 intermediate
+or 514 post-manual-Auto-Zero standalone status reads contained 0x0200,
+despite the user confirming the clamp movements in both phases. The
+issue therefore does not require a previous Degauss/Auto Zero action.
+The next lowest-impact discriminator is **one physical AP015 unplug and
+replug under the current unchanged build**, comparing status 0x0200,
+0x88/0x82 and 0x4A with successful pre-formatter physical hotplug
+baseline `230614`. Preserve the current interrupt and DMA code until
+hardware-specific evidence is obtained; CPU <=5%. See the current
+handoff and `docs/probus-calibration-ab-comparison.md`.
+
+
+### Controlled jaw-only A/B before and after calibration: trace 235314
+
+The user followed the specified probe protocol: start XStream with AP015
+attached; open/hold/close/hold **before any special function**;
+Degauss then manually triggered Auto Zero; another open/hold/close/hold
+pair; quit. The new `xstream_trace_20260928_235314.jsonl` has
+36,366 captured IOCTLs across 72.009 seconds, no captured NTSTATUS
+errors, and **6,818 CFDC2138 returns all matching the requested byte
+count**. AP015 startup metadata remains recognized, and the two
+separated `47 00` results at seq 23386 and 31835 match the original
+x86 full output `0000000000000000000002000000FFFF`. The
+first captured 128 bytes of the post-fix startup family-1/0x99
+result, including 0xFF padding, also match original x86; the earlier
+x64 serializer had zero-filled its unused bytes. The separate
+family-1/0x4A firmware status remains F3 rather than original F2.
+
+The problem is the **absence of spontaneous hardware command events**:
+all **1,517** standalone 85FB/0x01 status reads return software enable
+`0x02BF` and pending **only `0x0080`**. None reports 0x0200/
+0x0280; no 0x88 mask 0x0200 or family-1/0x82 follows. Specifically,
+622 status reads before Degauss, 381 between Degauss and manual
+Auto Zero, and 514 after Auto Zero all lack 0x0200. The 36 trace
+snapshot gaps end by t~48.480 s; the final 648 status reads have
+no further gap. Actual BAR0 INTEN `0x084` / receive source bit
+`0x08` is **not** the same value as the software command-enable
+mask `0x02BF` and was not captured, nor were raw INTST/HWInt
+registers or ISR/DPC counters. XStream's exact visual jaw-state
+indications were not supplied separately.
+
+Compared with the five real `0x0200` events in `231656`, the two
+post-`3490709` no-event runs establish a repeated behavioral
+difference, **not its cause**: the formatting patch did not directly
+modify the interrupt path. The next controlled unchanged-driver
+hotplug experiment distinguishes a general interrupt-notification
+failure from a clamp-jaw-specific source. Acquisition, BAR handling,
+descriptor safety and synthetic event policy remain untouched.
