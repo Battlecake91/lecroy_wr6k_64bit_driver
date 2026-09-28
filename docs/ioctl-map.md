@@ -3276,3 +3276,20 @@ inside CFDC2110, and not all internal C++/DriverWorks helper routines. In
 particular the supported CFDC2138 path is limited to the observed one-channel
 shape. The primary observed outstanding feature is asynchronous ProBus
 hotplug, despite successful AP015 identification when preconnected.
+
+
+## Recovered asynchronous HWInt status path
+
+Static verification of `FUN_00011390` raw assembly at
+`0x114A2..0x114C8` corrects an earlier misleading decompilation:
+the argument to `FUN_000157A6` is not zero. The original
+`FUN_000176A2` reads BAR1 HWInt (offset `0x410`) as a 16-bit
+out-parameter, clears the hardware register when nonzero, then
+`FUN_000157A6` ORs `hwIntWord & enabledMask` into the command-status
+pending word and signals CFDC2180.
+
+The corresponding receive enable is in `FUN_0001619A ->
+FUN_000160A8(1)`: global INTEN bit `0x08` is enabled before normal 85FB
+firmware reply fetch. Both steps are required for spontaneous command-status
+flags such as the AP015 hotplug bit `0x0200`; the replacement previously
+omitted them while handling normal replies by bounded synchronous polling.

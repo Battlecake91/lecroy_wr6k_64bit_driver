@@ -6,6 +6,7 @@
 #define LECS65_BAR0_INTST  0x080
 #define LECS65_BAR0_INTEN  0x084
 #define LECS65_BAR1_CLRIRQ  0x008
+#define LECS65_BAR1_HWINT   0x410
 
 static
 VOID
@@ -630,10 +631,16 @@ LecInterruptDpc(
      *   INTST 0x04,
      *         0x10,
      *         0x20 -> CFDC2180 event
+     *   INTST 0x08 -> read/clear BAR1 HWInt, latch its 16-bit enabled
+     *                 command mask, wake CFDC2180 for nonzero HWInt.
      *
-     * INTST 0x08 belongs to the internal RX transport event in the original
-     * driver. The current transport implementation polls RX_CONTROL directly,
-     * so do not invent a mapping for it here.
+     * FUN_00011390 calls FUN_000176A2(transport, &hwIntWord).
+     * Ghidra's C decompiler misses the stack out-parameter and misleadingly
+     * displays the following FUN_000157A6(this, hwIntWord) as a zero input.
+     * Raw assembly at 0x114A2..0x114C8 proves the actual value is passed.
+     *
+     * The separate internal RX_CONTROL-ready event is not required by the
+     * replacement's existing bounded synchronous receive polling.
      */
     pending = (ULONG)InterlockedExchange(
         (volatile LONG*)&devExt->InterruptPendingShadow,
@@ -696,6 +703,41 @@ LecInterruptDpc(
         }
 
         KeReleaseSpinLockFromDpcLevel(&devExt->LegacyEventLock);
+    }
+
+    /*
+     * Legacy INTST source 0x08 is also an asynchronous command-status path.
+     * FUN_000176A2 reads BAR1 HWInt (0x410), returns its low 16 bits through
+     * a stack out-parameter, and clears the register by writing zero only
+     * when nonzero. FUN_00011390 then latches (HWInt & enabledMask) and wakes
+     * CFDC2180 (FUN_00010816), independent of the separate RX-ready event.
+     *
+     * In particular, the original ProBus insertion trace receives HWInt
+     * 0x0200 here. Do not synthesize probe presence without real hardware
+     * input, and do not repeatedly poll HWInt from this DPC.
+     */
+    if ((pending & 0x08UL) != 0 &&
+        devExt->Bar[1] != NULL &&
+        devExt->BarLength[1] >= LECS65_BAR1_HWINT + sizeof(ULONG)) {
+        volatile ULONG* hwInt = (volatile ULONG*)(
+            devExt->Bar[1] + LECS65_BAR1_HWINT);
+        USHORT commandBits = (USHORT)READ_REGISTER_ULONG(hwInt);
+
+        if (commandBits != 0) {
+            WRITE_REGISTER_ULONG(hwInt, 0UL);
+
+            KeAcquireSpinLockAtDpcLevel(&devExt->LegacyEventLock);
+            devExt->LegacyCommandPendingMask |=
+                (USHORT)(commandBits & devExt->LegacyCommandEnableMask);
+
+            if (devExt->LegacyEvent0 != NULL) {
+                KeSetEvent(
+                    devExt->LegacyEvent0,
+                    IO_NO_INCREMENT,
+                    FALSE);
+            }
+            KeReleaseSpinLockFromDpcLevel(&devExt->LegacyEventLock);
+        }
     }
 }
 

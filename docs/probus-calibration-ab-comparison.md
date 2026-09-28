@@ -234,3 +234,70 @@ Next controlled trace: start with recognized AP015, unplug it during the same
 XStream session, then replug it; record both visual state transitions and
 packet/event transitions. Preserve all known-good waveform/DMA behavior and
 the <=5% CPU test constraint.
+
+
+## Follow-up: unplug/replug while XStream remains running (trace 213834)
+
+The third x64 ProBus run begins with the AP015 already connected and
+successfully recognized. XStream did not detect its physical removal, and
+the displayed waveform disappeared after reinsertion.
+
+Observed across 73.143 s: 36,700 IOCTL records, zero failed statuses,
+6,987 CFDC2138 calls all returning the requested lengths, and 1,613
+standalone 85FB/0x01 queries with pending=0x0080 only. Family-0/1 opcode
+0x4A occurs only in the startup identification at seq 509/511;
+family-1/0x82 and pending=0x0200 are absent.
+
+After t~27.1 s the large (>8 KiB) acquisition pattern gives way to regular
+1 KiB / 2 KiB DMA, still successful. The exact user-action timestamp is not
+recorded and cannot be inferred from the transition alone.
+
+### Exact legacy event source found in raw assembly
+
+The suspected INTST=0x08 path is now statically resolved, correcting a
+Ghidra decompiler mistake:
+
+```text
+FUN_0001619A:
+    FUN_000160A8(this, 1)
+      -> DAT_0001CE18 |= 0x08
+      -> FUN_00011E46 -> BAR0 INTEN |= 0x08
+    then send firmware-response fetch and wait for internal RX event
+
+FUN_000108D6 ISR:
+    INTST & 0x08 -> BAR1 CLRIRQ = 2
+    acknowledge INTST and enqueue DPC
+
+FUN_00011390 DPC (raw asm 0x114A2..0x114C8):
+    uint16_t hwIntWord;
+    if (FUN_000176A2(transport, &hwIntWord)) {
+        FUN_000157A6(commandStatus, hwIntWord);
+        signal CFDC2180 event;
+    }
+
+FUN_000176A2:
+    hwIntWord = (uint16_t)READ_REGISTER_ULONG(BAR1 + 0x410);
+    if (hwIntWord) WRITE_REGISTER_ULONG(BAR1 + 0x410, 0);
+
+FUN_000157A6:
+    pendingMask |= enabledMask & hwIntWord;
+```
+
+The exported C for FUN_00011390 displayed `FUN_000157A6(..., 0)`
+because it missed the out-parameter that FUN_000176A2 writes through its
+stack argument. Raw assembly in `raw_114f2.asm.txt` explicitly loads
+the 16-bit out value and pushes it as the call argument.
+
+This is the real hardware bridge between an INTST 0x08 notification,
+the 16-bit HWInt value (including observed probe bit 0x0200), and
+the command-status result returned by standalone 85FB/0x01.
+
+The x64 replacement previously never enabled INTEN bit0x08 in its polled
+receive path and omitted that DPC branch. The implementation now restores
+both, keeping the original source-specific CLRIRQ acknowledge and only
+delivering genuinely read HWInt bits. The internal RX ready event itself
+remains unnecessary for the existing bounded polling helper.
+
+A single controlled post-patch recognition test is required before declaring
+ProBus hotplug repaired. It must also verify waveforms remain present after
+removal and reinsertion.

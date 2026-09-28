@@ -316,3 +316,20 @@ original-driver compatibility is around 75-80%. Remaining observed issues
 include ProBus hotplug and a probe-control response discrepancy, while some
 rare service/diagnostic paths remain unimplemented or untested. See
 `docs/ioctl-map.md` for the exact remaining original IOCTL values.
+
+
+### ProBus hotplug interrupt restoration pending hardware test
+
+A third controlled ProBus trace,
+`xstream_trace_20260928_213834.jsonl`, confirmed that probe removal is not
+detected and reinsertion makes the displayed waveform disappear even while
+DMA IOCTLs continue to return success.
+
+The original DPC raw assembly has now established the missing bridge:
+receive interrupt source INTST `0x08` reads/clears BAR1 HWInt `0x410`,
+latches its low 16-bit value against the enabled command mask, and wakes
+the status event. Legacy firmware receive setup also enables INTEN bit
+`0x08`, which the synchronous x64 polling implementation had omitted.
+These recovered behaviors are restored in the replacement driver without
+inventing probe-state bits or changing waveform DMA. The hotplug change
+still requires a focused real-hardware regression test.

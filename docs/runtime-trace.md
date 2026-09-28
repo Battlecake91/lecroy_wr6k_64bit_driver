@@ -2650,3 +2650,39 @@ deliver that internal RX event because normal replies are polled
 synchronously. This is now a prioritized candidate for the lost asynchronous
 probe-insertion path, not a proven source of pending 0x0200. See the dedicated
 ProBus comparison document.
+
+
+## Trace 213834: repeated ProBus reinsertion disrupts visible acquisition
+
+The user started x64 XStream with a connected AP015, unplugged it, observed
+that XStream did not detect removal, then reinserted it and the waveform
+disappeared.
+
+The capture contains 36,700 IOCTL records across 73.143 s and zero failed
+NTSTATUS results. All 6,987 CFDC2138 calls return the requested byte count;
+DMA traffic continues to the end. All 1,613 standalone 85FB/0x01 queries
+return enabled 0x02BF and pending 0x0080, never 0x0200. Only the startup
+family-0/1 0x4A exchanges (seq 509/511) appear; no further 0x4A or 0x82
+is dispatched on physical probe removal/reinsertion.
+
+At t~27.1 s the captured traffic changes: the last >=8192-byte acquisition
+is seq 10912 at 27.087873 s, and the last SPI opcode-0x90 is seq 10937 at
+27.09982 s. Repetitive small channel-0 1,024-byte and channel-0x30..0x32
+2,048-byte DMA transfers subsequently continue successfully. The identical
+mode-1/0x4C JTAG query changes from `...144030...` at seq 10886 to
+`...144032...` at seq 11016. This is a state change, not a driver-reported
+timeout; user-action timestamps are unavailable.
+
+After analyzing this trace, the legacy raw DPC assembly yields a direct fix:
+`FUN_0001619A -> FUN_000160A8(1)` enables global INTEN bit 0x08 before the
+real response fetch. Original `FUN_00011390` handles an INTST 0x08 event by
+calling `FUN_000176A2(transport, &word)` to read/clear BAR1 HWInt 0x410.
+Its returned low 16-bit word is then given to `FUN_000157A6` to set
+`commandPending |= commandEnabled & word`, waking the command-status
+event. The earlier C decompilation misleadingly showed a zero argument,
+whereas raw asm 0x114A2..0x114C8 proves it is the HWInt out-parameter.
+
+The x64 patch restores both missing parts without changing the existing
+synchronous polling of solicited RX data or the proven DMA paths. A focused
+post-patch hardware run must check spontaneous pending 0x0200, subsequent
+0x88/0x82/0x4A flow, uninterrupted acquisition and absence of event storms.

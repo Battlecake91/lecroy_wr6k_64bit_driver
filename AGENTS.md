@@ -277,35 +277,36 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Preserve the known-good x64 waveform/DMA baseline and the successful
-   ProBus cold-start identification in
-   `xstream_trace_20260928_193741.jsonl`.
-2. **ProBus hotplug is now the primary remaining probe fault**: legacy
-   recognizes insertion during a running XStream session, whereas x64 does
-   not. With the probe attached *before* XStream starts, the same x64 driver
-   immediately identifies `AP015` via family-0/1 opcode `0x4A` and obtains
-   the byte-identical captured first 128 bytes of the legacy 270-byte metadata
-   response (the x64 trace truncates stored output_hex at 128 bytes).
-3. User also invoked probe Degauss and Auto Zero on x64; corresponding 0x4A
-   control traffic is captured, but these responses are **not all
-   legacy-equivalent**. The identical family-0 0x4A request with command
-   suffix `47 00` returns `...02000000FFFF` in legacy seq 24205 versus
-   `...040000000000` five times on x64 seq 12082..12087. Investigate
-   actual operation result/handshake separately; do not mark all probe
-   special functions fully validated just because the UI offers them.
-4. Neither x64 hotplug nor x64 preconnected runs produces standalone
-   85FB/0x01 pending `0x0200`. This notification is needed for legacy
-   *hotplug* discovery (then 0x82/0x4A), but is **not required** for startup
-   0x4A identification. Investigate original unsolicited receive / INTST
-   0x08 / probe-ring signaling before adding any event bit. The x64 DPC
-   deliberately does not implement legacy internal RX transport event 0x08
-   because ordinary response fetch currently polls synchronously.
-5. The Ch2 20 mV..100 V calibration comparison did not confirm an excessive
-   recalibration regression. Keep it closed unless a new concrete symptom
-   appears. The reproducible legacy/x64 JTAG-status byte difference
-   0x20 versus 0x32 is separate and its relation to probe hotplug unproven.
-6. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated.
-   Preserve below-4-GiB descriptor safety and the <=5% CPU test target.
+1. **Hardware-test the recovered HWInt/INTST-0x08 ProBus hotplug fix** on main.
+   Do this before any unrelated changes. It restores the exact missing
+   legacy receive interrupt enable and HWInt command-status latch, without
+   synthesizing a probe event or changing the working DMA path.
+2. Trace `xstream_trace_20260928_213834.jsonl`: AP015 preconnected at
+   startup is recognized, unplug while running was not recognized, and
+   reinsertion made the displayed waveform disappear. All 36,700 captured
+   IOCTLs return NTSTATUS success; all 6,987 CFDC2138 responses equal the
+   requested byte count, including transfers continuing to trace end.
+   At around t=27.1 s the captured acquisition pattern changes from larger
+   transfers to recurring 1,024/2,048-byte transfers. No user-action
+   timestamps establish which physical action coincides with this transition.
+3. The exact previously missing legacy command-status source was recovered
+   from `FUN_000160A8`, `FUN_0001619A`,
+   `FUN_00011390` raw asm at 0x114A2..0x114C8,
+   `FUN_000176A2`, `FUN_0001785B` and `FUN_000157A6`.
+   The original enables INTEN bit 0x08 before 85FB response fetch, then
+   INTST 0x08 leads DPC to read/clear BAR1 HWInt at 0x410 and OR
+   `(HWInt low16 & LegacyCommandEnableMask)` into sticky pending state;
+   a nonzero HWInt also wakes the CFDC2180 event. This directly explains
+   legacy 85FB pending `0x0200` at probe hotplug. The old Ghidra C output
+   falsely showed `FUN_000157A6(..., 0)` due to its missed stack out-param.
+4. Next run should validate normal waveform startup first, then a SINGLE
+   controlled unplug/replug of the AP015 while XStream runs, verifying
+   presence/removal UI, spontaneous pending 0x0200, subsequent 0x88 mask
+   0x0200 and 0x82/0x4A requests, and no INTST/HWInt interrupt storm.
+   Stop immediately on abnormal acquisition behavior. Keep CPU <=5%.
+5. Degauss/Auto Zero payload equality remains a distinct unresolved issue.
+   Keep the known-good one-channel CFDC2138 and family-1 opcode-0x51 paths,
+   and preserve below-4-GiB descriptor safety; CFDD219F remains gated.
 
 
 ## Latest dispatch recovery
@@ -3608,3 +3609,73 @@ Engineering estimates (not objective coverage measures):
 Primary observed gaps are ProBus hotplug during an existing XStream session
 and payload differences in certain probe control replies, followed by untested
 rare diagnostics and the intentionally gated METHOD_NEITHER transfer.
+
+
+## 2026-09-28 trace 213834 and exact unsolicited-HWInt recovery
+
+User test:
+
+- AP015 attached before x64 XStream startup: recognized.
+- AP015 unplugged while XStream runs: UI does not detect removal.
+- AP015 reinserted: waveform disappears.
+- Uploaded `xstream_trace_20260928_213834.jsonl`.
+
+Trace facts:
+
+```text
+Capture duration              73.143 s
+IOCTL records                 36,700
+non-success IOCTLs                 0
+CFDC2138                       6,987
+CFDC2138 return-length errors      0
+standalone 85FB/0x01            1,613
+85FB enabled mask             0x02BF
+85FB pending 0x0080            1,613
+85FB pending 0x0200                0
+family-1/0x82                       0
+family-0/0x4A                       1  (startup only, seq 509)
+family-1/0x4A                       1  (startup only, seq 511)
+```
+
+The last >=8192-byte DMA is seq 10912 at t=27.087873 s. The last observed
+family-0/0x90 is seq 10937 at t=27.09982 s. After about 27.1 seconds,
+CFDC2138 settles into recurrent channel 0 / 1,024-byte and channel 0x30..
+0x32 / 2,048-byte transfers that continue successfully through trace end.
+A byte-identical family-1/0x42 status query transitions from output
+`...144030...` at seq 10886/t=27.08393 to `...144032...`
+at seq 11016/t=27.21153. Do not infer a physical unplug/replug timestamp
+or a specific JTAG bit meaning from that alone.
+
+**Static root cause recovered after this trace:**
+
+- `FUN_0001619A` calls `FUN_000160A8(this,1)` before transmitting the
+  firmware response-fetch packet. `FUN_000160A8` permanently ORs `0x08`
+  into global legacy INTEN and commits it via `FUN_00012EAE ->
+  FUN_00011E46`. Our old bounded polling path never set that bit; the x64
+  ISR's `status &= InterruptEnableShadow` would discard INTST 0x08.
+- Original ISR `FUN_000108D6` acknowledges INTST 0x08 with BAR1 CLRIRQ=2,
+  then records/acks INTST and queues the DPC. This CLRIRQ handling already
+  existed in x64, but was masked off.
+- `FUN_00011390` raw assembly at 0x114A2..0x114C8 passes the stack
+  out-parameter `&hwIntWord` to `FUN_000176A2`. This reads BAR1
+  `HWInt` offset 0x410 as a DWORD, returns its LOW WORD to the DPC, and
+  writes zero back to HWInt only when nonzero. Constructor
+  `FUN_0001785B` proves transport+0xD8 maps to BAR1+0x410.
+- If HWInt was nonzero, original DPC does
+  `FUN_000157A6(commandStatus, hwIntWord)` and wakes CFDC2180 event.
+  `FUN_000157A6` performs `pending |= enabled & hwIntWord`.
+  The Ghidra C decompiler previously rendered that call with argument
+  `0` due to failing to detect the stack out-parameter. The raw
+  `raw_114f2.asm.txt` establishes the correct path.
+- The separate `FUN_000176D0` checks RX_CONTROL ready bit 15 and signals
+  the internal synchronous RX event; x64 continues using bounded receive
+  polling, so only the missing HWInt command-status action is reinstated.
+
+The patch enables INTEN bit 0x08 once before the first real 85FB firmware
+fetch (matching legacy ordering), and handles pending INTST 0x08 in DPC by
+reading/clearing real HWInt and latching only the enabled bits plus event wake.
+The original local 0x88 acknowledgement, immediate IIMCL and CLRIRQ
+acknowledgements and all DMA handling are preserved. No synthetic 0x0200
+injection or timer/polling loop was added.
+
+**Not yet compiled or hardware-validated after this change.**

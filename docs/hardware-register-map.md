@@ -335,3 +335,21 @@ These writes occur before the normal INTST write-back acknowledge. They are
 required to deassert the physical source behind the CFDC2180/command-status
 events. Omitting them produces the post-calibration event storm captured in
 `xstream_trace_20260928_004553.jsonl`.
+
+
+## HWInt and asynchronous ProBus command-status source (2026-09-28)
+
+`FUN_0001785B` constructs the transport register wrapper at subobject
+`+0xD8` as `BAR1 + 0x410` named `HWInt`. Raw
+`FUN_00011390` DPC assembly at `0x114A2..0x114C8` proves that source
+INTST `0x08` reads this register through
+`FUN_000176A2(transport, &hwIntWord)`, clears HWInt by writing zero if
+nonzero, and latches `enabledMask & hwIntWord` through
+`FUN_000157A6`, signaling the CFDC2180 user event.
+
+`FUN_0001619A` first calls `FUN_000160A8(this, 1)` to enable
+global BAR0 INTEN bit `0x08` before sending the ordinary 85FB firmware
+response-fetch packet. That interrupt-enable bit persists. These two
+operations are critical for unsolicited firmware notifications such as
+the observed AP015 hotplug mask `0x0200`. They do not require a new probe
+polling loop.

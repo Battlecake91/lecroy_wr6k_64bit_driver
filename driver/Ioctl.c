@@ -3200,6 +3200,32 @@ LecIoctlCfDc2110(
                         0xFB, 0x85, 0x40, 0x00
                     };
                     ULONG received = 0;
+                    ULONG rxInterruptMask;
+
+                    /*
+                     * Legacy FUN_0001619A calls FUN_000160A8(this, 1)
+                     * BEFORE sending the firmware response-fetch packet.
+                     * That permanently enables BAR0 INTEN bit 0x08 for the
+                     * hardware receive/unsolicited-command source.
+                     *
+                     * The old synchronous-polling implementation omitted
+                     * this enable. Consequently INTST 0x08 (and the HWInt
+                     * 0x0200 ProBus hotplug notification it carries) was
+                     * masked out of the ISR. Preserve every other INTEN bit
+                     * and commit only on the first fetch after startup.
+                     */
+                    rxInterruptMask = (ULONG)InterlockedCompareExchange(
+                        (volatile LONG*)&DevExt->InterruptEnableShadow,
+                        0,
+                        0);
+                    if ((rxInterruptMask & 0x08UL) == 0) {
+                        status = LecCommitLegacyInterruptMask(
+                            DevExt,
+                            rxInterruptMask | 0x08UL);
+                        if (!NT_SUCCESS(status)) {
+                            break;
+                        }
+                    }
 
                     status = LecTransportSend(
                         DevExt,
