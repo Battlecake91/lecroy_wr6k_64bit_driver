@@ -891,6 +891,123 @@ static int read_dallas_memory(HANDLE h, unsigned long length)
     return 0;
 }
 
+/*
+ * The DS2433 can contain XStream license data. This read-only command
+ * never sends a write IOCTL, never prints EEPROM contents and never
+ * overwrites a pre-existing backup. It verifies two 512-byte device
+ * reads, brackets them with two ROM-ID checks, and re-reads the saved
+ * binary file to verify successful persistence.
+ */
+static int backup_dallas_memory(HANDLE device, const char* destination)
+{
+    BYTE idBefore[8], idAfter[8];
+    BYTE before[0x200], after[0x200], fileCopy[0x200], extra;
+    DWORD count = 0, written = 0, more = 0;
+    HANDLE file;
+    BOOL verified;
+
+    if (!DeviceIoControl(device, LECS65_IOCTL_GET_DALLAS_ID,
+            NULL, 0, idBefore, sizeof(idBefore), &count, NULL) ||
+        count != sizeof(idBefore)) {
+        fprintf(stderr, "dallas-backup: first ROM ID read failed.\n");
+        return 1;
+    }
+
+    count = 0;
+    if (!DeviceIoControl(device, LECS65_IOCTL_READ_DALLAS_MEMORY,
+            NULL, 0, before, sizeof(before), &count, NULL) ||
+        count != sizeof(before)) {
+        fprintf(stderr, "dallas-backup: first 512-byte read failed.\n");
+        return 1;
+    }
+
+    count = 0;
+    if (!DeviceIoControl(device, LECS65_IOCTL_READ_DALLAS_MEMORY,
+            NULL, 0, after, sizeof(after), &count, NULL) ||
+        count != sizeof(after)) {
+        fprintf(stderr, "dallas-backup: second 512-byte read failed.\n");
+        return 1;
+    }
+
+    count = 0;
+    if (!DeviceIoControl(device, LECS65_IOCTL_GET_DALLAS_ID,
+            NULL, 0, idAfter, sizeof(idAfter), &count, NULL) ||
+        count != sizeof(idAfter)) {
+        fprintf(stderr, "dallas-backup: final ROM ID read failed.\n");
+        return 1;
+    }
+
+    if (memcmp(before, after, sizeof(before)) != 0 ||
+        memcmp(idBefore, idAfter, sizeof(idBefore)) != 0) {
+        fprintf(stderr,
+            "dallas-backup: repeated image/ROM ID mismatch; no file created.\n");
+        return 1;
+    }
+
+    /* Never overwrite the user's only known-good licensing backup. */
+    file = CreateFileA(destination, GENERIC_WRITE, 0, NULL,
+        CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        print_error("dallas-backup: CREATE_NEW");
+        return 1;
+    }
+
+    if (!WriteFile(file, before, sizeof(before), &written, NULL) ||
+        written != sizeof(before) || !FlushFileBuffers(file)) {
+        fprintf(stderr, "dallas-backup: file write/flush failed.\n");
+        CloseHandle(file);
+        if (!DeleteFileA(destination)) {
+            fprintf(stderr, "WARNING: could not delete incomplete backup: %s\n",
+                destination);
+        }
+        return 1;
+    }
+
+    if (!CloseHandle(file)) {
+        print_error("dallas-backup: CloseHandle");
+        if (!DeleteFileA(destination)) {
+            fprintf(stderr, "WARNING: could not delete unverified backup: %s\n",
+                destination);
+        }
+        return 1;
+    }
+
+    file = CreateFileA(destination, GENERIC_READ, FILE_SHARE_READ,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        print_error("dallas-backup: reopen");
+        if (!DeleteFileA(destination)) {
+            fprintf(stderr, "WARNING: could not delete unverified backup: %s\n",
+                destination);
+        }
+        return 1;
+    }
+
+    count = 0;
+    verified =
+        ReadFile(file, fileCopy, sizeof(fileCopy), &count, NULL) &&
+        count == sizeof(fileCopy) &&
+        memcmp(before, fileCopy, sizeof(before)) == 0 &&
+        ReadFile(file, &extra, sizeof(extra), &more, NULL) &&
+        more == 0;
+    CloseHandle(file);
+
+    if (!verified) {
+        fprintf(stderr, "dallas-backup: on-disk image verification failed.\n");
+        if (!DeleteFileA(destination)) {
+            fprintf(stderr, "WARNING: could not delete unverified backup: %s\n",
+                destination);
+        }
+        return 1;
+    }
+
+    printf("Saved private Dallas image: %s (512 bytes).\n", destination);
+    printf("Verified: matching double read, stable ROM ID, exact saved file.\n");
+    printf("PRIVATE: this may contain XStream licenses. Do not commit/upload it.\n");
+    printf("No EEPROM memory write or erase was performed.\n");
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -1295,6 +1412,7 @@ static void usage(const char* exe)
     printf("  %s trace-clear\n", exe);
     printf("  %s dallas-id\n", exe);
     printf("  %s dallas-read [length 1..512]\n", exe);
+    printf("  %s dallas-backup <new-private-file.bin> (read-only)\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
@@ -1383,6 +1501,9 @@ int main(int argc, char** argv)
         }
 
         result = read_dallas_memory(h, length);
+    }
+    else if (_stricmp(argv[1], "dallas-backup") == 0 && argc == 3) {
+        result = backup_dallas_memory(h, argv[2]);
     }
     else if (_stricmp(argv[1], "raw-ioctl") == 0 && argc == 5) {
         char* end1 = NULL;
