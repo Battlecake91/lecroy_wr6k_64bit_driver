@@ -3362,3 +3362,56 @@ Project conclusion for Developer -> Run Link Tests:
 - no replacement-driver change is required;
 - if equivalent diagnostics are desired, reconstruct them as a separate
   diagnostic tool/lecdiag path rather than falsifying the XStream driver family.
+
+
+## 2026-09-28 open regression: calibration occurs too often after V/div changes
+
+User observation on the otherwise working x64 waveform baseline:
+
+- XStream calibrates disproportionately often with the replacement driver;
+- calibration is seen after nearly every V/div change;
+- the same scope with the original legacy driver does **not** calibrate this
+  frequently for equivalent vertical-scale changes.
+
+Treat this as a real compatibility defect, not as expected user-interface
+behavior. It is higher priority than the still-unverified ProBus path because
+it suggests a host/driver/board state or calibration-validity signal differs
+from the original stack.
+
+Do not change the working DMA/interrupt paths speculatively.
+
+The broad x64 regression trace
+`xstream_trace_20260928_011938.jsonl` already contains repeated calibration
+traffic while normal scope controls are exercised, but it does not contain
+explicit user-action timestamps, so individual V/div changes cannot be mapped
+reliably enough to identify the trigger.
+
+Required next evidence is a controlled A/B trace using the same exact vertical
+sequence on both drivers, with acquisition stopped or running consistently:
+
+```text
+1.0 V/div
+500 mV/div
+200 mV/div
+500 mV/div
+1.0 V/div
+2.0 V/div
+1.0 V/div
+```
+
+Hold each setting for about 3 seconds and make no other changes. Record whether
+XStream visibly enters `Calibrating...` after each step.
+
+Capture one trace with the working x64 replacement and one with the original
+x86 driver if practical. Compare the first command/state divergence immediately
+after each V/div transition. Primary suspects to investigate are calibration
+validity/counter state, front-end configuration status, command/event status
+and any locally emulated response whose semantics affect whether XStream
+believes calibration remains valid.
+
+Current rough project completeness estimate:
+- normal oscilloscope usability: about 90%;
+- broad original-driver compatibility including service/probe/rare paths:
+  about 75-80%.
+
+These percentages are engineering estimates, not measured coverage metrics.
