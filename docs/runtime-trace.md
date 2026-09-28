@@ -2464,10 +2464,17 @@ The trace also heavily exercises the statically recovered probe/SPI helper:
 144-bit transactions matching the previously recovered probe request shape.
 This validates the host-to-acquisition-board SPI programming path.
 
-It does not yet validate external ProBus I2C operation. No direct I2C register
-or SDA/SCL-level transaction is visible in the recovered driver ABI; the
-Windows driver programs SPICTL/SPIDAT/SPIDIN instead. A connected ProBus probe
-must therefore be used to validate recognition and probe-side communication.
+At the time of this early broad-operation trace, no connected-ProBus
+test was available. **Later actual AP015 tests now demonstrate successful
+XStream identification, physical hotplug and an unlocked-jaw warning.**
+The user additionally confirms that physical probe detection begins with
+an ADC identification value, then the front EEPROM is read via I2C and
+physical probe control also uses I2C. The statically recovered opcode-0x90
+BAR1 SPICTL/SPIDAT/SPIDIN path is the **host-to-board SPI layer**, not
+proof that the external probe bus is SPI. This Windows IOCTL trace still
+does not show raw SDA/SCL, slave addresses or EEPROM fields. See
+`docs/probus-detection-i2c-architecture.md` and the dated later
+AP015 trace sections below.
 
 
 ## Developer menu: Run Link Tests currently rejected by XStream
