@@ -1,263 +1,192 @@
-# Active handoff: ProBus hotplug / HWInt, 2026-09-28
+# Active handoff: AP015 HWInt hotplug validated (2026-09-28)
 
-**Read this file and `AGENTS.md` before changing code.** Chat in German,
-write all repository documents and code comments in English.
+**Read this file and `AGENTS.md` before changing the driver.**
+Conversation in German, repository documentation and source comments in English.
+Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
+active branch: `main`.
 
-Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver
-Branch: `main`.
+## Current verified status
 
-## Exact status at handoff
+The targeted original-interrupt-path restoration in driver commit
+`70716bace9ec874cf9b2f123a7946288215e1810` now has its first successful
+reported real-hardware XStream regression. In the user's scope-side test,
+AP015 was already attached at startup, was switched to a higher A/div range,
+was disconnected once while XStream remained running, then was reconnected
+once. The user reports that XStream detected the changes correctly and then
+closed the application. The corresponding new kernel IOCTL capture is:
 
-A targeted code patch was pushed in commit
-`70716bace9ec874cf9b2f123a7946288215e1810`
-(`Restore legacy HWInt receive interrupt and ProBus hotplug latch`).
-It changes `driver/Ioctl.c` and `driver/Acquisition.c`, plus explanatory
-documentation. **This patch has not yet been compiled or hardware-tested
-by the user.** Any commits after it that only update documentation do not
-constitute a tested build. The preceding driver acquisition baseline showed
-correct-looking live waveforms, timebase/vertical scale, coupling, bandwidth,
-triggers, 2-channel/10-GS/s and normal acquisition DMA.
+`xstream_trace_20260928_230614.jsonl` (user upload, **not** stored in the
+public GitHub repository).
 
-The immediate next action is a build and ONE focused hardware regression of
-the new HWInt interrupt path, not another speculative implementation.
+The pre-patch trace `xstream_trace_20260928_213834.jsonl` had missed probe
+removal and lost the displayed waveform on reinsertion despite successful
+DMA returns. The new test establishes the previously missing genuine
+asynchronous command-status route. Do not claim that every ProBus special
+function or every possible hotplug timing is now exhaustively validated.
 
-## User's last physical test (pre-patch)
+### New capture: objective markers
 
-AP015 attached before x64 XStream starts:
-- identified correctly via family-0/1 opcode `0x4A`;
-- previous x64 preconnected trace proved the captured first 128 metadata
-  bytes match the legacy AP015 response.
-- On unplug while XStream was running, XStream did **not** notice removal.
-- On reinsertion, the displayed waveform disappeared.
-
-Trace `xstream_trace_20260928_213834.jsonl` was captured before the
-`70716ba` patch. Parsed facts:
-
-| Metric | Value |
+| Measurement | Captured result |
 |---|---:|
-| Duration | 73.143 s |
-| Captured IOCTLs | 36,700 |
-| Non-success NTSTATUS | 0 |
-| CFDC2138 DMA | 6,987 |
-| DMA returned-byte-count mismatch | 0 |
-| Standalone 85FB/0x01 status | 1,613 |
-| Enabled mask | 0x02BF |
-| Pending mask in all captured status reads | 0x0080 |
-| Pending 0x0200 | 0 |
-| Family-1/0x82 | 0 |
-| Family-0/0x4A | 1 (startup seq 509) |
-| Family-1/0x4A | 1 (startup seq 511) |
+| IOCTL entries | 19,288 (seq 1..21761) |
+| Missing sequence entries between trace snapshots | 2,473 across 30 gaps |
+| Non-success NTSTATUS among captured calls | 0 |
+| CFDC2110 | 14,742 |
+| CFDC2138 | 3,633 |
+| DMA returned DWORD differs from requested bytes | 0 |
+| Standalone 85FB/0x01 status | 720 |
+| Status enable mask | 0x02BF |
+| Status pending 0x0080 | 718 |
+| Status pending 0x0200 | **2** |
+| Family-0/0x88 acknowledge with mask 0x0200 | **2** |
+| Family-1/0x82 | **2** |
+| Family-0/0x4A | 2 (startup / reinsertion) |
+| Family-1/0x4A | 2 (startup / reinsertion) |
 
-At approx. t=27.1 s the acquisition pattern changes from including
-167,936-byte and other larger transfers to repeated 1,024-/2,048-byte
-transfers. DMA does not stop and remains NTSTATUS-successful through the end.
-No hand-action timestamps were recorded, so do not assert whether this
-transition was caused by unplugging versus reinsertion, or equate DMA
-success to a still-visible waveform.
+**Relative timeline** (10-MHz trace tick conversion, from first captured IOCTL;
+precise physical-action timestamps were not separately recorded):
 
-## Four files to transfer to a new conversation
+- ~13.908 s / seq 509: startup family-1/0x4A identifies AP015, response
+  `Information=270`, captured output prefix contains ASCII `AP015`.
+- ~28.422 s / seq 14951: standalone 85FB/0x01 returns
+  `000000000400BF020002` (enabled 0x02BF, **pending 0x0200**).
+- ~28.449 s / seq 14952: real family-0/0x88 mask-0x0200 acknowledge.
+- ~28.480 s / seq 14961: family-1/0x82 (Information 412); no subsequent
+  0x4A metadata query in this first event sequence. This is consistent
+  with the user's first action: AP015 removal.
+- ~31.275 s / seq 16639: standalone 85FB/0x01 again pending **0x0200**.
+- ~31.299 s / seq 16640: corresponding 0x88 mask-0x0200 acknowledge.
+- ~31.330 s / seq 16651: family-1/0x82 (Information 412).
+- ~31.469 s / seq 16678: family-0/0x4A setup.
+- ~31.515 s / seq 16679: family-1/0x4A again identifies AP015,
+  `Information=270`; the first 128 captured response bytes are byte-identical
+  to startup seq 509 and to the legacy AP015 metadata prefix in seq
+  14596/14812. The uncaptured remaining 142 bytes are not compared.
 
-These runtime trace files are *not* committed to the public repository.
-Upload them individually or in a single ZIP:
+All 3,633 captured CFDC2138 calls report NTSTATUS success,
+`Information=4` and a returned requested byte count. Recorded DMA calls:
+2,332 before event 1, 328 between the events, 973 after event 2; the
+nearest cross-event DMA gaps are ~36 ms and ~397 ms. DMA resumes and
+continues to trace end (~39.58 s). The last captured transfer >=8 KiB is
+at ~27.067 s; the later 1,024-/2,048-byte pattern starts *before* the
+first pending-0x0200 event. The user changed the probe's A/div setting
+before disconnecting, but the exact trigger for transfer-size changes is
+not independently timestamped. The kernel JSONL does not certify on-screen
+waveform pixels, instantaneous CPU usage or raw ISR/DPC rate. The two
+0x0200 events do not indicate a repeating probe-event storm; do not treat
+snapshot omissions as proof that no unrecorded call ever failed.
 
-1. `legacy_xstream_trace_20260928_183409_probus_original.jsonl`
-   - original x86 driver: XStream starts, AP015 hot-plugged, sensitivity
-     changed, Degauss and Auto Zero invoked; contains the three pending
-     0x0200 notifications and subsequent 0x82/0x4A exchange.
-2. `xstream_trace_20260928_183807_probus_x64.jsonl`
-   - previous x64 implementation: AP015 inserted into running XStream;
-     no recognition and no pending 0x0200.
-3. `xstream_trace_20260928_193741.jsonl`
-   - previous x64 implementation: AP015 connected *before* XStream;
-     startup metadata/recognition succeeds; Degauss/Auto Zero requested.
-4. `xstream_trace_20260928_213834.jsonl`
-   - previous x64 implementation: preconnected, then removed, then reinserted;
-     removal not noticed, waveform disappears, DMA calls still succeed.
+The successful post-patch capture plus user-visible XStream behavior
+supports closing the original **missing AP015 hotplug notification** bug
+for the tested disconnect/reconnect scenario. Keep the patch intact.
 
-The four-trace A/B analysis lives in
-`docs/probus-calibration-ab-comparison.md`. Calibration traces
-`legacy_xstream_trace_20260928_183122_x86_Caibration_original.jsonl`
-and `xstream_trace_20260928_183640_x64_calibration.jsonl` are **optional**:
-the user's apparent excess calibration was corrected to once per previously
-uncalibrated V/div step, with a working cache. It is no longer an active issue.
+## Recovered and now exercised original path
 
-All relevant selectively recovered original C/ASM, scripts, and x64 source
-are already on GitHub. No need to reupload those exported files. The original
-proprietary binary must not be committed to the public repository.
+- `FUN_0001619A -> FUN_000160A8(1)` enables BAR0 INTEN bit `0x08`
+  before a real 85FB firmware response fetch; new code in
+  `driver/Ioctl.c` restores this missing enable.
+- ISR `FUN_000108D6` handles `INTST 0x08`, acknowledges source via
+  BAR1 `CLRIRQ = 2`, records/acks INTST and schedules DPC.
+- Original `FUN_00011390` assembly at `0x114A2..0x114C8` proves the
+  actual call `FUN_000176A2(transport, &hwIntWord)`. Its decompiled C
+  incorrectly shows a zero argument for the subsequent
+  `FUN_000157A6(commandStatus, hwIntWord)`; trust the assembly.
+- `FUN_000176A2` reads the low WORD of BAR1 HWInt `0x410` and clears
+  a nonzero value by writing zero. `FUN_000157A6` then performs
+  `pendingMask |= enabledMask & hwIntWord`. CFDC2180 event is signalled
+  on a nonzero source word. New `driver/Acquisition.c` DPC mirrors this.
+- The existing standalone 85FB/0x01 returns the enable/pending WORDs and
+  family-0/0x88 acknowledges the same sticky status under
+  `LegacyEventLock`. The genuine `0x0200` bit now drives user-mode
+  0x82/0x4A naturally, without synthetic probe state or another poller.
+- Solicited RX remains bounded/synchronous; single-channel MAM/CFDC2138,
+  family-1 MTT/0x51, immediate IIMCL completion acknowledgement and
+  existing INTST/CLRIRQ handling remain unchanged.
 
-## Root cause recovered statically and implemented in 70716ba
+No additional PCI/DMA changes were needed. The earlier source-only review
+identified a theoretical interleaving of full interrupt-mask commits around
+the initial enable of bit 0x08 versus acquisition bit 0x01; the successful
+focused test supplied no concrete reason to redesign that working path.
+Do not refactor it speculatively.
 
-These paths in `ghidra_exports/selected/` are essential:
+## Historical comparison assets
 
-- `000160a8_FUN_000160a8.c`: enables legacy INTEN global bit `0x08`.
-- `0001619a_FUN_0001619a.c`: calls the above before solicited 85FB
-  firmware reply fetch; prior x64 synchronous polling failed to enable bit 3.
-- `000108d6_FUN_000108d6.c`: ISR handles `INTST 0x08` and acknowledges
-  the source via BAR1 `CLRIRQ = 2` before common INTST acknowledge.
-- `raw_114f2.asm.txt` (especially VA `0x114A2..0x114C8`) and
-  `00011390_FUN_00011390.c`: actual original DPC call to
-  `FUN_000176A2(transport, &hwIntWord)` followed by
-  `FUN_000157A6(commandStatus, hwIntWord)`. The Ghidra decompiled C
-  *incorrectly* shows `FUN_000157A6(..., 0)` because it misses a stack
-  out-parameter. **Use the assembly, not that misleading decompilation.**
-- `000176a2_FUN_000176a2.c`: reads BAR1 `HWInt` at offset `0x410`
-  into a low-16-bit result and writes `0` to acknowledge nonzero HWInt.
-- `0001785b_FUN_0001785b.c`: establishes the HWInt register wrapper
-  as BAR1 `0x410`.
-- `000157a6_FUN_000157a6.c`: `pending |= enabled & hwIntWord`.
+Four files in the previously uploaded ZIP
+`lecroy_probus_handoff_20260928(1).zip` (none committed to GitHub):
 
-The original uses INTST bit 0x08 for the HWInt command-status notification,
-including the authentic ProBus bit `0x0200`. The previous x64 replacement
-never enabled INTEN bit `0x08` and never executed this HWInt DPC branch.
-Patch 70716ba now:
+1. `legacy_xstream_trace_20260928_183409_probus_original.jsonl`:
+   original x86 hotplug, three pending-0x0200 notifications at seq
+   14552/14588/14616; opcode-0x88 acks seq 14553/14589/14620;
+   family-1/0x82 and family-0/1 opcode-0x4A AP015 metadata.
+2. `xstream_trace_20260928_183807_probus_x64.jsonl`:
+   pre-patch x64 hotplug, no pending-0x0200, no recognition.
+3. `xstream_trace_20260928_193741.jsonl`:
+   pre-patch x64 AP015 already connected at startup, recognized by 0x4A;
+   Degauss and Auto Zero requests present, but one result differs.
+4. `xstream_trace_20260928_213834.jsonl`:
+   pre-patch AP015 connected, then removed/reinserted; no removal
+   notification; no pending-0x0200; DMA continues yet waveform disappeared.
 
-1. Enables `INTEN |= 0x08` before the first actual firmware response fetch.
-2. On an actual INTST 0x08 DPC, reads BAR1 HWInt 0x410, acknowledges it
-   by writing 0 when nonzero, latches only `hwIntWord & enabledMask`,
-   and wakes registered CFDC2180 event.
-3. Preserves synchronous RX_CONTROL polling for solicited reply data.
-4. Does **not** synthesize pending 0x0200, does not inject a probe-detection
-   command, and does not add a background polling loop.
-5. Preserves the working immediate IIMCL completion acknowledgement,
-   CLRIRQ writes, single-channel CFDC2138 DMA and family-1 MTTRGO path.
+Full historical A/B data, including the new post-patch trace markers, are
+in `docs/probus-calibration-ab-comparison.md`. The separate old Ch2
+calibration traces are optional: each newly visited V/div setting calibrates
+once and then caches, so this is not an active bug.
 
-## Exact next scope test
+## Next engineering priority
 
-Scope repository: `C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver`.
-Use an elevated PowerShell window on the scope:
+Do not chase AP015 hotplug with further interrupt changes based on the
+successful focused trace. The remaining **separate** discrepancy is the
+identical family-0/0x4A request ending `...47 00`, which on the original
+driver returned `...02000000FFFF` (legacy seq 24205), but in the
+previous pre-patch x64 preconnected run repeatedly returned
+`...040000000000` (x64 seq 12082..12087). Family-1/0x4A follow-up
+status also differed (`...F200` vs `...F700`). The new `230614`
+hotplug run did **not** exercise this special command, so it does not
+resolve Degauss/Auto Zero outcome parity.
+
+If the user wants to investigate it next, design one controlled physical
+test per action (Degauss **separately** from Auto Zero), start with AP015
+preconnected and known-good waveforms, record visible result and timing,
+capture a JSONL for each, and compare identical opcode-0x4A requests,
+replies and follow-up status to the historical original. Preserve the
+<=5% CPU limit and stop on abnormal acquisition. Do not randomly replay
+raw 0x4A or change hardware access without static protocol support.
+
+Another independent future task is the original top-level IOCTL coverage
+audit: 27 recovered dispatch values, 20 represented legacy paths, six
+missing top-level x64 cases, one deliberately gated
+METHOD_NEITHER `CFDD219F`. Unobserved multi-channel CFDC2138 also
+remains gated. Never relax the below-4-GiB DMA descriptor safety checks.
+`Run Link Tests` is vendor-disabled for S65 in the XStream user-mode DLL,
+not a kernel-driver regression.
+
+## Reusable scope workflow
+
+Scope repo: `C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver`.
+Use an **elevated** PowerShell window.
+
+For a separate build-only check (do not install if build fails):
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git update failed." }
+& ".\scripts\build-driver.ps1" -Configuration Debug
+```
+
+For an authorized scope-side XStream hardware retest, the user keeps the
+following local helper. It pulls, builds, test-signs, installs/reloads the
+driver, captures the IOCTL stream and attempts NAS trace copy; the local
+trace remains available if NAS copy fails:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 & "C:\Users\LeCroyUser\Desktop\Run-LeCroy-XStream-Trace.ps1" -Configuration Debug
 ```
 
-The helper pulls `main`, builds/reloads/signs the Debug driver and captures
-an XStream IOCTL trace. **First address any WDK compile/install failure.**
-If the patch builds, connect AP015 before starting XStream, verify normal
-waveform and AP015 metadata. Then perform only ONE controlled unplug and
-replug during the running session, waiting several seconds between actions.
-If the probe UI or waveform behaves abnormally, stop the test and close
-XStream normally. Do not repeat probing on an unstable acquisition board.
-Maintain the established <=5% CPU limit.
-
-Collect the newly generated JSONL and the user's observed behavior/timing.
-Specifically check:
-
-- No new WDK build errors, DMA timeouts, NTSTATUS failures or interrupt storm;
-- whether pending `0x0200` now appears in standalone 85FB/0x01;
-- corresponding local/forwarded opcode-0x88 acknowledge with mask 0x0200;
-- follow-up family-1/0x82, family-0/1 opcode-0x4A AP015 metadata;
-- removal *and* insertion detection; and waveform remaining visible;
-- whether the large-to-small transfer-pattern transition still occurs and
-  whether its timing aligns with a recorded physical action.
-
-Do not alter unrelated PCI/DMA code to chase the probe event. If the new
-patch fails, compare directly against the preceding known-good driver
-baseline and the four old ProBus traces.
-
-## Static preflight review and first-build gate (2026-09-28)
-
-The first review in the successor chat checked `main` at `ef8761f`
-(documentation-only descendant of `70716ba`) against the checked-in
-original decompilations and raw DPC assembly. The changes in
-`driver/Ioctl.c` and `driver/Acquisition.c` are internally consistent:
-
-- the receive enable is immediately before a real firmware 85FB fetch;
-- ISR source `INTST 0x08` already uses the original `CLRIRQ = 2` and
-  records the enabled interrupt for the DPC;
-- DPC reads DWORD BAR1 HWInt `0x410`, uses only the low WORD, clears
-  HWInt only when that WORD is nonzero, latches under `LegacyEventLock`
-  and signals `LegacyEvent0` for any nonzero source word;
-- standalone 85FB/0x01 reads the same pending/enable words under that
-  lock; the existing family-0/0x88 path clears pending bits and forwards
-  mask `0x0200` to the board instead of treating it as a host-only ack;
-- BAR1 `0x410` falls within the established `0x40000`-byte resource;
-  no newly referenced symbol or obvious C syntax/type mismatch was found.
-
-This was **source review, NOT a WDK build or hardware verification**. No
-change was made to the driver or known-good acquisition path. One existing
-concurrency consideration for the first retest is that
-`LecCommitLegacyInterruptMask` takes a caller-computed full mask; the
-initial bit-`0x08` enable and a concurrent transfer bit-`0x01` toggle could
-interleave. This is not an observed failure; do not proactively refactor DMA
-or PCI register access without evidence. Watch for transfer timeouts or a
-missing persistent bit after starting normal acquisition.
-
-The four uploaded ZIP traces are pre-patch historical baselines, not test
-results for this code. The independent check and exact matching seq numbers
-are retained in `docs/probus-calibration-ab-comparison.md`.
-
-### Build and hardware run: gated steps
-
-On the scope, elevate PowerShell. First perform a build-only check (the
-regular desktop helper also rebuilds during sign/install, but this exposes
-compile problems before touching the installed driver):
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-Set-Location "C:\\Users\\LeCroyUser\\Git\\lecroy_wr6k_64bit_driver"
-git pull --ff-only origin main
-if ($LASTEXITCODE -ne 0) { throw "Git update failed; stop here." }
-git log -1 --oneline
-& ".\\scripts\\build-driver.ps1" -Configuration Debug
-```
-
-If a compiler/linker error occurs, **stop before sign/load** and retain its
-full diagnostic output. There is no valid post-patch observation until a
-working driver is compiled, installed and reloaded. Once the build passes,
-run the known scope-local capture helper, still from elevated PowerShell:
-
-```powershell
-& "C:\\Users\\LeCroyUser\\Desktop\\Run-LeCroy-XStream-Trace.ps1" -Configuration Debug
-```
-
-Before the helper starts XStream, attach AP015. During capture use only the
-following controlled phases, noting elapsed seconds and visible behavior:
-
-1. Startup: verify AP015 label/metadata, live waveform, normal trigger,
-   and no sustained CPU use above 5%. Abort if baseline acquisition is wrong.
-2. Baseline: hold steady at least 5 seconds, without adjusting calibration,
-   timebase, channels, Degauss or Auto Zero.
-3. Disconnect AP015 **once**, note the approximate elapsed time, wait at
-   least 5 seconds, and note whether XStream removes probe recognition and
-   whether the waveform continues.
-4. Reconnect AP015 **once**, note the approximate elapsed time, wait at
-   least 5 seconds, and note metadata/recognition and visible acquisition.
-5. Close XStream normally to complete the capture. Abort promptly for a lost
-   waveform, DMA timeout, persistent high CPU, recurrent event storm or
-   obvious abnormal behavior; do not repeat hotplug on an unstable board.
-
-For the newly generated post-patch JSONL, parse standalone 85FB/0x01
-`pending & 0x0200`, follow-up family-0/0x88 mask `0x0200`, family-1/0x82,
-family-0/1 opcode-0x4A/AP015 data, CFDC2138 count/success/returned lengths,
-and whether successful DMA still supplies a visible waveform. Compare with
-the legacy event sequence (seq 14552/14553/14560, and subsequent events)
-and the old x64 run 213834. The first test does not require identical event
-counts. Include physical-action timing separately; the historical t=27.1 s
-transfer-pattern change cannot be assigned to an unplug or replug without it.
-
-## Other unfinished tasks (not the next priority)
-
-- Identical probe family-0/0x4A `...47 00` operation returns different
-  payloads: legacy `...02000000FFFF` versus pre-patch x64 repeated
-  `...040000000000`; Degauss/Auto Zero protocol outcome not proven
-  equivalent just because the user invoked them.
-- METHOD_NEITHER `CFDD219F` stays deliberately gated; do not accidentally
-  enable x86 pointer/DMA assumptions on x64.
-- Unobserved multi-channel CFDC2138 remains gated; keep 32-bit PCI DMA
-  descriptor physical-address safety (reject addresses above 4 GiB).
-- Driver coverage audit: 27 recovered original top-level IOCTLs, 20
-  represented legacy cases, six lacking a top-level x64 case and one
-  deliberately gated. See `docs/ioctl-map.md`.
-- Developer `Run Link Tests` is *vendor-disabled* for S65/WaveRunner in
-  proprietary `lecaladdinhwaccesspcisvr.dll`, not a missing replacement
-  kernel feature. The Service Revision error was already fixed by local
-  family-1 `0xA1/0xA2` BAR register reads.
-
-## Maintaining the public repository
-
-Chat German; code and docs English. Update `AGENTS.md`, this handoff file,
-`docs/runtime-trace.md`, relevant ProBus docs and README after new verified
-findings. Avoid proprietary EXE/DLL/SYS uploads to GitHub. Do not regress the
-known-good acquisition code. Prove changed driver behavior on hardware before
-marking the new patch as working.
+User action timings are **not** automatically annotated in JSONL.
+Request them when correlating physical transitions. Never commit proprietary
+original EXE/DLL/SYS or the user's private raw scope traces into this public
+repo. Keep `AGENTS.md`, this handoff file, README and relevant detailed docs
+in sync with further verified findings.
