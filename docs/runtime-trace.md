@@ -2864,3 +2864,84 @@ and screen-visible clamp state are not captured by JSONL.
 More details, exact legacy comparison, and next test:
 `docs/probus-calibration-ab-comparison.md` and
 `docs/next-chat-handoff.md`.
+
+
+## Trace 235314: pre/post-calibration jaw actions still yield no 0x0200
+
+User performed the exact controlled post-`3490709` protocol described
+in the previous handoff: XStream start with AP015 preconnected; jaw
+open/hold/close/hold **before** Degauss; Degauss; manually trigger Auto
+Zero; another open/hold/close/hold pair; close XStream. Private trace
+`xstream_trace_20260928_235314.jsonl`. Separate clock timestamps
+for physical movements and explicit visual jaw-state observations were
+not included in the user report.
+
+The capture spans **72.009226 s**, has **36,366** IOCTL entries and
+sequence range 1..42,227. Its 36 snapshot gaps omit 5,861 sequence
+numbers; the final one ends at **t~48.479610 s**, so the whole
+post-Auto-Zero period at t>=54.337 s is captured without gaps.
+No captured NTSTATUS failure. CFDC2110: 27,834. CFDC2138: 6,818.
+All 6,818 DMA output DWORDs equal their requested input-offset-11
+byte counts (including the last 1,024-byte return at t~72.008570 s).
+
+All **1,517 standalone 85FB/0x01** calls returned
+`000000000400BF028000`: enable 0x02BF, pending **0x0080**
+(no 0x0200 and no 0x0280). No family-1/0x82 and no family-0/0x88
+mask 0x0200 appear. Apart from initial setup masks 0xFFDF and
+0x001F, the captured family-0/0x88 acknowledgements are 1,521
+repetitions of mask 0x0080. The physical jaw phase split can be
+bounded by the two user-action-correlated 47 00 requests:
+
+```text
+t~17.084      seq   508 AP015 recognized (family-1/0x4A), Information=270
+t17.000..40.156       622 status reads, 0 events containing 0x0200,
+                       3,207 successful DMA replies
+t~40.155959   seq 23386 family-0/0x4A ...47 00:
+                       0000000000000000000002000000FFFF
+t~40.186      seq 23388 family-1/0x4A ...01 0A:
+                       0000000000000000000004000000F300
+t40.156..54.337       381 status reads, 0 events containing 0x0200,
+                       1,622 successful DMA replies
+t~54.336670   seq 31835 family-0/0x4A ...47 00:
+                       0000000000000000000002000000FFFF
+t~54.368      seq 31836 family-1/0x4A ...01 0A:
+                       0000000000000000000004000000F300
+t54.337..72.009       514 status reads, 0 events containing 0x0200,
+                       1,989 successful DMA replies
+t48.480..72.009       648 status reads with zero snapshot gaps
+```
+
+The two 47 00 results are byte-for-byte the original x86 response
+and do not show the earlier fivefold retry burst. The corrected
+startup family-1/0x99 output also matches the original x86's
+captured first 128 bytes, including unused 0xFF padding:
+`0000000000000000000002000200FFFFFFFF...`.
+The pre-`3490709` x64 raw wrapper had wrongly zero-padded that
+part. AP015 startup metadata seq 508 has Information 270 and the
+captured first 128 bytes match `231656`. The two later follow-up
+firmware-status replies are both F3 versus historical x86 F2;
+that state-bit meaning is not established.
+
+**Inference:** Degauss/Auto Zero cannot be a necessary cause of
+the absence of jaw events in this run, because the first deliberate
+open/close pair occurred before Degauss and 622 associated status
+reads already lack 0x0200. The same absence also holds in 381
+intermediate and 514 post-manual-Auto-Zero reads. This repeats the
+post-`3490709` zero-event behavior in `233125`, whereas the
+earlier HWInt patch plus old raw wrapper in `231656` captured five
+real pending-0x0200/0x88/0x82 notifications. Temporal correlation
+is not proof that the host-only formatter directly disables board
+interrupts.
+
+**Do not mistake standalone software-enable `0x02BF` for the
+physical BAR0 `INTEN[0x08]` bit.** The actual BAR0 INTEN DWORD
+(offset 0x084), BAR0 INTST (0x080), BAR1 HWInt (0x410), and raw
+ISR/DPC counters are not present in IOCTL-only JSONL. Next minimally
+discriminating unchanged-driver test: AP015 physically unplug/replug
+once without any calibration or jaw-switch action. If that no longer
+produces pending 0x0200, investigate physical INTEN/INTST/HWInt
+with bounded passive instrumentation; otherwise inspect the
+jaw-specific trigger/state. Preserve known-good acquisition,
+no synthetic pending flags, <=5% CPU. Full context in
+`docs/probus-calibration-ab-comparison.md` and
+`docs/next-chat-handoff.md`.
