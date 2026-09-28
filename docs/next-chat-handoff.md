@@ -1,44 +1,67 @@
-# Active handoff: five-slot ProBus I2C and private PCI Dallas license backup (2026-09-29)
+# Active handoff: missing x64 Dallas WRITE identified by real XStream trace (2026-09-29)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** New redacted
-512-byte DS2433 image analysis shows
-substantial **zero-fill** instead of
-FF-fill: pages 6..10 (0x0C0..0x15F)
-and 12..14 (0x180..0x1DF) are
-entirely 0x00; page 11 has four
-nonzero-other bytes and page 15
-has three FF plus 29 zero bytes.
-First 192 bytes contain much
-printable content, not yet a
-decoded plaintext license layout.
-The prior synthetic image helper
-correctly aborted because no
-entire 32-byte FF page exists,
-but that condition alone does
-NOT imply full application storage.
-Do NOT automatically overwrite
-all-zero pages. The user can use
-native XStream to delete/readd ONE
-known original key, but only with
-independent re-enterable key record,
-an explicit acceptance of feature/
-licensing loss risk, and original
-x86 XStream/driver (the x64
-0x00223088 writer remains unported).
-First use no-op UI control and
-private before/after read-only
-snapshots. New docs staged under
+**LATEST ENGINEERING STATE:** The user attempted
+to Delete one XStream license under the
+current x64 replacement driver; after XStream
+restart the key was still present.
+**New exact cause is now PROVEN** by uploaded
+`xstream_trace_20260929_011858.jsonl`:
+XStream's 32-bit WOW64 process issues
+**`WRITE_DALLAS_MEMORY` 0x00223088**
+once at seq **522**, t~57.303 s, with
+**512 input bytes**, no output. The x64
+driver responds **`0xC0000010` /
+`STATUS_INVALID_DEVICE_REQUEST`**
+(Information 0), because current
+`driver/Ioctl.c` defines/dispatches Dallas
+ID 0x80 and READ 0x84 but NO WRITE 0x88.
+An immediate 512-byte READ at seq
+**523** succeeds; its captured first
+128 bytes match the initial READ
+seq 3. Thus no need to blame EEPROM,
+license layout or XStream's UI: the
+actual unsupported write ABI is now
+exercised and is our next concrete
+compatibility gap.
+
+The uploaded JSONL contains preview bytes
+of the potentially real licensing image
+(256-byte write input and 128-byte
+read outputs); **NEVER copy this raw
+trace or its keys into the public repo**.
+It has 608 contiguous IOCTLs over
+63.0224566 s, 607 successes, only
+one failure (the write). XStream's
+attempted full-512-byte image differs
+from baseline within 93 byte offsets
+in their common first-128-byte prefix,
+affecting pages 0..3; remaining
+contents are unobserved in preview.
+Added original-driver Ghidra
+export targets `11f54`,
+`asm:11f54`, `xref:11f54`;
+run `scripts/run-ghidra-analysis.ps1`
+on the PC with Ghidra, recover
+actual DS2433 scratchpad/copy/readback
+before any native x64 writer is coded
+or activated. The diagnostic EXE
+`tools/lecdiag/lecdiag.c` now redacts
+Dallas license-bearing IOCTL hex
+previews from **future newly rebuilt
+lecdiag JSONL exports only**; this
+does not change the kernel or retroactively
+redact the current private file.
+Safety: matching private backups are
+not a proven restore path. Do NOT
+repeat delete on existing x64 writer-less
+driver or fabricate a STATUS_SUCCESS stub.
+Detailed current test:
 `docs/dallas-license-memory-test-plan.md`.
-Do not publish key bytes, exact
-private hashes or raw license IOCTL
-payloads. All five ProBus sockets
-remain I2C-only, separate from
-DS2433 PCI licensing.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -58,6 +81,113 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## Decisive Dallas write trace: XStream DID try; x64 returned invalid request (011858) (2026-09-29)
+
+The user deleted a visible key via current
+x64 XStream, but it reappeared after
+application restart. This is explained by
+the **actual write attempt and failure**
+found in their newly uploaded private
+`xstream_trace_20260929_011858.jsonl`:
+
+| Relative time / seq | Control and length | Actual returned status |
+|---|---|---|
+| t=0 / seq 1 | GET_DALLAS_ID 0x00223080, output 8 | SUCCESS |
+| t~0.804498 / seq 3 | READ_DALLAS_MEMORY 0x00223084, output 512 | SUCCESS |
+| **t~57.303140 / seq 522** | **WRITE_DALLAS_MEMORY 0x00223088**, input 512, output 0 | **0xC0000010 STATUS_INVALID_DEVICE_REQUEST**, Information 0 |
+| t~57.824097 / seq 523 | READ_DALLAS_MEMORY, output 512 | SUCCESS |
+| t~63.022424 / seq 607 | GET_DALLAS_ID | SUCCESS |
+
+There were 608 IOCTLs seq 1..608,
+no snapshot omissions, duration
+63.0224566 s. 607 NTSTATUS successes,
+**one single failure, the WRITE**.
+The first 128 captured READ output bytes
+at seq 3 and 523 match (do not claim
+full 512-byte equality from 128-byte
+preview). The attempted 512-byte WRITE
+has only its first 256 input bytes
+captured; 93 differing offsets
+between intended image and initial
+read in their common first 128
+bytes (pages 0..3). No raw
+sensitive bytes or exact key hashes
+are in docs.
+
+**Source-supported direct explanation:**
+`driver/Ioctl.c` initializes
+`status = STATUS_INVALID_DEVICE_REQUEST`,
+and has no `LECS65_IOCTL_WRITE_DALLAS_MEMORY`
+case; that unknown IOCTL falls into
+default and returns C0000010.
+Therefore XStream **does attempt a
+full 512-byte write** and receives
+the expected unsupported status:
+the key remaining after restart is
+consistent with the device being
+unchanged, not a strange license
+parser/UI caching behavior. Its
+post-write read still succeeds.
+Do not repeat current x64 deletion
+or attempt to force raw overwrite
+of zero-filled pages.
+
+**NEXT actual task:** source-recover
+original x86 Dallas write handler
+(`0x00223088`, Ghidra VA
+`0x11F54`) including 32-byte
+scratchpad/copy/readback and retry.
+Added `11f54`, `asm:11f54`,
+`xref:11f54` into
+`ghidra_scripts/targets.txt`.
+Run established PC-side
+`scripts/run-ghidra-analysis.ps1`
+to export it, then use source
+evidence to plan a bounded,
+restore-tested native x64 writer.
+No IOCTL writer or fake success
+has been added in this turn.
+
+**Trace confidentiality change:**
+The unredacted current upload
+contains a 256-byte WRITE input
+preview potentially comprising
+real license fields and 128-byte
+READ output previews. KEEP IT PRIVATE.
+Modified `tools/lecdiag/lecdiag.c`
+so FUTURE rebuilt diagnostic
+JSONL exports have empty
+`input_hex` for WRITE 0x88,
+empty `output_hex` for
+READ 0x84 and GET_ID 0x80,
+and set
+`sensitive_payload_redacted=true`
+while preserving code, lengths,
+status, ordering. This is
+diagnostic-source-only:
+old files and in-kernel
+debug/ring memory are not
+automatically sanitized.
+
+**PowerShell path confusion:**
+`inspect-dallas-image.ps1`
+exists on `main` from an earlier
+commit. Ensure
+`Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"`,
+`git pull --ff-only origin main`,
+`Test-Path .\scripts\inspect-dallas-image.ps1`.
+The earlier user's
+`after-delete.bin` was
+NOT auto-created by XStream
+or the trace; `lecdiag dallas-backup
+.\license-backups\after-failed-delete.bin`
+must be run independently with
+XStream closed to get an exact
+whole-memory after snapshot.
+This optional snapshot is
+not needed to prove the current
+missing-writer root cause.
 
 ## New redacted license-memory finding: zero-filled pages (2026-09-29)
 
