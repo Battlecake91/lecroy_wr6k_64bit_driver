@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 
 $sourceA = (Resolve-Path -LiteralPath $ImageA -ErrorAction Stop).ProviderPath
 $sourceB = (Resolve-Path -LiteralPath $ImageB -ErrorAction Stop).ProviderPath
-$target = [System.IO.Path]::GetFullPath($OutputImage)
+$target = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputImage)
 
 if ([string]::Equals($sourceA, $sourceB, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw 'Supply two independent backup files, not the same path twice.'
@@ -102,7 +102,7 @@ for ($i = 0; $i -lt 512; $i++) {
     }
 }
 
-$stream = New-Object System.IO.FileStream(
+$stream = [System.IO.FileStream]::new(
     $target,
     [System.IO.FileMode]::CreateNew,
     [System.IO.FileAccess]::Write,
