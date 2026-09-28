@@ -109,6 +109,21 @@ BAR2 respectively. The corrected mapping is described below.
 
 ## Recovered Dallas / 1-Wire hardware path
 
+**Updated PCI EEPROM interpretation (user clarification, 2026-09-29):**
+Although the PCI schematic labels `U11 DS2433` `ID Chip`, the
+user confirms that its **512-byte 1-Wire memory stores XStream
+license keys**. They suspect plaintext contents; this specific
+format remains unverified pending a private dump. The unique
+Dallas 8-byte ROM identity and writable 512-byte license
+storage are distinct. Current x64 `LecDallasReadId` and
+`LecDallasReadMemory` work at the source level, but the
+original x86 EEPROM **write** IOCTL `0x00223088` has
+**not yet been ported into current `driver/Ioctl.c`**.
+The new `lecdiag dallas-backup` command is strictly
+read-only and saves two-read-verified private raw bytes.
+See [`dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md)
+before any future write/erase experiment.
+
 **New schematic corroboration (user-supplied `PCI Card.pdf`, sheet 1,
 2026-09-29):** The separate PCI interface card physically contains
 `U11 DS2433`, labelled `ID Chip`, on the `ID_DATA` net attached
@@ -437,3 +452,27 @@ See [`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topolo
 and [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
 The original proprietary source PDFs were NOT
 redistributed into this public repo.
+
+
+## Confirmed front ProBus electrical transport clarification (2026-09-29)
+
+The user confirms that all **five** front ProBus sockets
+communicate with their probes **exclusively through I2C**,
+not SPI. The analog ADC identification value first classifies
+ProBus; the front/probe EEPROM and subsequent probe control
+are accessed over I2C. The separately named SPI_IO/UC_SPI
+networks and source-confirmed BAR1 `SPICTL/SPIDAT/SPIDIN`
+helper are for internal host/board serial operations;
+the user believes these are primarily ADC/reference and
+related component configuration. Exact SPI target
+selection is still unproven and must not be fabricated.
+The `I2C(0:5)` bus label in the top-level overview
+is not an exact one-to-one slot pin mapping.
+
+Neither the PCI card's DS2433 licensing storage
+nor its FPGA XC18V02 configuration PROM is part
+of the physical front ProBus I2C identification
+EEPROM. See
+[`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md)
+and
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
