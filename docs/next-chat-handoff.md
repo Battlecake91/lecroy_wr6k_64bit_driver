@@ -5,33 +5,40 @@ Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** The user's attempted
-offline dummy-image generation **failed safely**:
-both independently verified 512-byte DS2433
-license backups match, but no entire
-32-byte page is all FF. No new image,
-no original-file change and NO
-EEPROM write resulted. Do not infer
-all application-level license slots
-are occupied or disable the guard.
-User can attempt XStream Add License,
-but a fake input might fail validation
-before any 1-Wire write. Original x86
-driver supports write IOCTL 0x00223088;
-native x64 still does not. New strictly
-**read-only redacted**
-`scripts/inspect-dallas-image.ps1`
-reports per-page occupancy counts and,
-given a later post-XStream private
-backup, only changed byte ranges,
-not keys. Avoid public raw licensing
-traces/dumps and any speculative
-on-device erase/write. Full current
-workflow:
+**LATEST ENGINEERING STATE:** New redacted
+512-byte DS2433 image analysis shows
+substantial **zero-fill** instead of
+FF-fill: pages 6..10 (0x0C0..0x15F)
+and 12..14 (0x180..0x1DF) are
+entirely 0x00; page 11 has four
+nonzero-other bytes and page 15
+has three FF plus 29 zero bytes.
+First 192 bytes contain much
+printable content, not yet a
+decoded plaintext license layout.
+The prior synthetic image helper
+correctly aborted because no
+entire 32-byte FF page exists,
+but that condition alone does
+NOT imply full application storage.
+Do NOT automatically overwrite
+all-zero pages. The user can use
+native XStream to delete/readd ONE
+known original key, but only with
+independent re-enterable key record,
+an explicit acceptance of feature/
+licensing loss risk, and original
+x86 XStream/driver (the x64
+0x00223088 writer remains unported).
+First use no-op UI control and
+private before/after read-only
+snapshots. New docs staged under
 `docs/dallas-license-memory-test-plan.md`.
-Five front ProBus slots remain
-**I2C-only**, separate from
-PCI DS2433 1-Wire licensing.
+Do not publish key bytes, exact
+private hashes or raw license IOCTL
+payloads. All five ProBus sockets
+remain I2C-only, separate from
+DS2433 PCI licensing.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -51,6 +58,66 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## New redacted license-memory finding: zero-filled pages (2026-09-29)
+
+The user ran the newly added redacted
+`scripts/inspect-dallas-image.ps1 -Before
+.\\license-backups\\original-a.bin` and provided
+page-level FF/00/printable/other counts.
+The useful structural result is **substantial
+0x00 fill rather than 0xFF fill**:
+
+- Pages 0..5 (0x000..0x0BF): many printable
+  bytes, possibly records/header but exact
+  license format NOT decoded.
+- Pages **6..10** (0x0C0..0x15F):
+  five entirely zero-filled 32-byte pages
+  (**160 bytes**).
+- Page 11 (0x160..0x17F):
+  28 zeros plus 4 other bytes.
+- Pages **12..14** (0x180..0x1DF):
+  three entirely zero-filled 32-byte pages
+  (**96 bytes**).
+- Last page 15 (0x1E0..0x1FF):
+  29 zeros and 3 FF bytes.
+
+The no-full-FF-page abort of
+`create-dallas-dummy-image.ps1`
+was therefore expected, but **no full-FF
+page does NOT mean the EEPROM is full**.
+Do not equate wholly zero-filled pages
+with free XStream license slots either:
+reserved bytes and/or a global checksum
+may exist. Keep raw EEPROM content and
+user-specific hashes private.
+
+**User offers native XStream delete+re-add
+of one existing key.** That could be a
+valuable original-format A/B, but only
+after the legitimate *same key* is
+independently documented/re-enterable
+and the user accepts the risk of losing
+a licensed feature. Current x64 native
+driver still has NO write IOCTL
+`0x00223088`; use original 32-bit
+XStream plus original x86 driver for
+a real native-app EEPROM write if
+proceeding. Prefer a **no-op control**
+original-driver backup before and after
+merely opening/closing XStream's
+license UI, followed by separate private
+read-only images after ONE native delete
+and after re-adding the SAME original key.
+Use `inspect-dallas-image.ps1 -Before
+... -After ...` to compare byte offsets
+and page counts, never publicly expose
+raw keys. Matching double-backups are
+not proof that a native x64 restore
+would succeed. If native re-add fails,
+stop rather than raw-writing guessed
+EEPROM offsets. Complete staged plan:
+`docs/dallas-license-memory-test-plan.md`.
 
 ## Update: no all-FF page; consider native XStream license dialogue (2026-09-29)
 
