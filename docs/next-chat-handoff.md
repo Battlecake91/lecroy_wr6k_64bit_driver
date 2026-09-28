@@ -5,6 +5,13 @@ Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
+**LATEST ENGINEERING STATE:** The original HWInt/AP015 hotplug patch
+`70716ba` is real-hardware validated by traces `230614` and `231656`.
+The subsequent host-side response-format patch `3490709` is deliberately
+minimal but **has not yet been compiled or tested on the scope**.
+This is the immediate next gate; do not confuse the just-analyzed trace
+`231656` with a test of patch `3490709`.
+
 ## Current verified status
 
 The targeted original-interrupt-path restoration in driver commit
@@ -80,6 +87,84 @@ The successful post-patch capture plus user-visible XStream behavior
 supports closing the original **missing AP015 hotplug notification** bug
 for the tested disconnect/reconnect scenario. Keep the patch intact.
 
+## Second post-HWInt scope trace: 231656 (before 3490709)
+
+The user ran another x64 session with AP015 preconnected, executed Degauss
+(and the subsequent automatic Auto Zero), opened/closed the clamp, opened
+it again, and closed it in the locked position. The uploaded capture is
+`xstream_trace_20260928_231656.jsonl`, **not** committed publicly.
+Its first and last captured IOCTL seq are 1..39998, 35,458 actual entries;
+39 trace-snapshot gaps omit 4,540 sequence numbers. All captured calls
+have `STATUS_SUCCESS`. There are 27,100 CFDC2110 calls, 6,701 CFDC2138
+calls and zero returned-byte-count mismatches. CFDC2138's requested
+DWORD is at **input offset 11**, not token DWORD offset 0.
+
+The 1,438 standalone 85FB/0x01 status queries all report enable mask
+`0x02BF`: pending exactly 0x0080 = 1,432; 0x0200 = 4; 0x0280 = 1;
+0x0000 = 1. Therefore **five** real pending status events include 0x0200.
+All five are acknowledged by family-0/0x88 and followed by family-1/0x82.
+Timeline relative to first captured IOCTL (10-MHz timestamp):
+
+| Event/time | Status seq/pending | 0x88 seq/mask | 0x82 seq/pair | User-action correlation |
+|---|---|---|---|---|
+| ~34.163 s | 19902 / 0200 | 19903 / 0200 | 19916 / `12 00 A7 00` | Post-Degauss; clamp still closed |
+| ~41.812 s | 24430 / **0280** | 24431 / **0280** | 24443 / `12 00 58 00` | First open |
+| ~57.832 s | 33777 / 0200 | 33778 / 0200 | 33787 / `12 00 A7 00` | First close |
+| ~59.820 s | 34908 / 0200 | 34909 / 0200 | 34918 / `12 00 58 00` | Second open |
+| ~61.894 s | 36079 / 0200 | 36080 / 0200 | 36089 / `12 00 A7 00` | Locked close |
+
+The observed `0x0058` and `0x00A7` state words correlate with opened
+and closed clamp respectively, but the bit-field and a separate lock bit
+have **not** been statically decoded. After seq 24431 ack 0x0280,
+seq 24437 returns pending 0 and seq 24438 acknowledges mask 0.
+No trace snapshot gap falls immediately across any of these five events.
+The last DMA IOCTL occurs near t=68.177 s; the 6,701 captured returns
+all match the requested size. Do not confuse IOCTL return success with
+pixel-level waveform proof, and do not claim CPU/ISR counts from JSONL.
+
+### Persistent special-function difference versus original x86
+
+In trace 231656, family-0/0x4A Degauss-associated request `...47 00`
+appears **five times** (seq 19883..19887), all with response
+`00000000000000000000040000000000`; the immediate family-1/0x4A
+status is `...F700` (seq 19895). Automatically invoked Auto Zero
+request `...47 12` occurs five times at seq 19938,19939,19941..19943
+(status F100) and again in four five-request bursts after the jaw events
+(status F700/F300/F700/F300), **25 occurrences total**.
+
+The byte-identical legacy original 47 00 request at seq 24205 and the
+legacy 47 12 requests at seq 14895 and 14900 return
+`0000000000000000000002000000FFFF`; the comparable legacy 0x4A status
+is `...F200`. Existing x64 prepatch trace 193741 already had the
+same repeated 47 00 replies; the restoration of authentic HWInt 0x0200
+alone does not change this response-format issue.
+
+Original legacy family-1/0x82 answers use actual raw-response length
+`0x0006` or `0x0016` and trailing 0xFF padding; the previous x64
+host wrapper advertises full capacity `0x0190` and zero pads. All have
+aggregate `IoStatus.Information=412`, so that number is **not** the
+firmware reply count.
+
+### Exact source-proven cause and targeted patch
+
+Original `ghidra_exports/selected/000167f4_FUN_000167f4.c`:
+allocates the entire requested output record and fills it `0xFF`;
+then invokes `FUN_0001619A` with destination at result+6 and record
+payload capacity (record size minus six) and obtains `actual_received`
+as an out-param. On success it writes `actual_received` (not capacity)
+as WORD at result+4 and retains FF padding. `FUN_000169B4` copies the
+whole record. The x64 wrapper already has `pendingResponseLength` from
+`LecTransportReceive`, but its old raw branch wrote `recordOutput-6`
+and SystemBuffer was initialized to zeros.
+
+**Driver commit `34907090820a582ac360d02120316c8792d7c888`** changes
+only raw-hardware 85FB output serialization in `driver/Ioctl.c`: prefill
+raw result record with 0xFF; use actual copied byte count
+`min(pendingResponseLength, recordOutput-6)` for header WORD+4, leaving
+unused bytes as FF. The established family-1/0x99 override stays in place.
+There is no change to actual BAR access, device IRQ, HWInt, receive polling,
+DMA, MAM, or the original firmware command packet. **Unbuilt/untested.**
+
 ## Recovered and now exercised original path
 
 - `FUN_0001619A -> FUN_000160A8(1)` enables BAR0 INTEN bit `0x08`
@@ -132,33 +217,48 @@ in `docs/probus-calibration-ab-comparison.md`. The separate old Ch2
 calibration traces are optional: each newly visited V/div setting calibrates
 once and then caches, so this is not an active bug.
 
-## Next engineering priority
+## Immediate next task: build and validate only the raw response-format fix
 
-Do not chase AP015 hotplug with further interrupt changes based on the
-successful focused trace. The remaining **separate** discrepancy is the
-identical family-0/0x4A request ending `...47 00`, which on the original
-driver returned `...02000000FFFF` (legacy seq 24205), but in the
-previous pre-patch x64 preconnected run repeatedly returned
-`...040000000000` (x64 seq 12082..12087). Family-1/0x4A follow-up
-status also differed (`...F200` vs `...F700`). The new `230614`
-hotplug run did **not** exercise this special command, so it does not
-resolve Degauss/Auto Zero outcome parity.
+The probe hotplug path itself has been validated in two real sessions.
+The next test must distinguish host serialization from a genuine board
+reply/state difference. First run a **Debug build** after pulling current
+main, then the normal signed load/capture helper. If the build fails,
+stop without installing; capture the compiler/linker error.
 
-If the user wants to investigate it next, design one controlled physical
-test per action (Degauss **separately** from Auto Zero), start with AP015
-preconnected and known-good waveforms, record visible result and timing,
-capture a JSONL for each, and compare identical opcode-0x4A requests,
-replies and follow-up status to the historical original. Preserve the
-<=5% CPU limit and stop on abnormal acquisition. Do not randomly replay
-raw 0x4A or change hardware access without static protocol support.
+For one short, controlled post-`3490709` run, start with AP015 attached,
+verify visible waveforms and recognition, perform Degauss and let automatic
+Auto Zero finish, note the actual physical/UI result (not merely IOCTL
+success). If baseline remains stable, perform **one** normal open/close
+pair to exercise 0x82; then close XStream normally. If waveform or UI
+becomes abnormal, stop rather than repeating events. Maintain CPU <=5%.
 
-Another independent future task is the original top-level IOCTL coverage
-audit: 27 recovered dispatch values, 20 represented legacy paths, six
-missing top-level x64 cases, one deliberately gated
-METHOD_NEITHER `CFDD219F`. Unobserved multi-channel CFDC2138 also
-remains gated. Never relax the below-4-GiB DMA descriptor safety checks.
-`Run Link Tests` is vendor-disabled for S65 in the XStream user-mode DLL,
-not a kernel-driver regression.
+Inspect the new JSONL for:
+
+- `...47 00` and `...47 12` second-record header WORD at result byte
+  offset 10. If board's actual RX word count is one, it should now be
+  `0x0002` with unused `FFFF`, matching legacy
+  `...02000000FFFF`; do **not** force this outcome if hardware actually
+  supplies a different count.
+- Family-1/0x82 original-like actual length `0x0006` (or `0x0016`
+  when appropriate) and 0xFF-padded unused response bytes, rather than
+  old hardcoded capacity `0x0190` with zero padding. Its actual state
+  words should still reflect physical open/close.
+- Actual number of repeated 47 00 / 47 12 requests compared with the
+  previous five-per-burst x64 behavior and original one/two requests;
+  the following family-1/0x4A statuses (original F2 vs x64 F7/F1/F3).
+- All real pending-0x0200 / 0x88 / 0x82 interactions, normal AP015
+  presence metadata, uninterrupted working acquisition, requested-vs-
+  returned CFDC2138 byte counts, failures and abnormal event frequency.
+- The full, separately reported user-visible Degauss/Auto Zero effect.
+  Raw packet framing parity alone cannot prove physical calibration.
+
+If new responses still claim length 0x0004 after this patch, the board
+may actually be returning four bytes through LecTransportReceive.
+Do not fabricate a legacy two-byte response: first recover/log the
+internal actual received count **passively**. Do not change any PCI,
+firmware command, IRQ or DMA handling speculatively. Preserve the verified
+hotplug driver baseline and known-good waveform settings. `CFDD219F`
+remains gated, as does unobserved multi-channel CFDC2138.
 
 ## Reusable scope workflow
 
