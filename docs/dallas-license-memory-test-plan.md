@@ -1,9 +1,9 @@
 # PCI DS2433 license memory: safe read, backup and future write validation
 
 **Updated:** 2026-09-29.
-**Hardware source:** user-provided \`PCI Card.pdf\` sheet 1 shows
-\`U11 DS2433\` ("ID Chip") wired to the PCI-side Spartan-IIE
-\`U3 XC2S200E\` through net \`ID_DATA\`. The user additionally
+**Hardware source:** user-provided `PCI Card.pdf` sheet 1 shows
+`U11 DS2433` ("ID Chip") wired to the PCI-side Spartan-IIE
+`U3 XC2S200E` through net `ID_DATA`. The user additionally
 confirms that the **PCI-card 1-Wire EEPROM stores the XStream
 license keys**. The user believes the keys appear in plaintext;
 the specific bytes, data layout, checksums and any relationship
@@ -15,19 +15,19 @@ This storage is unrelated to the **five front-facing ProBus
 probe sockets**: those use an ADC identification value for
 initial ProBus classification, then I2C for the front EEPROM
 and probe control. It is also distinct from the PCI card's
-\`U6 XC18V02\` Spartan configuration PROM.
+`U6 XC18V02` Spartan configuration PROM.
 
 ## Important current software status
 
 | Function | Original x86 driver | Current x64 driver and tool |
 |---|---|---|
-| Dallas ROM ID | \`0x00223080\`, eight bytes, ROM CRC-8 | Implemented in \`driver/Ioctl.c\`; \`lecdiag dallas-id\` available. |
-| Dallas EEPROM read | \`0x00223084\`, request 1..512 bytes, read from address \`0x0000\` | Implemented, including full 512-byte reads; \`lecdiag dallas-read\` prints hex, and new **\`lecdiag dallas-backup\`** saves a *binary* private backup. |
-| Dallas EEPROM write | \`0x00223088\`, recovered original x86 handler, 1..512-byte input, 32-byte chunks and read-back verification in legacy analysis | **NOT implemented** in the current native x64 \`driver/Ioctl.c\`; no \`lecdiag\` writer or eraser. Do not imply writable x64 memory has already been validated. |
+| Dallas ROM ID | `0x00223080`, eight bytes, ROM CRC-8 | Implemented in `driver/Ioctl.c`; `lecdiag dallas-id` available. |
+| Dallas EEPROM read | `0x00223084`, request 1..512 bytes, read from address `0x0000` | Implemented, including full 512-byte reads; `lecdiag dallas-read` prints hex, and new **`lecdiag dallas-backup`** saves a *binary* private backup. |
+| Dallas EEPROM write | `0x00223088`, recovered original x86 handler, 1..512-byte input, 32-byte chunks and read-back verification in legacy analysis | **NOT implemented** in the current native x64 `driver/Ioctl.c`; no `lecdiag` writer or eraser. Do not imply writable x64 memory has already been validated. |
 
-The x64 controller is \`BAR2+0x040 ONEWIRE\`. The
+The x64 controller is `BAR2+0x040 ONEWIRE`. The
 physical schematic identifies the DS2433 behind
-the PCI FPGA's \`ID_DATA\` net. The schematic does
+the PCI FPGA's `ID_DATA` net. The schematic does
 not expose FPGA RTL to independently prove the
 exact BAR-to-pin mapping; the combined source
 and schematic information is strong supporting
@@ -42,8 +42,8 @@ record is valid.
 
 ## Immediate read-only test; do not touch license content
 
-A read-only \`dallas-backup <new-file.bin>\`
-subcommand was added to \`tools/lecdiag/lecdiag.c\`
+A read-only `dallas-backup <new-file.bin>`
+subcommand was added to `tools/lecdiag/lecdiag.c`
 on 2026-09-29. It:
 
 1. Obtains the eight-byte Dallas ROM ID (the
@@ -52,7 +52,7 @@ on 2026-09-29. It:
 3. Obtains the ROM ID a second time and requires
    both ROM IDs and both complete dumps to match.
 4. Only then creates a **new** filename using
-   \`CREATE_NEW\` (never overwrites an existing backup).
+   `CREATE_NEW` (never overwrites an existing backup).
 5. Writes exactly 512 raw bytes, flushes the
    file and reopens it to check the persisted
    byte-for-byte content and exact EOF.
@@ -64,7 +64,7 @@ Windows C++ tools on the scope. This source change
 is **not yet compiled or executed on the hardware**
 at the time of this documentation:
 
-\`\`\`powershell
+```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
 git pull --ff-only origin main
@@ -94,13 +94,13 @@ if ($hashes[0].Hash -ne $hashes[1].Hash) {
     throw "Backup A/B hashes differ: do not attempt writes"
 }
 Write-Host "Two independently captured 512-byte backups match."
-\`\`\`
+```
 
 Perform the initial backup with XStream closed and the
 card/driver in a stable configuration. The files are
 sensitive: store a second copy **outside** the public
-Git checkout, ideally on another medium. \`.gitignore\`
-excludes \`license-backups/\` and \`*.ds2433.bin\`;
+Git checkout, ideally on another medium. `.gitignore`
+excludes `license-backups/` and `*.ds2433.bin`;
 that protection is not a substitute for keeping
 secrets out of screenshots, terminal transcripts,
 issues, attachments and commits.
@@ -146,7 +146,7 @@ for generating, bypassing or sharing license keys.
 No actual license contents are committed to the repo.
 
 Related:
-[\`pci-card-acquisition-board-topology.md\`](pci-card-acquisition-board-topology.md),
-[\`hardware-register-map.md\`](hardware-register-map.md),
-[\`ioctl-map.md\`](ioctl-map.md),
-[\`next-chat-handoff.md\`](next-chat-handoff.md).
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md),
+[`hardware-register-map.md`](hardware-register-map.md),
+[`ioctl-map.md`](ioctl-map.md),
+[`next-chat-handoff.md`](next-chat-handoff.md).
