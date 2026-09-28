@@ -15,6 +15,19 @@ The priority is compatibility with the existing LeCroy user-mode software:
 
 **Current engineering handoff:** [Corrected AP015 jaw-unlock recognition and 85FB parity, 2026-09-29](docs/next-chat-handoff.md). The user explicitly reports XStream correctly warns that an opened AP015 is not locked and measurement accuracy may be affected. Our earlier inference that zero captured pending-0x0200 in particular jaw-only traces meant *failed XStream recognition* was incorrect. New unchanged-driver trace `xstream_trace_20260929_002051.jsonl` directly confirms genuine jaw-state events: open-correlated family-1/0x82 `0x0058` followed by 0x4A status **F7**, and closed-correlated `0x00A7` followed by **F3**, reproducing the earlier `231656` pattern. Physical hotplug and reply-format corrections remain hardware validated; **no demonstrated general jaw, HWInt, PCI or DMA regression** and no speculative code changes.
 
+**Probe/front-panel architecture clarification (2026-09-29):** The user
+confirms a two-stage ProBus identification: an ADC identification value
+first marks the connected device as a ProBus probe; XStream then reads
+the front-panel EEPROM over **I2C**; physical probe control also uses
+**I2C**. This electrical interface is distinct from the confirmed
+family-0 opcode `0x90` local BAR1 **SPI** helper: the relationship
+between that host-to-board helper and front-panel I2C has not yet been
+recovered. The high-level 0x4A AP015 metadata may be EEPROM-derived,
+but the present IOCTL capture alone does not prove the byte mapping or
+show SDA/SCL. See
+[`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md)
+for the user-supplied hardware description, traced facts and limits.
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
@@ -229,10 +242,18 @@ while the scope is used normally. The user has verified correct-looking
 waveform amplitude/frequency plus working timebase, vertical scale, coupling,
 bandwidth, 2-channel/10-GS/s mode switching and trigger-type changes.
 
-The remaining probe-side uncertainty is ProBus communication. The recovered
-family-0 opcode-0x90 SPI/probe path is heavily exercised and succeeds in the
-trace, but the driver does not expose a direct I2C interface. Physical ProBus
-I2C behavior therefore still needs a real probe-level validation.
+At the time of trace 011938, the remaining probe-side uncertainty was
+ProBus operation: family-0 opcode-0x90 local BAR1 SPI traffic was heavily
+exercised, but the IOCTL trace exposed no physical SDA/SCL. **Later
+AP015 hardware tests now confirm actual XStream probe identification,
+physical hotplug and the user's visible unlocked-jaw warning on x64.**
+The user further clarifies that the probe/front-panel electrical
+interface is ADC classification -> I2C front EEPROM identification ->
+I2C probe control. The recovered BAR1 SPI opcode 0x90 is a *separate
+host-level* register operation, not proof of physical probe-side SPI.
+Raw I2C addresses, transactions, controller ownership and any exact
+0x4A-to-EEPROM field mapping remain unobserved; see
+`docs/probus-detection-i2c-architecture.md`.
 
 
 ### Service Revision diagnostics
