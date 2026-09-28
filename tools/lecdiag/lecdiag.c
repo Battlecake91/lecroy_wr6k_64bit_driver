@@ -14,6 +14,7 @@
 #define LECS65_IOCTL_REGISTER_READ     ((DWORD)0xCFDC21C0)
 #define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
 #define LECS65_IOCTL_READ_DALLAS_MEMORY ((DWORD)0x00223084)
+#define LECS65_IOCTL_WRITE_DALLAS_MEMORY ((DWORD)0x00223088)
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
     ((DWORD)CTL_CODE(0x8000, 0x800, METHOD_BUFFERED, FILE_READ_ACCESS))
@@ -171,6 +172,15 @@ static void write_trace_entry_jsonl(
     FILE* out,
     const LECS65_DEBUG_TRACE_ENTRY* e)
 {
+    /*
+     * PCI-card Dallas EEPROM can contain XStream licenses: retain only
+     * metadata for sensitive memory/ROM IOCTLs in persisted JSONL.
+     * Do not publish old trace captures or kernel debugger hex logs.
+     */
+    const int redactInput = e->Ioctl == LECS65_IOCTL_WRITE_DALLAS_MEMORY;
+    const int redactOutput = e->Ioctl == LECS65_IOCTL_READ_DALLAS_MEMORY ||
+                             e->Ioctl == LECS65_IOCTL_GET_DALLAS_ID;
+
     fprintf(
         out,
         "{\"type\":\"ioctl\","
@@ -207,19 +217,22 @@ static void write_trace_entry_jsonl(
     write_hex_json(
         out,
         e->InputPreview,
-        e->InputPreviewLength < LECS65_TRACE_PREVIEW_BYTES
-            ? e->InputPreviewLength
-            : LECS65_TRACE_PREVIEW_BYTES);
+        redactInput ? 0 :
+            (e->InputPreviewLength < LECS65_TRACE_PREVIEW_BYTES
+                ? e->InputPreviewLength
+                : LECS65_TRACE_PREVIEW_BYTES));
 
     fprintf(out, ",\"output_hex\":");
     write_hex_json(
         out,
         e->OutputPreview,
-        e->OutputPreviewLength < LECS65_TRACE_OUTPUT_PREVIEW_BYTES
-            ? e->OutputPreviewLength
-            : LECS65_TRACE_OUTPUT_PREVIEW_BYTES);
+        redactOutput ? 0 :
+            (e->OutputPreviewLength < LECS65_TRACE_OUTPUT_PREVIEW_BYTES
+                ? e->OutputPreviewLength
+                : LECS65_TRACE_OUTPUT_PREVIEW_BYTES));
 
-    fprintf(out, "}\n");
+    fprintf(out, ",\"sensitive_payload_redacted\":%s}\n",
+        (redactInput || redactOutput) ? "true" : "false");
 }
 
 static int trace_save(HANDLE h, const char* path)
