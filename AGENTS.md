@@ -3543,3 +3543,68 @@ Next controlled test if needed: launch XStream with probe recognized,
 unplug it while running, observe whether the UI detects removal, then
 reinsert and observe recognition, capturing one short passive trace. Do
 not modify the proven DMA or substitute synthetic pending bits.
+
+
+## 2026-09-28 x64 compatibility coverage audit (dispatch vs behavior)
+
+The recovered original `CLecS65AcqDrvDevice::DeviceControl` dispatch table in
+`docs/ioctl-map.md` contains **27 unique original IOCTL values**:
+26 METHOD_BUFFERED and one METHOD_NEITHER. Comparing those exact values with
+the current replacement driver's top-level switch in `driver/Ioctl.c`
+shows:
+
+```text
+Original dispatch entries                              27
+Represented by an x64 switch case                       21
+  of which CFDD219F is explicitly STATUS_NOT_SUPPORTED   1
+  remaining represented legacy cases                    20
+No top-level x64 case yet                                 6
+```
+
+One of the 20 represented cases, `CFDC212C`, is *correctly* implemented
+as `STATUS_NOT_IMPLEMENTED`, because that is exactly what the original
+driver does. Other represented cases may cover only their observed ABI subset
+(e.g. CFDC2138 enables only the proven one-channel transfer shape). This is
+**dispatch coverage**, not functional, code-line, or full branch coverage.
+20/27 = about 74.1% original dispatch behavior represented including the
+intentional legacy-not-implemented case; 21/27 = about 77.8% with any
+explicit switch case, including the gated METHOD_NEITHER request.
+
+Exactly six original dispatch values currently have no x64 switch case:
+
+- `0x0022303C` - 0x10A-byte trace/control structure;
+- `0x00223044` - four-byte direct register-read/status helper;
+- `0x00223088` - Dallas/1-Wire memory write;
+- `0xCFDC2130` - serial-trigger FPGA programming;
+- `0xCFDC2194` - 29-byte interrupt/error status readback paired with CFDC2190;
+- `0xCFDC2400` - additional internal control helper.
+
+The separate `0xCFDD219F` METHOD_NEITHER transfer is known and routed, but
+intentionally gated because of its native user pointers, WOW64 requirements
+and unverified active DMA. The additional successful `0x00222400` probe
+implemented in x64 is an observed runtime compatibility case but **not
+counted** among the 27 entries in the specific original 2008 dispatch table.
+
+`CFDC2110` itself is a packed dispatcher for many type/signature/family
+opcodes. Its broad command functionality is implemented well enough for real
+waveforms, trigger/front-end control, calibration, SPI/JTAG, MTT, revision
+reads and preconnected AP015 metadata, but its unobserved branches must not be
+counted as fully reproduced. Original `0xC5FB` behavior and several other
+rare states remain to be tested/recovered.
+
+All 27 original top-level dispatch *values* are identified, so the missing
+work is predominantly recovery/implementation/validation, not discovery of
+another large unknown primary IOCTL table. There are 197 *selectively
+exported* original Ghidra decompilation `.c` files in
+`ghidra_exports/selected`; this is not an inventory of every original
+machine-code function and cannot support an overall per-function percentage.
+
+Engineering estimates (not objective coverage measures):
+
+- everyday oscilloscope use: approximately 90% complete;
+- broad original-driver compatibility including rare/service/probe branches:
+  approximately 75-80% complete.
+
+Primary observed gaps are ProBus hotplug during an existing XStream session
+and payload differences in certain probe control replies, followed by untested
+rare diagnostics and the intentionally gated METHOD_NEITHER transfer.

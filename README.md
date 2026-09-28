@@ -297,3 +297,22 @@ running x64 XStream session**. Legacy reports a command-status pending 0x0200
 on insertion, which neither x64 capture currently reproduces; startup
 recognition does not depend on it. No synthetic probe-presence event or
 speculative DMA change has been introduced.
+
+
+### Quantified replacement-driver interface coverage
+
+A 2026-09-28 audit of the original driver's 27 identified top-level
+DeviceControl IOCTLs against `driver/Ioctl.c` found 20 whose behavior is
+represented, one deliberately gated METHOD_NEITHER transfer (`CFDD219F`)
+and six original dispatch entries not yet ported. The 20 include
+`CFDC212C`, which correctly reproduces the original
+`STATUS_NOT_IMPLEMENTED` response. This is approximately 74% dispatch
+coverage, **not** 74% functional completeness: CFDC2110 alone contains many
+additional recovered subcommands, while some currently implemented IOCTLs
+remain limited to observed ABI variants.
+
+Estimated normal oscilloscope usability is around 90%; broader
+original-driver compatibility is around 75-80%. Remaining observed issues
+include ProBus hotplug and a probe-control response discrepancy, while some
+rare service/diagnostic paths remain unimplemented or untested. See
+`docs/ioctl-map.md` for the exact remaining original IOCTL values.

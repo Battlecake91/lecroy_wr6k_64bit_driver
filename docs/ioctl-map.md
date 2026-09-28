@@ -3237,3 +3237,42 @@ Trace `xstream_trace_20260928_014500.jsonl` is the first x64 runtime evidence
 for these commands. Before implementation, every observed A1/A2 request was
 rejected with STATUS_INVALID_DEVICE_REQUEST and XStream displayed
 `HardwarePCI Communication error!`.
+
+
+## 2026-09-28 implementation-status audit
+
+The 27-entry table at the top of this document is fully *identified*
+statically, but that must not be confused with 27 complete x64
+implementations. Comparison with the current `driver/Ioctl.c` top-level
+DeviceControl switch:
+
+| x64 coverage | Number | Notes |
+|---|---:|---|
+| Original dispatch values | 27 | 26 buffered, one METHOD_NEITHER |
+| Present in x64 switch | 21 | Includes explicitly gated CFDD219F |
+| Legacy behavior represented | 20 | Includes CFDC212C, which intentionally returns STATUS_NOT_IMPLEMENTED in both drivers |
+| Deliberately gated | 1 | CFDD219F METHOD_NEITHER |
+| Original dispatch values with no x64 case | 6 | Enumerated below |
+
+Not yet present in the replacement's top-level switch:
+
+| Original IOCTL | Recovered role |
+|---|---|
+| `0x0022303C` | trace/control structure, 0x10A-byte input |
+| `0x00223044` | four-byte register/status helper |
+| `0x00223088` | Dallas/1-Wire memory write |
+| `0xCFDC2130` | serial-trigger FPGA programming |
+| `0xCFDC2194` | paired CFDC2190 error/interrupt readback |
+| `0xCFDC2400` | internal control helper |
+
+The original `CFDC212C` is itself unimplemented by LeCroy and the
+replacement deliberately matches that response. `0x00222400`, observed
+during real XStream startup and explicitly implemented by the replacement,
+is outside the 27-value static dispatch inventory of the captured 2008
+binary.
+
+This counts **top-level IOCTLs**, not the many separate subcommands carried
+inside CFDC2110, and not all internal C++/DriverWorks helper routines. In
+particular the supported CFDC2138 path is limited to the observed one-channel
+shape. The primary observed outstanding feature is asynchronous ProBus
+hotplug, despite successful AP015 identification when preconnected.
