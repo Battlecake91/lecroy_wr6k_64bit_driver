@@ -3423,12 +3423,58 @@ functions to 47 12 or fabricate F2 status.
 
 The **general** original interrupt path is therefore still
 operational after the serializer fix. Jaw-only movement in earlier
-post-fix runs `233125` and `235314` still produced no 0x0200;
-that discrepancy is not explained by claiming INTEN bit 0x08 was
-globally off. Next useful test: jaw-only open/hold/close/hold
-before and after ONE normal physical reidentification in a single
-session, without calibration, checking original status/ack/0x82.
-Do not create synthetic pending bits, enable gated transfer
-ABIs, revert the verified formatter or alter working PCI/DMA/ISR.
-Full original and post-fix trace comparison:
-`docs/probus-calibration-ab-comparison.md`.
+post-fix runs `233125` and `235314` produced no captured
+0x0200. **Correction from the user and new trace `002051`:**
+that absence must not be equated with failure of the XStream
+jaw-unlock warning. XStream explicitly warns the user on an opened
+jaw, and the same corrected driver records real jaw-open/closed
+0x0200/0x88/0x82 events in the new capture (see below).
+No synthetic pending bits, extra generic IRQ rewrites, DMA changes
+or formatter rollback are justified. Full original and post-fix
+trace comparison: `docs/probus-calibration-ab-comparison.md`.
+
+
+## 2026-09-29 00:20: actual XStream jaw recognition and raw 0x82/0x4A status pairing
+
+User explicitly reports that opening the AP015 generates XStream's
+"not locked" warning and cautions measurement accuracy. The earlier
+assistant conflated **no captured standalone 0x0200** in two traces
+(`233125`, `235314`) with **no UI recognition**; that inference
+is retracted. No new firmware polling path is asserted without
+evidence, because new unchanged post-`3490709` capture
+`xstream_trace_20260929_002051.jsonl` already records authentic
+notification and normal status-query handling:
+
+| Relative time | Standalone pending / seq | Family-0/0x88 ack | Family-1/0x82 actual-length-6 raw data | Subsequent 0x4A status |
+|---:|---|---|---|---|
+| 24.623 s | `0x0200` / 14888 | 14889 / `0x0200` | 14891: `000012005800` = state WORD **0x0058** | 47 12 seq 14913 reply `...02000000FFFF`, status seq 14916 **F7** (open/unlocked-correlated) |
+| 35.038 s | `0x0280` / 21435 | 21436 / `0x0280` | 21448: `00001200FE03` = **0x03FE** | none; removal-like transition |
+| 37.458 s | `0x0200` / 22833 | 22834 / `0x0200` | 22843: `000012005700` = **0x0057** | AP015 270-byte metadata setup/fetch seq 22877/22878 |
+| 49.861 s | `0x0200` / 30553 | 30554 / `0x0200` | 30563: `00001200A700` = **0x00A7** | 47 12 seq 30580 reply `...02000000FFFF`, status seq 30581 **F3** (closed-correlated) |
+
+All four authentic 0x0200-bearing events are **after** the final
+snapshot gap (t~23.382 s). In a 58.3684694-second run there are
+31,200 captured IOCTLs (seq 1..35955; 32 gaps omitting 4,755
+entries), no observed NTSTATUS failures, 1,292 standalone 85FB/0x01
+reads with enabled software word 0x02BF (pending: 0x0080=1,287,
+0x0200=3, 0x0280=1, 0=1), and 5,839 CFDC2138 calls all returning
+the correct requested byte count at input DWORD offset 11.
+The two 270-byte AP015 metadata responses at startup seq 506 and
+after reinsertion seq 22878 have identical captured first 128 bytes.
+
+The `0x0058 -> F7` (opened/unlocked) and `0x00A7 -> F3`
+(closed) pairing **also repeats in pre-formatter trace `231656`**.
+Status F7 differs from F3 by 0x04, an evidence-backed candidate
+status flag only; its actual vendor semantic has not been recovered.
+Do not force unknown 0x03FE/0x0057 bit meanings from earlier
+0x03FF/0x0058 sequences. All four current 0x82 replies report
+proper actual raw data length `0x0006` and unused 0xFF bytes,
+rather than old x64 capacity `0x0190` and zero-fill. The two
+47 12 replies are each original-x86-matching
+`0000000000000000000002000000FFFF`, without fivefold retries.
+
+This source-and-UI correlation eliminates any demonstrated
+jaw-recognition regression that would justify changing `3490709`
+or generic INTEN, ISR, CLRIRQ, PCI/DMA. Historical capture-only
+observations of missing pending 0x0200 remain valid for those
+particular snapshots and must not be promoted into absent UI state.
