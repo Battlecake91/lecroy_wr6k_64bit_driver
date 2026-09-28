@@ -4,8 +4,12 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
-It contains the pending HWInt/ProBus hotplug patch status, four required trace
-filenames and one focused next test. Current driver-change commit: `70716bace9ec874cf9b2f123a7946288215e1810` (not yet hardware-tested).
+The targeted HWInt/ProBus interrupt restoration in driver commit
+`70716bace9ec874cf9b2f123a7946288215e1810` has now passed the first
+reported real-hardware AP015 disconnect/reconnect run, trace
+`xstream_trace_20260928_230614.jsonl`. Two authentic status pending
+`0x0200` transitions were captured and XStream recognized the probe changes.
+The separate Degauss / Auto Zero protocol-payload discrepancy remains open.
 
 ## Repository and communication
 
@@ -281,36 +285,36 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. **Hardware-test the recovered HWInt/INTST-0x08 ProBus hotplug fix** on main.
-   Do this before any unrelated changes. It restores the exact missing
-   legacy receive interrupt enable and HWInt command-status latch, without
-   synthesizing a probe event or changing the working DMA path.
-2. Trace `xstream_trace_20260928_213834.jsonl`: AP015 preconnected at
-   startup is recognized, unplug while running was not recognized, and
-   reinsertion made the displayed waveform disappear. All 36,700 captured
-   IOCTLs return NTSTATUS success; all 6,987 CFDC2138 responses equal the
-   requested byte count, including transfers continuing to trace end.
-   At around t=27.1 s the captured acquisition pattern changes from larger
-   transfers to recurring 1,024/2,048-byte transfers. No user-action
-   timestamps establish which physical action coincides with this transition.
-3. The exact previously missing legacy command-status source was recovered
-   from `FUN_000160A8`, `FUN_0001619A`,
-   `FUN_00011390` raw asm at 0x114A2..0x114C8,
-   `FUN_000176A2`, `FUN_0001785B` and `FUN_000157A6`.
-   The original enables INTEN bit 0x08 before 85FB response fetch, then
-   INTST 0x08 leads DPC to read/clear BAR1 HWInt at 0x410 and OR
-   `(HWInt low16 & LegacyCommandEnableMask)` into sticky pending state;
-   a nonzero HWInt also wakes the CFDC2180 event. This directly explains
-   legacy 85FB pending `0x0200` at probe hotplug. The old Ghidra C output
-   falsely showed `FUN_000157A6(..., 0)` due to its missed stack out-param.
-4. Next run should validate normal waveform startup first, then a SINGLE
-   controlled unplug/replug of the AP015 while XStream runs, verifying
-   presence/removal UI, spontaneous pending 0x0200, subsequent 0x88 mask
-   0x0200 and 0x82/0x4A requests, and no INTST/HWInt interrupt storm.
-   Stop immediately on abnormal acquisition behavior. Keep CPU <=5%.
-5. Degauss/Auto Zero payload equality remains a distinct unresolved issue.
-   Keep the known-good one-channel CFDC2138 and family-1 opcode-0x51 paths,
-   and preserve below-4-GiB descriptor safety; CFDD219F remains gated.
+1. **Preserve the verified original HWInt/INTST-0x08 ProBus hotplug
+   restoration** in commit `70716ba`. The first post-patch real-hardware
+   run `xstream_trace_20260928_230614.jsonl` captured a clean
+   AP015 disconnect/reconnect notification path:
+   - standalone pending 0x0200 at seq 14951 and 16639;
+   - family-0/0x88 mask-0x0200 acks at seq 14952 and 16640;
+   - family-1/0x82 at seq 14961 and 16651;
+   - post-reinsertion family-0/1 opcode-0x4A at seq 16678/16679;
+   - startup vs reinsertion AP015 metadata first 128 bytes match exactly,
+     Information 270; user reports XStream recognized the physical changes.
+2. The capture contains 19,288 observed IOCTLs, zero observed non-success
+   NTSTATUS, 3,633 CFDC2138 calls and zero requested-vs-returned DMA byte
+   count mismatches. Acquisition calls continue through trace end, including
+   973 after the second notification. Snapshot collection omitted 2,473
+   sequence numbers in 30 gaps; CPU usage and raw ISR/DPC counts were not
+   included. Do not claim those unmeasured metrics are proved zero/stable.
+3. Do **not** make further speculative PCI, IRQ or DMA changes for the
+   now-observed hotplug route. Original event bits are sourced only from
+   hardware; never synthesize pending 0x0200. Preserve known-good waveform,
+   triggers, timebase, vertical settings, 2-channel/10-GS/s, single-channel
+   CFDC2138 and family-1 opcode 0x51, and below-4-GiB descriptors.
+4. The separate probe special-function parity discrepancy remains: identical
+   family-0/0x4A command ending `...47 00` gave original
+   `...02000000FFFF` vs previous x64 `...040000000000`; follow-up
+   `F200` vs `F700`. This command was not exercised in the new hotplug
+   run. For further testing, isolate Degauss and Auto Zero in separate
+   controlled runs with visible physical outcome and trace.
+5. Keep the user's <=5% CPU test limit. Unobserved multichannel CFDC2138
+   and METHOD_NEITHER CFDD219F stay gated. See the current handoff for exact
+   state and safe next procedure.
 
 
 ## Latest dispatch recovery
@@ -3717,3 +3721,61 @@ the single controlled AP015 hotplug test. Exact commands, stop criteria,
 minimum idle intervals, and requested trace markers are in
 `docs/next-chat-handoff.md`. No post-patch WDK build or real-hardware test
 has yet been reported. CPU limit remains 5%.
+
+
+## 2026-09-28 23:06: first real AP015 HWInt patch validation
+
+The user's post-patch x64 session (file
+`xstream_trace_20260928_230614.jsonl`, not checked into the public
+repository) started with AP015 preconnected. The user raised AP015 A/div,
+physically removed AP015, reinserted it once, and closed XStream. The user
+reports all changes were recognized. Exact physical-action timestamps were
+not recorded separately.
+
+Observed, filtering the JSONL to `type=ioctl`:
+
+```text
+captured IOCTL records                       19,288
+trace sequence range                      1..21,761
+missing sequences / capture gaps         2,473 / 30
+non-success NTSTATUS in captured calls              0
+CFDC2110                                         14,742
+CFDC2138                                          3,633
+CFDC2138 returned byte-count mismatches               0
+standalone 85FB/0x01                                720
+  enabled mask                                    0x02BF
+  pending 0x0080                                     718
+  pending 0x0200                                       2
+family-0/0x88 mask 0x0200                             2
+family-1/0x82                                         2
+family-0/0x4A                                         2
+family-1/0x4A                                         2
+```
+
+At elapsed ~28.422 s, status seq 14951 returned
+`000000000400BF020002`, then mask-0x0200 acknowledgement seq 14952 and
+family-1/0x82 seq 14961. No follow-up 0x4A in this first event sequence,
+consistent with probe removal. At ~31.275 s, seq 16639 reported pending
+0x0200 again, ack seq 16640, 0x82 seq 16651, 0x4A setup seq 16678,
+and 0x4A AP015 metadata seq 16679. Startup AP015 seq 509 and reinsertion
+seq 16679 both return Information=270 and identical captured 128-byte
+prefixes, also identical to the historical legacy metadata prefix.
+
+All captured DMA IOCTLs return the requested byte count: 2,332 before
+first event, 328 between, 973 after second event; nearest observed DMA
+gaps around the event timestamps ~36 ms and ~397 ms. The last recorded
+>=8192-byte transfer occurs at ~27.067 s, before the first 0x0200
+notification, after which 1,024/2,048-byte transfers continue to capture
+end (~39.58 s). This is compatible with the reported sequence of a
+probe A/div change followed by unplug/replug, without asserting its exact
+causal timestamp. JSONL alone cannot establish on-screen pixels, raw
+interrupt rates, exact CPU consumption or the absence of unrecorded failed
+IOCTLs in the snapshot gaps. No repeated 0x0200 status event storm is seen
+in captured standalone status reads.
+
+**The original missing asynchronous AP015 disconnect/reconnect recognition
+is validated for the tested case.** The patch in commit 70716ba is now
+hardware-exercised; no driver modification was required after source review.
+Degauss/Auto Zero reply parity is still open and was not exercised by this
+run. Complete context: `docs/next-chat-handoff.md`,
+`docs/probus-calibration-ab-comparison.md` and `docs/runtime-trace.md`.
