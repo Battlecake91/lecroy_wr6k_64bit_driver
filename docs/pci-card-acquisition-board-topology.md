@@ -23,7 +23,7 @@ All three layers must be distinguished during driver reconstruction.
 | `U3` | Xilinx **XC2S200E** Spartan-IIE FPGA | Physical endpoint of the buffered conventional PCI AD/control signals and of the RX/TX link signals on this card. It is the PCI-side FPGA, **not** an `ADC+MAM` FPGA from the acquisition-board overview. |
 | `U1/U2/U4/U5/U7` | Pericom **PI5C3861** bidirectional bus switches | Buffer/translate the conventional PCI-side signal groups between 5 V and the 3.3 V FPGA domain. The original schematic explicitly notes that they do not actively boost 3.3 V back to 5 V; 3.3 V is accepted as a PCI high level. |
 | `U6` | Xilinx **XC18V02** configuration PROM | Spartan configuration source, **not** the AP015 I2C identification EEPROM or the Dallas ID device. Assembly options shown for PROM, JTAG and remote configuration via link are alternatives; actual stuffing on the user's board must not be guessed. |
-| `U11` | Dallas/Maxim **DS2433**, labelled `ID Chip` | PCI-card-local **1-Wire** ID/memory device. Its `DATA` pin uses net `ID_DATA` connected to FPGA `U3`. |
+| `U11` | Dallas/Maxim **DS2433**, labelled `ID Chip` | PCI-card-local **1-Wire** ID/memory device. Its `DATA` pin uses net `ID_DATA` connected to FPGA `U3`. The user confirms the EEPROM **contains XStream licensing records**; their suspected plaintext format remains unverified. |
 | `U9` | **LM1085-ADJ** | Generates the card's 1.8 V supply from its regulator network, alongside 3.3 V power. |
 | `OSC1` | FPGA oscillator | Nets include `SPARTAN_CLK`; the exact fitted frequency is not identified from this one-page schematic. |
 | `J4` | JTAG header | Spartan configuration/debug access. |
@@ -105,7 +105,7 @@ of our previous source and trace results:
 **Three separate non-volatile storage categories, not one:**
 
 1. `U6 XC18V02`: **PCI Spartan configuration PROM**.
-2. `U11 DS2433`: **PCI-card Dallas 1-Wire ID/memory**.
+2. `U11 DS2433`: **PCI-card Dallas 1-Wire ROM ID and 512-byte XStream licensing EEPROM** (memory purpose user-confirmed; plaintext hypothesis unverified).
 3. Front-panel/probe-identification **I2C EEPROM**, after ADC
    class detection (**user's hardware information; individual
    component not identified in the one-page board Overview**).
@@ -146,3 +146,48 @@ Related existing documents:
 [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md),
 [`probus-calibration-ab-comparison.md`](probus-calibration-ab-comparison.md),
 [`next-chat-handoff.md`](next-chat-handoff.md).
+
+
+## User-verified bus purpose and DS2433 licensing role (2026-09-29)
+
+**Clarification from the user, superseding uncertain earlier language:**
+
+- **All five front-side ProBus probe connectors communicate with the
+  probes exclusively through I2C; there is NO probe-side SPI.**
+  The analog ADC identification value is the initial
+  ProBus-class discriminator, then the front/probe EEPROM is
+  identified over I2C, and physical probe control also uses I2C.
+  The drawing's `I2C(0:5)` is an independently visible bus
+  label; do not equate the signal indices with connector numbers
+  without a child sheet.
+- The board's separate SPI networks are believed by the user to be
+  primarily for **internal ADC, references and related hardware
+  configuration**. Their exact chip-selection allocation is not
+  mapped by this top-level drawing. The recovered family-0
+  opcode 0x90 remains a *local BAR1 SPI helper*, but it
+  must not be called a front ProBus SPI protocol.
+- The PCI-card **U11 DS2433** (schematic label `ID Chip`) has
+  a more specific purpose according to the user: its 512-byte
+  **1-Wire EEPROM stores XStream license keys**. Plaintext storage
+  is the user's current expectation and is NOT yet confirmed by
+  inspecting the actual private image. Its eight-byte 1-Wire
+  ROM identity and writable memory contents are distinct.
+  The DS2433 is not one of the front I2C EEPROMs and
+  not the U6 XC18V02 Spartan PROM.
+
+**Current x64 coverage:** original x86 IOCTL 0x00223080/84/88
+provides Dallas ROM/read/write; x64 currently implements 0x80
+and 0x84 only, not the write 0x88. A non-destructive
+`lecdiag dallas-backup` binary export was added to
+`tools/lecdiag/lecdiag.c`: it reads the full 512-byte
+memory twice, confirms stable ROM ID, saves to a new
+private file and verifies the saved bytes. It has not yet
+been WDK/Windows-compiled or tested on the scope.
+Write/erase on the installed licensing device is
+**not** a first-line regression test; use a spare DS2433
+and a validated private restore path if that capability
+is later needed. Details:
+[`dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
+
+This information refines the schematic's `ID Chip` label,
+whose contents cannot be inferred from the picture alone.
