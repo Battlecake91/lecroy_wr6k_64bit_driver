@@ -5,34 +5,33 @@ Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** User reports two matching
-512-byte **DS2433 EEPROM backup SHA-256** outputs
-from actual scope testing. In response to
-request for a **fabricated license** purely for
-write/read compatibility, the repo now has an
-**offline-only** helper
-`scripts/create-dallas-dummy-image.ps1`:
-it checks both backups bytewise, selects the
-last wholly FF 32-byte page if one exists,
-creates a no-overwrite private
-`.ds2433.bin` copy, inserts the unmistakably
-invalid 30-byte ASCII marker
-`FAKE-XSTREAM-LICENSE-TEST-ONLY`
-and verifies saved output. It performs NO
-installed-chip write/erase. The x64
-`0x00223088` EEPROM write IOCTL
-remains **unimplemented**, and a
-complete blank FF page is not proven
-application-free. Separate spare-chip
-writer and recovery proof are required
-before any installed license modifications.
-Actual SHA-256 and EEPROM contents
-must remain private; the new script has
-not yet been run on the scope.
-The five front ProBus sockets remain
-**I2C-only**; the PCI-card DS2433
-stores XStream licensing separately
-from the front I2C EEPROM.
+**LATEST ENGINEERING STATE:** The user's attempted
+offline dummy-image generation **failed safely**:
+both independently verified 512-byte DS2433
+license backups match, but no entire
+32-byte page is all FF. No new image,
+no original-file change and NO
+EEPROM write resulted. Do not infer
+all application-level license slots
+are occupied or disable the guard.
+User can attempt XStream Add License,
+but a fake input might fail validation
+before any 1-Wire write. Original x86
+driver supports write IOCTL 0x00223088;
+native x64 still does not. New strictly
+**read-only redacted**
+`scripts/inspect-dallas-image.ps1`
+reports per-page occupancy counts and,
+given a later post-XStream private
+backup, only changed byte ranges,
+not keys. Avoid public raw licensing
+traces/dumps and any speculative
+on-device erase/write. Full current
+workflow:
+`docs/dallas-license-memory-test-plan.md`.
+Five front ProBus slots remain
+**I2C-only**, separate from
+PCI DS2433 1-Wire licensing.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -52,6 +51,73 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## Update: no all-FF page; consider native XStream license dialogue (2026-09-29)
+
+The user executed the previously added offline
+`scripts/create-dallas-dummy-image.ps1` against
+two identical 512-byte backups. The script
+**correctly aborted** because **no entire
+32-byte page is all `0xFF`**. Hence
+`fake-test.ds2433.bin` was **NOT created**.
+The two private source images and original
+PCI licensing DS2433 were unchanged.
+This observation does NOT prove no free
+application-level license slot: possible
+alternate allocation/padding/record structure
+requires actual data-format evidence.
+Do NOT remove the FF-page safety check
+to overwrite unknown live license records.
+
+The user offers to try the **XStream Add License**
+UI. This may reveal the application's
+validation/storage process more faithfully
+than inventing arbitrary EEPROM offsets.
+Key discriminator: original x86 implements
+`0x00223088 WRITE_DALLAS_MEMORY`;
+native replacement x64 `driver/Ioctl.c`
+still has no write case. An invalid/fake
+license may be rejected by user-mode
+validation **before** a write IOCTL,
+which proves nothing about EEPROM writes.
+Do not claim a real write, install working
+credentials or erase licensed data merely
+because read-only backups are consistent.
+If passive original-x86 trace is captured,
+extract only IOCTL number, in/out LENGTH,
+status, chronological order. Raw
+`0x00223088` input could contain keys;
+never publish full input buffers.
+
+Added independent **redacted read-only local
+image analyzer**:
+`scripts/inspect-dallas-image.ps1`:
+before-only mode prints each of 16 pages'
+FF, 00, printable and other byte COUNTS;
+before/after mode additionally prints
+changed byte offsets/ranges and affected
+page indices, no secret byte values.
+Use it on original backups now and, if
+a user-authorized native XStream action
+actually changes storage, on a newly
+read-only-captured post-image to learn
+the real layout without sharing keys.
+Because `lecdiag` uses original legacy
+interface GUIDs, an x86 build can also
+access the original-driver ABI; otherwise,
+after running original x86 XStream
+and closing it, boot current x64
+and re-run read-only backup on the
+same physical DS2433. Avoid
+concurrent exclusive driver opens.
+
+**No kernel code or EEPROM writes were
+changed by this finding.** A protected
+spare DS2433 writer/power-cycle-restore
+validation remains mandatory before
+deliberate low-level modifications
+to only licensed card. Details:
+`docs/dallas-license-memory-test-plan.md`.
 
 ## Latest Dallas test: two matching backups, offline dummy image only (2026-09-29)
 
