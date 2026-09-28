@@ -28,13 +28,31 @@ show SDA/SCL. See
 [`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md)
 for the user-supplied hardware description, traced facts and limits.
 
+**New hardware schematic evidence (2026-09-29):** The user's one-page
+`PCI Card.pdf` identifies the PCI-side `U3 XC2S200E`
+Spartan-IIE, local `U11 DS2433` **1-Wire ID chip** on
+`ID_DATA`, independent `U6 XC18V02` FPGA configuration
+PROM and two **40-pin** separate differential receive/transmit
+link headers (`J1/J2`). The LeCroy `Overview.pdf`
+separately depicts `UP Control`, `Timebase`,
+`ADC+MAM` **AM and AM2**, `FPGA's (FP)`,
+four channel front ends and external input, including distinct
+`I2C(0:5)` and SPI/control interconnect labels.
+**Do not conflate PCI U3, acquisition-board FPGA blocks,
+PCI DS2433, front-panel probe I2C EEPROM and configuration PROM.**
+Source drawings are not redistributed due to proprietary content;
+see our derived [PCI card / acquisition board hardware map]
+(docs/pci-card-acquisition-board-topology.md)
+and [ProBus ADC/I2C architecture]
+(docs/probus-detection-i2c-architecture.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
 
 - all 27 DeviceControl dispatch values have been recovered;
 - the generic raw register read/write ABI and build query are known;
-- Dallas/1-Wire buffer contracts and low-level access paths are known;
+- Dallas/1-Wire buffer contracts and low-level access paths are known; the user-supplied PCI schematic now also locates a physical DS2433 on the PCI FPGA's `ID_DATA` net, distinct from the probe/front-panel I2C EEPROM;
 - the named BAR0/BAR1/BAR2 register map has been reconstructed and cross-checked against the register-object initializer;
 - interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
 - the acquisition-buffer path is confirmed to use locked user pages, MDL chains and chained 4 KiB descriptor pages built directly from PFNs; descriptor counts are DWORDs and slot 511 links to the next table page;
