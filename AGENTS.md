@@ -4,6 +4,41 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Important 2026-09-29 user hardware correction:**
+ALL FIVE front-facing ProBus sockets communicate **entirely via
+I2C, not SPI**. A probe-class ADC value comes first;
+I2C reads the front identification EEPROM and
+controls the physical probe. The existing original
+family-0/0x90 BAR1 SPICTL/SPIDAT/SPIDIN
+helper is a separate internal board serial path,
+believed by the user to program ADCs, references
+and related circuitry. Exact target/selector
+mapping is not yet proven, but **do not describe
+the AP015 physical bus as SPI or hedge its I2C
+nature**. The PCI card's `U11 DS2433`
+1-Wire memory stores **XStream license keys**,
+per user, rather than only a generic board-ID
+payload; plaintext storage is their hypothesis,
+not yet privately verified. The distinct eight-byte
+DS2433 ROM ID and writable 512-byte licensing
+EEPROM must not be confused, nor should either
+be confused with front ProBus I2C EEPROM or
+PCI FPGA `U6 XC18V02` configuration PROM.
+Detailed architecture and safe licensing plan:
+[`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md),
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+**The x64 driver implements Dallas ROM/read but
+NOT the original `0x00223088` write IOCTL.**
+New read-only `lecdiag dallas-backup` was
+source-committed, not Windows-built or tested
+on the scope. It compares two full 512-byte
+reads and two ROM-ID reads, saves through
+CREATE_NEW and verifies the persisted file,
+without printing secrets or writing EEPROM.
+Only test writer/erase on a spare DS2433
+after verifying private backups and a viable
+recovery procedure. Never commit raw license
+images; `license-backups/` is Git-ignored.
 **New original hardware schematics reviewed (2026-09-29):**
 the user's `PCI Card.pdf` shows PCI-side Spartan-IIE
 `U3 XC2S200E` with PI5C3861 PCI bus switches,
@@ -4275,3 +4310,86 @@ Related:
 `docs/ioctl-map.md`,
 `docs/probus-detection-i2c-architecture.md`,
 `docs/next-chat-handoff.md`.
+
+
+## 2026-09-29: all five ProBus ports are I2C; DS2433 holds XStream licensing
+
+The user confirms the **five front physical ProBus
+probe sockets** use I2C exclusively for EEPROM
+identity and all probe controls. ADC analog
+classification first selects ProBus type.
+There is **no external SPI to an attached
+ProBus probe**. The board's SPI path is
+believed to address internal ADC, voltage
+reference and similar configuration devices.
+Our original family-0/0x90 `BAR1
+SPICTL/SPIDAT/SPIDIN` implementation is
+still correctly called a host/board SPI helper;
+do not claim it is the physical probe
+protocol. Specific SPI selector-to-device
+mapping is an open RE objective, rather
+than a reason to dispute the user's
+confirmed physical I2C topology. The
+board Overview's `I2C(0:5)` notation
+alone does not establish the number of
+connectors: the count of five comes
+from the user.
+
+The user's further clarification:
+the PCI-side `U11 DS2433` 1-Wire chip
+contains XStream **license keys**.
+Whether these are cleartext is presently
+only the user's tentative understanding,
+to be evaluated privately from an
+owner-authorized image. The unique
+DS2433 8-byte ROM ID is separate
+from its 512-byte EEPROM. The
+original x86 binary has
+`0x00223080` ID, `0x00223084`
+read and `0x00223088` write
+(32-byte chunks/read-back verification).
+Current native x64 source defines and
+implements the first two but has **NO
+write/erase IOCTL**. The previous
+`lecdiag` tool printed an EEPROM
+hex dump but did not persist a binary
+backup. Source commit for new
+`lecdiag dallas-backup <file.bin>`
+adds a strictly read-only, private
+backup that checks stable ROM ID,
+two complete identical 512-byte
+images, CREATE_NEW no-overwrite,
+flush/reopen/byte-compare and exact
+512-byte file length. This C source
+has NOT been compiled or run on
+the scope yet. `.gitignore` now
+excludes `license-backups/` and
+`*.ds2433.bin`.
+
+Test sequence: (1) build lecdiag
+on Windows; (2) collect two unique
+full backups with XStream closed;
+(3) ensure their SHA-256 hashes
+match; (4) retain another copy
+outside repo; (5) privately inspect
+license data format only if needed;
+(6) reconstruct and bench-test
+the original DS2433 writer on
+a **disposable spare device**, not
+the installed licensing chip.
+A backup is not proof that restore
+or application licensing survives
+a destructive edit. **Never start
+by erasing the only licensed EEPROM.**
+The user explicitly suggested backup,
+delete and write functionality tests,
+but no destructive test was executed
+or authorized through this message.
+No sensitive/license bytes enter
+public logs or commits.
+
+Detailed instructions:
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+Do not update `driver/Ioctl.c`
+write behavior on guesswork, or alter
+current working PCI/IRQ/DMA.
