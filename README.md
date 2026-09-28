@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [AP015 hotplug and response-format follow-up, 2026-09-28](docs/next-chat-handoff.md). Original HWInt/0x0200 hotplug recognition passed real-hardware tests (traces `230614` and `231656`). A separate source-proven **host-side raw 85FB reply length/FF-padding fix** in commit `3490709`, prompted by the Degauss/Auto Zero trace, is **not yet compiled or hardware-tested**.
+**Current engineering handoff:** [AP015 raw-reply fix and jaw-event follow-up, 2026-09-28](docs/next-chat-handoff.md). Original HWInt/0x0200 notifications passed real-hardware tests (`230614`, `231656`). The subsequent source-proven raw 85FB reply-length/FF-padding fix (`3490709`) was verified for the legacy `47 00` response on hardware in `233125`. This last run, however, recorded **no spontaneous jaw-change pending 0x0200 or family-1/0x82** despite reported clamp movements. A controlled jaw-only-before/after-calibration trace is next; no speculative interrupt or DMA modifications.
 
 ## Current state
 
@@ -380,6 +380,45 @@ as the replacement previously did. This also affects short family-1/0x82
 reply formatting. A narrowly scoped correction in `driver/Ioctl.c`
 (commit `3490709`) changes only the raw 85FB result packaging, retaining
 the existing explicit opcode-0x99 override. No interrupt, transport,
-PCI or DMA behavior has changed. **The corrected build requires its first
-hardware regression** before Degauss/Auto Zero parity can be declared.
+PCI or DMA behavior has changed. **First real-hardware regression `233125`:** the identical
+`47 00` request now returns the full original x86 response
+`0000000000000000000002000000FFFF`, rather than
+`...040000000000`, and the old fivefold repetition disappears.
+Two such requests occur ~20.64 s apart, correlating with Degauss
+and manual Auto Zero. The separate family-1/0x4A status still reports
+F3 instead of reference F2. Zero 47 12 requests appear in this manual
+run, so 47 12 must not universally be identified as every Auto Zero
+invocation. Physical calibration parity remains unproven.
 See `docs/probus-calibration-ab-comparison.md` and the current handoff.
+
+
+### Follow-up: AP015 jaw notification not observed in trace 233125
+
+Trace `xstream_trace_20260928_233125.jsonl` contains 27,947 captured
+IOCTLs across ~55.628 seconds, zero captured NTSTATUS errors, and 5,219
+successful CFDC2138 transfers whose returned byte counts all match the
+requested byte counts. Startup AP015 metadata remains identical across
+the captured 128-byte output prefix to the reference and preceding runs.
+The last DMA runs at trace end; 1,666 DMA entries are after the second
+manual control packet.
+
+Unlike pre-framing run `231656`, where five genuine pending-0x0200
+events tracked calibration and open/close jaw transitions, all **1,135
+standalone 85FB/0x01 status replies** in this run report enabled
+`0x02BF` and pending **only `0x0080`**. No 0x82/0x88
+mask-0x0200 follow-up occurs, despite the user's described physical
+jaw movements. There are 29 capture-snapshot gaps, all ending by
+t~28.646 seconds; the 447 observed status reads after t=40 seconds
+are not interrupted by a snapshot gap. The trace does not contain
+visible XStream jaw-state changes, manually timestamped actions,
+CPU metrics or raw interrupt latch counts. It is not yet established
+whether the behavior depends on probe calibration state or another
+runtime condition, or is indirectly related to host reply framing.
+
+For the next controlled run, test one jaw open/close pair **before**
+Degauss/Auto Zero, then, if stable, another pair after Degauss and
+manually triggered Auto Zero. Keep the verified IRQ, transport, PCI,
+DMA and 32-bit descriptor safety paths unchanged until the event
+source is discriminated; CPU limit <=5%. See
+`docs/next-chat-handoff.md` and the trace comparison for the exact
+procedure and signal markers.
