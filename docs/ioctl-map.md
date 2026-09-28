@@ -3354,11 +3354,50 @@ of the corrected host raw-response framing. Physical calibration outcome
 is not established by these IOCTLs alone.
 
 **Do not prematurely mark 47 12 and 0x82 reply formats hardware-tested:**
-there were zero such requests in the new capture. All 1,135 captured
-standalone 85FB/0x01 status reads reported enabled `0x02BF` and pending
-only `0x0080`, with no spontaneous 0x0200 or 0x82 despite reported
-jaw movements (447 uninterrupted status reads after t=40 s, no trace gaps
-after t~28.646 s). The formatter change has no direct ISR/INTEN/HWInt
-or PCI/DMA modifications, so this needs a jaw-only-before/after-calibration
-regression instead of invented pending events. See
-`docs/probus-calibration-ab-comparison.md` for detailed A/B evidence.
+there were zero such requests in the `233125` capture, and zero in
+the follow-up **`235314` controlled pre/post-calibration jaw capture**.
+The expected `0x82` corrected actual-length/FF-tail behavior has not
+yet been exercised by real hardware because XStream did not issue
+any 0x82 without an authentic pending-0x0200 notification.
+
+`235314` does independently confirm the 85FB host formatting
+correction in another packet type: the first captured 128 bytes of
+the family-1/0x99 startup reply now **match original x86 exactly**,
+including `0000000000000000000002000200FFFFFFFF...`.
+Old x64 `231656` used zero padding after that valid short reply.
+It also confirms two separate identical `47 00` requests at
+seq 23386 (~40.156 s) and seq 31835 (~54.337 s) again produce the
+full x86-matching `0000000000000000000002000000FFFF`; related
+family-1/0x4A status remains F3 vs reference x86 F2, with
+physical calibration status unresolved.
+
+**The requested jaw-state-before/after-calibration A/B is completed:**
+all 1,517 standalone status 85FB/0x01 replies from `235314`
+reported software-enabled mask 0x02BF and pending **only 0x0080**,
+including 622 before Degauss, 381 between Degauss and the manually
+triggered Auto Zero, and 514 afterward. There are no family-1/0x82,
+0x88-mask-0x0200, pending-0x0200 or pending-0x0280 events in either
+phase, whereas the earlier pre-formatter `231656` trace had five.
+The last snapshot gap ends at t~48.480 s and the remaining 648 status
+reads are gap-free. This excludes Degauss/Auto Zero as a necessary
+precursor to the missing jaw event but does not assign cause to the
+host serializer.
+
+The 0x02BF software `LegacyCommandEnableMask` is distinct from
+hardware **BAR0 INTEN** at offset 0x084 and its command-interrupt
+enable bit 0x08. No register read of BAR0 INTEN, INTST or BAR1 HWInt
+is present in this JSONL. The existing `LECS65_IOCTL_REGISTER_READ`
+(`0xCFDC21C0`) implementation directly reads BAR MMIO for a
+correctly addressed register, but the incidental 11 calls captured
+in `235314` request BAR0+0x000 or BAR1+0x00C, not INTEN 0x084.
+Do not infer INTEN's value from the host software mask.
+
+The next lowest-risk proof is a **single physical AP015 unplug/replug
+with unchanged post-`3490709` driver**, without prior Degauss or jaw
+exercise. Compare to physical hotplug baseline `230614`. If physical
+hotplug now also lacks spontaneous pending 0x0200, obtain bounded
+passive INTEN/INTST/HWInt evidence before proposing a source change.
+If hotplug still generates 0x0200, focus on the separate clamp-jaw
+state path. Do not create synthetic pending bits, enable any gated
+transfer ABI or alter PCI/DMA speculatively. Full A/B details:
+`docs/probus-calibration-ab-comparison.md`.
