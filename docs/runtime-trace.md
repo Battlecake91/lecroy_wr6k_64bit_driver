@@ -3110,3 +3110,53 @@ No new driver change or another generic hotplug-only test is
 indicated by this trace. Full context and historical correction:
 `docs/probus-calibration-ab-comparison.md`,
 `docs/next-chat-handoff.md`.
+
+
+## Physical ProBus bus-layer distinction (user hardware update, 2026-09-29)
+
+The user confirms that ProBus **physical** identification and
+control are a staged process: an ADC identification value
+first establishes ProBus-class presence; the front-panel
+EEPROM is subsequently read over **I2C**; probe control also
+occurs over **I2C**. These are hardware-layer facts provided
+by the user, not something the current Windows IOCTL JSONL
+can directly decode.
+
+The capture records the XStream-to-driver and driver-to-board
+high-level protocol. It does **not** include raw analog
+samples/ADC channels or I2C SDA/SCL edges, slave addresses
+or EEPROM byte dumps. The separately source-proven A5FB
+family-0/0x90 local BAR1 SPICTL/SPIDAT/SPIDIN operation
+is **not** proof that the probe's physical electrical bus
+is SPI, nor is its relationship to the front I2C bus
+yet mapped.
+
+In particular:
+
+- A family-1/0x4A result containing ASCII `AP015`
+  verifies the metadata XStream received; even with the
+  user's EEPROM-first identification information, the
+  exact 0x4A-to-EEPROM transaction and field correspondence
+  cannot be reconstructed from this JSONL alone.
+- Standalone 85FB/0x01 pending `0x0200`, 0x88 ack,
+  and family-1/0x82 are genuine firmware notification/
+  status **at the host boundary**. They are not direct
+  timestamps for a physical ADC sample, EEPROM transaction
+  or individual I2C sensor read.
+- The first anomalous physical AP015 reconnection in
+  `001152` has `0x82=028C -> 0058` and no ensuing
+  270-byte AP015 metadata. That does not identify a bad
+  ADC threshold, failed EEPROM read, invalid EEPROM
+  contents or exact incomplete-contact cause without
+  additional physical/firmware evidence.
+- The user's visible XStream unlocked-jaw warning and
+  `002051` `0058/F7` (open) versus `00A7/F3`
+  (closed) packets do establish high-level functioning
+  jaw detection. Their physical I2C command/register
+  mapping is still not recovered.
+
+Keep raw host trace interpretation separate from
+electrical-bus inference; no driver source changes are
+justified by this architecture update alone.
+Full description:
+[`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
