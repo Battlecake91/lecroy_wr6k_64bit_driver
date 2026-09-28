@@ -4,17 +4,22 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
-Original HWInt/0x0200 handling (`70716ba`) was confirmed working on
-real hardware in physical hotplug run `230614` and jaw-state run
-`231656`. The later host-only raw 85FB response fix (`3490709`)
-is now hardware-confirmed for the original-x86 `47 00` response and
-original 0xFF-filled startup 0x99 reply. **Two runs after this
-formatter change, `233125` and `235314`, show NO pending 0x0200 or
-family-1/0x82 despite requested clamp movements.** Crucially, in the
-deliberately controlled `235314` run this is true **before Degauss as
-well as after manual Auto Zero**. Next action is one unchanged-driver
-physical unplug/replug to discriminate missing global 0x0200 handling
-from jaw-specific behavior. Do not patch interrupts by assumption.
+The original INTEN-0x08 / INTST-0x08 / HWInt command notification restore
+(`70716ba`) and subsequent original 85FB raw-reply formatting correction
+(`3490709`) are both hardware exercised. **Crucial new trace
+`xstream_trace_20260929_001152.jsonl` proves general physical AP015
+hotplug still works AFTER `3490709`: twelve genuine pending-0x0200
+notifications, matching 0x88/0x82, and three valid reinsertions with
+identical captured AP015 metadata prefixes.** Correct short
+family-1/0x82 actual-length/FF-padded responses and 47 12
+`...02000000FFFF` are also hardware demonstrated, with no prior
+fivefold retry bursts. One first-reinsertion sequence transiently
+displayed the wrong "1/2 clamp" and had unusual 0x82 state
+`028C -> 0058` without normal AP015 metadata; subsequent three
+reinsertions were recognized. Earlier `233125` and `235314` still
+show no *jaw-only* event notification; therefore next isolate jaw
+movements before/after ONE correct physical reidentification. **Do not
+change source/PCI/DMA/ISR speculatively.**
 
 ## Repository and communication
 
@@ -290,61 +295,77 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. **Preserve two source-backed improvements with different validation
-   coverage.** Driver commit `70716ba` restored original BAR0 INTEN
-   0x08 / INTST 0x08 / BAR1 HWInt 0x410 handling, validated in
-   `230614` (two true AP015 unplug/replug pending-0x0200 events) and
-   `231656` (five authentic 0x0200-bearing Degauss/jaw state
-   notifications with 0x88 acknowledgements and family-1/0x82).
-   Driver commit `3490709` corrects original `FUN_000167F4`
-   raw-hardware 85FB result framing: the actually received byte count
-   and 0xFF tail, not the full requested capacity and zero tail.
-   Hardware traces `233125` and `235314` confirm both `47 00`
-   requests return `0000000000000000000002000000FFFF`, exactly
-   matching original x86. The first captured 128 bytes of the corrected
-   startup family-1/0x99 response also match original x86's FF padding.
-   Both 47 00 runs have no former five-attempt retry burst.
-2. **OPEN: two post-formatting runs show missing 0x0200:** `233125`
-   had zero pending-0x0200/0x82 despite user-reported jaw movements.
-   The follow-up `235314` followed the requested controlled procedure:
-   physical open/hold/close/hold **BEFORE Degauss**, then Degauss and
-   manual Auto Zero, then another jaw open/hold/close/hold. Every one of
-   its **1,517** standalone 85FB/0x01 status reads shows
-   `enabled=0x02BF, pending=0x0080`; no 0x0200/0x0280, no family-1/
-   0x82, no family-0/0x88 mask-0x0200. The status-read counts are
-   **622 before first 47 00** (~17..40.156 s), **381 between** the
-   two 47 00 calls (~40.156..54.337 s), and **514 after** the second.
-   The last trace-snapshot gap ends ~48.480 s; 648 status reads after
-   that are uninterrupted. Thus the issue exists even before
-   calibration; do not reassign causality to Auto Zero alone.
-3. **Immediate discriminator:** with the unchanged post-`3490709`
-   driver, perform **one physical AP015 unplug and replug** in an
-   otherwise quiet XStream run (no Degauss, Auto Zero or jaw exercise).
-   Record visible removal/reinsertion and rough times, compare captured
-   0x0200 / 0x88 / 0x82 / 0x4A to pre-formatter hotplug baseline
-   `230614`. If physical hotplug is also silent, inspect the actual
-   hardware BAR0 INTEN DWORD offset 0x084 and bit 0x08, BAR0 INTST
-   0x080, BAR1 HWInt 0x410 and the ISR/DPC path with bounded passive
-   evidence before changing code. **The `0x02BF` in standalone
-   85FB status is software `LegacyCommandEnableMask`, NOT hardware
-   BAR0 INTEN.** If physical hotplug works, investigate the
-   probe-jaw-specific event source separately. The correlation with
-   `3490709` is notable but not proof of a direct interrupt regression:
-   that patch only changes host-side response serialization.
-4. Trace `235314`: 36,366 captured IOCTLs (seq 1..42227),
-   36 gaps omitting 5,861 entries; zero captured NTSTATUS failures;
-   27,834 CFDC2110; 6,818 CFDC2138, **all exact returned byte counts**
-   (the requested size is input DWORD offset 11). DMA continues
-   through ~72.009 seconds, including 1,989 calls after manual
-   Auto Zero. No `47 12` command is observed in the manual case,
-   and the follow-on family-1/0x4A firmware status remains F3 vs
-   original F2. Do not assert physical Degauss/Auto Zero success or
-   post-fix family-1/0x82 output-format parity without a 0x82 capture.
-5. Never synthesize 0x0200 or modify stable PCI/DMA/IIMCL/CLRIRQ,
-   below-4-GiB descriptor safety, MAM, family-1/0x51 or transfer
-   logic speculatively. Scope CPU limit <=5%. `CFDD219F` and
-   unobserved multi-channel CFDC2138 stay gated. Current exact
-   workflow and handoff: `docs/next-chat-handoff.md`.
+1. **Established actual hardware status, chronological:**
+   - Driver `70716ba` recovered genuine BAR0 INTEN/INTST bit `0x08`
+     and BAR1 HWInt `0x410` command notifications. `230614` proved
+     AP015 physical removal/reinsertion; `231656` recorded five
+     authentic 0x0200-bearing events during Degauss/jaw actions.
+   - Driver `3490709` corrected only original
+     `FUN_000167F4` raw hardware response framing: actual returned
+     data length and 0xFF padding rather than caller's capacity and
+     zero padding. Runs `233125` and `235314` confirm full
+     original-x86 `47 00` return
+     `0000000000000000000002000000FFFF` and original-like
+     startup family-1/0x99 FF padding, with no fivefold 47 00 burst.
+   - **New unchanged-driver `001152` repeated PHYSICAL hotplug
+     trace refutes a GLOBAL post-formatter 0x0200/INTST regression:**
+     1,361 standalone 85FB/0x01 status replies with command-enable
+     word `0x02BF`, pending counts `0x0080=1348`,
+     `0x0200=11`, `0x0280=1`, `0x0000=1`. Twelve
+     notifications contain actual `0x0200`, all matched by 0x88
+     mask-0x0200 (eleven) or mask-0x0280 (one) and twelve family-1/
+     0x82 replies. Four removal events with state `0x03FF` and
+     four reinsertion groups are seen. **The first reinsertion is
+     abnormal**, 0x82 state `0x028C` then `0x0058`, no normal
+     AP015 metadata; the user saw a transient wrong "1/2 clamp",
+     possibly due to connector seating. The later three generate
+     proper family-0/1 0x4A metadata; all four captured metadata
+     128-byte prefixes (including startup) are exactly identical,
+     identify AP015 and report Information=270.
+   - All twelve post-`3490709` family-1/0x82 raw replies have
+     actual length+FF tail: first removal raw length 0x000E,
+     remaining eleven raw length 0x0006, not the old capacity
+     0x0190/zero padding. Three `47 12` packets at seq
+     26385/29250/32096 are one per normal reinsertion and
+     return byte-identical original x86
+     `0000000000000000000002000000FFFF`; subsequent status F7,
+     physical calibration semantics unresolved. No old fivefold
+     47 12 retry burst.
+2. **Remaining specific failure:** Earlier post-formatting traces
+   `233125` and controlled `235314` showed no *jaw-only*
+   pending-0x0200 or 0x82 despite multiple mechanical open/close
+   operations before and after calibration. That does **not**
+   establish global loss of hardware INTEN bit 0x08 because physical
+   unplug/replug generates the genuine event in `001152`.
+   The 0x02BF in 85FB status is software `LegacyCommandEnableMask`,
+   not hardware BAR0 INTEN offset 0x084. Do not declare a specific
+   jaw-sensor, firmware, UI or initialization root cause without
+   follow-up evidence.
+3. **Next single controlled test, unchanged driver:** Start with
+   AP015 identified and normal waveform, one jaw open/hold/close/hold
+   pair **without any Degauss/Auto Zero**. Physically unplug once,
+   wait >=5 s; reconnect once, wait until clearly recognized as
+   AP015, then one more jaw open/hold/close/hold pair. Note actual
+   XStream displayed jaw state and approximate action seconds.
+   Attribute captured 0x0200/0x88/0x82 events separately to
+   mechanical jaw-only versus full physical connector changes,
+   and inspect metadata/0x82 actual-length/FF tail. Compare with
+   pre-formatter jaw event trace `231656`. Avoid further generic
+   hotplug-only tests until this distinction is explored.
+4. New `001152` capture: 32,675 observed IOCTLs (seq 1..37623,
+   duration 61.381146 s), 34 snapshot gaps omitting 4,948
+   entries with last gap ending ~32.792 s, zero captured NTSTATUS
+   errors, CFDC2110=24,976 and CFDC2138=6,135. All 6,135 DMA
+   output DWORDs equal requested bytes from input offset 11,
+   and last transfer at ~61.380523 s is successful. Nine
+   notifications follow the last snapshot gap. Do not infer
+   pixel-level waveform or raw CPU/ISR metrics solely from IOCTLs.
+5. Preserve working PCI/DMA/IIMCL/CLRIRQ/INTEN and the below-4-GiB
+   descriptor safety, family-1 0x51 and existing transfer logic.
+   No synthetic 0x0200, no forcing transient state values or
+   F7 -> F2, no unsupported ABI expansion. CPU <=5%.
+   METHOD_NEITHER `CFDD219F` and unobserved multichannel CFDC2138
+   stay gated. Exact next procedure in `docs/next-chat-handoff.md`.
 
 
 ## Latest dispatch recovery
@@ -3981,5 +4002,71 @@ INTST 0x080 and BAR1 HWInt 0x410 (and related shadow/ISR evidence)
 to discriminate missing enable, assertion and DPC latching; if
 hotplug works, isolate the probe-jaw path. Preserve <=5% CPU and
 stable acquisition. Detailed comparative records:
+`docs/probus-calibration-ab-comparison.md`,
+`docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
+
+
+## 2026-09-29 00:11: genuine hardware events still work with corrected 85FB serializer
+
+The user performed several AP015 physical unplug/replug operations
+with the unchanged post-`3490709` driver. They reported one
+transient wrong-probe ("1/2 clamp") identification on first
+reconnection, possibly due to plug seating; subsequent
+reconnections recognized correctly. User trace (not public):
+`xstream_trace_20260929_001152.jsonl`.
+
+The trace contains **32,675** captured IOCTLs, seq 1..37623,
+61.381146 s duration, 34 gaps omitting 4,948 entries, last gap
+t~32.792085 s. All recorded NTSTATUS values are success.
+24,976 CFDC2110 and 6,135 CFDC2138; **all** returned DMA DWORDs
+equal requested DWORD at input offset 11, including last
+1,024-byte DMA at ~61.380523 s. Standalone command status
+85FB/0x01: 1,361 reads, enable always 0x02BF; pending
+0x0080=1,348; 0x0200=11; 0x0280=1; 0x0000=1. Thus twelve
+real 0x0200-bearing notifications and their matching 0x88 ack
+and family-1/0x82 sequences; nine postdate last snapshot gap.
+These are hard proof that the original 0x08 HWInt/INTST path is not
+globally disabled by the FF-padding fix.
+
+Four removal events at seq 16747 (~27.557 s), 25308 (~40.564 s),
+27775 (~44.929 s), 30380 (~49.510 s) consistently yield 0x82
+raw state WORD 0x03FF. Reconnection status clusters:
+seq 19245/19249 (~31.662/31.718 s) produce 0x82 0x028C,
+combined mask pending 0x0280, then 0x82 0x0058, but **no**
+subsequent 270-byte AP015 metadata (likely associated with
+the user's wrong first probe display; no proven meaning for
+0x028C); seq 26308/26320 (~42.336/42.386 s) produce
+0x00A9 -> 0x0058 and AP015 metadata seq 26343;
+seq 29173/29187 (~47.306/47.367 s) 0x00AA -> 0x0058,
+metadata seq 29208; seq 32018/32062 (~52.275/52.405 s)
+0x00A9 -> 0x0058, metadata seq 32068.
+Startup metadata seq 509 plus all three normal reinsertions have
+Information=270 and **identical captured first 128 bytes**,
+including literal AP015.
+
+Post-formatter family-1/0x82 reply format is now hardware exercised:
+first removal result actual raw length 14 (`0x000E`);
+remaining eleven actual length 6 (`0x0006`); all
+unused captured output bytes 0xFF. Three automatic/reidentification-
+associated family-0/0x4A `47 12` requests at seq
+26385, 29250, 32096 each return exact original x86
+`0000000000000000000002000000FFFF` **once**, followed
+by status F7 at seq 26386,29251,32099.
+No prior five-attempt 47 12 bursts. Meaning of F7 vs
+historical x86 F2 and actual physical Auto Zero quality is
+not established by IOCTL data alone. The user's manual Auto Zero
+in earlier tests correlated with a `47 00` request instead.
+
+**Updated engineering decision:** Do not revert 3490709 or change
+already functioning PCI, IRQ and DMA based on earlier missing
+jaw-only 0x0200 in 233125/235314. The global HWInt
+notification route is demonstrably alive for physical hotplug.
+One test of jaw-only open/hold/close/hold before and after
+ONE normal physical unplug/replug, without Degauss/Auto Zero,
+will distinguish whether proper reidentification changes
+jaw-event behavior. Preserve the <=5% CPU limit and keep
+raw probe traces off the public repository.
+
+See full A/B and timeline:
 `docs/probus-calibration-ab-comparison.md`,
 `docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
