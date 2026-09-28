@@ -1,5 +1,13 @@
 # 2026-09-28: calibration and ProBus A/B comparison
 
+> **Physical probe interface clarification (user, 2026-09-29):** ADC
+> identification value classifies the connection as ProBus **first**;
+> the front EEPROM is then read over I2C; all subsequent physical probe
+> control is over I2C. These layers are distinct from the already
+> decoded BAR1 SPI-based host opcode 0x90 and from the 0x0200
+> Windows-driver event channel. See
+> [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+
 > **Current correction (2026-09-29):** Zero recorded pending-0x0200 in the
 > two earlier post-formatter jaw-only traces **never proved that XStream did
 > not recognize an unlocked AP015**. The user explicitly confirms XStream
@@ -1074,3 +1082,53 @@ whose user-visible failure has not been demonstrated.
 A subsequent task, if needed, is a dedicated original-x86 vs x64
 jaw-open/closed state/0x4A F7/F3 comparison with explicit hand-action
 timestamps and visible UI outcome, not another generic hotplug test.
+
+
+## 2026-09-29 hardware clarification: ADC classification precedes front I2C EEPROM identification
+
+The user provided additional direct hardware context relevant to
+all preceding x86/x64 ProBus traces: the connected probe initially
+produces an analog identification value read by an ADC. That
+value tells XStream that the connection is a ProBus-class probe;
+the front-panel EEPROM is **then** read over I2C, and physical
+probe controls also operate over I2C. Treat the first analog
+classification, subsequent EEPROM identity and later probe-state
+control as distinct stages. No specific ADC values, I2C EEPROM
+slave address, command/response bytes, controller pin mapping
+or chip identity were supplied; do not invent them.
+
+The historical family-0 opcode 0x90 packets and selectors (0x0C,
+0x0E, etc.) in this A/B document refer to a **source-confirmed
+BAR1 SPICTL/SPIDAT/SPIDIN host-to-board helper**. They do not
+contradict an external I2C bus to the AP015. The presence of
+`AP015` in family-1/0x4A firmware-forwarded metadata is
+consistent with the analog-then-EEPROM recognition model but
+does not by itself expose physical EEPROM reads or establish
+which response bytes originate directly from EEPROM. The
+`0x0200` interrupt is a host-visible firmware notification,
+not automatically the ADC discriminator, the I2C bus or
+the mechanical jaw sensor.
+
+This helps structure the transient first erroneous "1/2 clamp"
+recognition in trace `xstream_trace_20260929_001152.jsonl`:
+the anomalous 0x82 `028C -> 0058` sequence triggered no
+normal post-insertion AP015 270-byte metadata request, while
+the subsequent three reconnections did. We must distinguish:
+initial ADC classification/partial seating; later front-EEPROM
+I2C identification; and firmware/XStream state sequencing.
+**The absence of a host metadata request is not proof of an
+EEPROM transaction failure or corrupt EEPROM data.** The user
+suggested an imperfect initial plug insertion as another
+possible explanation; none is established.
+
+The user also confirms that XStream visibly warns when the
+AP015 jaw is unlocked. A later trace `002051` independently
+captures ordinary notification -> 0x82 state `0058` ->
+0x4A status F7 (opened) and `00A7` -> F3 (closed).
+Do not assign that bit to a specific I2C device register or
+EEPROM field without front-panel/firmware-level evidence.
+The present corrected x64 driver should remain unchanged
+unless a concrete new failing probe operation is demonstrated.
+
+Canonical hardware-layer description and unproven mappings:
+[`docs/probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
