@@ -97,6 +97,24 @@ working XStream license store. See
 The offline PowerShell helper itself is
 committed but not yet executed on the scope.
 
+**Latest DS2433 test (2026-09-29):** The user ran the offline dummy-image helper
+against the two verified 512-byte backups. No entire 32-byte
+page contained only `0xFF`, so the helper **correctly refused
+to create an image**. This is not proof that XStream has no
+free application-level license slot. The user may instead
+inspect its built-in *Add License* procedure; invalid codes
+may be rejected before any hardware write. The original
+x86 Dallas writer (`0x00223088`) is still missing from
+the x64 driver. A new offline **redacted read-only** helper,
+[`scripts/inspect-dallas-image.ps1`](scripts/inspect-dallas-image.ps1),
+shows only FF/zero/printable counts for each 32-byte page,
+or, given independent pre/post private snapshots, changed
+byte offsets and counts without exposing license content.
+Do not upload raw license buffers, remove the image
+safety guard or experiment with destructive license writes
+on the only licensed card. Full procedure:
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
