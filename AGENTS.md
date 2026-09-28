@@ -4,6 +4,30 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**New original hardware schematics reviewed (2026-09-29):**
+the user's `PCI Card.pdf` shows PCI-side Spartan-IIE
+`U3 XC2S200E` with PI5C3861 PCI bus switches,
+on-card `U11 DS2433` ID/memory via net `ID_DATA`,
+`U6 XC18V02` FPGA configuration PROM, and separate
+40-pin receive `J1` / transmit `J2` differential
+link headers (CLOCK, D0..D11, SYNC, RESET_ERR and
+stable signals). `Overview.pdf` is a separate
+LeCroy acquisition-board top-level drawing with
+`UP Control (UP)`, `Timebase (TB)`, two
+`ADC+MAM` blocks `AM/AM2`, `FPGA's (FP)`,
+four channel front ends plus EXT, and separately
+named `I2C(0:5)`, `SPI_IO(0:40)` and other
+control/data buses. **The Dallas/1-Wire BAR2 path
+has a concrete PCI-card DS2433 endpoint; this
+is NOT the front-panel I2C probe EEPROM or the
+XC18V02 configuration PROM. PCI Spartan U3 is
+NOT the acquisition-board AM/AM2/FP FPGA.**
+The schematics show no FPGA RTL, exact BAR-to-net
+mapping, link encoding, ADC probe-ID values or
+front EEPROM address. Canonical derived architecture:
+[`docs/pci-card-acquisition-board-topology.md`](docs/pci-card-acquisition-board-topology.md).
+Do NOT commit original proprietary schematic PDFs
+to this public repo.
 **New front-end hardware context, provided by the user:** probe connection is
 classified as ProBus by an **ADC identification value**; the front-panel
 **EEPROM is then read over I2C**; subsequent physical probe control also
@@ -4165,3 +4189,89 @@ Canonical architecture document:
 host/board mappings: `docs/ioctl-map.md`,
 `docs/hardware-register-map.md`. Runtime A/B:
 `docs/probus-calibration-ab-comparison.md`.
+
+
+## 2026-09-29: original PCI interface and acquisition-board schematics reviewed
+
+**Source uploads reviewed as actual schematic images:** `PCI Card.pdf`
+(single-sheet A2 Perigee LLC PCI card diagram dated 2003-03-12)
+and `Overview.pdf` (single-sheet A2 LeCroy acquisition-board
+top-level overview, model/drawing header `901586-XX`).
+The original files are NOT in the public repository; the
+latter visibly carries a proprietary-information notice.
+Only detailed derived factual observations have been added
+in [`docs/pci-card-acquisition-board-topology.md`](docs/pci-card-acquisition-board-topology.md).
+
+**PCI card structure:**
+- The normal conventional PCI AD/control groups cross multiple
+  `PI5C3861` bidirectional bus-switch ICs into `U3 XC2S200E`
+  Spartan-IIE FPGA. The design note explicitly describes the
+  5 V to 3.3 V bus interface without driving 3.3 V back to
+  5 V. The PCI-side FPGA and physical INTA# routing are
+  visible in the one-page sheet; don't assume this U3
+  is also the acquisition board's ADC+MAM FPGA.
+- A PCI-card **`U11 DS2433`**, labelled `ID Chip`,
+  is wired to the `ID_DATA` FPGA net. This strongly
+  corroborates the original-driver BAR2+0x040 `ONEWIRE`
+  and `IOCTL_GET_DALLAS_ID`, `READ_DALLAS_MEMORY`,
+  `WRITE_DALLAS_MEMORY` path as **PCI-card-local
+  identification/storage**. The sheet does not show
+  U3's internal BAR2-to-pin RTL; preserve that limit.
+- **`U6 XC18V02` is an FPGA configuration PROM**,
+  separate from the DS2433 and the front-panel
+  I2C EEPROM. The sheet shows assembly alternatives
+  for PROM boot (`R60/R63/R66`) versus remote
+  configuration over link (`R88/R89`); *which are
+  actually fitted on this instrument is not known*.
+- `J1` is a **40-pin Receive Header** and `J2`
+  a **40-pin Transmit Header**, with separately named
+  differential `CLOCK_P/N`, `D0..D11_P/N`,
+  `SYNC_P/N`, `RESET_ERR_P/N`, and stable status
+  lines. Receive and transmit resistor networks
+  are separately drawn. Exact framing, clocking
+  and acquisition-side link endpoint are NOT
+  established by this schematic.
+
+**Separate acquisition-board overview:**
+- `Power Conv/Filters (PC)`, `UP Control (UP)`,
+  `Timebase (TB)`, `ADC+MAM (AM)`,
+  `ADC+MAM (AM2)`, `FPGA's (FP)`,
+  four channel FE blocks and `EXT` appear as
+  individually labeled functional areas.
+- The drawing visibly shows a shared named
+  `I2C(0:5)` interconnect between UP/front-end
+  areas, while `SPI_IO(0:40)`, UP `UC_SPI(0:4)`,
+  `Voltage_Monitor(0:32)`, `MTT_FPGA(0:35)`
+  and `ADC_CNTL(0:25)` are separate named
+  nets. These facts corroborate the user's earlier
+  ADC-based ProBus class detection -> front-panel
+  I2C EEPROM identification -> I2C probe control
+  architecture without disclosing the specific
+  EEPROM IC/address or ADC discriminator.
+- The **two acquisition-board ADC+MAM FPGA blocks**
+  and dedicated FPGA subsystem must not be
+  collapsed into the PCI-card U3 simply because
+  both systems contain Xilinx logic.
+
+**Driver interpretation:** XStream talks to PCI
+interface FPGA and its driver-visible BAR/IOCTL
+abstractions; the separate hardware link and
+acquisition FPGA architecture now explain why
+host `CFDC2110` and `CFDC2138` functions
+must be read at the host/bridge protocol boundary,
+not mislabeled as direct physical probe I2C or
+the whole ADC-board firmware. The local
+family-0/0x90 `BAR1 SPICTL/SPIDAT/SPIDIN`
+source mapping does not override the user's
+physical front-panel I2C statement. `0x0200`
+HWInt and `0x4A/0x82` replies remain host-level
+status/metadata, with no direct I2C edge capture.
+The architecture evidence does NOT warrant
+new speculative PCI, ISR, DMA or probe patches.
+Keep previous successful actual hardware validations.
+
+Related:
+`docs/hardware-register-map.md`,
+`docs/ioctl-map.md`,
+`docs/probus-detection-i2c-architecture.md`,
+`docs/next-chat-handoff.md`.
