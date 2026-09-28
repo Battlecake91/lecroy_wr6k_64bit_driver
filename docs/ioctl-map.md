@@ -3478,3 +3478,58 @@ jaw-recognition regression that would justify changing `3490709`
 or generic INTEN, ISR, CLRIRQ, PCI/DMA. Historical capture-only
 observations of missing pending 0x0200 remain valid for those
 particular snapshots and must not be promoted into absent UI state.
+
+
+## Probe physical ADC/I2C sequence versus host SPI and forwarded firmware opcodes (2026-09-29)
+
+The user supplied additional **electrical front-panel hardware
+knowledge**: a probe-associated analog ADC reading is first
+used to classify the connected device as ProBus; the
+front-panel EEPROM is then read via I2C; physical probe
+control also operates via I2C.
+
+This must be kept distinct from this file's proven original
+**Windows-driver implementation**:
+
+- A5FB **family-0 opcode 0x90** is a local **BAR1 SPI**
+  transaction through SPICTL (+0xA0), SPIDAT (+0xA4),
+  SPIDIN (+0xA8). Selector 0x0E has the observed 144-bit
+  packet form; the original driver's host-side code does
+  NOT identify this as an electrical I2C transaction to
+  the probe. Whether an additional front-end controller
+  bridges an internal host transport to physical I2C is
+  not known.
+- Other packet classes such as **family-0/1 opcode 0x4A**
+  are forwarded to board firmware; the original driver
+  does not parse the underlying probe/EEPROM fields.
+  0x4A's returned metadata visibly includes ASCII AP015
+  in the first 128 captured bytes of a 270-byte aggregate
+  reply. EEPROM-derived metadata is a hardware-informed
+  candidate, **not** a decoded I2C memory map.
+- The firmware command-status **0x0200** is transported
+  through BAR0 INTST bit 0x08 and BAR1 HWInt +0x410,
+  then latched in the driver's software command mask.
+  It is not itself an analog ADC identification value
+  or a physical I2C START/address/data event.
+- The AP015 jaw-state pair observed on actual hardware,
+  `0x82 state 0x0058 -> 0x4A F7` for an opened jaw
+  with XStream's unlocked warning and
+  `0x82 state 0x00A7 -> 0x4A F3` for closed,
+  is a **host-visible state correlation**. Which electrical
+  I2C read/response or GPIO supplies that state is unknown.
+
+The first transient wrong "1/2 clamp" recognition in
+`xstream_trace_20260929_001152.jsonl` showed 0x82
+`0x028C -> 0x0058` without subsequent AP015 metadata.
+Do not diagnose a specific ADC conversion, EEPROM/I2C error
+or physical connector condition solely from that high-level
+packet omission. The exact ADC identification threshold,
+I2C controller/address and front EEPROM bytes remain
+unrecovered.
+
+See
+[`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md)
+for the separate hardware account, source provenance and
+targeted follow-up questions. Existing `driver/Ioctl.c`
+firmware forwarding and SPI register handling are not
+modified by this architecture clarification.
