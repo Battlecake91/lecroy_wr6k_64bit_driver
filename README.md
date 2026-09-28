@@ -261,3 +261,12 @@ The same driver-family flag affects other ABI choices inside XStream, so
 patching or falsifying it would risk switching XStream onto the wrong hardware
 path. The current project intentionally leaves this vendor diagnostic gate
 unchanged.
+
+
+### Known regression: excessive calibration frequency
+
+The replacement driver currently causes XStream to recalibrate much more often
+than the original driver during V/div changes. Normal acquisition and waveform
+display remain functional, but this behavior is not considered compatible and
+is under investigation. A controlled legacy-vs-x64 vertical-scale trace is the
+next required discriminator.
