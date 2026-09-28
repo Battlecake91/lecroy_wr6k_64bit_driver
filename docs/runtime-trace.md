@@ -2805,3 +2805,62 @@ A minimal raw 85FB output-format patch was committed as `3490709`
 BAR, MMIO, synchronous RX logic, or DMA. The patch still awaits a
 compile and real-hardware regression. Do not infer physical Degauss or
 Auto Zero success solely from successful IOCTL NTSTATUS.
+
+
+## Trace 233125: post-framing Degauss/manual Auto Zero; no jaw HWInt observed
+
+The scope's first test of driver commit `3490709` includes startup with
+AP015 preconnected, Degauss, subsequently **manual** Auto Zero, multiple
+physical open/close movements, and XStream exit. Captured JSONL:
+`xstream_trace_20260928_233125.jsonl`. Duration 55.628 seconds from
+first to last record; 27,947 captured IOCTLs, seq 1..30856; 2,909 entries
+omitted in 29 trace-snapshot gaps (last gap ends at t=28.646 s).
+Every captured NTSTATUS is successful. 21,366 CFDC2110 and 5,219
+CFDC2138 calls; all 5,219 successful DMA replies carry Information=4
+and match requested bytes at CFDC2138 input offset 11. Last recorded
+DMA at t~55.627 s, request and return both 1,024 bytes. 1,666
+DMA calls follow the second 47 00 control request.
+
+```text
+seq 507    ~13.797 s   startup family-1/0x4A AP015, Information=270
+seq 8573   ~20.034 s   family-0/0x4A ...47 00 -> 0000000000000000000002000000FFFF
+seq 8574   ~20.066 s   family-1/0x4A ...01 0A -> 0000000000000000000004000000F300
+seq 22156  ~40.675 s   family-0/0x4A ...47 00 -> 0000000000000000000002000000FFFF
+seq 22158  ~40.706 s   family-1/0x4A ...01 0A -> 0000000000000000000004000000F300
+```
+
+The two separate 47 00 requests correlate with Degauss and manually
+triggered Auto Zero, in that reported order (individual hand actions were
+not timestamped independently). This is the first real-hardware proof
+that the source-correct `FUN_000167F4` actual-received-length header
+and 0xFF output padding introduced by `3490709` produce byte-identical
+47 00 results to original x86 seq 24205. The old x64 `231656`
+produced five identical requests in a burst with the wrong result
+`...040000000000`. This time there is no such retry burst. The new
+capture contains no 47 12, so **manual** Auto Zero cannot universally be
+identified with 47 12; earlier 47 12 bursts followed automatic/probe
+event handling. It also has no 0x82 packet, so 0x82 framing parity is
+not individually re-tested here.
+
+The separate returned firmware/status payload remains **F3** on both
+family-1/0x4A `...01 0A` status requests, compared with F2 in the
+historical x86 reference. That difference is not caused by the previously
+incorrect raw 85FB header length and FF padding, and has no proven
+interpretation or physical calibration outcome yet.
+
+**Jaw-event caveat:** 1,135 standalone status 85FB/0x01 calls all report
+enable mask `0x02BF` and pending **only 0x0080**. No pending
+0x0200/0x0280, no family-1/0x82 and no opcode-0x88 mask-0x0200 ack
+were captured, despite the user's stated open/close operations. The
+capture has **447 standalone status reads after t=40 s and zero
+snapshot gaps after t=28.646 s**. The first post-HWInt hardware tests
+`230614` and `231656` did produce spontaneous pending 0x0200 and
+proper 0x82 follow-up. Do not claim the formatter patch directly
+disabled HWInt: it changes only host response serialization. The absence
+is a real behavioral observation warranting one jaw-only controlled
+baseline before any additional driver change. Raw interrupt/CPU rate
+and screen-visible clamp state are not captured by JSONL.
+
+More details, exact legacy comparison, and next test:
+`docs/probus-calibration-ab-comparison.md` and
+`docs/next-chat-handoff.md`.
