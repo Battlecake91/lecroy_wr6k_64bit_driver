@@ -115,6 +115,38 @@ safety guard or experiment with destructive license writes
 on the only licensed card. Full procedure:
 [`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
 
+**Updated DS2433 structural finding (2026-09-29):** The user's redacted
+`inspect-dallas-image.ps1` result now shows
+substantial **0x00 padding**, not a simple FF-only
+erased-page layout. Pages 6..10
+(0x0C0..0x15F) and 12..14
+(0x180..0x1DF) are each fully zero,
+with mixed data in pages 0..5, 11 and 15.
+This explains the fail-closed dummy-image
+generator but **does not** establish
+whether zero pages are vacant license
+slots or reserved/application-checksummed.
+The user proposes deleting and
+re-entering ONE legitimate key through
+XStream to observe the real record
+format. The documented preferred
+method uses original 32-bit XStream/
+driver (only original x86 currently
+has Dallas write IOCTL 0x00223088),
+a no-op control snapshot, and
+separate PRIVATE 512-byte read-only
+snapshots before/deleted/restored,
+compared via the already implemented
+redacted offset-diff script.
+Never remove the only usable key
+without independent record and
+a credible re-entry/recovery plan;
+two matching backups are not
+a proven restore implementation.
+No live key modification or source
+driver change has been executed.
+See [Dallas license test plan](docs/dallas-license-memory-test-plan.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
