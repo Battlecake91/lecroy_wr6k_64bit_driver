@@ -1,5 +1,13 @@
 # 2026-09-28: calibration and ProBus A/B comparison
 
+> **Current correction (2026-09-29):** Zero recorded pending-0x0200 in the
+> two earlier post-formatter jaw-only traces **never proved that XStream did
+> not recognize an unlocked AP015**. The user explicitly confirms XStream
+> warns that an opened jaw is not locked and measurements may be inaccurate.
+> New trace `xstream_trace_20260929_002051.jsonl` records actual
+> `0x0200 -> 0x88 -> 0x82` jaw open/close events and associated 0x4A
+> status F7/F3. Read the latest section before interpreting prior hypotheses.
+
 > Historical sections below describe successive driver revisions. In particular,
 > the earlier statement that x64 has no pending-0x0200 producer applies only
 > before commit `70716ba`, not to the untested current HWInt patch.
@@ -963,3 +971,106 @@ times. Check genuine 0x0200/0x88/0x82 from jaw movements separately
 from the known-good physical hotplug sequence. Do not synthesize
 pending bits, force 0x82 state words or change PCI/DMA/interrupt masks
 without specific measured evidence.
+
+
+## 2026-09-29 00:20: correction: XStream actually recognizes the jaw unlock
+
+**User correction:** The AP015 mechanical-jaw state **is visible in
+XStream**: opening the clamp triggers a warning that it is not locked,
+so its measurement may be inaccurate. The earlier assistant inference
+"no captured 0x0200 means XStream can no longer recognize the jaw" was
+incorrect. An absent notification in a particular IOCTL snapshot proves
+only the absence of *that captured notification*, not absence of
+user-visible probe state. Treat earlier no-event runs `233125` and
+`235314` as observations without the alleged UI failure; do not call
+them proof of a malfunctioning clamp-status display.
+
+New user-supplied scope trace:
+`xstream_trace_20260929_002051.jsonl` (not stored in public GitHub).
+It runs the same post-`3490709` raw 85FB formatter, **with no further
+driver changes**. The user's report confirms real XStream warning on
+jaw unlocking. Individual physical-action wall-clock timestamps were
+not independently provided.
+
+| Measure | Observed |
+|---|---:|
+| Captured `type=ioctl` | **31,200**, seq 1..35,955 |
+| Duration | **58.3684694 s** |
+| Snapshot gaps / missing sequence entries | **32 / 4,755** |
+| Last gap ends at | **~23.382490 s** |
+| NTSTATUS errors among captured IOCTLs | **0** |
+| CFDC2110 | 23,896 |
+| CFDC2138 | **5,839** |
+| DMA returned DWORD == requested DWORD at input byte offset 11 | **5,839 / 5,839** |
+| Last DMA | seq 35,943, t~58.367987 s, 1,024 requested/returned |
+| Standalone 85FB/0x01 | **1,292**; software enable `0x02BF` |
+| Pending 0x0080 / 0x0200 / 0x0280 / 0x0000 | **1,287 / 3 / 1 / 1** |
+| Family-1/0x82 | **4**, each correctly raw-length 0x0006 with FF tail |
+| AP015 metadata family-1/0x4A | **2** (startup and reinsertion), Information=270 |
+| Family-0/0x4A `47 12` | **2**, each exact original x86 `...02000000FFFF` |
+
+### Direct event and state evidence
+
+All four genuine 0x0200-bearing events occurred **after the final
+capture-snapshot gap**. Each has an immediate 0x88 acknowledgement and
+family-1/0x82 output with actual byte count 0x0006, preserved unused
+0xFF bytes and these observed state WORDs:
+
+| Relative t | Pending seq / mask | Ack seq / mask | 0x82 seq / actual output data | Correlation |
+|---:|---|---|---|---|
+| 24.623 s | 14888 / **0x0200** | 14889 / 0200 | 14891: `000012005800` (WORD **0x0058**) | Jaw-open state; visible XStream unlock warning |
+| 35.038 s | 21435 / **0x0280** | 21436 / 0280 | 21448: `00001200FE03` (WORD **0x03FE**) | Connector/removal-like transition; independent action timing unavailable |
+| 37.458 s | 22833 / **0x0200** | 22834 / 0200 | 22843: `000012005700` (WORD **0x0057**) | Reconnection-like transition; subsequent AP015 metadata |
+| 49.861 s | 30553 / **0x0200** | 30554 / 0200 | 30563: `00001200A700` (WORD **0x00A7**) | Jaw-closed state in the known physical action pattern |
+
+After seq 21436 acknowledging combined 0x0280, a standalone query
+seq 21442 reports pending 0 and seq 21443 acknowledges mask 0.
+The apparent connector transition is supported by the subsequent
+family-0/1 opcode-0x4A AP015 reidentification seq 22877/22878
+(t~37.663/37.710 s). Startup metadata seq 506 (t~14.067 s)
+and reinsertion seq 22878 both report Information=270 and have
+byte-identical **captured 128-byte reply prefixes**, including "AP015".
+The meaning of 0x03FE vs 0x03FF (previous removal states) and 0x0057
+vs 0x0058 is still not decoded; do not force a bit interpretation.
+
+### Stronger jaw-lock/status correlation
+
+After the 0x82 **0x0058** (jaw-open-correlated) event:
+
+```text
+seq 14912  family-1/0x4A setup
+seq 14913  family-0/0x4A 47 12 -> 0000000000000000000002000000FFFF
+seq 14916  family-1/0x4A status -> 0000000000000000000004000000F700
+```
+
+After the 0x82 **0x00A7** (jaw-closed-correlated) event:
+
+```text
+seq 30577  family-1/0x4A setup
+seq 30580  family-0/0x4A 47 12 -> 0000000000000000000002000000FFFF
+seq 30581  family-1/0x4A status -> 0000000000000000000004000000F300
+```
+
+This reproduces the **same empirical pairing** seen in pre-formatter
+`231656`: opening -> 0x82 state 0x0058 -> status F7;
+closing -> 0x82 state 0x00A7 -> status F3. F7 XOR F3 is 0x04,
+a strong candidate for a mechanically relevant status bit, **not
+yet a decoded vendor-defined field**. The user's explicit XStream
+unlock warning supplies independent visual evidence of functional
+jaw-state recognition. We do not need to invent a parallel status
+channel to explain this capture: its regular genuine interrupt and
+firmware-command path suffices for the observed events.
+
+**Updated outcome:** Hotplug and jaw-state events can both be handled
+with the corrected serializer and unchanged IRQ/DMA paths. A universal
+"post-3490709 jaw recognition regression" is now contradicted by the
+latest trace and user's direct observation. Earlier no-0x0200 traces
+remain factual only about their captured event traffic; exact reason
+for variation across runs is not established and is **not evidence
+that XStream missed the unlocked-jaw warning**. Do not revert the
+verified 85FB fix or alter BAR/ISR/MAM/DMA in search of a regression
+whose user-visible failure has not been demonstrated.
+
+A subsequent task, if needed, is a dedicated original-x86 vs x64
+jaw-open/closed state/0x4A F7/F3 comparison with explicit hand-action
+timestamps and visible UI outcome, not another generic hotplug test.
