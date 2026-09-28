@@ -90,6 +90,29 @@ That matches the private-build component in file version `6.1.1.1002`.
 
 ## Dallas handlers
 
+**Purpose and implementation distinction (user clarification,
+2026-09-29):** the PCI card's U11 DS2433 is the
+**XStream license-key EEPROM**, not the EEPROM for
+the five I2C-only front ProBus probe sockets.
+The original x86 binary implements all three Dallas
+IOCTLs below. The current x64 source implements
+`0x00223080` (eight-byte ROM ID, validated
+CRC-8) and `0x00223084` (1..512 bytes from
+EEPROM address zero), but does **NOT** yet
+define/dispatch `0x00223088` EEPROM write.
+Do not mistake its inclusion in the recovered
+original x86 dispatch table for x64 capability.
+The content may include sensitive XStream
+license keys (user expects possible plaintext,
+not yet verified). No raw dumps, license data or
+full-memory trace excerpts belong in GitHub.
+New `lecdiag dallas-backup` is read-only,
+saves 512 binary bytes after two matching
+full reads and matching ROM IDs, and verifies
+the saved file. It has not yet been compiled
+or exercised on the scope. Details:
+[`dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
+
 **Physical board corroboration (user-provided `PCI Card.pdf`, page
 1, 2026-09-29):** the PCI interface itself has `U11
 DS2433` (`ID Chip`) on net `ID_DATA` into
@@ -116,13 +139,18 @@ Further information:
 - output length `1..0x200`;
 - requested byte count returned on success.
 
-### 0x00223088: IOCTL_WRITE_DALLAS_MEMORY
+### 0x00223088: IOCTL_WRITE_DALLAS_MEMORY (original x86 only)
 
 - non-null system buffer required;
 - input length `1..0x200`;
 - chunks of at most `0x20` bytes;
 - read-back verification using `RtlCompareMemory`;
 - retry logic is present.
+- **Native x64 replacement has not implemented or hardware-tested
+  this IOCTL.** Do not use the original license-bearing
+  PCI card as an initial destructive write/erase test;
+  validate on a disposable DS2433 and retain verified
+  private backup/restore capability first.
 
 ## Serial-trigger FPGA handler: 0xCFDC2130
 
