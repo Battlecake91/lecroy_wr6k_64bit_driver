@@ -1,11 +1,13 @@
-# Active handoff: XStream AP015 jaw unlock recognized; correct earlier inference (2026-09-29)
+# Active handoff: AP015 jaw recognition and ADC/I2C hardware sequence (2026-09-29)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** The user's own visible XStream behavior
+**LATEST ENGINEERING STATE:** User confirmed ADC-based ProBus class detection, followed by front-panel EEPROM identification over I2C and physical probe control over I2C. These are not the same layer as the recovered local BAR1 SPI opcode 0x90; see the dedicated architecture section and linked page below. No electrical ADC/I2C addresses, transactions or precise host-command mapping are recovered yet.
+
+**Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
 explicit not-locked warning about measurement accuracy.** Absence of
 pending-0x0200 in earlier particular IOCTL captures `233125` and
@@ -23,6 +25,65 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## Front-panel probe hardware architecture (user clarification, 2026-09-29)
+
+The user has supplied **physical hardware/protocol information**
+that changes how we should interpret the trace, not the working
+driver implementation:
+
+1. The first probe-class detection happens via an **analog ADC
+   identification value**. XStream interprets that value as
+   designating a **ProBus** probe.
+2. **After** the ADC/ProBus decision, the **front-panel EEPROM**
+   is read over **I2C** to identify the device.
+3. Physical **probe control also uses I2C**.
+
+These are separate stages. The exact ADC channel/value/threshold,
+front I2C controller, EEPROM slave address/bytes, and any
+host-to-I2C firmware bridge remain **unidentified in our data**.
+XStream initiates the high-level identification, but there is no
+proof that the Windows kernel driver itself drives SDA/SCL.
+
+**Essential host-versus-probe-layer distinction:** original
+family-0/0x90 is *statically proven* to use BAR1
+`SPICTL/SPIDAT/SPIDIN`, including selector-0x0E 144-bit
+host-to-board traffic. This is not the same assertion as
+"the AP015 electrical bus is SPI", and must NOT override
+the user's information that the physical probe-side
+control is I2C. The exact relationship (if any) of BAR1
+SPI to the physical I2C master remains to be recovered.
+Firmware-forwarded 0x4A returns AP015 metadata (270-byte
+aggregate Information, first 128 bytes captured); an
+EEPROM origin is a hardware-informed candidate, not a
+byte-proven mapping. Likewise, 0x0200 is the host-side
+notification bit from the BAR0 INTST-0x08 / BAR1 HWInt
+path; its presence/absence is not itself an ADC value
+or a raw I2C transaction.
+
+**First wrong "1/2 clamp" reinsertion in `001152`:**
+0x82 state `028C -> 0058` appeared and the normal
+270-byte AP015 reidentification packet did not follow.
+The new ADC-before-EEPROM knowledge separates possible
+physical contact, early analog classification,
+EEPROM/I2C access and firmware-state timing hypotheses.
+Do not assert that EEPROM contents were corrupt or that
+a specific I2C failure occurred. The subsequent three
+correct reinsertions produced normal AP015 metadata.
+
+**Other current behavior stays validated:** the user-visible
+unlocked-jaw warning and trace `002051` pair
+0x82 `0058`/0x4A F7 for opened/unlocked and
+0x82 `00A7`/0x4A F3 for closed. Neither 0x82 nor the
+F7/F3 bit can yet be assigned to a particular physical
+I2C register or EEPROM field. Refrain from further
+generic IRQ, PCI or DMA changes.
+
+Full canonical page:
+[`docs/probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+The source-backed host commands are documented in
+`docs/ioctl-map.md`, and the runtime event comparisons
+in `docs/probus-calibration-ab-comparison.md`.
 
 ## Current verified status
 
