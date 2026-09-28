@@ -4,22 +4,20 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
-The original INTEN-0x08 / INTST-0x08 / HWInt command notification restore
-(`70716ba`) and subsequent original 85FB raw-reply formatting correction
-(`3490709`) are both hardware exercised. **Crucial new trace
-`xstream_trace_20260929_001152.jsonl` proves general physical AP015
-hotplug still works AFTER `3490709`: twelve genuine pending-0x0200
-notifications, matching 0x88/0x82, and three valid reinsertions with
-identical captured AP015 metadata prefixes.** Correct short
-family-1/0x82 actual-length/FF-padded responses and 47 12
-`...02000000FFFF` are also hardware demonstrated, with no prior
-fivefold retry bursts. One first-reinsertion sequence transiently
-displayed the wrong "1/2 clamp" and had unusual 0x82 state
-`028C -> 0058` without normal AP015 metadata; subsequent three
-reinsertions were recognized. Earlier `233125` and `235314` still
-show no *jaw-only* event notification; therefore next isolate jaw
-movements before/after ONE correct physical reidentification. **Do not
-change source/PCI/DMA/ISR speculatively.**
+**Important 2026-09-29 correction:** The user's XStream clearly warns that
+the opened AP015 clamp is **not locked and measurements may be inaccurate**.
+Earlier assistant statements interpreting missing recorded `0x0200` in
+two specific trace captures (`233125`, `235314`) as **failure of
+XStream to recognize jaw opening were wrong**. New scope trace
+`xstream_trace_20260929_002051.jsonl`, with the same unchanged driver,
+records actual genuine `0x0200 -> 0x88 -> 0x82` jaw-state transitions:
+`0x0058` at t~24.623 s correlates with open and family-1/0x4A status
+**F7**, while `0x00A7` at t~49.861 s correlates with closed and
+status **F3**. The same open/F7, closed/F3 pairing was captured twice
+in earlier trace `231656`. Physical hotplug also works after 85FB
+fix `3490709` (trace `001152`). **No demonstrated general
+jaw-recognition, HWInt or DMA regression; do not rollback patches
+or invent a new probe-state event.**
 
 ## Repository and communication
 
@@ -295,77 +293,67 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. **Established actual hardware status, chronological:**
-   - Driver `70716ba` recovered genuine BAR0 INTEN/INTST bit `0x08`
-     and BAR1 HWInt `0x410` command notifications. `230614` proved
-     AP015 physical removal/reinsertion; `231656` recorded five
-     authentic 0x0200-bearing events during Degauss/jaw actions.
-   - Driver `3490709` corrected only original
-     `FUN_000167F4` raw hardware response framing: actual returned
-     data length and 0xFF padding rather than caller's capacity and
-     zero padding. Runs `233125` and `235314` confirm full
-     original-x86 `47 00` return
-     `0000000000000000000002000000FFFF` and original-like
-     startup family-1/0x99 FF padding, with no fivefold 47 00 burst.
-   - **New unchanged-driver `001152` repeated PHYSICAL hotplug
-     trace refutes a GLOBAL post-formatter 0x0200/INTST regression:**
-     1,361 standalone 85FB/0x01 status replies with command-enable
-     word `0x02BF`, pending counts `0x0080=1348`,
-     `0x0200=11`, `0x0280=1`, `0x0000=1`. Twelve
-     notifications contain actual `0x0200`, all matched by 0x88
-     mask-0x0200 (eleven) or mask-0x0280 (one) and twelve family-1/
-     0x82 replies. Four removal events with state `0x03FF` and
-     four reinsertion groups are seen. **The first reinsertion is
-     abnormal**, 0x82 state `0x028C` then `0x0058`, no normal
-     AP015 metadata; the user saw a transient wrong "1/2 clamp",
-     possibly due to connector seating. The later three generate
-     proper family-0/1 0x4A metadata; all four captured metadata
-     128-byte prefixes (including startup) are exactly identical,
-     identify AP015 and report Information=270.
-   - All twelve post-`3490709` family-1/0x82 raw replies have
-     actual length+FF tail: first removal raw length 0x000E,
-     remaining eleven raw length 0x0006, not the old capacity
-     0x0190/zero padding. Three `47 12` packets at seq
-     26385/29250/32096 are one per normal reinsertion and
-     return byte-identical original x86
-     `0000000000000000000002000000FFFF`; subsequent status F7,
-     physical calibration semantics unresolved. No old fivefold
-     47 12 retry burst.
-2. **Remaining specific failure:** Earlier post-formatting traces
-   `233125` and controlled `235314` showed no *jaw-only*
-   pending-0x0200 or 0x82 despite multiple mechanical open/close
-   operations before and after calibration. That does **not**
-   establish global loss of hardware INTEN bit 0x08 because physical
-   unplug/replug generates the genuine event in `001152`.
-   The 0x02BF in 85FB status is software `LegacyCommandEnableMask`,
-   not hardware BAR0 INTEN offset 0x084. Do not declare a specific
-   jaw-sensor, firmware, UI or initialization root cause without
-   follow-up evidence.
-3. **Next single controlled test, unchanged driver:** Start with
-   AP015 identified and normal waveform, one jaw open/hold/close/hold
-   pair **without any Degauss/Auto Zero**. Physically unplug once,
-   wait >=5 s; reconnect once, wait until clearly recognized as
-   AP015, then one more jaw open/hold/close/hold pair. Note actual
-   XStream displayed jaw state and approximate action seconds.
-   Attribute captured 0x0200/0x88/0x82 events separately to
-   mechanical jaw-only versus full physical connector changes,
-   and inspect metadata/0x82 actual-length/FF tail. Compare with
-   pre-formatter jaw event trace `231656`. Avoid further generic
-   hotplug-only tests until this distinction is explored.
-4. New `001152` capture: 32,675 observed IOCTLs (seq 1..37623,
-   duration 61.381146 s), 34 snapshot gaps omitting 4,948
-   entries with last gap ending ~32.792 s, zero captured NTSTATUS
-   errors, CFDC2110=24,976 and CFDC2138=6,135. All 6,135 DMA
-   output DWORDs equal requested bytes from input offset 11,
-   and last transfer at ~61.380523 s is successful. Nine
-   notifications follow the last snapshot gap. Do not infer
-   pixel-level waveform or raw CPU/ISR metrics solely from IOCTLs.
-5. Preserve working PCI/DMA/IIMCL/CLRIRQ/INTEN and the below-4-GiB
-   descriptor safety, family-1 0x51 and existing transfer logic.
-   No synthetic 0x0200, no forcing transient state values or
-   F7 -> F2, no unsupported ABI expansion. CPU <=5%.
-   METHOD_NEITHER `CFDD219F` and unobserved multichannel CFDC2138
-   stay gated. Exact next procedure in `docs/next-chat-handoff.md`.
+1. **Correct the diagnostic interpretation before touching the driver.**
+   The user explicitly observes that XStream displays a not-locked
+   warning and measurement-accuracy caution when the AP015 jaw opens.
+   Earlier `233125` and `235314` did have ZERO captured
+   pending-0x0200/family-1/0x82 events, but it was an invalid leap
+   to conclude XStream could not recognize the mechanical state.
+   Those captures are evidence about that particular IOCTL stream,
+   not proof about the application's warning/UI state.
+2. **Latest post-`3490709` trace `002051` confirms real jaw events.**
+   31,200 captured IOCTLs over 58.3684694 s (seq 1..35955),
+   32 snapshot gaps / 4,755 omitted entries, final gap ends
+   t~23.382490 s (before **all** key events). No observed
+   failing NTSTATUS. CFDC2110=23,896, CFDC2138=5,839;
+   all 5,839 return exactly requested bytes (CFDC2138 input
+   offset 11), last 1,024/1,024 at t~58.367987 s.
+   Standalone 85FB/0x01=1,292, enabled 0x02BF, pending:
+   0x0080=1,287, 0x0200=3, 0x0280=1, 0x0000=1.
+   Four actual 0x0200-bearing events each with matching 0x88
+   and actual-length+FF-padded family-1/0x82:
+   - t~24.623 s: status seq 14888 / ack 14889 /
+     0x82 seq 14891 raw `000012005800`, status WORD **0x0058**;
+     one family-0/0x4A 47 12 seq 14913 returns original-x86
+     `...02000000FFFF`, status family-1/0x4A seq 14916 **F7**.
+     This corresponds to opened jaw and XStream's not-locked warning.
+   - t~35.038 s: status 21435 combined pending 0x0280,
+     ack 21436 and 0x82 seq 21448 raw `00001200FE03`
+     (WORD **0x03FE**); an apparent connector removal-like state.
+   - t~37.458 s: status 22833/ack 22834/0x82 seq 22843
+     raw `000012005700` (WORD **0x0057**). Later AP015
+     reidentification family-0/1 0x4A seq 22877/22878,
+     Information=270; the captured first 128 bytes exactly match
+     startup metadata seq 506.
+   - t~49.861 s: status 30553/ack 30554/0x82 seq 30563
+     raw `00001200A700` (WORD **0x00A7**);
+     one 47 12 seq 30580 -> original `...02000000FFFF`;
+     0x4A status seq 30581 **F3**; jaw closed correlation.
+   This reproduces earlier `231656` open 0x0058/F7 and
+   closed 0x00A7/F3 twice. F7 XOR F3 = bit `0x04`, but no
+   vendor-defined status-bit semantics are yet proven.
+3. **Retain the verified source changes.** Driver `70716ba` recovered
+   original BAR0 INTEN/INTST 0x08 and BAR1 HWInt 0x410 handling.
+   Driver `3490709` corrected original `FUN_000167F4`
+   actual received-length and FF-padded short raw 85FB records.
+   Earlier `230614`, `231656`, `233125`, `235314`,
+   `001152` and newest `002051` together establish multiple
+   functioning hotplug, jaw-event, short 0x82, 47 00/47 12 and
+   0x99 compatibility paths. No proven reason to revert either
+   driver commit, synthesize 0x0200 or change stable PCI/DMA/ISR.
+4. **Remaining optional protocol research (not an identified UI
+   regression):** F7/F3 versus historical x86 F2 after 0x4A
+   controls; exact state-word bits 0x0058/0x00A7, 0x03FE/0x03FF,
+   0x0057/0x0058; transient wrong-probe first reinsertion in
+   `001152` (0x028C then 0x0058 without full AP015 metadata).
+   Never assign literal "1/2 clamp" semantics to 0x028C without
+   static/dependent evidence. Record actual displayed behavior
+   and physical action times with any future focused experiment.
+5. Keep <=5% scope CPU, below-4-GiB DMA descriptor safety, existing
+   IIMCL/CLRIRQ, family-1 0x51; `CFDD219F` and unobserved
+   multi-channel CFDC2138 remain gated. Full handoff in
+   `docs/next-chat-handoff.md`, A/B in
+   `docs/probus-calibration-ab-comparison.md`.
 
 
 ## Latest dispatch recovery
@@ -4069,4 +4057,53 @@ raw probe traces off the public repository.
 
 See full A/B and timeline:
 `docs/probus-calibration-ab-comparison.md`,
+`docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
+
+
+## 2026-09-29 00:20: XStream unlock warning refutes previous jaw failure interpretation
+
+The user challenged our previous characterization: **XStream actually
+reports the AP015 not locked when the clamp is opened and cautions
+that the measurement may be inaccurate.** We had interpreted
+absence of captured `0x0200` in jaw-only traces `233125`/
+`235314` too strongly. It meant only that those *recorded*
+standalone status replies did not show a fresh 0x0200, not
+that XStream lacked all jaw-state information or failed to warn.
+Correct this language in any future handoff/answer.
+
+Newest unchanged post-`3490709` trace
+`xstream_trace_20260929_002051.jsonl` directly captures four
+0x0200-bearing notifications, all after its final snapshot gap
+(~23.382490 s), each acknowledged by family-0/0x88 and
+followed by actual-length-0x0006, FF-padded family-1/0x82.
+Status sequence:
+```text
+t24.623  seq14888 pending 0200 -> ack14889 -> 0x82 14891 state 0058
+         -> family0/0x4A 47 12 seq14913 original FF-padded result
+         -> family1/0x4A status seq14916 F7  (open/unlocked)
+t35.038  seq21435 pending 0280 -> ack21436 -> 0x82 21448 state 03FE
+         -> intermediate pending 0000 seq21442
+t37.458  seq22833 pending 0200 -> ack22834 -> 0x82 22843 state 0057
+         -> seq22877/22878 AP015 metadata (same captured 128-byte
+            prefix as startup seq506, Information=270)
+t49.861  seq30553 pending 0200 -> ack30554 -> 0x82 30563 state 00A7
+         -> family0/0x4A 47 12 seq30580 original FF-padded result
+         -> family1/0x4A status seq30581 F3  (closed)
+```
+This supports the same `0058/open -> F7`,
+`00A7/closed -> F3` correlation as previous pre-formatter
+`231656`. The two F statuses differ by `0x04`, but the formal
+bit meaning is not yet recovered. Distinct 03FE/03FF and 0057/0058
+word variants warrant descriptive comparison, not premature
+per-bit interpretation. This real captured event stream and
+the user's visible warning refute a blanket jaw detection
+regression. No code changes made.
+
+Capture metrics: 31,200 IOCTLs, sequence 1..35955, 32 gaps
+omitting 4,755 entries, no recorded NTSTATUS failures;
+1,292 standalone 85FB/0x01 (pending 0080=1,287,
+0200=3, 0280=1, 0000=1), 23,896 CFDC2110,
+5,839 CFDC2138 all requested/returned byte lengths equal.
+Last DMA t~58.367987 s, 1,024 requested/returned.
+Full data: `docs/probus-calibration-ab-comparison.md`,
 `docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
