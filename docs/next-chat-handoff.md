@@ -1,11 +1,26 @@
-# Active handoff: AP015 jaw recognition and ADC/I2C hardware sequence (2026-09-29)
+# Active handoff: real PCI Spartan and acquisition-board schematics reviewed (2026-09-29)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** User confirmed ADC-based ProBus class detection, followed by front-panel EEPROM identification over I2C and physical probe control over I2C. These are not the same layer as the recovered local BAR1 SPI opcode 0x90; see the dedicated architecture section and linked page below. No electrical ADC/I2C addresses, transactions or precise host-command mapping are recovered yet.
+**LATEST ENGINEERING STATE:** Two original hardware sources
+reviewed (`PCI Card.pdf`, `Overview.pdf`): the
+PCI-card Spartan U3, DS2433/1-Wire U11, XC18V02
+configuration PROM U6 and J1/J2 differential
+receive/transmit link are distinct from the
+LeCroy acquisition board's UP, Timebase,
+AM/AM2, FPGA and front-end blocks. Shared
+I2C appears explicitly in the acquisition
+overview, consistent with the user's
+ADC -> front EEPROM I2C -> probe-control I2C
+description. **No copied proprietary schematic
+files in public repo; derived observations in
+`docs/pci-card-acquisition-board-topology.md`.**
+The inferred BAR2/DS2433 mapping is a strong
+source/schematic correlation, not FPGA RTL proof.
+No new code change warranted.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -25,6 +40,87 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## New primary hardware sources: supplied PCI schematic and acquisition top level
+
+The user has now supplied two one-page A2 PDFs as actual hardware
+reference material:
+- `PCI Card.pdf`: Perigee LLC schematic, sheet 1, dated
+  2003-03-12; this shows the **separate PCI interface card**.
+- `Overview.pdf`: LeCroy Corporation acquisition board
+  **top-level** drawing (model header `901586-XX`).
+
+Both were inspected visually, including the schematic/vector
+content, not just the PDF text extraction. The Overview has
+no regular extractable words. **These files are user uploads,
+NOT source artifacts to be copied into the public GitHub repo:**
+the Overview carries an explicit proprietary-information notice.
+Derived, carefully qualified hardware observations are now
+documented in the canonical
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
+
+**Critical new PCI-side topology:**
+
+- `U3 XC2S200E` **Spartan-IIE FPGA** receives conventional
+  PCI signals through several `PI5C3861` bidirectional
+  bus switches (schematic explicitly describes 5-V/3.3-V
+  interfacing). `INTA#` is within the PCI/FPGA signal group.
+- `U11 DS2433` is a physical PCI-card
+  **Dallas 1-Wire ID/memory** IC, marked `ID Chip`, on
+  net `ID_DATA` wired to FPGA U3. This gives the
+  recovered original-driver `BAR2+0x040 ONEWIRE`
+  and GET/READ/WRITE Dallas IOCTLs a concrete
+  **PCI-card-local device candidate**. BAR2-to-ID_DATA
+  FPGA RTL is not depicted, so treat the exact mapping
+  as source-plus-schematic inference.
+- `U6 XC18V02` is separate PCI Spartan
+  **configuration PROM**, neither Dallas 1-Wire
+  nor front-panel/probe I2C EEPROM. The schematic
+  has **optional**, mutually alternative PROM
+  boot (`R60/R63/R66`) and remote configuration
+  **via link** (`R88/R89`) resistor stuffing;
+  actual stuffing was not determined.
+- `J1` is a **40-pin Receive Header**, `J2` a
+  **40-pin Transmit Header**. Each has differential
+  CLOCK, twelve differential D0..D11 data pairs,
+  SYNC and RESET_ERR plus status/ground connections;
+  separately drawn RX termination and TX resistor
+  networks. These define a distinct FPGA-to-
+  acquisition-board **physical link**, not ordinary
+  PCI continuing through the front ends. Link
+  encoding/protocol and exact endpoint/RTL are
+  not shown.
+
+**Separate acquisition-board overview:**
+`Power Conv/Filters (PC)`, `UP Control (UP)`,
+`Timebase (TB)`, two different `ADC+MAM`
+(`AM` and `AM2`), `FPGA's (FP)`, four
+channel front ends plus `EXT` appear as
+distinct blocks. It explicitly labels
+`I2C(0:5)` in UP/front-end region,
+plus **separate** `SPI_IO(0:40)`,
+`UC_SPI(0:4)`, `Voltage_Monitor(0:32)`,
+`MTT_FPGA(0:35)`, `ADC_CNTL(0:25)`,
+`FE_CHx_ADC(0:1)`, FPGA/ADC and JTAG
+bus groups. This independently corroborates
+I2C distribution and hardware separation, **not**
+the precise ADC channel for the user's ProBus
+recognition value or the front EEPROM address.
+
+**Three memories and multiple FPGAs MUST NOT be confused:**
+PCI `U11 DS2433` = 1-Wire board ID;
+PCI `U6 XC18V02` = configuration PROM;
+front-panel/probe identification EEPROM = I2C after
+ADC ProBus classification (user-provided).
+PCI Spartan U3 is **not** acquisition-board
+AM/AM2/FP. Family-0/0x90 host BAR1 SPI
+register operations are not automatically the
+external physical probe I2C bus. Nor do
+0x0200 HWInt, 0x82 state or 0x4A metadata
+directly reveal ADC/I2C electrical transaction bytes.
+No driver source changes follow from this topology
+alone; keep working verified HWInt, 85FB
+framing and DMA untouched.
 
 ## Front-panel probe hardware architecture (user clarification, 2026-09-29)
 
