@@ -339,3 +339,86 @@ subsequent family-0/0x88 mask, family-1/0x82 handshake, family-0/1 opcode
 0x4A, IOCTL NTSTATUS and continuous CFDC2138 transfers. A successful DMA
 return length alone does not prove a visible waveform. Correlate any
 acquisition pattern transition to separately noted physical action times.
+
+
+## Post-70716ba HWInt hardware validation: trace 230614 (2026-09-28)
+
+The first scope-side Debug XStream run after the interrupt-restoration patch
+was reported as successful by the user: start with AP015 attached, change its
+A/div setting to a higher range, unplug AP015 while XStream remains running,
+reconnect it, then close XStream. XStream visibly recognized the changes,
+including the physical disconnect/reconnect. Trace:
+`xstream_trace_20260928_230614.jsonl` (not stored in the public repo).
+
+**Captured (not reconstructed) results:**
+
+| Evidence | Value |
+|---|---:|
+| Captured IOCTL records | 19,288 |
+| First/last IOCTL sequence | 1 / 21,761 |
+| Snapshot omissions in sequence stream | 2,473 entries across 30 gaps |
+| Non-success NTSTATUS among captured IOCTLs | 0 |
+| CFDC2110 | 14,742 |
+| CFDC2138 | 3,633 |
+| CFDC2138 reported-length mismatches | 0 |
+| Standalone 85FB/0x01 command status | 720 |
+| Enabled command mask in all captured status reads | `0x02BF` |
+| Pending `0x0080` | 718 |
+| Pending `0x0200` | **2** |
+| Family-0/0x88 with ack mask `0x0200` | **2** |
+| Family-1/0x82 | **2** |
+| Family-0/0x4A | 2 (startup, reinsertion) |
+| Family-1/0x4A | 2 (startup, reinsertion) |
+
+The trace's first event and second event are respectively consistent with
+probe removal and insertion (in the user's stated action order). User action
+timestamps were not independently recorded. Relative seconds below use the
+same 10-MHz timestamp tick conversion as the preceding trace analyses.
+
+| Relative time | Sequence | Evidence |
+|---:|---:|---|
+| ~13.908 s | 509 | Startup family-1/0x4A AP015 metadata, Information 270 |
+| ~28.422 s | 14951 | Standalone 85FB output `000000000400BF020002`, pending 0x0200 |
+| ~28.449 s | 14952 | Family-0/0x88 mask 0x0200, success |
+| ~28.480 s | 14961 | Family-1/0x82, Information 412; no follow-on 0x4A |
+| ~31.275 s | 16639 | Second standalone pending 0x0200 |
+| ~31.299 s | 16640 | Second family-0/0x88 mask 0x0200, success |
+| ~31.330 s | 16651 | Second family-1/0x82, Information 412 |
+| ~31.469 s | 16678 | Family-0/0x4A setup, success |
+| ~31.515 s | 16679 | Family-1/0x4A AP015 metadata, Information 270 |
+
+Both status events carry the *real returned* pending WORD `0x0200`, not a
+match of arbitrary bytes within an unrelated firmware payload. After both
+acks, later standalone status reads again report pending `0x0080`. The
+captured first 128 bytes of the 270-byte family-1/0x4A metadata reply at
+startup seq 509 and reinsertion seq 16679 are **byte-identical**; the same
+captured 128-byte prefix also matches the original legacy AP015 metadata
+response seq 14596/14812. Do not claim equality of uncaptured remaining
+142 bytes.
+
+All 3,633 captured CFDC2138 responses have `STATUS_SUCCESS`,
+`Information=4` and a returned DWORD equal to the requested byte count.
+There are 2,332 DMA records before the first notification, 328 between
+notifications and 973 after the second. The closest recorded DMA records
+straddle event one with a ~36-ms gap, and event two with a ~397-ms gap;
+acquisition transfers resume and continue to trace end (~39.58 s). The last
+recorded transfer >=8 KiB is at ~27.067 s, before the first event; thereafter
+the trace mostly uses 1,024- and 2,048-byte transfers. The user changed
+probe A/div before unplugging, but without independent action timestamps it
+is not possible to attribute that transfer-size transition precisely.
+
+**Outcome:** The focused real-hardware test supports that the missing
+INTEN-0x08 / INTST-0x08 / HWInt command-status path has been restored and
+that asynchronous AP015 removal/reinsertion reaches XStream's ordinary
+0x0200 -> 0x88 -> 0x82 route and post-insertion 0x4A identification.
+The observed two event notifications do not show a repeated-0x0200 storm;
+this IOCTL JSONL alone does not contain raw ISR/DPC counts or CPU usage.
+Snapshot gaps mean it cannot prove an absolute absence of any omitted IOCTL
+failure. Normal probe recognition is established by both the trace and the
+user's visual observation; the trace alone cannot certify displayed waveform
+pixel continuity. This is a focused success, not universal ProBus parity.
+
+**Still open:** The separate family-0/0x4A `...47 00` Degauss/Auto Zero
+payload discrepancy was not exercised in this run. Preserve current PCI,
+DMA, interrupt and transfer behavior. Any future probe-specific test should
+isolate each special function without coupling it to another hotplug change.
