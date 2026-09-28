@@ -1,26 +1,53 @@
-# Active handoff: real PCI Spartan and acquisition-board schematics reviewed (2026-09-29)
+# Active handoff: five-slot ProBus I2C and private PCI Dallas license backup (2026-09-29)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** Two original hardware sources
-reviewed (`PCI Card.pdf`, `Overview.pdf`): the
-PCI-card Spartan U3, DS2433/1-Wire U11, XC18V02
-configuration PROM U6 and J1/J2 differential
-receive/transmit link are distinct from the
-LeCroy acquisition board's UP, Timebase,
-AM/AM2, FPGA and front-end blocks. Shared
-I2C appears explicitly in the acquisition
-overview, consistent with the user's
-ADC -> front EEPROM I2C -> probe-control I2C
-description. **No copied proprietary schematic
-files in public repo; derived observations in
-`docs/pci-card-acquisition-board-topology.md`.**
-The inferred BAR2/DS2433 mapping is a strong
-source/schematic correlation, not FPGA RTL proof.
-No new code change warranted.
+**LATEST ENGINEERING STATE:** Further user-verified hardware
+clarification (2026-09-29): **all five front-side ProBus
+probe sockets communicate EXCLUSIVELY over I2C, never
+SPI**. Detection uses an analog ADC identification value
+first, then front EEPROM identification and physical
+probe control over I2C. The separate SPI path is believed
+to configure internal ADCs, references etc.; exact
+SPI target assignments are unverified. The PCI
+card's `U11 DS2433` 1-Wire memory is specifically
+the **XStream licensing EEPROM** (user reports this,
+expects possible plaintext; contents/layout not yet
+verified), not merely an arbitrary board-ID
+storage and not the front I2C EEPROM. Its eight-byte
+immutable 1-Wire ROM identity and 512-byte
+license EEPROM are distinct. The original x86
+write IOCTL `0x00223088` is **not yet ported
+to x64**; existing x64 ID/read IOCTLs can
+read the device. A strictly **read-only**
+`lecdiag dallas-backup <new.bin>` helper has
+now been added to `tools/lecdiag/lecdiag.c`
+(source committed, not Windows-built/hardware-tested
+yet). It requires two matching 512-byte memory
+reads, a stable before/after ROM ID, and checks
+the persisted file; CREATE_NEW forbids backup overwrite
+and no EEPROM write IOCTL is sent. `.gitignore`
+excludes `license-backups/` and `*.ds2433.bin`.
+Keep licensing dumps private. **Do not erase the
+only installed licensing chip until a separate,
+tested restore path on a disposable DS2433
+exists.** Exact read-only commands and future
+testing gates:
+[`docs/dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
+
+Reviewed original sources `PCI Card.pdf` and
+`Overview.pdf` establish PCI-side Spartan U3,
+DS2433 U11, configuration PROM U6, J1/J2
+differential link, and distinct acquisition-board
+UP/TB/AM/AM2/FP/FE areas. Derived
+topology:
+[`docs/pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
+The original user-supplied schematic PDFs were
+not uploaded into the public repo; no driver
+change was made for this architecture correction.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -40,6 +67,57 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## New Dallas licensing and five-slot I2C facts (2026-09-29)
+
+The user explicitly corrects the architecture: the actual five
+front-facing probe connectors use **I2C exclusively**; neither
+probe EEPROM reads nor physical probe controls use SPI.
+The separate SPI networks are believed to be primarily
+used for internal ADC/reference/configuration ICs. This
+is user physical-hardware knowledge, independent of
+the source-proven host family-0/0x90 BAR1
+`SPICTL/SPIDAT/SPIDIN` helper. The full
+mapping of that helper to internal devices is
+still open. The Overview's `I2C(0:5)`
+signal range should not be equated with an
+exact socket count without a child sheet.
+
+The user's second correction is that the PCI card's
+`U11 DS2433` is the **XStream license EEPROM**.
+It has an independently readable eight-byte
+one-wire ROM ID and 512-byte memory. The
+user expects license keys may appear in plaintext;
+do not assert/print/publish actual contents
+before obtaining and examining a **private dump**.
+The DS2433 is distinct from front-probe EEPROM
+(I2C) and FPGA configuration PROM XC18V02.
+
+**Existing x64 read-only coverage:**
+`0x00223080` Dallas ID with CRC-8,
+`0x00223084` 512-byte memory read.
+Original-driver x86 `0x00223088`
+write is recovered but **not in current x64
+driver/Ioctl.c**; the CLI also previously had
+only `dallas-id` and console hex `dallas-read`.
+A strictly read-only `dallas-backup` binary
+output command has now been implemented in
+`tools/lecdiag/lecdiag.c`, source only:
+it reads ROM ID, 512-byte EEPROM image twice,
+ROM ID again, compares and persists to a
+CREATE_NEW binary path, then verifies actual
+saved bytes/EOF. No secret bytes printed,
+no write/erase. Must still compile and undergo
+first actual scope test. The `license-backups/`
+folder and `*.ds2433.bin` are now Git-ignored.
+Backup instructions, distinct ROM/memory roles,
+and future guarded spare-chip write tests:
+[`docs/dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
+**Never test erase/restore first on the only
+working XStream-license chip**: a full dump
+does not by itself validate the unimplemented
+writer or recovery procedure. Keep scope CPU
+and DMA constraints as before.
 
 ## New primary hardware sources: supplied PCI schematic and acquisition top level
 
