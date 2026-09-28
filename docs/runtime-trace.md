@@ -3029,3 +3029,84 @@ disconnect/reconnect, with no Degauss/Auto Zero. Record the displayed
 state and manual relative action times. Continue <=5% CPU and
 preserve stable acquisition/PCI/DMA; never synthesize pending bits.
 See `docs/probus-calibration-ab-comparison.md` for the full A/B.
+
+
+## Trace 002051 (2026-09-29): user-visible jaw unlock IS recognized
+
+**Correction of interpretation:** The user explicitly confirms XStream
+displays an unlocked-clamp warning when AP015 is opened, explaining
+that the measurement may be inaccurate. It was incorrect to conclude
+from earlier `233125` and `235314` zero captured pending-0x0200
+events that XStream did not recognize jaw changes. Missing an event
+in those particular kernel IOCTL snapshots is not a user-interface
+observation. The new real-scope
+`xstream_trace_20260929_002051.jsonl` captures genuine jaw-open
+and jaw-closed status events under the same corrected
+post-`3490709` 85FB serializer.
+
+Quantities: 31,200 captured IOCTL records in sequence 1..35955,
+58.3684694-second duration, 32 trace-snapshot gaps omitting
+4,755 entries, last gap ends ~23.382490 s. All four command
+notifications below occur AFTER that gap. No captured NTSTATUS
+failure; 23,896 CFDC2110 and 5,839 CFDC2138 calls. All DMA
+outputs return requested DWORD from input byte offset 11;
+last transfer at ~58.367987 s, 1,024/1,024.
+
+Standalone 85FB/0x01: 1,292; software enable `0x02BF`;
+pending `0x0080` x 1,287, `0x0200` x 3, `0x0280` x 1,
+`0x0000` x 1. Genuine 0x0200-containing events with matched
+family-0/0x88 and family-1/0x82:
+
+```text
+t=24.623  status seq 14888 pending 0200; ack seq 14889 mask 0200;
+          0x82 seq 14891 actual raw length 0006,
+          raw 000012005800 = state WORD 0058 (jaw opened).
+          0x4A 47 12 seq 14913 -> ...02000000FFFF;
+          0x4A status seq 14916 -> ...F700.
+
+t=35.038  status seq 21435 pending 0280; ack seq 21436 mask 0280;
+          intermediate status seq 21442 pending 0000, ack seq 21443;
+          0x82 seq 21448 raw 00001200FE03 = state WORD 03FE.
+
+t=37.458  status seq 22833 pending 0200; ack seq 22834 mask 0200;
+          0x82 seq 22843 raw 000012005700 = state WORD 0057;
+          family-0/1 0x4A AP015 re-identification
+          seq 22877 / 22878, Information=270.
+
+t=49.861  status seq 30553 pending 0200; ack seq 30554 mask 0200;
+          0x82 seq 30563 raw 00001200A700 = state WORD 00A7
+          (jaw closed).
+          0x4A 47 12 seq 30580 -> ...02000000FFFF;
+          0x4A status seq 30581 -> ...F300.
+```
+
+Every new family-1/0x82 output has header raw length `0x0006`
+and 0xFF unused bytes, rather than the pre-`3490709` fixed
+capacity/zero padding. Startup metadata seq 506 and post-reconnect
+seq 22878 have identical captured 128-byte AP015 prefixes,
+both with Information=270. These are physical/firmware event
+correlations, not independent clock timestamps of each hand action.
+The 0x03FE/0x0057 words may encode a state different from
+the earlier 0x03FF/0x0058 observations, but their bits are not
+yet statically decoded.
+
+**New reliable functional correlation** with user report and older
+pre-formatter trace `231656`:
+
+```text
+open/unlocked : family-1/0x82 0x0058 -> family-1/0x4A F7
+closed        : family-1/0x82 0x00A7 -> family-1/0x4A F3
+```
+
+The final status words differ by bit `0x04`; it is a plausible
+mechanical-status indicator, but do not assert the vendor's field
+definition without further raw-protocol reconstruction.
+The user-visible XStream warning corroborates the probe jaw
+recognition. **There is no demonstrated general regression in
+jaw-state handling, HWInt or DMA from the raw 85FB formatter patch.**
+Previous 233125/235314 remain valid observations of absent
+capture-visible 0x0200 only, not proof of an invisible UI warning.
+No new driver change or another generic hotplug-only test is
+indicated by this trace. Full context and historical correction:
+`docs/probus-calibration-ab-comparison.md`,
+`docs/next-chat-handoff.md`.
