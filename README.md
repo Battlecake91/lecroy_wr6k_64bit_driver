@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [ProBus HWInt / hotplug, 2026-09-28](docs/next-chat-handoff.md). The latest driver change (commit `70716ba`) still awaits its first compile/hardware test. Do not confuse older successful waveform traces with verification of the new interrupt change.
+**Current engineering handoff:** [Post-70716ba AP015 hotplug validation, 2026-09-28](docs/next-chat-handoff.md). The targeted INTEN-0x08 / INTST-0x08 / HWInt patch has now passed its first reported real-hardware unplug/replug XStream run (trace `230614`); the remaining probe special-function response discrepancy is tracked separately.
 
 ## Current state
 
@@ -294,11 +294,13 @@ byte. Degauss and Auto Zero were invoked in this session and generate 0x4A
 traffic, although one probe-control reply differs from legacy and needs
 separate result verification.
 
-The remaining confirmed recognition fault is **hotplug into an already
-running x64 XStream session**. Legacy reports a command-status pending 0x0200
-on insertion, which neither x64 capture currently reproduces; startup
-recognition does not depend on it. No synthetic probe-presence event or
-speculative DMA change has been introduced.
+Historical pre-patch x64 captures did not report pending 0x0200 for AP015
+hotplug. This specific recognition fault was addressed in commit `70716ba`
+and its first real-hardware unplug/replug validation (trace `230614`)
+now observes two genuine pending-0x0200 transitions, corresponding opcode
+0x88 acknowledgements, family-1/0x82 handshakes and successful AP015
+reidentification by opcode 0x4A. No synthetic probe presence or
+speculative DMA changes were needed.
 
 
 ### Quantified replacement-driver interface coverage
@@ -315,12 +317,14 @@ remain limited to observed ABI variants.
 
 Estimated normal oscilloscope usability is around 90%; broader
 original-driver compatibility is around 75-80%. Remaining observed issues
-include ProBus hotplug and a probe-control response discrepancy, while some
-rare service/diagnostic paths remain unimplemented or untested. See
+include a separate probe-control response discrepancy, while some
+rare service/diagnostic paths remain unimplemented or untested. The
+previously missing AP015 hotplug notifications were verified in trace
+`230614`. See
 `docs/ioctl-map.md` for the exact remaining original IOCTL values.
 
 
-### ProBus hotplug interrupt restoration pending hardware test
+### ProBus HWInt hotplug restoration: first hardware validation passed
 
 A third controlled ProBus trace,
 `xstream_trace_20260928_213834.jsonl`, confirmed that probe removal is not
@@ -333,5 +337,14 @@ latches its low 16-bit value against the enabled command mask, and wakes
 the status event. Legacy firmware receive setup also enables INTEN bit
 `0x08`, which the synchronous x64 polling implementation had omitted.
 These recovered behaviors are restored in the replacement driver without
-inventing probe-state bits or changing waveform DMA. The hotplug change
-still requires a focused real-hardware regression test.
+inventing probe-state bits or changing waveform DMA. The **first post-patch
+real-hardware test** `xstream_trace_20260928_230614.jsonl` captured 19,288
+IOCTLs, no observed failing NTSTATUS results, two spontaneous standalone
+pending-0x0200 events (seq 14951 and 16639), their 0x88 mask-0x0200
+acknowledgements, two family-1/0x82 handshakes, and re-established AP015
+metadata through family-0/1 opcode 0x4A after reinsertion. All 3,633 captured
+CFDC2138 operations return the requested byte count; waveform DMA continues
+after hotplug. XStream visibly recognized probe changes according to the
+user. The trace has snapshot gaps and does not independently contain
+CPU-usage, ISR/DPC counters or a screen recording. Degauss / Auto Zero reply
+parity is a separate, still-open protocol question.
