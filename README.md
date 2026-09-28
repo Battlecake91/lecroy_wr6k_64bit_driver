@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [Post-70716ba AP015 hotplug validation, 2026-09-28](docs/next-chat-handoff.md). The targeted INTEN-0x08 / INTST-0x08 / HWInt patch has now passed its first reported real-hardware unplug/replug XStream run (trace `230614`); the remaining probe special-function response discrepancy is tracked separately.
+**Current engineering handoff:** [AP015 hotplug and response-format follow-up, 2026-09-28](docs/next-chat-handoff.md). Original HWInt/0x0200 hotplug recognition passed real-hardware tests (traces `230614` and `231656`). A separate source-proven **host-side raw 85FB reply length/FF-padding fix** in commit `3490709`, prompted by the Degauss/Auto Zero trace, is **not yet compiled or hardware-tested**.
 
 ## Current state
 
@@ -348,3 +348,38 @@ after hotplug. XStream visibly recognized probe changes according to the
 user. The trace has snapshot gaps and does not independently contain
 CPU-usage, ISR/DPC counters or a screen recording. Degauss / Auto Zero reply
 parity is a separate, still-open protocol question.
+
+
+### AP015 Degauss / Auto Zero and jaw-switch trace (231656)
+
+After the now-verified HWInt restoration, the user's next real-scope
+session exercised Degauss with automatic Auto Zero and the jaw sequence
+open / closed / open / closed-locked. The 68.178-second JSONL contains
+35,458 captured IOCTLs with no observed failing NTSTATUS, 6,701
+CFDC2138 calls with byte-exact return counts, and five spontaneous
+ProBus status notifications containing bit `0x0200`. All five are
+acknowledged and followed by family-1/0x82. Its extracted status values
+alternate `0x0058` (correlated with open) and `0x00A7`
+(correlated with closed); the first opening simultaneously reports
+pending `0x0280`. The capture has snapshot gaps and has no independent
+CPU or screen recording.
+
+The original x86 and this pre-fix x64 trace show byte-identical
+family-0/0x4A calibration requests but different 85FB reply framing:
+legacy `...02000000FFFF` versus x64 `...040000000000`.
+In this x64 run Degauss `47 00` is issued five times and `47 12`
+(Auto Zero-associated request) appears in five bursts of five calls,
+including after the mechanical state changes. This repetition does
+not establish successful physical calibration.
+
+A renewed static read of original `FUN_000167F4` identified a concrete
+host-side serialization difference: it pre-fills the solicited response
+with 0xFF and writes the actual received byte count into header WORD+4,
+rather than advertising the requested capacity and leaving zero padding
+as the replacement previously did. This also affects short family-1/0x82
+reply formatting. A narrowly scoped correction in `driver/Ioctl.c`
+(commit `3490709`) changes only the raw 85FB result packaging, retaining
+the existing explicit opcode-0x99 override. No interrupt, transport,
+PCI or DMA behavior has changed. **The corrected build requires its first
+hardware regression** before Degauss/Auto Zero parity can be declared.
+See `docs/probus-calibration-ab-comparison.md` and the current handoff.
