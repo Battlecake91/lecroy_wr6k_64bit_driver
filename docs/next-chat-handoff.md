@@ -1,20 +1,22 @@
-# Active handoff: HWInt validated; raw 85FB fixed; recheck AP015 jaw events (2026-09-28)
+# Active handoff: 85FB parity validated; two no-jaw-event runs; isolate physical hotplug (2026-09-28)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** Original HWInt/AP015 event restoration
-`70716ba` passed physical unplug/replug (`230614`) and clamp transitions
-(`231656`). Host-only raw 85FB serializer fix `3490709` has now been
-**real-hardware exercised** in `xstream_trace_20260928_233125.jsonl`:
-the `47 00` reply is byte-identical to original x86, and the old fivefold
-retry burst is absent. **However, this new run has zero pending-0x0200
-events and zero 0x82 exchanges despite reported jaw open/close actions.**
-Do not assert it proves a driver regression or that all ProBus states
-are working: the next task is a calibrated-vs-uncalibrated jaw-only A/B
-with recorded user-visible transitions, without speculative PCI/DMA/IRQ changes.
+**LATEST ENGINEERING STATE:** Hardware patch `70716ba` restored
+authentic AP015 `0x0200` events in `230614` (physical unplug/replug)
+and `231656` (Degauss/jaw state). Host-only raw 85FB formatter fix
+`3490709` now reproduces original `47 00` and startup `0x99`
+response padding in actual scope captures. However, **both post-formatter
+runs `233125` and `235314` have zero `0x0200` events and zero
+family-1/0x82 despite physical jaw movements**. Crucially, `235314`
+followed a deliberate jaw open/close BEFORE Degauss, then manual Auto
+Zero and another open/close: the absence is present in both phases.
+Next discriminator is ONE physical AP015 unplug/replug on unchanged current
+driver, without calibration/jaw movements. Do not change IRQ, PCI or DMA
+on correlation alone.
 
 ## Current verified status
 
@@ -233,6 +235,58 @@ patch interrupts or hardware registers on assumption alone.
 Detailed A/B evidence:
 `docs/probus-calibration-ab-comparison.md` and `docs/runtime-trace.md`.
 
+## Second post-formatter scope capture: jaw-state before/after calibration (235314)
+
+The user confirmed performing exactly the prior handoff's controlled
+protocol: with AP015 connected and XStream running, **open/hold/close/hold
+BEFORE any Degauss or Auto Zero**, then Degauss and manually trigger Auto
+Zero, then repeat open/hold/close/hold, and close the session. File
+`xstream_trace_20260928_235314.jsonl` (user upload, **not** public).
+Exact hand-action seconds and independent UI outcome were not supplied.
+
+Measured 72.009226 seconds, 36,366 captured IOCTLs (seq 1..42227),
+36 trace-snapshot gaps / 5,861 omitted entries; the last gap ends at
+t~48.480 s. Zero recorded failing NTSTATUS. 27,834 CFDC2110,
+6,818 CFDC2138, every DMA output DWORD equals its requested byte count
+(input DWORD at offset 11), and transfers continue to t~72.008570 s.
+
+**All 1,517 standalone 85FB/0x01 replies contain software enable
+0x02BF and pending ONLY 0x0080.** No 0x0200 / 0x0280, no family-1/0x82,
+and no family-0/0x88 with ack mask 0x0200.
+
+| Deliberate protocol phase (time relative to first IOCTL) | Status reads | Containing pending 0x0200 | Recorded DMA replies |
+|---|---:|---:|---:|
+| AP015 identified, **before Degauss** (~17.000..40.156 s) | **622** | **0** | 3,207 |
+| Degauss to manually invoked Auto Zero (~40.156..54.337 s) | **381** | **0** | 1,622 |
+| After manual Auto Zero (~54.337..72.009 s) | **514** | **0** | 1,989 |
+| Gap-free ending (~48.480..72.009 s; overlaps two rows above) | **648** | **0** | 2,569 |
+
+First user-action-correlated family-0/0x4A `...47 00`: seq
+**23386**, t~40.155959, response
+`0000000000000000000002000000FFFF`, follow-up 0x4A status
+**F3** at seq 23388. Second `...47 00`: seq **31835**,
+t~54.336670, identical **byte-for-byte original-x86-matching**
+response, follow-up status again F3 at seq 31836. They are ~14.181 s
+apart; no previous five-attempt burst. The first 128 captured bytes
+of startup family-1/0x99 also now **match original x86 including all
+0xFF tail bytes**; pre-formatter x64 had wrongly zero-filled them.
+AP015 is detected at startup family-1/0x4A seq 508,
+Information=270; its captured metadata prefix matches `231656`.
+No `47 12` packet in this manual procedure.
+
+**Inference:** missing jaw notifications are not *necessarily*
+caused by the Degauss/Auto Zero action: the no-event behavior was
+already present before any calibration, unlike earlier pre-formatter
+`231656` which reported genuine 0x0200 events. Two consecutive runs
+after `3490709` show the difference; this temporal correlation does
+not prove that FF padding or actual-response-length directly disables
+hardware. Software command-enable mask 0x02BF must NOT be confused
+with hardware BAR0 INTEN offset 0x084 and its receive-interrupt bit
+0x08. The IOCTL JSONL does not expose physical INTEN, INTST, HWInt,
+raw ISR/DPC rate, or UI jaw-state pixels. See the full A/B table in
+`docs/probus-calibration-ab-comparison.md` and exact runtime events
+in `docs/runtime-trace.md`.
+
 ## Recovered and now exercised original path
 
 - `FUN_0001619A -> FUN_000160A8(1)` enables BAR0 INTEN bit `0x08`
@@ -285,40 +339,48 @@ in `docs/probus-calibration-ab-comparison.md`. The separate old Ch2
 calibration traces are optional: each newly visited V/div setting calibrates
 once and then caches, so this is not an active bug.
 
-## Immediate next task: isolate jaw notification before/after calibration
+## Immediate next task: one physical AP015 hotplug with current driver
 
-**Keep current driver code unchanged**. The FF/actual-length response
-correction is now observed working for 47 00, but the absent 0x0200
-notifications on new trace 233125 require one discriminating comparison.
-Use the ordinary elevated scope desktop helper from the workflow below
-(it pulls current main and builds/reloads the Debug driver):
+Do not make another code change first. We now know that a deliberate
+jaw pair before calibration and another afterward both yielded zero
+notifications on the corrected host formatter. Distinguish a **general
+missing 0x0200/INTST-0x08 path** from a probe jaw-specific event:
 
-1. Attach AP015 before XStream. Wait for AP015 metadata and normal
-   waveform. Keep all other controls steady.
-2. **Before any Degauss / Auto Zero**, open AP015 once, hold open for
-   at least five seconds, close it once, hold closed for at least five
-   seconds. Record rough elapsed seconds and **whether XStream visibly
-   recognizes each jaw state**. Watch CPU <=5% and abort for abnormal
-   acquisition.
-3. If phase 2 is stable, perform Degauss, then trigger Auto Zero
-   manually as in run 233125. Note displayed/physical result.
-4. If still stable, perform one further open/close pair, with the same
-   intervals, and close XStream normally.
-5. Parse the JSONL for standalone enabled/pending WORDs (expect enabled
-   0x02BF), spontaneous 0x0200/0x0280, corresponding family-0/0x88
-   acknowledgements, family-1/0x82 actual-length/FF-tail/state words,
-   family-0/1 opcode-0x4A, 47 00 and possible 47 12, follow-up F2/F3,
-   CFDC2138 requested-vs-returned byte counts, NTSTATUS and snapshot
-   omissions. Correlate each result with the separately noted
-   mechanical action times.
+1. Start a short normal XStream Debug trace using the unchanged scope
+   helper below, with AP015 **preconnected**. Wait for correct AP015
+   metadata and waveform. Do not touch Degauss or Auto Zero.
+2. **Physically unplug AP015 once**, leave disconnected for at least
+   five seconds, and record whether XStream visually reports removal
+   and the approximate elapsed seconds.
+3. **Physically reconnect AP015 once**, hold at least five seconds,
+   note whether XStream reports insertion/identifies AP015 and whether
+   the waveform is visible; close XStream normally.
+4. Preserve <=5% CPU; abort if acquisition degrades. Inspect
+   standalone software-enabled 0x02BF vs pending 0x0200, acks
+   family-0/0x88 mask 0x0200, family-1/0x82 and post-insertion
+   family-0/1 opcode 0x4A metadata; verify DMA returned sizes and
+   snapshot omissions. Compare to **pre-formatter successful physical
+   hotplug baseline `230614`**.
 
-This baseline-before-calibration contrast distinguishes an absent
-interrupt from a calibration-dependent probe state. If event 0x0200
-is absent **before** calibration too, inspect passive established
-interrupt sources/INTEN and known-good `231656` directly before any
-proposed code changes. Do not synthesize 0x0200, alter PCI/DMA or exceed
-the established <=5% CPU limit. METHOD_NEITHER `CFDD219F` and
-unobserved multichannel CFDC2138 remain gated.
+Interpretation:
+- Hotplug `0x0200` present now, but jaw still absent in `235314`:
+  hardware notification broadly works; investigate AP015 mechanical
+  sensor/firmware mode separately.
+- Hotplug `0x0200` absent now too: investigate actual physical BAR0
+  INTEN `0x084`, its 0x08 bit, BAR0 INTST `0x080` and BAR1 HWInt
+  `0x410` by **bounded passive diagnostics**. Do not infer hardware
+  INTEN from the standalone 85FB software-enable word 0x02BF. Do not
+  write speculative register values or fabricate command-pending bits.
+  The existing LecCommitLegacyInterruptMask path commits full DWORD
+  updates from InterruptEnableShadow; any lost-mask/concurrency theory
+  requires evidence and review of existing serialization.
+- Successful IOCTL/DMA completion alone is never visual acquisition
+  proof. User-visible jaw/hotplug state and relative hand timings
+  should accompany the next JSONL.
+
+No reverted driver or additional interrupt patch is requested at this
+stage. Keep original physical IRQ/CLRIRQ, normal PCI/MAM/DMA, <4-GiB
+descriptor safety and gated unsupported IOCTLs intact.
 
 ## Reusable scope workflow
 
