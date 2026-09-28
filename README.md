@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [AP015 corrected reply format and jaw-only notification isolation, 2026-09-29](docs/next-chat-handoff.md). Authentic HWInt/0x0200 notifications work in both earlier traces `230614`/`231656` and crucially in **post-85FB-fix repeated physical hotplug trace `001152`**, which reports twelve real 0x0200-bearing notifications, matching 0x88/0x82 and three correct post-reinsertion AP015 metadata reads. Host serializer patch `3490709` is now hardware-verified for short 0x82 raw length/FF padding, `47 00`, `47 12` and startup `0x99`; the old 47 00/47 12 fivefold retries are absent. Earlier post-fix **jaw-only** sessions `233125` and `235314` still lack spontaneous events, so the next test isolates jaw-only motion before/after one normal physical reconnect without calibration. No generic interrupt or PCI/DMA change is warranted.
+**Current engineering handoff:** [Corrected AP015 jaw-unlock recognition and 85FB parity, 2026-09-29](docs/next-chat-handoff.md). The user explicitly reports XStream correctly warns that an opened AP015 is not locked and measurement accuracy may be affected. Our earlier inference that zero captured pending-0x0200 in particular jaw-only traces meant *failed XStream recognition* was incorrect. New unchanged-driver trace `xstream_trace_20260929_002051.jsonl` directly confirms genuine jaw-state events: open-correlated family-1/0x82 `0x0058` followed by 0x4A status **F7**, and closed-correlated `0x00A7` followed by **F3**, reproducing the earlier `231656` pattern. Physical hotplug and reply-format corrections remain hardware validated; **no demonstrated general jaw, HWInt, PCI or DMA regression** and no speculative code changes.
 
 ## Current state
 
@@ -508,12 +508,57 @@ firmware status queries still return `F7`; physical Auto Zero
 outcome and the historical F2/F7 status-bit distinction remain open.
 No additional driver code was changed for these findings.
 
-The earlier absence of *jaw-only* spontaneous 0x0200 notifications
-in `233125` and `235314` is consequently a separate,
-not-yet-explained behavior. The next discriminating experiment is
-one mechanical jaw open/hold/close/hold pair before and after **one**
-correct physical AP015 reidentification, without Degauss or Auto
-Zero, noting XStream's visual response and elapsed action times.
-Do not roll back the verified raw formatter or alter generic IRQ,
-PCI, DMA and below-4-GiB safety based on unproven causality.
+Earlier `233125` and `235314` captured no standalone pending
+0x0200 for reported jaw-only movements; **that does not mean XStream
+failed to recognize the jaw opening.** The user confirms that the
+application explicitly warns on an unlocked jaw. The subsequent
+trace `002051` also captures actual jaw-state 0x0200/0x82
+transitions under the same patched driver (see below). The earlier
+assistant inference of a failed UI recognition path is withdrawn;
+do not roll back the verified formatter or change IRQ, PCI or DMA
+based on a problem that has not been shown.
 See `docs/probus-calibration-ab-comparison.md` and the live handoff.
+
+
+### 2026-09-29 00:20: XStream's opened-jaw warning is functioning
+
+The user explicitly reports that XStream **does** recognize the
+opened AP015 and warns that the jaw is not locked and measurement
+accuracy may be affected. The earlier conclusion "zero captured
+pending 0x0200 in runs 233125/235314 means jaw recognition no
+longer works" was invalid. Those captures remain valid as raw
+trace observations only, not proof of absent UI state or warning.
+
+The newly uploaded `xstream_trace_20260929_002051.jsonl`
+uses the same post-`3490709` driver without another source
+change and directly records four genuine pending-0x0200-bearing
+notifications at ~24.623, ~35.038, ~37.458 and ~49.861 seconds,
+all with normal family-0/0x88 acknowledgement and family-1/0x82.
+Observed status WORDs are `0x0058`, `0x03FE`, `0x0057`
+and `0x00A7`. The ~24.623-s `0x0058` event is followed by
+family-0/0x4A `47 12` with original-x86-matching reply
+`...02000000FFFF`, then family-1/0x4A status **F7**.
+The ~49.861-s `0x00A7` event similarly has one `47 12`
+and follow-up **F3**. The empirical
+**opened/unlocked 0x0058 -> F7; closed 0x00A7 -> F3**
+pairing already occurred twice in pre-formatter `231656`.
+F7/F3 differ in bit `0x04`, but the formal firmware field
+definition remains unknown. The intermediate `0x03FE` and
+`0x0057` transitions precede a normal AP015 metadata
+reidentification; no exact vendor-defined semantics are yet
+asserted.
+
+The new capture contains 31,200 observed IOCTLs, zero observed
+NTSTATUS failures, 5,839 CFDC2138 operations with zero
+requested-vs-returned byte-count mismatch, and 1,292 standalone
+status reads (software enabled 0x02BF; pending 0x0080 x 1,287,
+0x0200 x 3, 0x0280 x 1, zero x 1).
+Its final trace-snapshot gap ends at ~23.382 seconds, before
+all four actual notifications. Family-1/0x82 payloads preserve
+actual length `0x0006` and 0xFF padding, confirming the
+working serializer. No driver changes are indicated by this
+observation; optional further work is a source-based decoding
+of the correlated probe/jaw status bits, not another generic
+hotplug regression exercise. Detailed A/B evidence is in
+`docs/probus-calibration-ab-comparison.md` and
+`docs/runtime-trace.md`.
