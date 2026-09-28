@@ -353,3 +353,38 @@ response-fetch packet. That interrupt-enable bit persists. These two
 operations are critical for unsolicited firmware notifications such as
 the observed AP015 hotplug mask `0x0200`. They do not require a new probe
 polling loop.
+
+
+## Probe front-end ADC/I2C architecture is distinct from BAR1 SPI register map (2026-09-29)
+
+The user confirms that actual **ProBus electrical detection**
+is performed through an ADC identification value first. After
+that classification, the front-panel EEPROM is read through
+**I2C**, and physical probe control also occurs through I2C.
+The exact ADC channel/value, I2C pins/master/address, EEPROM
+contents and firmware bridge are not recovered by the original
+Windows-driver register map in this file.
+
+This driver register map contains the separately verified
+**BAR1 SPI interface** (SPICTL +0x0A0, SPIDAT +0x0A4,
+SPIDIN +0x0A8), used by family-0 opcode `0x90` to emit
+host-side serial packets (including selector-0x0E/144-bit
+requests). Do **not** infer that SPICTL is the electrical
+bus interface of the actual ProBus probe, or that it is
+a verified adapter for the front-panel I2C bus; no such
+wiring or firmware translation has yet been shown.
+
+Similarly, BAR0 INTST/INTEN bit `0x08`, BAR1 HWInt
+`+0x410` and host pending WORD bit `0x0200`
+are the recovered **asynchronous host notification
+transport**, not the physical ADC discriminator or an
+individual I2C operation. The high-level `0x4A` reply
+can return AP015 metadata, but no raw I2C/EEPROM read is
+visible at this layer.
+
+See the canonical user-supplied hardware architecture,
+known host boundary and open electrical mapping questions:
+[`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+This information adds an interpretation boundary only and
+does not alter any established BAR address or working driver
+implementation.
