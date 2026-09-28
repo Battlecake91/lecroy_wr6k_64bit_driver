@@ -59,6 +59,57 @@ via BAR0 INTST `0x08` / BAR1 HWInt `0x410`; `0x0200` is the
 host notification path, not necessarily the probe's physical
 sensor or I2C transfer itself.
 
+## Additional PCB evidence from supplied PCI and acquisition-board schematics
+
+Two user-supplied one-page PDFs were inspected as vector/rendered drawings
+(`PCI Card.pdf`, `Overview.pdf`). The latter is a
+LeCroy acquisition-board **top-level** diagram, *not* the detailed
+front-EEPROM circuit. It does explicitly show a named
+`I2C(0:5)` bus in the `UP Control (UP)` /
+channel-front-end region, while separately naming
+`SPI_IO(0:40)` and `UC_SPI(0:4)`. This aligns
+with the user's ADC-first, I2C-second probe interface
+information without proving a particular EEPROM address
+or exact SDA/SCL mapping.
+
+**The PCI interface card is a distinct PCB.** Its
+`U3 XC2S200E` Spartan-IIE FPGA connects to
+the conventional PCI-side signal groups and two distinct
+40-pin receive/transmit link headers, `J1/J2`.
+Critically, it also contains a **`U11 DS2433` 1-Wire
+ID chip** wired to the FPGA via net `ID_DATA`, and
+a separate **`U6 XC18V02` FPGA configuration PROM**.
+
+Thus we now have **three functionally different memories**:
+
+1. PCI-card `U11 DS2433`: **Dallas 1-Wire ID/memory**,
+   strongly consistent with original-driver `BAR2+0x040
+   ONEWIRE` and the GET/READ/WRITE Dallas IOCTLs.
+   The FPGA-internal BAR-to-`ID_DATA` RTL is not
+   shown in the schematic and must not be invented.
+2. PCI-card `U6 XC18V02`: **Spartan configuration
+   PROM**, not probe EEPROM and not Dallas ID storage.
+3. Front-panel **I2C EEPROM** in the probe-identification
+   chain, reached **after** the analog ADC indicates
+   ProBus class (user-provided hardware information).
+   This individual EEPROM, its address and physical
+   connection are not drawn/labeled in the top-level
+   board Overview.
+
+The recovered Windows-driver opcode `0x90` local
+BAR1 `SPICTL/SPIDAT/SPIDIN` path and the separate
+acquisition-board `SPI_IO` names **must not be
+mistaken for** the physical AP015 I2C bus. No
+one-to-one host-link-command-to-I2C transaction
+mapping is supplied by either PDF. The PCI card's
+RX/TX headers also demonstrate a distinct hardware
+link layer between PC/PCI and the acquisition hardware;
+the exact packet framing is not decoded from this schematic.
+
+Full derived schematic/driver reconciliation:
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
+The private original PDFs were not copied into the public repository.
+
 ## Relevance to recent AP015 tests
 
 - `xstream_trace_20260929_001152.jsonl`: after the first physical
