@@ -2577,3 +2577,19 @@ selects alternate IOCTL/driver paths elsewhere in the DLL, including a
 
 The installed DLL was analyzed locally only and must not be added to the public
 repository.
+
+
+## Open regression: excessive calibration on V/div changes
+
+After the main waveform and control paths became functional, the user observed
+that the x64 replacement causes XStream to enter `Calibrating...`
+disproportionately often, nearly every time V/div is changed. The original
+legacy driver on the same instrument does not behave this way.
+
+This is now a priority compatibility regression. The existing broad regression
+trace contains multiple calibration bursts, but because user actions were not
+timestamped it cannot prove which exact V/div transition caused each burst.
+
+The next useful capture is a controlled vertical-scale-only A/B sequence on
+x64 and legacy. No driver changes should be made before that discriminator is
+available.
