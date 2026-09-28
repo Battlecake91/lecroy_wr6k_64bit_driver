@@ -4,6 +4,77 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**NEW DECISIVE WRITE FAILURE (trace
+`xstream_trace_20260929_011858.jsonl`,
+2026-09-29, uploaded private):
+User deleted one XStream key on current
+x64 replacement, but it still appeared
+after restart. In the 608-entry
+gap-free 63.0224566-s IOCTL capture,
+the sole NTSTATUS failure is genuine
+XStream WOW64
+`WRITE_DALLAS_MEMORY`
+`0x00223088`, seq **522**,
+t~57.303140 s, input **512**,
+output **0**, Information **0**,
+returned **`0xC0000010` /
+STATUS_INVALID_DEVICE_REQUEST**.
+Current x64 `driver/Ioctl.c` has
+only ID `0x80` and read `0x84`
+Dallas handlers and defaults to
+this unsupported status for
+missing WRITE `0x88`. XStream
+immediately requests another
+512-byte READ, seq **523**,
+SUCCESS; captured first 128
+READ bytes match baseline
+seq **3**. The intended
+full-512-byte write's captured
+256-byte preview has 93 differing
+offsets within common first 128
+bytes vs baseline READ, pages
+0..3. No raw memory/key values
+in public docs. This is the
+direct explanation for the
+nonpersistent XStream deletion:
+NOT an observed DS2433 physical
+write failure, since the driver
+rejected the request before
+writing. Stop repeated x64 UI
+delete tests until the writer
+is source-recovered/implemented.
+
+**Confidentiality:** This uploaded
+legacy-format JSONL contains real
+or candidate license content in
+READ output and WRITE input
+hex previews! Never commit,
+reshare or quote its hex; treat
+raw kernel debugger logs alike.
+Updated `tools/lecdiag/lecdiag.c`
+to redact the three Dallas
+ROM/READ/WRITE payload directions
+from FUTURE rebuilt JSONL
+exports while retaining IDs,
+length/status and setting
+`sensitive_payload_redacted`.
+Original x86 write handler
+VA `0x11F54` targets
+`11f54, asm:11f54,
+xref:11f54` now added to
+`ghidra_scripts/targets.txt`
+for the PC Ghidra export via
+`scripts/run-ghidra-analysis.ps1`.
+Review true original 32-byte
+scratchpad/copy/readback sequence
+before adding any x64 write; do
+NOT return fabricated success.
+No native kernel writer code
+was modified in this step.
+Full details:
+`docs/dallas-license-memory-test-plan.md`
+and
+`docs/next-chat-handoff.md`.
 **Latest private Dallas structural result (2026-09-29):**
 User ran `scripts/inspect-dallas-image.ps1` on one
 of two previously matching 512-byte backups.
@@ -4685,3 +4756,123 @@ Detailed plan:
 No source/driver/hardware
 write was performed in this
 exchange.
+
+
+## 2026-09-29 01:18: XStream Dallas DELETE reached missing native WRITE dispatch
+
+**New real-hardware forensic result:** the
+user invoked Delete for a known XStream
+license on the x64 replacement and
+reported that it remained listed after
+XStream restart. They uploaded
+`xstream_trace_20260929_011858.jsonl`
+(**PRIVATE: the trace contains
+license-bearing hex previews**).
+608 IOCTL entries seq 1..608, no
+omissions, duration 63.0224566 s.
+Initial GET_DALLAS_ID seq 1,
+READ_DALLAS_MEMORY seq 3
+(input0/output512/info512), both
+SUCCESS. At seq 522 t57.303140 s
+XStream WOW64 sends one
+`0x00223088 WRITE_DALLAS_MEMORY`
+with 512 input bytes and zero
+output. The native x64 driver
+returns `0xC0000010
+STATUS_INVALID_DEVICE_REQUEST`,
+Information=0: **the only non-success
+in the entire capture**. Immediate
+READ_DALLAS_MEMORY seq 523
+(t57.824097 s) succeeds 512/
+512; its first 128 preview
+bytes are identical to seq 3.
+Final GET_DALLAS_ID seq 607
+also succeeds. A partial private
+offset-only comparison between
+initial READ and the intended
+write input shows 93 changed
+positions in their common
+first 128 preview bytes
+(EEPROM pages 0..3); full
+write preview is 256/512,
+so the complete planned
+application image is NOT known
+from JSONL. Never publish/quote
+the preview itself.
+
+**Root cause proven:** original x86
+has writer 0x00223088 at Ghidra
+VA 0x11F54. Replacement
+`driver/Ioctl.c` initializes
+status to STATUS_INVALID_DEVICE_REQUEST,
+does not define/dispatch the
+writer, and consequently
+returns that same exact status.
+XStream is already implementing
+the whole-image update; we
+are missing the compatible
+kernel DS2433 write ABI.
+The persisted key is therefore
+unsurprising. Do not diagnose
+EEPROM failure, nonexistent free
+slot, or a defective XStream UI
+from this failed call.
+
+**Next source-backed step:**
+Export and inspect original x86
+0x11F54 handler: added
+`11f54`, `asm:11f54`,
+`xref:11f54` to persistent
+`ghidra_scripts/targets.txt`.
+Run PC-side
+`scripts/run-ghidra-analysis.ps1`
+and retrieve export from GitHub;
+recover original scratchpad
+WRITE/COPY, 32-byte chunking,
+readback verification, power/
+timing and retry semantics.
+Only then implement gated
+writer with verified backup/
+recovery route on a disposable
+spare DS2433 before live
+licensed-card mutation.
+NO synthetic STATUS_SUCCESS
+or dangerous raw overwrite.
+
+**Trace hardening in user-mode
+diagnostic EXE:** modified
+`write_trace_entry_jsonl` in
+`tools/lecdiag/lecdiag.c`
+to suppress input hex for
+WRITE_DALLAS_MEMORY 0x88,
+output hex for READ_DALLAS_MEMORY
+0x84 and GET_DALLAS_ID 0x80.
+Future rebuilt `lecdiag`
+JSONL includes
+`sensitive_payload_redacted:true`
+for these entries, preserves
+numeric status/length/timing;
+old trace/driver ring/KD logs
+stay sensitive. Rebuild lecdiag
+before any other license-UI
+trace if exporting JSONL.
+
+**Missing PowerShell script:** user
+tried `inspect-dallas-image.ps1`
+and got CommandNotFoundException.
+This is a local checkout/cwd issue,
+not evidence of EEPROM trouble:
+the file is on `main`;
+`Set-Location` to scope repo,
+`git pull --ff-only origin main`,
+then `Test-Path
+.\scripts\inspect-dallas-image.ps1`.
+An `after-delete.bin` is
+NOT automatically created
+by either XStream or trace;
+get optional fresh whole-image
+read-only backup after closing
+XStream to compare all 512.
+The dispatcher failure alone
+already proves the core bug.
+
