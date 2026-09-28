@@ -3293,3 +3293,54 @@ FUN_000160A8(1)`: global INTEN bit `0x08` is enabled before normal 85FB
 firmware reply fetch. Both steps are required for spontaneous command-status
 flags such as the AP015 hotplug bit `0x0200`; the replacement previously
 omitted them while handling normal replies by bounded synchronous polling.
+
+
+## Raw 85FB response length/padding: FUN_000167F4 (2026-09-28)
+
+The 2026-09-28 x64 AP015 Degauss/jaw trace
+`xstream_trace_20260928_231656.jsonl` exposes a repeatable discrepancy
+independent of the now-working HWInt/0x0200 path. Identical family-0/0x4A
+`...47 00` and `...47 12` requests return
+`0000000000000000000002000000FFFF` from legacy x86, but
+`00000000000000000000040000000000` from pre-fix x64. For identical
+family-1/0x82 requests, the legacy 412-byte aggregate result reports
+actual raw-response WORD `0x0006` or `0x0016` and fills the rest
+with 0xFF, while pre-fix x64 writes the record payload capacity
+`0x0190` and zero pads.
+
+The exact original implementation is in
+`ghidra_exports/selected/000167f4_FUN_000167f4.c`:
+
+- For a pending firmware reply (object byte +0x24), allocate the requested
+  result-record length and fill the **whole record with 0xFF**.
+- Call `FUN_0001619A(this, {FB,85,40,00}, 4, result+6,
+  requested_record_length-6, &actual_received)`.
+- On successful transport completion, place DWORD 0 at result+0 and
+  **actual_received** (not maximum capacity) as WORD at result+4.
+  On transport failure, set length=2 and the local protocol error word.
+- `FUN_000169B4` subsequently copies the entire caller-requested record
+  length to the combined IOCTL result. Thus top-level
+  `IoStatus.Information` is still the aggregate output capacity and
+  cannot substitute for the inner raw payload count.
+
+The previous replacement in `driver/Ioctl.c` zeroed the entire
+SystemBuffer, then advertised `recordOutput - 6` in the raw branch
+and copied only `LecTransportReceive`'s actual received bytes.
+It consequently exposed the wrong raw reply length and zero padding
+for short responses. `LecTransportReceive` already returns the true
+received byte count in its `Received` out-parameter; this does not
+require touching RX_CONTROL, BAR1, ISR, DMA or PCI.
+
+Host-only patch `34907090820a582ac360d02120316c8792d7c888` pre-fills
+**only raw-hardware 85FB output records** with 0xFF, uses the smaller of
+actual received bytes and that record's payload capacity for the header
+and copied bytes, and preserves the existing proven explicit family-1
+opcode-0x99 length override. The already-correct local responses and
+known-good full-size raw responses remain unchanged.
+
+This new patch has **not yet been compiled or tested on hardware**.
+A fresh captured `47 00`, `47 12` and `0x82` response is required to
+check that original-length/FF-padding parity is achieved and that
+XStream no longer issues the observed five-attempt bursts. The original
+data still do not prove the physical success of Degauss/Auto Zero. Do not
+reinterpret an apparently fixed IOCTL status alone as calibration proof.
