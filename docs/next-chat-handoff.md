@@ -5,49 +5,34 @@ Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** Further user-verified hardware
-clarification (2026-09-29): **all five front-side ProBus
-probe sockets communicate EXCLUSIVELY over I2C, never
-SPI**. Detection uses an analog ADC identification value
-first, then front EEPROM identification and physical
-probe control over I2C. The separate SPI path is believed
-to configure internal ADCs, references etc.; exact
-SPI target assignments are unverified. The PCI
-card's `U11 DS2433` 1-Wire memory is specifically
-the **XStream licensing EEPROM** (user reports this,
-expects possible plaintext; contents/layout not yet
-verified), not merely an arbitrary board-ID
-storage and not the front I2C EEPROM. Its eight-byte
-immutable 1-Wire ROM identity and 512-byte
-license EEPROM are distinct. The original x86
-write IOCTL `0x00223088` is **not yet ported
-to x64**; existing x64 ID/read IOCTLs can
-read the device. A strictly **read-only**
-`lecdiag dallas-backup <new.bin>` helper has
-now been added to `tools/lecdiag/lecdiag.c`
-(source committed, not Windows-built/hardware-tested
-yet). It requires two matching 512-byte memory
-reads, a stable before/after ROM ID, and checks
-the persisted file; CREATE_NEW forbids backup overwrite
-and no EEPROM write IOCTL is sent. `.gitignore`
-excludes `license-backups/` and `*.ds2433.bin`.
-Keep licensing dumps private. **Do not erase the
-only installed licensing chip until a separate,
-tested restore path on a disposable DS2433
-exists.** Exact read-only commands and future
-testing gates:
-[`docs/dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
-
-Reviewed original sources `PCI Card.pdf` and
-`Overview.pdf` establish PCI-side Spartan U3,
-DS2433 U11, configuration PROM U6, J1/J2
-differential link, and distinct acquisition-board
-UP/TB/AM/AM2/FP/FE areas. Derived
-topology:
-[`docs/pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
-The original user-supplied schematic PDFs were
-not uploaded into the public repo; no driver
-change was made for this architecture correction.
+**LATEST ENGINEERING STATE:** User reports two matching
+512-byte **DS2433 EEPROM backup SHA-256** outputs
+from actual scope testing. In response to
+request for a **fabricated license** purely for
+write/read compatibility, the repo now has an
+**offline-only** helper
+`scripts/create-dallas-dummy-image.ps1`:
+it checks both backups bytewise, selects the
+last wholly FF 32-byte page if one exists,
+creates a no-overwrite private
+`.ds2433.bin` copy, inserts the unmistakably
+invalid 30-byte ASCII marker
+`FAKE-XSTREAM-LICENSE-TEST-ONLY`
+and verifies saved output. It performs NO
+installed-chip write/erase. The x64
+`0x00223088` EEPROM write IOCTL
+remains **unimplemented**, and a
+complete blank FF page is not proven
+application-free. Separate spare-chip
+writer and recovery proof are required
+before any installed license modifications.
+Actual SHA-256 and EEPROM contents
+must remain private; the new script has
+not yet been run on the scope.
+The five front ProBus sockets remain
+**I2C-only**; the PCI-card DS2433
+stores XStream licensing separately
+from the front I2C EEPROM.
 
 **Current scope/driver regression state:** The user's own visible XStream behavior
 corrects the previous diagnosis: **opening the AP015 generates an
@@ -67,6 +52,69 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## Latest Dallas test: two matching backups, offline dummy image only (2026-09-29)
+
+The user has now **run `lecdiag dallas-backup` twice**
+and supplied the two matching **SHA-256** results.
+This is positive validation of the backup path on
+their real scope, subject to the fact that hashes
+do not identify license-record formatting or
+establish a safe write/restore path. **Never
+store the particular image hash or raw bytes in
+the public repository.**
+
+The user asks for an invented extra license to
+test EEPROM writing. Do **not** confuse a test
+marker with a real XStream license or immediately
+overwrite the only functioning installed license
+storage. Added a safe private **offline-only**
+preparation script:
+[`scripts/create-dallas-dummy-image.ps1`](../scripts/create-dallas-dummy-image.ps1).
+It takes two independent 512-byte backups,
+verifies exact byte equality, searches for the
+last completely `0xFF`-filled 32-byte page,
+and creates a new 512-byte copy in which
+**only 30 bytes** on that page hold the ASCII
+marker `FAKE-XSTREAM-LICENSE-TEST-ONLY`.
+It refuses no-page/invalid-length/mismatched
+inputs and existing output filenames,
+requires the Git-ignored `.ds2433.bin`
+suffix and verifies the persisted file.
+No secret bytes are printed; NO
+DeviceIoControl, chip write or erase is
+performed by this offline script.
+
+Sample private invocation from scope repo,
+assuming previous user backups were named
+`original-a.bin`/`original-b.bin`:
+
+```powershell
+git pull --ff-only origin main
+& ".\scripts\create-dallas-dummy-image.ps1" `
+  -ImageA ".\license-backups\original-a.bin" `
+  -ImageB ".\license-backups\original-b.bin" `
+  -OutputImage ".\license-backups\fake-test.ds2433.bin"
+```
+
+**Remaining hardware gate:** x64
+`driver/Ioctl.c` does not implement
+original x86 `WRITE_DALLAS_MEMORY`
+0x00223088. Even an all-`FF`
+page is not proven to be a safe
+license slot or excluded from any
+global checksum. Recover the actual
+DS2433 scratchpad/copy algorithm and
+test write/read/power-cycle restore on
+a disposable chip before exposing
+the only licensed card to a write.
+Details:
+[`docs/dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md).
+The new PowerShell script has been
+committed but not executed in the user's
+Windows environment by the assistant;
+do not claim on-hardware test-image
+creation or write success.
 
 ## New Dallas licensing and five-slot I2C facts (2026-09-29)
 
