@@ -530,3 +530,44 @@ This full comparison is not needed to explain
 the failed write status: the missing x64
 dispatch is already decisive.
 
+
+
+## 2026-09-29: displayed scope identifier correlation
+
+Private trace `xstream_trace_20260929_011858.jsonl` contains
+two successful eight-byte GET_DALLAS_ID results at sequences
+1 and 607. They match byte for byte, carry the DS2433
+family byte 0x23, and pass Dallas CRC8 validation.
+The **first three serial bytes at ROM offsets 1..3,
+interpreted as a little-endian 24-bit integer,
+exactly match the primary six-digit scope identifier
+reported by the user**. The trailing two-digit display
+suffix has not been independently mapped to a ROM byte,
+and the formatted whole identifier does not appear as
+literal ASCII in the captured I/O previews. Do not
+publish the card's complete ROM serial or EEPROM contents
+in this public file.
+
+ROM identity and writable 512-byte DS2433 EEPROM are
+different structures. If the EEPROM contents were lost
+but the physical device's ROM identity remained valid,
+a private backup from that **same** card would provide
+the original memory payload for a separately validated
+recovery operation. Feeding a backup image to XStream
+through a software-only read view would not, by itself,
+program persistent physical memory. A real, verified
+write and read-back path is still necessary. Do not
+replace the factory ROM identifier with another card's
+identifier or treat a simulated application view as
+physical EEPROM recovery.
+
+The newly pushed original x86 Ghidra handler
+`ghidra_exports/selected/00011f54_FUN_00011f54.c`
+confirms bounded input 1..512, 32-byte write chunks,
+a full requested-length read-back, a bytewise comparison
+and up to three attempts. Calls to internal helpers
+`FUN_00016d90` and `FUN_00016f2c` remain unresolved
+until their own implementations are exported. The
+kernel driver's missing native x64 write handler and
+the sensitive-user-data redaction precautions from
+trace 011858 remain the current status.
