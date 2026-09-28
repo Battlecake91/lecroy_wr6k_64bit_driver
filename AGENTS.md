@@ -4,13 +4,14 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
-The recovered original HWInt/ProBus interrupt path (`70716ba`) is hardware
-validated in AP015 hotplug trace `230614` and Degauss/clamp trace `231656`.
-A new **host-only 85FB raw response formatting fix** in driver commit
-`34907090820a582ac360d02120316c8792d7c888` corrects the
-source-proven received-length header and 0xFF tail initialization; it
-**has not been compiled or tested on hardware**. Build and test this
-narrowly scoped patch before any further probe or unrelated driver work.
+The HWInt/ProBus interrupt restoration (`70716ba`) passed scope tests
+`230614` and `231656`. The host-only 85FB actual-received-length and
+0xFF-tail patch (`3490709`) has now passed its **first real-hardware
+47 00 response-parity check** in trace `233125`: replies byte-match x86
+and no fivefold 47 00 retry burst remains. But trace `233125` recorded
+zero unsolicited pending 0x0200 / family-1/0x82 events despite several
+jaw movements reported by the user. **Current next task: jaw notification
+before vs after calibration, without changing driver code on speculation.**
 
 ## Repository and communication
 
@@ -286,45 +287,49 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. **Build and hardware-regress the minimal original 85FB raw-response
-   framing patch** in `driver/Ioctl.c`, commit `3490709`. It is not yet
-   a confirmed working build. Original `FUN_000167F4` pre-fills the
-   requested raw response record with 0xFF and writes the actual received
-   word count in **bytes** at header WORD+4; the old x64 serializer
-   advertised the requested payload capacity and zero-padded the tail.
-   The new fix affects only raw-hardware 85FB output records, preserves the
-   family-1/0x99 length override and does not change actual firmware
-   transport, PCI, interrupts or DMA.
-2. The previously restored genuine HWInt ProBus path (`70716ba`) now has
-   **two successful reported real-hardware runs**: trace `230614`
-   demonstrates unplug/replug with two authentic pending-0x0200 events;
-   trace `231656` exercises Degauss/Auto Zero and the clamp sequence
-   open / close / open / locked-close. In the second trace, five real
-   status notifications include pending bit 0x0200 and lead to 0x88 then
-   0x82. The corresponding 0x82 status WORD alternates 0x0058/0x00A7
-   for open/closed in the known user-action order. The first opening
-   combines pending 0x0280 and is acknowledged as such.
-3. Trace `231656`: 35,458 captured IOCTLs with zero observed non-success
-   NTSTATUS; 6,701 CFDC2138 calls all return the requested byte count.
-   Correct CFDC2138 parser: requested byte count is DWORD at **input
-   offset 11**, token is DWORD at offset 0. The 1,438 standalone status
-   reads report 1,432 pending 0x0080, four 0x0200, one 0x0280, one zero;
-   there are 39 trace snapshot gaps omitting 4,540 sequence numbers.
-   Do not claim measured CPU or raw ISR rates from a kernel IOCTL JSONL.
-4. **Degauss / Auto Zero reply-format parity is not yet proven:** the
-   new capture repeats identical 0x4A `...47 00` five times and 0x4A
-   `...47 12` in five groups of five (25 total), all returning
-   `...040000000000`. Original x86 replied
-   `...02000000FFFF`. Follow-up 0x4A statuses differ (legacy F2
-   versus x64 F7/F1/F3). The same x64 bug affects family-1/0x82:
-   old x64 raw header 0x0190, zero tail versus legacy actual length
-   0x0006/0x0016, FF tail. The new serializer patch follows original
-   `FUN_000167F4`; a **new post-patch trace** must check its output and
-   any residual genuine board-state difference.
-5. Do not change now-working HWInt, IIMCL, CLRIRQ, PCI/DMA, single-channel
-   CFDC2138, family-1 0x51 or below-4-GiB descriptor safety without new
-   proof. No synthetic 0x0200; CPU test limit <=5%. METHOD_NEITHER
-   CFDD219F and unobserved multi-channel CFDC2138 remain gated.
+1. **Retain two separately established milestones.** Driver commit
+   `70716ba` restored genuine INTEN-0x08 / INTST-0x08 / HWInt-0x410
+   command notifications: AP015 insertion/removal recognized in run
+   `230614`, and five 0x0200-bearing probe/clamp state notifications
+   with 0x88/0x82 in run `231656`. Driver commit `3490709` corrected
+   only the original `FUN_000167F4` host 85FB short raw-reply framing
+   (actual bytes returned and FF tail). The first hardware run `233125`
+   confirms the previously wrong 47 00 output now exactly equals
+   `0000000000000000000002000000FFFF`, the original x86 result.
+2. **Open anomaly requiring a controlled jaw-only A/B:** In that same
+   post-framing run `233125`, all 1,135 standalone 85FB/0x01 replies
+   show enabled 0x02BF and pending **only 0x0080**; no 0x0200/0x0280,
+   no 0x88 mask-0x0200 ack, and no family-1/0x82, despite the user's
+   report of multiple physical open/close movements. There are 447
+   captured status replies after t=40 seconds and **no snapshot gap
+   after t=28.646 s**. This contrasts with five real events in `231656`.
+   No proof yet that the serializer change caused missed interrupts:
+   the code does not directly touch INTEN, HWInt, ISR/DPC, PCI or DMA.
+   Compare one jaw-open/close pair **before calibration**, then one
+   **after Degauss and manually triggered Auto Zero** under otherwise
+   constant conditions, noting visible UI state and elapsed action times.
+3. In `233125`, two separate byte-identical `47 00` requests occur
+   at t~20.034 s (seq 8573) and t~40.675 s (seq 22156), correlating
+   with Degauss then manual Auto Zero. The preceding `231656`
+   showed five repeated 47 00 requests in a burst and 25 `47 12`
+   requests (five bursts of five) associated with automatic follow-ups
+   and jaw events. **No 47 12 occurs in the new manual run**; do not
+   universally label 47 12 as "the Auto Zero button". Family-1/0x4A
+   follow-up still reports F3 versus F2 in legacy x86; status-bit
+   semantics and actual physical calibration outcome are not established.
+   Since no 0x82 was sent in the new run, post-fix parity of the
+   0x82 raw length/FF-padded tail remains untested.
+4. `233125` has 27,947 captured IOCTLs (seq 1..30856), zero captured
+   NTSTATUS failures and 5,219 CFDC2138 calls, all with correct
+   requested-vs-returned bytes (requested DWORD at input offset 11).
+   DMA continues through trace end (~55.627 s), including 1,666 calls
+   after the second 47 00. A correct DMA result alone is not proof of
+   screen-visible waveform or clamp UI recognition.
+5. Preserve the existing PCI/DMA, HWInt, IIMCL and CLRIRQ paths, the
+   below-4-GiB descriptor safety, family-1 0x51, and no synthetic
+   0x0200. Keep the scope CPU load <=5%. `CFDD219F` and
+   unobserved multichannel CFDC2138 remain deliberately gated.
+   Follow the full current instructions in `docs/next-chat-handoff.md`.
 
 
 ## Latest dispatch recovery
@@ -3853,3 +3858,53 @@ Detailed comparisons and exact next test:
 `docs/probus-calibration-ab-comparison.md`,
 `docs/runtime-trace.md`, `docs/ioctl-map.md`, and
 `docs/next-chat-handoff.md`.
+
+
+## 2026-09-28 23:31: response-framing fix verified; jaw notifications absent
+
+New user scope workflow: XStream with AP015 attached, Degauss, later
+**manually trigger Auto Zero**, open/close clamp several times and exit.
+Trace `xstream_trace_20260928_233125.jsonl` exercises host formatter
+patch `3490709` on genuine hardware for the first time. Main result:
+identical `47 00` requests at seq 8573/t~20.034 s and
+seq 22156/t~40.675 s **both** return
+`0000000000000000000002000000FFFF`, equal to original x86 legacy
+seq 24205. Pre-fix trace `231656` had five closely repeated 47 00
+requests with `...040000000000`; the fivefold 47 00 retry burst is
+absent after correcting original `FUN_000167F4` 0xFF prefill and
+actual-received-byte header. There are no `47 12` requests in this
+manual-action trace, whereas `231656` had five five-request bursts
+following automatic/probe-state notifications. Post-47-00 family-1/0x4A
+`01 0A` response is `...04000000F300` both times; legacy gave
+`...F200`. The bit-0 difference remains an undecoded board/firmware
+status, not a host header problem. The same captured first 128 bytes
+of 270-byte startup AP015 metadata match earlier x64 and legacy runs.
+
+Trace counts: 27,947 IOCTLs, seq 1..30856, duration ~55.628 s,
+29 snapshot gaps omitting 2,909 entries, none after ~28.646 s;
+zero NTSTATUS failures observed. CFDC2110: 21,366. CFDC2138:
+5,219, all exact returned vs requested length at input offset 11,
+including 1,666 after the second 47 00. All 1,135 standalone status
+queries report enable `0x02BF`, pending `0x0080`, and zero pending
+`0x0200`. No family-1/0x82 appears; the five authentic events in
+run `231656` do not appear after the formatter patch despite the
+reported clamp movements. **447 status reads after t=40 s are recorded
+without a subsequent trace-snapshot gap**. Whether physical jaw
+movements were recognized in XStream was not described separately by
+the user, and this IOCTL JSONL does not capture screen state or the
+hardware ISR/HWInt latch itself. This is a meaningful unconfirmed
+behavioral difference, not proof of a direct code-level interrupt
+regression.
+
+**No further code changes until a discriminating jaw-only test.**
+Start with recognized AP015 and stable waveform, open/hold/close/hold
+once *before* Degauss or Auto Zero; note UI display and relative
+timestamps. Then, if normal, invoke Degauss and manual Auto Zero,
+repeat one open/hold/close/hold pair and exit. Compare spontaneous
+pending 0x0200 and follow-on 0x88/0x82 as well as actual 85FB reply
+length/FF padding and DMA; keep <=5% CPU, stop on abnormal waveform.
+Do not create fake pending bits or speculative BAR/DMA changes.
+
+Source-detail and trace tables:
+`docs/probus-calibration-ab-comparison.md`,
+`docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
