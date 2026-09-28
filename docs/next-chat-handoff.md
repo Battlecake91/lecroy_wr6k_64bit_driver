@@ -155,6 +155,87 @@ Do not alter unrelated PCI/DMA code to chase the probe event. If the new
 patch fails, compare directly against the preceding known-good driver
 baseline and the four old ProBus traces.
 
+## Static preflight review and first-build gate (2026-09-28)
+
+The first review in the successor chat checked `main` at `ef8761f`
+(documentation-only descendant of `70716ba`) against the checked-in
+original decompilations and raw DPC assembly. The changes in
+`driver/Ioctl.c` and `driver/Acquisition.c` are internally consistent:
+
+- the receive enable is immediately before a real firmware 85FB fetch;
+- ISR source `INTST 0x08` already uses the original `CLRIRQ = 2` and
+  records the enabled interrupt for the DPC;
+- DPC reads DWORD BAR1 HWInt `0x410`, uses only the low WORD, clears
+  HWInt only when that WORD is nonzero, latches under `LegacyEventLock`
+  and signals `LegacyEvent0` for any nonzero source word;
+- standalone 85FB/0x01 reads the same pending/enable words under that
+  lock; the existing family-0/0x88 path clears pending bits and forwards
+  mask `0x0200` to the board instead of treating it as a host-only ack;
+- BAR1 `0x410` falls within the established `0x40000`-byte resource;
+  no newly referenced symbol or obvious C syntax/type mismatch was found.
+
+This was **source review, NOT a WDK build or hardware verification**. No
+change was made to the driver or known-good acquisition path. One existing
+concurrency consideration for the first retest is that
+`LecCommitLegacyInterruptMask` takes a caller-computed full mask; the
+initial bit-`0x08` enable and a concurrent transfer bit-`0x01` toggle could
+interleave. This is not an observed failure; do not proactively refactor DMA
+or PCI register access without evidence. Watch for transfer timeouts or a
+missing persistent bit after starting normal acquisition.
+
+The four uploaded ZIP traces are pre-patch historical baselines, not test
+results for this code. The independent check and exact matching seq numbers
+are retained in `docs/probus-calibration-ab-comparison.md`.
+
+### Build and hardware run: gated steps
+
+On the scope, elevate PowerShell. First perform a build-only check (the
+regular desktop helper also rebuilds during sign/install, but this exposes
+compile problems before touching the installed driver):
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+Set-Location "C:\\Users\\LeCroyUser\\Git\\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git update failed; stop here." }
+git log -1 --oneline
+& ".\\scripts\\build-driver.ps1" -Configuration Debug
+```
+
+If a compiler/linker error occurs, **stop before sign/load** and retain its
+full diagnostic output. There is no valid post-patch observation until a
+working driver is compiled, installed and reloaded. Once the build passes,
+run the known scope-local capture helper, still from elevated PowerShell:
+
+```powershell
+& "C:\\Users\\LeCroyUser\\Desktop\\Run-LeCroy-XStream-Trace.ps1" -Configuration Debug
+```
+
+Before the helper starts XStream, attach AP015. During capture use only the
+following controlled phases, noting elapsed seconds and visible behavior:
+
+1. Startup: verify AP015 label/metadata, live waveform, normal trigger,
+   and no sustained CPU use above 5%. Abort if baseline acquisition is wrong.
+2. Baseline: hold steady at least 5 seconds, without adjusting calibration,
+   timebase, channels, Degauss or Auto Zero.
+3. Disconnect AP015 **once**, note the approximate elapsed time, wait at
+   least 5 seconds, and note whether XStream removes probe recognition and
+   whether the waveform continues.
+4. Reconnect AP015 **once**, note the approximate elapsed time, wait at
+   least 5 seconds, and note metadata/recognition and visible acquisition.
+5. Close XStream normally to complete the capture. Abort promptly for a lost
+   waveform, DMA timeout, persistent high CPU, recurrent event storm or
+   obvious abnormal behavior; do not repeat hotplug on an unstable board.
+
+For the newly generated post-patch JSONL, parse standalone 85FB/0x01
+`pending & 0x0200`, follow-up family-0/0x88 mask `0x0200`, family-1/0x82,
+family-0/1 opcode-0x4A/AP015 data, CFDC2138 count/success/returned lengths,
+and whether successful DMA still supplies a visible waveform. Compare with
+the legacy event sequence (seq 14552/14553/14560, and subsequent events)
+and the old x64 run 213834. The first test does not require identical event
+counts. Include physical-action timing separately; the historical t=27.1 s
+transfer-pattern change cannot be assigned to an unplug or replug without it.
+
 ## Other unfinished tasks (not the next priority)
 
 - Identical probe family-0/0x4A `...47 00` operation returns different
