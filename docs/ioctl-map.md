@@ -3392,12 +3392,43 @@ correctly addressed register, but the incidental 11 calls captured
 in `235314` request BAR0+0x000 or BAR1+0x00C, not INTEN 0x084.
 Do not infer INTEN's value from the host software mask.
 
-The next lowest-risk proof is a **single physical AP015 unplug/replug
-with unchanged post-`3490709` driver**, without prior Degauss or jaw
-exercise. Compare to physical hotplug baseline `230614`. If physical
-hotplug now also lacks spontaneous pending 0x0200, obtain bounded
-passive INTEN/INTST/HWInt evidence before proposing a source change.
-If hotplug still generates 0x0200, focus on the separate clamp-jaw
-state path. Do not create synthetic pending bits, enable any gated
-transfer ABI or alter PCI/DMA speculatively. Full A/B details:
+**This requested physical-hotplug discriminator is now completed:**
+`xstream_trace_20260929_001152.jsonl` on the **unchanged
+post-`3490709` driver** captures **twelve genuine pending-0x0200-bearing
+notifications**, all acknowledged and followed by real family-1/0x82.
+Software-enabled mask 0x02BF; pending distribution across 1,361
+standalone 85FB/0x01 reads: 0x0080=1,348, 0x0200=11,
+0x0280=1, 0x0000=1. Four removal states correlate with final
+0x82 state WORD 0x03FF; four reinsertion groups are seen.
+The first reconnection transiently reported 0x82 WORD
+0x028C then 0x0058, and did NOT request 270-byte AP015 metadata;
+the user reported a possibly improperly seated, temporarily
+misidentified "1/2 clamp" type. The next three reinsertions
+did correctly request AP015 metadata. These state values are
+not yet statically decoded as literal probe types.
+
+**Post-fix 0x82 raw response is now genuinely exercised on hardware:**
+first disconnect returns raw result length 0x000E (14 bytes);
+remaining eleven responses return length 0x0006 (6 bytes), and
+every unused captured byte is 0xFF. This replaces the previous
+incorrect capacity header 0x0190 / zero tail.
+Three identical family-0/0x4A `47 12` requests at seq
+26385, 29250, 32096 now each return the full x86-matching
+`0000000000000000000002000000FFFF`, once per accepted AP015
+reidentification, rather than the old fivefold burst. Follow-up
+family-1/0x4A status remains F7 in each observed event.
+A separate manually invoked Auto Zero had sent 47 00 in
+prior `233125`/`235314`; do not assign all Auto Zero
+functions to 47 12 or fabricate F2 status.
+
+The **general** original interrupt path is therefore still
+operational after the serializer fix. Jaw-only movement in earlier
+post-fix runs `233125` and `235314` still produced no 0x0200;
+that discrepancy is not explained by claiming INTEN bit 0x08 was
+globally off. Next useful test: jaw-only open/hold/close/hold
+before and after ONE normal physical reidentification in a single
+session, without calibration, checking original status/ack/0x82.
+Do not create synthetic pending bits, enable gated transfer
+ABIs, revert the verified formatter or alter working PCI/DMA/ISR.
+Full original and post-fix trace comparison:
 `docs/probus-calibration-ab-comparison.md`.
