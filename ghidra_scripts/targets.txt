@@ -77,3 +77,11 @@
 15d50
 15d70
 asm:15c7e
+
+# 2026-09-29: XStream's native Dallas write attempt (trace 011858 seq 522)
+# reached original x86 IOCTL 0x00223088 (handler VA 0x11F54).
+# Export complete C, instruction listing and references before porting
+# scratchpad/copy/readback to x64; do NOT fabricate the write algorithm.
+11f54
+asm:11f54
+xref:11f54
