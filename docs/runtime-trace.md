@@ -2616,3 +2616,37 @@ x64 0x32 (XOR difference 0x12). The causal relation to ProBus is unknown.
 
 Full packet and count details are recorded in
 `docs/probus-calibration-ab-comparison.md`.
+
+
+## Trace 193741: ProBus works at XStream startup, hotplug still missing
+
+`xstream_trace_20260928_193741.jsonl`: the user started x64 XStream with
+an AP015 probe already connected and XStream recognized it. Degauss and Auto
+Zero were subsequently invoked. All 21,004 captured IOCTLs returned success.
+
+At seq 505 family-0/0x4A probe setup succeeds. At seq 508 family-1/0x4A
+returns AP015 metadata (Information=270). The captured first 128 output bytes
+are identical to legacy seq 14596 / 14812. Therefore the actual startup
+probe-communication pathway works, rather than merely the user interface
+displaying a remembered probe.
+
+Unlike original hotplug, neither x64 run ever shows 85FB pending 0x0200.
+The preconnected x64 session does not require that notification and performs
+successful discovery directly via 0x4A without a family-1/0x82 request.
+The issue is therefore narrowed to hotplug/unsolicited notification rather
+than a globally nonfunctional probe bus.
+
+A separate protocol discrepancy remains during subsequent probe control:
+the identical family-0/0x4A `...4700` request returns
+`0000000000000000000002000000FFFF` in the original reference but
+`00000000000000000000040000000000` on x64 (repeated five times).
+All IOCTL NTSTATUS values are success; payload-level equality is not proven.
+Follow-on family-1/0x4A replies also vary (`F2` versus `F7` in selected
+responses). Keep Degauss/Auto Zero result equivalence separately open.
+
+Legacy `FUN_00011390` consumes INTST 0x08 through internal receive/
+probe-ring handling; x64 presently acknowledges INTST 0x08 but does not
+deliver that internal RX event because normal replies are polled
+synchronously. This is now a prioritized candidate for the lost asynchronous
+probe-insertion path, not a proven source of pending 0x0200. See the dedicated
+ProBus comparison document.

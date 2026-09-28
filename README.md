@@ -280,3 +280,20 @@ pending `0x0200`, so those downstream commands are never issued by XStream.
 The known-good waveform/DMA baseline has deliberately not been changed.
 
 See `docs/probus-calibration-ab-comparison.md` for the four-trace comparison.
+
+
+### AP015 ProBus startup recognition validated
+
+Follow-up trace `xstream_trace_20260928_193741.jsonl` shows that when the
+AP015 probe is connected **before** starting x64 XStream, it is recognized:
+the normal family-0/1 opcode-0x4A initialization/metadata exchange succeeds,
+and the captured metadata prefix matches the legacy AP015 response byte for
+byte. Degauss and Auto Zero were invoked in this session and generate 0x4A
+traffic, although one probe-control reply differs from legacy and needs
+separate result verification.
+
+The remaining confirmed recognition fault is **hotplug into an already
+running x64 XStream session**. Legacy reports a command-status pending 0x0200
+on insertion, which neither x64 capture currently reproduces; startup
+recognition does not depend on it. No synthetic probe-presence event or
+speculative DMA change has been introduced.

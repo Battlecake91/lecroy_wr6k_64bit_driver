@@ -153,3 +153,84 @@ Next steps:
 
 Keep the <=5% CPU constraint for scope-side diagnostic work. Do not commit
 proprietary driver or XStream binaries to the public repository.
+
+## Follow-up: x64 probe preconnected at XStream startup (trace 193741)
+
+The previous hotplug comparison led to a new controlled test. The same AP015
+was attached *before* launching XStream on x64. XStream recognized the probe.
+The user then invoked Degauss and Auto Zero.
+
+New file: `xstream_trace_20260928_193741.jsonl`, 21,004 IOCTL records,
+zero failing NTSTATUS results; 16,151 CFDC2110 calls.
+
+| Relevant operation | Legacy hotplug | x64 hotplug | x64 preconnected |
+|---|---:|---:|---:|
+| Family-0 0x4A | 16 | 0 | **11** |
+| Family-1 0x4A | 19 | 0 | **8** |
+| Family-1 0x82 | 3 | 0 | 0 |
+| 85FB pending 0x0200 | 3 | 0 | 0 |
+| Failed CFDC2110 | 0 | 0 | 0 |
+
+### Verified startup AP015 metadata exchange
+
+```text
+x64 seq 505: family-0/0x4A
+  06000E000300FBA540004A02020001000001A000A100080002000300FB854000
+  output: 0000000000000000000002000000
+
+x64 seq 508: family-1/0x4A
+  060004000300FBA540014A01080102000300FB854000
+  output Information: 270
+  captured prefix: 00000000000000000000020100000108004150303135...
+                                             AP015
+```
+
+The first 128 output bytes of seq 508 are byte-identical to legacy seq
+14596/14812 for the same input. x64 stores only the first 128 output bytes,
+so full 270-byte equality cannot be claimed from the available trace.
+
+This is a successful real probe-identification packet flow on x64, with no
+pending-0x0200 notification. It proves that pending 0x0200 is needed for the
+**asynchronous insertion route**, not as a blanket prerequisite for all
+probe communication.
+
+### Degauss / Auto Zero: commands present, one protocol difference remains
+
+The user invoked both actions. The x64 trace records corresponding 0x4A
+traffic. A byte-identical family-0 0x4A request ending in `47 00` has
+different replies:
+
+```text
+Legacy, seq 24205:
+  input  06000C000300FBA540004A0201000000010047000A0002000300FB854000
+  output 0000000000000000000002000000FFFF
+
+x64, seq 12082,12084,12085,12086,12087:
+  input  06000C000300FBA540004A0201000000010047000A0002000300FB854000
+  output 00000000000000000000040000000000
+```
+
+All NTSTATUS values are success, but different payloads and five x64
+repetitions are not proof of identical physical result. The next family-1/0x4A
+poll gives `...F700` under x64, whereas the comparable legacy polling gives
+`...F200`. These statuses must be decoded before treating every special
+probe function as fully compatible.
+
+### Refined missing piece
+
+A probe attached *after* XStream starts is not recognized under x64, and the
+x64 hotplug trace never reports 85FB status pending `0x0200`. Legacy detects
+three such events, then runs 0x82 followed by 0x4A. No such event is needed
+when a probe is present during application initialization; 0x4A then works.
+
+The original ISR/DPC has a distinct receive-transport source INTST `0x08`,
+consumed by `FUN_00011390` via `FUN_000176A2` and
+`FUN_000176D0`. The x64 DPC currently leaves this internal receive event
+unmapped because synchronous firmware replies are polled. A lost unsolicited
+probe-ring/receive notification is now a concrete hypothesis; **the source of
+the legacy 0x0200 bit has not yet been proven**. Do not inject a synthetic bit.
+
+Next controlled trace: start with recognized AP015, unplug it during the same
+XStream session, then replug it; record both visual state transitions and
+packet/event transitions. Preserve all known-good waveform/DMA behavior and
+the <=5% CPU test constraint.

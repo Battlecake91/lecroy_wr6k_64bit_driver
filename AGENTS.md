@@ -277,29 +277,35 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Preserve the known-good x64 waveform/DMA baseline from
-   `xstream_trace_20260928_005808.jsonl` and the broad normal-operation
-   regression `xstream_trace_20260928_011938.jsonl`.
-2. Prioritize **ProBus hotplug/recognition**. The controlled 2026-09-28 A/B
-   captures prove that legacy receives command-status pending bit `0x0200`
-   exactly three times during probe insertion; the x64 trace never reports it
-   and therefore never proceeds into family-1 `0x82` identification or
-   family-0/1 `0x4A` probe traffic.
-3. Locate the original producer of command pending `0x0200` and compare the
-   actual probe-ring/interrupt inputs. The current x64 command-pending DPC
-   explicitly latches only `0x0080`, `0x0800` and `0x0100`. Do **not**
-   fabricate a `0x0200` notification or inject `0x82` to make the UI
-   advance. Preserve the <=5%-CPU test constraint.
-4. Separately investigate the reproducible identical JTAG-status response
-   difference, byte 17: legacy often `0x20`, x64 often `0x32`. Its relation
-   to ProBus is presently unknown.
-5. The earlier claim of excessive V/div recalibration was corrected by the
-   user: XStream calibrates each previously uncalibrated voltage step once,
-   then caches it. The Ch2 20 mV..100 V A/B traces show broadly matching
-   calibration command families and no failed driver calls. This is currently
-   **not a confirmed regression** and should not displace ProBus work.
-6. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated. Do not
-   regress the verified below-4-GiB DMA descriptor safety check.
+1. Preserve the known-good x64 waveform/DMA baseline and the successful
+   ProBus cold-start identification in
+   `xstream_trace_20260928_193741.jsonl`.
+2. **ProBus hotplug is now the primary remaining probe fault**: legacy
+   recognizes insertion during a running XStream session, whereas x64 does
+   not. With the probe attached *before* XStream starts, the same x64 driver
+   immediately identifies `AP015` via family-0/1 opcode `0x4A` and obtains
+   the byte-identical captured first 128 bytes of the legacy 270-byte metadata
+   response (the x64 trace truncates stored output_hex at 128 bytes).
+3. User also invoked probe Degauss and Auto Zero on x64; corresponding 0x4A
+   control traffic is captured, but these responses are **not all
+   legacy-equivalent**. The identical family-0 0x4A request with command
+   suffix `47 00` returns `...02000000FFFF` in legacy seq 24205 versus
+   `...040000000000` five times on x64 seq 12082..12087. Investigate
+   actual operation result/handshake separately; do not mark all probe
+   special functions fully validated just because the UI offers them.
+4. Neither x64 hotplug nor x64 preconnected runs produces standalone
+   85FB/0x01 pending `0x0200`. This notification is needed for legacy
+   *hotplug* discovery (then 0x82/0x4A), but is **not required** for startup
+   0x4A identification. Investigate original unsolicited receive / INTST
+   0x08 / probe-ring signaling before adding any event bit. The x64 DPC
+   deliberately does not implement legacy internal RX transport event 0x08
+   because ordinary response fetch currently polls synchronously.
+5. The Ch2 20 mV..100 V calibration comparison did not confirm an excessive
+   recalibration regression. Keep it closed unless a new concrete symptom
+   appears. The reproducible legacy/x64 JTAG-status byte difference
+   0x20 versus 0x32 is separate and its relation to probe hotplug unproven.
+6. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated.
+   Preserve below-4-GiB descriptor safety and the <=5% CPU test target.
 
 
 ## Latest dispatch recovery
@@ -3475,3 +3481,65 @@ connected**, rather than hot-plugging it. If recognition then occurs, prioritize
 the asynchronous event producer. If not, compare probe-ring/SPI state and
 the JTAG-status discrepancy. Read and instrument the actual board sources
 before modifying interrupt or command-pending behavior.
+
+
+## 2026-09-28 trace 193741: AP015 ProBus recognized with probe preconnected
+
+The test recommended after hotplug failure was performed: the AP015 probe was
+plugged in *before* launching XStream on x64. XStream recognized it. The user
+then invoked Degauss and Auto Zero. New trace:
+`xstream_trace_20260928_193741.jsonl` (21,004 captured IOCTL entries,
+all NTSTATUS success; 16,151 CFDC2110 calls). The kernel trace sequence
+extends through 23329, so some ring records are lost. Do not infer exact
+uncaptured operation counts from this file.
+
+A/B results across the controlled ProBus files:
+
+```text
+                              legacy hotplug  x64 hotplug  x64 preconnected
+85FB pending 0x0200                3              0               0
+family-1 / 0x82                    3              0               0
+family-0 / 0x4A                   16              0              11
+family-1 / 0x4A                   19              0               8
+family-0 / 0x90                   879            692             541
+failed CFDC2110                    0              0               0
+```
+
+At x64 seq 505 the startup probe-control family-0/0x4A request
+`06000E000300FBA540004A02020001000001A000A100080002000300FB854000`
+succeeds. At seq 508 the family-1/0x4A metadata request
+`060004000300FBA540014A01080102000300FB854000` returns Information=270
+and contains ASCII `AP015`. Its captured first 128 output bytes exactly
+match legacy seq 14596 and 14812 for the same request. This proves the
+startup probe metadata transport works without any pending-0x0200 event.
+
+User-observed probe Degauss/Auto Zero activity is reflected in subsequent
+0x4A control/response traffic. It is not yet fully response-equivalent:
+
+```text
+identical input suffix:   40004A020100000001004700
+legacy seq 24205 output: 0000000000000000000002000000FFFF
+x64 seq 12082..12087:  00000000000000000000040000000000
+```
+
+The x64 call repeats five times, after which a family-1/0x4A read returns
+`...F700`; a corresponding legacy post-command read returned `...F200`.
+These are actual protocol payload differences despite NTSTATUS success.
+Do not call the physical Degauss/Auto Zero result verified without
+correlating to device/UI completion indicators.
+
+**Revised working hypothesis:** host-to-board probe communication and AP015
+startup identification function; spontaneous recognition of a probe inserted
+after XStream has already started remains broken. Legacy hotplug first
+delivers 85FB pending 0x0200 and then initiates 0x82/0x4A. The x64 current
+DPC latches only 0x80,0x800,0x100 and explicitly ignores the original RX
+transport event INTST 0x08. Original `FUN_00011390` processes that source
+through `FUN_000176A2`/`FUN_000176D0` and an internal event. This is a
+concrete candidate for missing unsolicited probe/ring notification, **not
+yet a proven 0x0200 producer**. Investigate causality before changing ISR,
+DPC or masks.
+
+Next controlled test if needed: launch XStream with probe recognized,
+unplug it while running, observe whether the UI detects removal, then
+reinsert and observe recognition, capturing one short passive trace. Do
+not modify the proven DMA or substitute synthetic pending bits.
