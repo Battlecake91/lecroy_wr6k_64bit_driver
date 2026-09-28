@@ -4,6 +4,39 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Latest Dallas result (2026-09-29):** Both
+independent private 512-byte DS2433 backups
+match, but running the **offline**
+`create-dallas-dummy-image.ps1` found NO
+fully-FF 32-byte memory page and safely
+created no test image. This does NOT
+mean no application-level free license
+record exists. Do not remove its
+protective check or rewrite an arbitrary
+non-FF area. User offers a better
+format-discovery experiment using native
+XStream's **Add License** dialog, but
+invalid fake input may be rejected
+before any write. The original x86
+driver has `WRITE_DALLAS_MEMORY`
+0x00223088; current replacement
+x64 driver does NOT implement it.
+For private structure/diff analysis
+without leaking keys, new
+[`scripts/inspect-dallas-image.ps1`](scripts/inspect-dallas-image.ps1)
+offline utility outputs only per-page
+FF/zero/printable counts, or changed
+offset ranges and page numbers between
+two independent pre/post images.
+No actual new EEPROM write, erase,
+license addition or restore occurred.
+If trying original x86 XStream,
+capture only IOCTL codes, buffer
+lengths/status and order; raw write
+input may expose active license keys.
+Recovery should first be exercised
+on a spare DS2433. See current
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
 **Latest Dallas licensing test (2026-09-29):** user ran
 the read-only 512-byte `lecdiag dallas-backup`
 twice on actual scope and reports both saved
@@ -4492,3 +4525,59 @@ private commands:
 `docs/dallas-license-memory-test-plan.md`.
 Do not alter working IRQ, PCI, DMA,
 ProBus or license fields on assumption.
+
+
+## 2026-09-29: no full-FF page; native XStream license UI and private redacted diff
+
+The user executed `scripts/create-dallas-dummy-image.ps1`
+on the scope using two separate private original
+DS2433 backups that previously yielded matching
+SHA-256. Result:
+`No entirely 0xFF-filled 32-byte page found.
+No image created; license layout analysis required.`
+Correct fail-closed behavior: no derived
+fake image created, input backups untouched
+and physical 1-Wire device not accessed by
+that **offline** script. An all-FF page was
+a *safety precondition for our naive marker*,
+not evidence of the authentic XStream license
+format or free-slot allocation. Therefore
+it is wrong to conclude that all 512 bytes
+are committed, and wrong to choose a
+partly-used page by guesswork.
+
+User suggests using XStream's supported
+license-entry dialog as a better observation
+of the intended format and validation.
+Entering an obviously fictional key may be
+rejected without touching DS2433;
+observe message and, if running x86 original
+passive trace, whether `0x00223088`
+actually occurred. Current x64 driver
+still does NOT dispatch `0x00223088`,
+so an x64 GUI attempt is not a completed
+writer regression. A legitimate key
+entry under original x86, if user chooses
+it, modifies the only actual licensed
+card and needs independent risk/restore
+consideration. Do not automatically
+prompt a destructive live test or publish
+raw trace input that may include keys.
+
+Added `scripts/inspect-dallas-image.ps1`:
+strictly read-only and offline, 512-byte
+validation, 16 per-page occupancy rows
+showing ONLY numeric counts of 0xFF,
+0x00, ASCII printable, other; optional
+`-After` file prints changed byte ranges,
+page indexes and counts WITHOUT raw
+EEPROM bytes/strings/license hashes.
+Use existing `original-a.bin` as
+baseline and a newly captured private
+read-only `after-xstream.bin` only
+after an expressly authorized native
+XStream action. No new kernel driver
+changes or hardware writes made in this
+turn. Full instructions in
+`docs/dallas-license-memory-test-plan.md`
+and current `docs/next-chat-handoff.md`.
