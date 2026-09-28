@@ -8,7 +8,8 @@ ghidra_reverse_engineering_lecroy/**/tmp*.ps
 # Local Ghidra installation path
 .ghidra-local.ps1
 
-# Local runtime trace captures may contain process pointers/state.
+# All raw startup traces may contain unique ROM IDs and private licensing data.
+# Keep old unredacted captures out of the public repository.
 trace-captures/
 
 
