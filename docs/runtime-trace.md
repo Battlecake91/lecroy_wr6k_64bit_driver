@@ -3167,3 +3167,45 @@ electrical-bus inference; no driver source changes are
 justified by this architecture update alone.
 Full description:
 [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+
+
+## 2026-09-29: Dallas write ioctl not implemented in native x64 (011858)
+
+The user's private `xstream_trace_20260929_011858.jsonl` captures
+a license Delete action in XStream. The entry remains visible
+after application restart. **608** IOCTLs were recorded,
+seq 1..608, duration **63.0224566 s**, no missing sequences.
+Exactly **one** IOCTL failed:
+
+| Sequence | Relative time | Control | Input/Output | Result |
+|---:|---:|---|---:|---|
+| 1 | 0.000 s | GET_DALLAS_ID `0x00223080` | out 8 | success, Information 8 |
+| 3 | 0.804 s | READ_DALLAS_MEMORY `0x00223084` | out 512 | success, Information 512 |
+| **522** | **57.303 s** | **WRITE_DALLAS_MEMORY `0x00223088`** | **in 512, out 0** | **`0xC0000010` STATUS_INVALID_DEVICE_REQUEST, Information 0** |
+| 523 | 57.824 s | READ_DALLAS_MEMORY `0x00223084` | out 512 | success, Information 512 |
+| 607 | 63.022 s | GET_DALLAS_ID `0x00223080` | out 8 | success, Information 8 |
+
+The two READ previews (first 128 bytes only) are identical.
+The attempted whole-image WRITE and the initial READ
+differ at 93 byte offsets within the shared first 128
+preview bytes, affecting memory pages 0..3.
+No complete WRITE payload or complete post-operation READ
+content is available from this recorder preview.
+
+The current `driver/Ioctl.c` has handlers for Dallas ID
+and READ, but no WRITE `0x00223088`; its dispatch
+defaults to `STATUS_INVALID_DEVICE_REQUEST`.
+This explains the unsuccessful XStream action and demonstrates
+the next native x64 ABI feature to recover.
+Original x86 handler VA is documented as `0x11F54`;
+its C/ASM/XREF are now requested by
+`ghidra_scripts/targets.txt` for review before any
+new driver write code.
+
+**Privacy:** current uploaded trace stores Dallas input/output
+hex previews that may include sensitive user data; do not
+reproduce its raw contents in public docs. The diagnostic
+program's newly updated JSONL exporter now omits Dallas
+WRITE input and READ/ROM-ID output previews, while preserving
+metadata and status. This requires rebuilding `lecdiag` and
+does not modify already-created traces or the kernel.
