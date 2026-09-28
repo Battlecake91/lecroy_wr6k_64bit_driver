@@ -685,3 +685,130 @@ a controlled calibration if stable. Check standalone 0x0200, 0x88,
 0x82, actual raw reply lengths/FF tails and DMA. This discriminates a
 jaw-notification regression from a calibration-dependent state without
 confounding another source change.
+
+
+## 2026-09-28 23:53: jaw-only before and after calibration (235314)
+
+New user-supplied scope trace `xstream_trace_20260928_235314.jsonl`,
+running the **same post-`3490709` driver**, follows the precise
+controlled procedure prescribed after run `233125`: start with AP015
+preconnected and recognized, open/hold/close/hold once **before any
+calibration**, invoke Degauss and then **manual** Auto Zero, open/hold/
+close/hold again, and exit. The user explicitly confirms having performed
+the requested sequence; separate physical-action timestamps and
+screen-visible probe-jaw status were not supplied.
+
+| Captured measurement | Result |
+|---|---:|
+| Duration from first to last IOCTL | 72.009226 s |
+| Captured IOCTLs; sequence range | 36,366; 1..42,227 |
+| Trace-snapshot gaps; omitted sequence entries | 36; 5,861 |
+| Last snapshot gap | seq 28,753..28,793, t~48.439..48.480 s |
+| Captured NTSTATUS failures | **0** |
+| CFDC2110 | 27,834 |
+| CFDC2138 | 6,818 |
+| CFDC2138 returns exactly requested input-offset-11 byte count | **6,818/6,818** |
+| Last CFDC2138 | t~72.008570 s, 1,024 requested / 1,024 returned |
+| Standalone 85FB/0x01 reads | **1,517** |
+| Enabled command mask in every standalone read | 0x02BF |
+| Pending command mask in every standalone read | **0x0080 only** |
+| Pending 0x0200 or 0x0280 | **0** |
+| Family-1/0x82 responses | **0** |
+| Family-0/0x88 mask-0x0200 acknowledgements | **0** |
+| Family-0/0x4A `47 00` | 2 distinct user-action-correlated calls |
+| Family-0/0x4A `47 12` | 0 |
+
+The chronological split by the actual recorded `47 00` control/query
+requests, which correlate with Degauss and manual Auto Zero in the
+user's known action order, removes the prior calibration-state ambiguity:
+
+| Phase of the requested procedure | Observed time interval | Standalone status reads | 0x0200-bearing replies | DMA replies |
+|---|---:|---:|---:|---:|
+| AP015 identified, **before Degauss** | ~17.000..40.156 s | **622** | **0** | 3,207 |
+| Between Degauss and manual Auto Zero | ~40.156..54.337 s | **381** | **0** | 1,622 |
+| After manual Auto Zero | ~54.337..72.009 s | **514** | **0** | 1,989 |
+| Uninterrupted last-snapshot interval | ~48.480..72.009 s | **648** | **0** | 2,569 |
+
+Note that the last-snapshot interval overlaps the middle and last
+phases; it is not an additional disjoint total. No missing sequence
+snapshot after ~48.480 s can explain the complete absence of a
+post-Auto-Zero mechanical status transition. All **1,521**
+steady-state family-0/0x88 acknowledgements carry mask 0x0080, not
+0x0200 (the other two captured family-0/0x88 controls are initial
+mask 0xFFDF and mask 0x001F). No 0x82 is sent because XStream never
+receives a status flag that would direct it into that path.
+
+### Short raw-reply parity is independently reconfirmed
+
+- At **seq 508**, t~17.084 s, AP015 is recognized by startup family-1/
+  0x4A metadata, Information=270. Its captured first 128 reply bytes
+  equal the same prefix in pre-formatter trace `231656` and prior
+  legacy-equivalent startup captures. This does not compare any bytes
+  beyond the trace tool's capture limit.
+- First identical family-0/0x4A `...47 00` request at **seq 23386**,
+  t~**40.155959 s** returns exactly
+  `0000000000000000000002000000FFFF`; family-1/0x4A `...01 0A`
+  at seq **23388**, t~40.186 s, returns
+  `0000000000000000000004000000F300`.
+- Second `...47 00` request at **seq 31835**,
+  t~**54.336670 s** returns the same full original-x86-matching
+  `...02000000FFFF`. Corresponding family-1/0x4A status seq
+  **31836**, t~54.368 s, again contains **F3** (reference x86 F2).
+  The two `47 00` requests are separated by ~14.181 s and
+  **do not** repeat in five-call bursts.
+- The original x86 first family-1/0x99 raw firmware-read response
+  has 0xFF padding immediately after its short valid data; the
+  **new first 128 captured bytes match exactly**, including the
+  `0000000000000000000002000200FFFFFFFF...` prefix. Pre-formatter
+  x64 `231656` instead zero-padded the tail. Thus the host-only
+  `FUN_000167F4` serializer fix is demonstrated by more than one
+  request form.
+- No `47 12` and no family-1/0x82 in `235314`. The actual post-fix
+  hardware formatting of those exact short-response subcommands
+  is still not independently observed.
+
+### Updated inference and remaining unknowns
+
+The fact that **no status transition occurs in 622 captured status
+reads BEFORE any Degauss**, as well as 381 between calibration actions
+and 514 afterward, rules out *calibration being a necessary trigger of
+the absence of 0x0200* in this test. It does **not** prove that raw
+response formatting causes the missing probe notifications.
+
+Timeline across controlled driver builds:
+
+- `230614`, HWInt patch `70716ba` but old raw serializer: true
+  pending 0x0200 twice on unplug/replug, normal AP015 reidentification.
+- `231656`, same old raw serializer: five authentic pending-0x0200
+  events correlating with Degauss plus clamp open/closed transitions;
+  family-1/0x82 replied with jaw-state WORDs 0x0058/0x00A7.
+- `233125`, after host-only raw serializer patch `3490709`:
+  zero pending 0x0200, despite multiple reported jaw actions.
+- **`235314`, same patched driver and intentional pre/post-calibration
+  open/close comparison**: still zero pending 0x0200 in every phase.
+  DMA and the corrected `47 00`/0x99 response parity remain stable.
+
+The standalone reported enabled **0x02BF is
+`LegacyCommandEnableMask` (software event bits)**, not the actual
+BAR0 INTEN MMIO DWORD at offset `0x084`. The relevant board-side
+receive-interrupt enable bit is INTEN **0x08**. The current JSONL
+contains neither that physical register value, the corresponding
+`InterruptEnableShadow`, BAR0 INTST snapshots, raw BAR1 HWInt, nor
+ISR/DPC counters. Its absence of 0x0200 cannot distinguish board
+notification not generated, hardware INTEN bit lost, ISR not seeing
+INTST 0x08, DPC missing HWInt 0x410, or an indirect protocol-state
+change. No such cause is yet established. The user's visual observation
+of whether XStream indicated jaw state has not been separately supplied.
+
+**Proposed smallest next discriminator, with the driver unchanged:**
+one AP015 **unplug/replug** during a short post-`3490709` XStream
+session, avoiding Degauss/Auto Zero/jaw movements. Note whether XStream
+visibly detects removal and subsequent AP015 reconnection, and capture
+status `0x0200 -> 0x88 -> 0x82 -> 0x4A` alongside DMA as in the
+pre-formatter `230614` baseline. If even a physically disconnected
+probe no longer generates 0x0200, measure BAR0 INTEN `0x084`,
+INTST `0x080`, and BAR1 HWInt `0x410` through bounded/passive
+diagnostics before proposing any interrupt change. Avoid blind
+register writes and synthetic pending masks; maintain the <=5% CPU
+requirement. If unplug/replug remains functional, investigate the
+mechanical-jaw notification path separately.
