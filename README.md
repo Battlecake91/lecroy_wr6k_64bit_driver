@@ -41,10 +41,8 @@ four channel front ends and external input, including distinct
 **Do not conflate PCI U3, acquisition-board FPGA blocks,
 PCI DS2433, front-panel probe I2C EEPROM and configuration PROM.**
 Source drawings are not redistributed due to proprietary content;
-see our derived [PCI card / acquisition board hardware map]
-(docs/pci-card-acquisition-board-topology.md)
-and [ProBus ADC/I2C architecture]
-(docs/probus-detection-i2c-architecture.md).
+see our derived [PCI card / acquisition board hardware map](docs/pci-card-acquisition-board-topology.md)
+and [ProBus ADC/I2C architecture](docs/probus-detection-i2c-architecture.md).
 
 ## Current state
 
