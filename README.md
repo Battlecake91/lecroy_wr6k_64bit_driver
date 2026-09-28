@@ -13,7 +13,7 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
-**Current engineering handoff:** [AP015 response parity / unresolved jaw notification, 2026-09-28](docs/next-chat-handoff.md). Authentic HWInt/0x0200 was hardware-tested in `230614` (physical hotplug) and `231656` (clamp state). Raw 85FB length/FF-padding correction `3490709` is now also hardware-confirmed against original x86 for `47 00` and startup `0x99` responses. Two consecutive post-formatting runs, `233125` and **controlled pre/post-calibration clamp run `235314`**, show **zero** pending 0x0200 despite jaw movements. Next discriminator: one physical AP015 unplug/replug with the **unchanged current driver**; no speculative PCI/IRQ/DMA modifications.
+**Current engineering handoff:** [AP015 corrected reply format and jaw-only notification isolation, 2026-09-29](docs/next-chat-handoff.md). Authentic HWInt/0x0200 notifications work in both earlier traces `230614`/`231656` and crucially in **post-85FB-fix repeated physical hotplug trace `001152`**, which reports twelve real 0x0200-bearing notifications, matching 0x88/0x82 and three correct post-reinsertion AP015 metadata reads. Host serializer patch `3490709` is now hardware-verified for short 0x82 raw length/FF padding, `47 00`, `47 12` and startup `0x99`; the old 47 00/47 12 fivefold retries are absent. Earlier post-fix **jaw-only** sessions `233125` and `235314` still lack spontaneous events, so the next test isolates jaw-only motion before/after one normal physical reconnect without calibration. No generic interrupt or PCI/DMA change is warranted.
 
 ## Current state
 
@@ -460,7 +460,60 @@ indications were not supplied separately.
 Compared with the five real `0x0200` events in `231656`, the two
 post-`3490709` no-event runs establish a repeated behavioral
 difference, **not its cause**: the formatting patch did not directly
-modify the interrupt path. The next controlled unchanged-driver
-hotplug experiment distinguishes a general interrupt-notification
-failure from a clamp-jaw-specific source. Acquisition, BAR handling,
+modify the interrupt path. The requested controlled unchanged-driver physical hotplug experiment
+was subsequently completed in `xstream_trace_20260929_001152.jsonl`:
+real command notifications **do** work for connector changes even
+with the corrected serializer. This narrows the unresolved observations
+to jaw-only event generation and/or probe-state initialization, not
+a blanket INTST-0x08 failure. Acquisition, BAR handling,
 descriptor safety and synthetic event policy remain untouched.
+
+
+### 2026-09-29 repeated AP015 physical hotplug: HWInt still works after 85FB fix
+
+On the unchanged post-`3490709` driver, the user physically
+disconnected and reconnected the AP015 multiple times. Trace
+`xstream_trace_20260929_001152.jsonl` records **32,675** captured
+IOCTLs, no observed failing NTSTATUS, 6,135 successful
+CFDC2138 transfers with exact requested-vs-returned byte counts,
+and **1,361 standalone command status reads**. With the software
+command-enable word 0x02BF, the pending mask is 0x0080 in 1,348
+reads, **0x0200 in eleven, 0x0280 in one**, and zero in one.
+All twelve 0x0200-bearing events have corresponding
+family-0/0x88 acknowledgement and family-1/0x82 follow-up.
+This confirms a functioning general original HWInt command
+notification path even *after* the host raw-reply serializer fix.
+
+The response formatter itself is now hardware-validated in the
+previously untested family-1/0x82 case: first removal returns
+actual raw data length 14, remaining eleven returns length 6,
+and all unused captured bytes are prefilled 0xFF instead of
+advertising old fixed capacity 0x0190 with zero padding.
+Four AP015 removals consistently show 0x82 final state WORD
+`0x03FF`. At first reinsertion, a transient `0x028C`, then
+`0x0058`, occurs without normal post-event AP015 metadata;
+the user reported temporary misidentification as a different
+"1/2 clamp", possibly from connector seating. The next three
+reinsertions returned `0x00A9` or `0x00AA`, then `0x0058`,
+and invoked normal `0x4A` metadata; all three share exactly
+the captured first 128 bytes with startup AP015 metadata
+(`Information=270` per reply). The firmware meanings of
+those status words are not yet proven.
+
+The three normally recognized reinsertions each trigger **one**
+family-0/0x4A `47 12` request, returning the complete original
+x86-equivalent `0000000000000000000002000000FFFF`.
+The former fivefold repeats are gone. All three follow-up
+firmware status queries still return `F7`; physical Auto Zero
+outcome and the historical F2/F7 status-bit distinction remain open.
+No additional driver code was changed for these findings.
+
+The earlier absence of *jaw-only* spontaneous 0x0200 notifications
+in `233125` and `235314` is consequently a separate,
+not-yet-explained behavior. The next discriminating experiment is
+one mechanical jaw open/hold/close/hold pair before and after **one**
+correct physical AP015 reidentification, without Degauss or Auto
+Zero, noting XStream's visual response and elapsed action times.
+Do not roll back the verified raw formatter or alter generic IRQ,
+PCI, DMA and below-4-GiB safety based on unproven causality.
+See `docs/probus-calibration-ab-comparison.md` and the live handoff.
