@@ -277,21 +277,29 @@ Do not leave new established findings only in chat.
 
 ## Current priority
 
-1. Preserve the working acquisition baseline proven by
-   `xstream_trace_20260928_005808.jsonl` and the wider functional-regression
-   run `xstream_trace_20260928_011938.jsonl`.
-2. User-validated normal scope functions on x64 now include:
-   waveform height/frequency plausibility, vertical scale, timebase, coupling,
-   bandwidth, 2-channel/10-GS/s mode switching, and trigger-type changes.
-3. Do not change working acquisition/interrupt paths speculatively. Future
-   driver changes need a concrete failing feature or trace discriminator.
-4. The main unverified hardware feature is currently ProBus/probe
-   communication, especially whether the external probe-side I2C behavior is
-   preserved. The host-side probe/SPI path is active and error-free, but this
-   does not prove the physical downstream bus.
-5. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated unless a
-   real application path requires them and the original behavior is recovered.
-   Preserve the below-4-GiB descriptor safety check.
+1. Preserve the known-good x64 waveform/DMA baseline from
+   `xstream_trace_20260928_005808.jsonl` and the broad normal-operation
+   regression `xstream_trace_20260928_011938.jsonl`.
+2. Prioritize **ProBus hotplug/recognition**. The controlled 2026-09-28 A/B
+   captures prove that legacy receives command-status pending bit `0x0200`
+   exactly three times during probe insertion; the x64 trace never reports it
+   and therefore never proceeds into family-1 `0x82` identification or
+   family-0/1 `0x4A` probe traffic.
+3. Locate the original producer of command pending `0x0200` and compare the
+   actual probe-ring/interrupt inputs. The current x64 command-pending DPC
+   explicitly latches only `0x0080`, `0x0800` and `0x0100`. Do **not**
+   fabricate a `0x0200` notification or inject `0x82` to make the UI
+   advance. Preserve the <=5%-CPU test constraint.
+4. Separately investigate the reproducible identical JTAG-status response
+   difference, byte 17: legacy often `0x20`, x64 often `0x32`. Its relation
+   to ProBus is presently unknown.
+5. The earlier claim of excessive V/div recalibration was corrected by the
+   user: XStream calibrates each previously uncalibrated voltage step once,
+   then caches it. The Ch2 20 mV..100 V A/B traces show broadly matching
+   calibration command families and no failed driver calls. This is currently
+   **not a confirmed regression** and should not displace ProBus work.
+6. Keep `CFDD219F` and unobserved multi-channel `CFDC2138` gated. Do not
+   regress the verified below-4-GiB DMA descriptor safety check.
 
 
 ## Latest dispatch recovery
@@ -3364,54 +3372,106 @@ Project conclusion for Developer -> Run Link Tests:
   diagnostic tool/lecdiag path rather than falsifying the XStream driver family.
 
 
-## 2026-09-28 open regression: calibration occurs too often after V/div changes
+## 2026-09-28 calibration correction: Ch2 vertical-step A/B comparison
 
-User observation on the otherwise working x64 waveform baseline:
+The user corrected the earlier excessive-calibration report: on the working
+x64 driver XStream appears to calibrate each voltage step **once**, and then
+reuses that step's calibration when it is selected again.
 
-- XStream calibrates disproportionately often with the replacement driver;
-- calibration is seen after nearly every V/div change;
-- the same scope with the original legacy driver does **not** calibrate this
-  frequently for equivalent vertical-scale changes.
+Four new A/B files were supplied:
 
-Treat this as a real compatibility defect, not as expected user-interface
-behavior. It is higher priority than the still-unverified ProBus path because
-it suggests a host/driver/board state or calibration-validity signal differs
-from the original stack.
+- `legacy_xstream_trace_20260928_183122_x86_Caibration_original.jsonl`
+- `xstream_trace_20260928_183640_x64_calibration.jsonl`
+- `legacy_xstream_trace_20260928_183409_probus_original.jsonl`
+- `xstream_trace_20260928_183807_probus_x64.jsonl`
 
-Do not change the working DMA/interrupt paths speculatively.
-
-The broad x64 regression trace
-`xstream_trace_20260928_011938.jsonl` already contains repeated calibration
-traffic while normal scope controls are exercised, but it does not contain
-explicit user-action timestamps, so individual V/div changes cannot be mapped
-reliably enough to identify the trigger.
-
-Required next evidence is a controlled A/B trace using the same exact vertical
-sequence on both drivers, with acquisition stopped or running consistently:
+The vertical-only pair steps CH2 from 20 mV/div to 100 V/div. Relevant
+comparison (legacy uses `nt_ioctl`, not duplicated usermode `ioctl` entries):
 
 ```text
-1.0 V/div
-500 mV/div
-200 mV/div
-500 mV/div
-1.0 V/div
-2.0 V/div
-1.0 V/div
+                                  Legacy x86   x64
+relevant IOCTLs                       33,849   42,761
+failed relevant IOCTLs                     0        0
+family-1 opcode 0x96                     120      120
+family-1 opcode 0x81                      61       61
+family-0 opcode 0x90 selector 0x0E     1,147    1,181
+   selector-0x0E idle frames              560      570
+   selector-0x0E other frames             587      611
 ```
 
-Hold each setting for about 3 seconds and make no other changes. Record whether
-XStream visibly enters `Calibrating...` after each step.
+The 120 opcode-0x96 selector requests occur in the same set/order; their
+captured first 128 output bytes match for identical input selectors. The x64
+kernel trace caps output-hex at 128 bytes, whereas the legacy trace captures
+526 bytes, so this is a prefix comparison, not a full 526-byte equality claim.
 
-Capture one trace with the working x64 replacement and one with the original
-x86 driver if practical. Compare the first command/state divergence immediately
-after each V/div transition. Primary suspects to investigate are calibration
-validity/counter state, front-end configuration status, command/event status
-and any locally emulated response whose semantics affect whether XStream
-believes calibration remains valid.
+These traces do not demonstrate systematic redundant calibration on revisiting
+a vertical step. Total IOCTL counts cannot directly measure calibration count
+because the captures differ in duration. Do not alter the calibrated baseline
+without a further confirmed discrepancy.
 
-Current rough project completeness estimate:
-- normal oscilloscope usability: about 90%;
-- broad original-driver compatibility including service/probe/rare paths:
-  about 75-80%.
+## 2026-09-28 ProBus comparison: missing pre-identification pending bit 0x0200
 
-These percentages are engineering estimates, not measured coverage metrics.
+The two ProBus runs differ sharply:
+
+- legacy workflow: launch XStream, plug a probe, wait for recognition, change
+  sensitivity, execute Degauss and Auto Zero, exit;
+- x64 workflow: connect the same probe; XStream shows no reaction.
+
+Relevant packet counts:
+
+```text
+                                     Legacy x86    x64
+relevant IOCTLs                          20,923  20,690
+failed relevant IOCTLs                        0       0
+family-0 SPI opcode 0x90 / selector 0x0C     75     195
+85FB status pending 0x0080                  642     679
+85FB status pending 0x0200                    3       0
+family-1 opcode 0x82 (identification)        3       0
+family-1 opcode 0x4A                         19       0
+family-0 opcode 0x4A                         16       0
+```
+
+Legacy first observes `0x0200` at trace seq 14552 and again at 14588 and
+14616:
+
+```text
+85FB/0x01:
+  input  0A0002000300FB854001
+  output 000000000400BF020002
+                 enable=0x02BF, pending=0x0200
+
+family-0/0x88 mask 0x0200:
+  060006000300FBA5400088000002080002000300FB854000
+
+family-1/0x82:
+  060004000300FBA540018200960102000300FB854000
+```
+
+The legacy sequence proceeds into family-0/1 opcode 0x4A. The family-1/0x4A
+metadata response at seq 14596 includes ASCII `AP015`. Other 0x4A
+transactions follow during the probe-management operations.
+
+Every one of the 679 x64 standalone 85FB/0x01 status requests instead reports
+`000000000400BF028000`, with pending=0x0080 only. No 0x0200 producer is
+implemented in the current x64 command-pending state machine: the DPC only
+latches pending masks 0x0080, 0x0800 and 0x0100. Therefore downstream 0x82
+and 0x4A commands are **not requested by XStream**, rather than requested and
+rejected. Family-1/0x82 and 0x4A already belong to the existing recovered
+firmware-forwarding whitelist.
+
+The x64 probe run does exercise selector-0x0C SPI traffic, so this is not a
+complete absence of host-to-board activity. It polls substantially more often,
+but the overall capture durations differ; do not turn that count into a rate
+claim without aligning timestamps.
+
+An additional, independent, reproducible response mismatch exists for the
+same family-1 JTAG opcode-0x42, mode-1, selector-0x4C input packet. In
+steady-state samples the legacy output byte at index 17 is 0x20, whereas the
+x64 output byte is 0x32. This occurs in both calibration and ProBus A/B
+captures. It is not yet proven to be the probe-detection signal.
+
+Next safe discriminator: start XStream on x64 **with the probe already
+connected**, rather than hot-plugging it. If recognition then occurs, prioritize
+the asynchronous event producer. If not, compare probe-ring/SPI state and
+the JTAG-status discrepancy. Read and instrument the actual board sources
+before modifying interrupt or command-pending behavior.

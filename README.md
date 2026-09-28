@@ -263,10 +263,20 @@ path. The current project intentionally leaves this vendor diagnostic gate
 unchanged.
 
 
-### Known regression: excessive calibration frequency
+### Calibration A/B comparison and remaining ProBus issue
 
-The replacement driver currently causes XStream to recalibrate much more often
-than the original driver during V/div changes. Normal acquisition and waveform
-display remain functional, but this behavior is not considered compatible and
-is under investigation. A controlled legacy-vs-x64 vertical-scale trace is the
-next required discriminator.
+The previous concern about excessive recalibration was corrected by a
+controlled Ch2 20 mV/div to 100 V/div sweep. The replacement appears to
+calibrate each not-yet-calibrated voltage step once and reuse its calibration.
+The legacy and x64 captures have closely matching calibration command
+distributions and no failed relevant driver calls. Excessive calibration is
+therefore not currently a confirmed compatibility regression.
+
+ProBus hotplug is a confirmed remaining issue. In the working original trace,
+probe insertion produces 85FB command-pending status `0x0200`, followed by
+family-1 opcode `0x82` identification and family-0/1 opcode `0x4A` traffic
+with metadata including `AP015`. The corresponding x64 trace never reports
+pending `0x0200`, so those downstream commands are never issued by XStream.
+The known-good waveform/DMA baseline has deliberately not been changed.
+
+See `docs/probus-calibration-ab-comparison.md` for the four-trace comparison.

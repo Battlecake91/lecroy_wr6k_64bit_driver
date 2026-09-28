@@ -2579,17 +2579,40 @@ The installed DLL was analyzed locally only and must not be added to the public
 repository.
 
 
-## Open regression: excessive calibration on V/div changes
+## 2026-09-28 controlled calibration and ProBus A/B comparison
 
-After the main waveform and control paths became functional, the user observed
-that the x64 replacement causes XStream to enter `Calibrating...`
-disproportionately often, nearly every time V/div is changed. The original
-legacy driver on the same instrument does not behave this way.
+The user corrected the earlier calibration concern. The apparent repetition
+comes from one initial calibration per vertical voltage step, with later
+visits reusing the step. Ch2 was swept 20 mV/div to 100 V/div in matching
+legacy and replacement-driver runs.
 
-This is now a priority compatibility regression. The existing broad regression
-trace contains multiple calibration bursts, but because user actions were not
-timestamped it cannot prove which exact V/div transition caused each burst.
+The two calibration captures contain zero failed relevant driver IOCTLs.
+Family-1 0x96 occurs 120 times in each; family-1 0x81 occurs 61 times in each.
+Family-0 0x90 selector 0x0E occurs 1,147 times (legacy) versus 1,181 times
+(x64); 560 versus 570 are the common idle-frame pattern. Differences in total
+trace lengths prevent an exact cycle-count or timing conclusion. The previous
+claim of a confirmed excessive-calibration regression is superseded.
 
-The next useful capture is a controlled vertical-scale-only A/B sequence on
-x64 and legacy. No driver changes should be made before that discriminator is
-available.
+The separate ProBus hotplug captures identify a much sharper compatibility
+gap. Legacy standalone 85FB/0x01 status returns enabled=0x02BF,
+pending=0x0200 at seq 14552, 14588 and 14616. These prompt family-0/0x88
+mask 0x0200 acknowledgements, family-1/0x82 probe queries (three calls), then
+family-0/1 opcode 0x4A metadata and control traffic. The returned metadata
+contains ASCII `AP015`.
+
+On x64, all 679 standalone status reads report pending=0x0080, never 0x0200.
+Consequently no family-1/0x82 or family-0/1 opcode-0x4A commands appear, and
+the plugged probe is not recognized. Yet the x64 trace issues 195 SPI-selector
+0x0C transactions versus 75 in the legacy capture, proving the host still
+attempts the surrounding probe-control/polling workflow.
+
+No captured relevant IOCTL fails in either ProBus run. The missing behavior
+precedes actual probe identification, sensitivity, Degauss and Auto Zero.
+It must not be fixed by fabricating 0x0200 or by invoking 0x82 proactively.
+
+The same exact family-1/0x42 JTAG request yields a recurring steady-state
+difference in both A/B pairs: output byte index 17 can be legacy 0x20 versus
+x64 0x32 (XOR difference 0x12). The causal relation to ProBus is unknown.
+
+Full packet and count details are recorded in
+`docs/probus-calibration-ab-comparison.md`.
