@@ -4,6 +4,15 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**New front-end hardware context, provided by the user:** probe connection is
+classified as ProBus by an **ADC identification value**; the front-panel
+**EEPROM is then read over I2C**; subsequent physical probe control also
+uses **I2C**. This is a probe/front-panel layer, **not** proof that the
+Windows driver exposes I2C directly. Our original-driver family-0/0x90
+BAR1 `SPICTL/SPIDAT/SPIDIN` helper is a distinct host-to-board layer;
+do not misidentify that SPI register path as the probe's physical bus.
+Canonical details and open mapping questions:
+[`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md).
 **Important 2026-09-29 correction:** The user's XStream clearly warns that
 the opened AP015 clamp is **not locked and measurements may be inaccurate**.
 Earlier assistant statements interpreting missing recorded `0x0200` in
@@ -3198,12 +3207,19 @@ Probe-path evidence:
 - selectors `0..4` also occur repeatedly;
 - every captured request succeeds.
 
-Static recovery identifies family-0 opcode 0x90 as the local BAR1 SPI helper
-using SPICTL/SPIDAT/SPIDIN. This proves the host-side probe-control path is
-active on x64. It does **not** prove that an external ProBus probe's physical
-I2C communication works: the Windows driver trace does not expose SDA/SCL or a
-direct I2C controller, so a real ProBus-device recognition/configuration test is
-still required.
+Static recovery identifies family-0 opcode 0x90 as the local BAR1 SPI
+helper using SPICTL/SPIDAT/SPIDIN. **Important later hardware clarification
+(2026-09-29):** the user confirms that the electrical probe-side interface
+uses an ADC signature for ProBus-class detection, then reads a front-panel
+EEPROM through I2C, and conducts physical probe control via I2C.
+The driver-visible local BAR1 SPI helper is a **different protocol layer**;
+no demonstrated bridge mapping yet relates selector 0x0E to a physical
+I2C transaction. The Windows driver IOCTL trace cannot reveal SDA/SCL
+transitions or EEPROM addresses, but subsequent real AP015 tests do verify
+user-visible identification and jaw-unlock warning on x64. Do not keep
+describing those functions as awaiting their first probe-level test.
+See `docs/probus-detection-i2c-architecture.md` for verified-versus-
+user-supplied evidence and the remaining lower-layer questions.
 
 Treat trace 011938 as the primary normal-operation functional-regression trace.
 
@@ -4107,3 +4123,45 @@ omitting 4,755 entries, no recorded NTSTATUS failures;
 Last DMA t~58.367987 s, 1,024 requested/returned.
 Full data: `docs/probus-calibration-ab-comparison.md`,
 `docs/runtime-trace.md`, `docs/next-chat-handoff.md`.
+
+
+## 2026-09-29: user clarification of ADC -> front EEPROM/I2C -> probe-control I2C architecture
+
+The user supplied an important **physical front-end** fact:
+the probe is first detected through its analog ADC identification
+value; based on that value XStream recognizes the electrical
+classification as a ProBus probe, then reads an EEPROM located
+at the scope front via I2C. Physical probe control is also by
+I2C. Exact numerical ADC values, I2C address and transactions,
+EEPROM bytes, and which board firmware or XStream layer issues
+each electrical operation are not yet captured or statically
+decoded.
+
+**Do not conflate host register interfaces with external I2C:**
+family-0/0x90 is source-recovered as BAR1 SPICTL/SPIDAT/SPIDIN
+host-to-board serial transactions, including selector-0x0E
+144-bit packets; their relationship (if any) to the actual
+front-panel I2C controller is unknown. Similarly,
+firmware-forwarded `0x4A` replies containing ASCII AP015 are
+consistent with EEPROM-driven identification but the present
+IOCTL trace does not prove which reply bytes are direct EEPROM
+data. Authentic `0x0200` from BAR0 INTST bit 0x08 and BAR1
+HWInt is a host notification channel, not automatically the
+physical lock sensor or an I2C transaction. The observed jaw
+open/closed `0x82=0x0058/F7` and `0x82=0x00A7/F3`
+correlations and the user's XStream warning remain true.
+
+**The transient first wrong "1/2 clamp" recognition in trace
+`001152`** had 0x82 `028C -> 0058` and did not trigger the
+usual AP015 270-byte host metadata query. ADC classification,
+connector settling, EEPROM I2C, and board-state sequencing
+are now *separate testable candidate stages*, not a diagnosed
+I2C/EEPROM failure. Preserve the working host formatter and
+HWInt/PCI/DMA; investigate low-level I2C/ADC only when an
+actual unresolved probe behavior warrants it.
+
+Canonical architecture document:
+`docs/probus-detection-i2c-architecture.md`. Source-backed
+host/board mappings: `docs/ioctl-map.md`,
+`docs/hardware-register-map.md`. Runtime A/B:
+`docs/probus-calibration-ab-comparison.md`.
