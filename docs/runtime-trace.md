@@ -2686,3 +2686,63 @@ The x64 patch restores both missing parts without changing the existing
 synchronous polling of solicited RX data or the proven DMA paths. A focused
 post-patch hardware run must check spontaneous pending 0x0200, subsequent
 0x88/0x82/0x4A flow, uninterrupted acquisition and absence of event storms.
+
+
+## 2026-09-28 trace 230614: HWInt/ProBus hotplug works after patch 70716ba
+
+User procedure: AP015 connected before XStream startup, change to higher
+A/div, remove AP015 once, reinsert once, close XStream. User reports all
+changes were recognized normally. This is the first real-hardware run of
+the restored original INTEN `0x08` / INTST `0x08` / BAR1 HWInt `0x410`
+command-status path (driver commit `70716ba`). The capture
+`xstream_trace_20260928_230614.jsonl` is user-supplied and not public.
+
+**Trace hygiene:** 19,288 `type=ioctl` entries with seq range 1..21761;
+2,473 sequence entries are missing in 30 inter-snapshot gaps, so counters
+refer only to captured calls. All captured NTSTATUS fields are success.
+14,742 CFDC2110 calls, 3,633 CFDC2138 calls, zero DMA requested/result
+byte-count mismatches, and 720 standalone 85FB/0x01 reads. All 720 read
+command-enabled `0x02BF`; 718 report pending `0x0080` and two report
+real pending `0x0200`:
+
+```text
+~28.422s  seq 14951  85FB standalone: 000000000400BF020002
+~28.449s  seq 14952  family-0/0x88 mask 0x0200, success
+~28.480s  seq 14961  family-1/0x82, response Information=412
+           no subsequent 0x4A in this first event sequence (removal)
+~31.275s  seq 16639  85FB standalone: 000000000400BF020002
+~31.299s  seq 16640  family-0/0x88 mask 0x0200, success
+~31.330s  seq 16651  family-1/0x82, response Information=412
+~31.469s  seq 16678  family-0/0x4A setup, success
+~31.515s  seq 16679  family-1/0x4A reply, Information=270, AP015
+```
+
+Elapsed seconds use the previously established 10-MHz trace-tick conversion
+from the first recorded IOCTL; exact physical-action timestamps were not
+recorded separately. The first and second events correspond to unplug and
+replug respectively according to the user's stated order and the packet
+sequence. Subsequent standalone status reverts to pending `0x0080`, not a
+repeated `0x0200` storm. The startup AP015 `0x4A` reply (seq 509) and
+post-reinsertion reply (seq 16679) both have Information 270 and the
+same captured first 128 output bytes; this prefix also matches the
+original-driver legacy trace metadata at seq 14596/14812.
+
+DMA distribution across the two pending events: 2,332 before event 1;
+328 between them; 973 after event 2, continuing through trace end
+(~39.58 seconds). The closest measured DMA gaps crossing those events are
+~36 ms and ~397 ms. The last observed >=8192-byte transfer occurs at
+~27.067 seconds, preceding the first pending-0x0200 event; later
+transfers are predominantly 1024/2048 bytes. The preceding higher-A/div
+user action is consistent with an earlier acquisition-mode transition,
+but exact cause/timing should not be invented from the trace. DMA return
+status alone is not visual evidence of waveform pixels; the user's visual
+observation confirms normal probe-state recognition. CPU use and raw ISR/
+DPC rates are not recorded by this IOCTL-only trace.
+
+**Milestone:** The first real-hardware regression shows that patch
+`70716ba` restores the missing asynchronous AP015 command notification
+and allows natural XStream handling of disconnect/reconnect through
+pending-0x0200 / 0x88 / 0x82 / 0x4A. This is distinct from the still-open
+Degauss/Auto Zero opcode-0x4A `...47 00` response-parity problem, which
+was not exercised in trace 230614. No new PCI, DMA, polling or fake-pending
+behavior was introduced. See `docs/probus-calibration-ab-comparison.md`.
