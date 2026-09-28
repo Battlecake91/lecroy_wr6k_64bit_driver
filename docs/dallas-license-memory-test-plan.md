@@ -105,6 +105,74 @@ that protection is not a substitute for keeping
 secrets out of screenshots, terminal transcripts,
 issues, attachments and commits.
 
+## Matching backups obtained: prepare an intentionally invalid test marker (2026-09-29)
+
+The user reports two independent `original-*.bin` backups with
+**identical SHA-256 hashes**. This confirms that the saved byte images
+match (in addition to the in-command two-read and ROM-ID checks).
+Do not record the card-specific SHA-256 fingerprint or raw license
+content in this public repository.
+
+The user's next request is to **add an invented license for a
+write/read compatibility test**, not to issue a working entitlement.
+Before risking the installed license storage, a new purely OFFLINE
+PowerShell helper now prepares a **512-byte candidate image**:
+
+[`scripts/create-dallas-dummy-image.ps1`](../scripts/create-dallas-dummy-image.ps1).
+
+It explicitly refuses to overwrite files, checks that both backups
+are independently named, exactly 512 bytes long and identical
+byte-for-byte, and searches from page 15 down for a page consisting
+entirely of thirty-two `0xFF` bytes. If no entire blank page exists,
+**it fails and creates no output**. If a candidate page exists, it
+copies the entire original image and changes only the 30 bytes
+beginning at that page's start to the unequivocally invalid ASCII
+marker:
+
+```text
+FAKE-XSTREAM-LICENSE-TEST-ONLY
+```
+
+The other 482 bytes remain unchanged, including the two `0xFF`
+bytes at the end of the selected page. The new filename must
+end in `.ds2433.bin` (globally ignored by `.gitignore`),
+uses a `CREATE_NEW` file handle, and the script reopens and
+compares the entire output image. This **does not** establish
+a genuine XStream license record, a valid EEPROM application
+slot, or safe electrical write/erase semantics. A page which
+reads as all `0xFF` may still be reserved in the license
+format. The script issues NO driver IOCTL and does not
+program the installed DS2433.
+
+With the scope repository as the PowerShell current directory,
+and the two already existing backups:
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+
+& ".\scripts\create-dallas-dummy-image.ps1" `
+  -ImageA ".\license-backups\original-a.bin" `
+  -ImageB ".\license-backups\original-b.bin" `
+  -OutputImage ".\license-backups\fake-test.ds2433.bin"
+```
+
+The script reports only the **selected 32-byte page / EEPROM
+offset**, original SHA-256 and candidate-image SHA-256.
+Keep the modified file private. Do not boot XStream against
+a modified installed license image until a rollback on a
+spare DS2433 has been independently proven.
+
+**Critical next gate before touching installed hardware:** current
+native x64 driver still lacks original IOCTL `0x00223088`
+(`WRITE_DALLAS_MEMORY`); successful read-back alone is not
+writer validation. Recover the original scratchpad/copy procedure,
+test write and power-cycle restore on a disposable DS2433,
+then consider a bounded real-card operation only with a
+known-correct full recovery path. Neither writer nor
+hardware programming is part of this new offline script.
+
 ## Future controlled write test, separate authorization required
 
 **Do not erase the installed license memory as the
