@@ -3338,9 +3338,27 @@ and copied bytes, and preserves the existing proven explicit family-1
 opcode-0x99 length override. The already-correct local responses and
 known-good full-size raw responses remain unchanged.
 
-This new patch has **not yet been compiled or tested on hardware**.
-A fresh captured `47 00`, `47 12` and `0x82` response is required to
-check that original-length/FF-padding parity is achieved and that
-XStream no longer issues the observed five-attempt bursts. The original
-data still do not prove the physical success of Degauss/Auto Zero. Do not
-reinterpret an apparently fixed IOCTL status alone as calibration proof.
+**Hardware update from `xstream_trace_20260928_233125.jsonl`:**
+the patched driver now returns the byte-identical legacy full result
+`0000000000000000000002000000FFFF` for the two recorded, identical
+`47 00` requests at seq 8573 and 22156 (~20.034 s and ~40.675 s).
+The old five-call 47 00 retry burst no longer occurs. These two distinct
+commands correlate with user Degauss and subsequently **manual Auto Zero**.
+The manual test records no `47 12` command, so its previous automatic
+event-associated use must not be declared the universal Auto Zero opcode.
+
+Two subsequent identical family-1/0x4A `...01 0A` status replies at
+seq 8574 and 22158 both contain the genuine value `F300`, versus
+reference legacy `F200`. This status-bit discrepancy persists independently
+of the corrected host raw-response framing. Physical calibration outcome
+is not established by these IOCTLs alone.
+
+**Do not prematurely mark 47 12 and 0x82 reply formats hardware-tested:**
+there were zero such requests in the new capture. All 1,135 captured
+standalone 85FB/0x01 status reads reported enabled `0x02BF` and pending
+only `0x0080`, with no spontaneous 0x0200 or 0x82 despite reported
+jaw movements (447 uninterrupted status reads after t=40 s, no trace gaps
+after t~28.646 s). The formatter change has no direct ISR/INTEN/HWInt
+or PCI/DMA modifications, so this needs a jaw-only-before/after-calibration
+regression instead of invented pending events. See
+`docs/probus-calibration-ab-comparison.md` for detailed A/B evidence.
