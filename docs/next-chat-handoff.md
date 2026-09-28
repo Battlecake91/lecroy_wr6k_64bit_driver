@@ -5,6 +5,21 @@ Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
+**2026-09-29 additional evidence:** private Dallas ROM reads
+at trace 011858 seq 1/607 are identical and CRC-valid,
+with family byte 0x23. Serial bytes at offsets 1..3
+as a little-endian 24-bit value match the primary
+six-digit displayed scope identifier. The display
+suffix is not yet mapped. The pushed original
+writer wrapper FUN_00011f54 was reviewed:
+up to 512 input bytes, <=32-byte chunks, full
+readback/compare, up to three passes; called
+helpers 16d90 and 16f2c have not yet been exported.
+A software-only test image is not a replacement
+for actual programmed EEPROM contents. Keep
+private identifiers and license bytes out of
+public artifacts. See the Dallas test plan.
+
 **LATEST ENGINEERING STATE:** The user attempted
 to Delete one XStream license under the
 current x64 replacement driver; after XStream
