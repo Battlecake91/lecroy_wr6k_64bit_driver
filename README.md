@@ -147,6 +147,55 @@ No live key modification or source
 driver change has been executed.
 See [Dallas license test plan](docs/dallas-license-memory-test-plan.md).
 
+**Confirmed x64 Dallas write compatibility gap (2026-09-29):** The user clicked Delete
+on an existing XStream license with the
+replacement x64 driver, but it reappeared
+on restart. Uploaded **private**
+`xstream_trace_20260929_011858.jsonl`
+provides the direct explanation:
+XStream's WOW64 process sent
+**`0x00223088 WRITE_DALLAS_MEMORY`**
+(seq 522, t~57.303 s, **512-byte
+input**, no output) and the current
+x64 driver returned **`0xC0000010`
+STATUS_INVALID_DEVICE_REQUEST**
+(Information=0). It is the only
+failure among 608 gap-free IOCTLs.
+The immediately following successful
+512-byte read at seq 523 has the
+same first 128 captured bytes as
+the startup read seq 3. The attempted
+new 512-byte image already differs
+from baseline at 93 positions in
+their common 128-byte preview, so
+XStream truly prepared changed data.
+**The physical chip was not written:
+we do not yet dispatch this original
+x86 write ABI.** The original
+writer's Ghidra VA `0x11F54`
+has been added to
+`ghidra_scripts/targets.txt`
+for source/ASM/XREF extraction
+before an x64 write port.
+Do not repeatedly delete
+licenses or stub success,
+since private double-backups
+are not a proven restore path.
+The uploaded legacy-format
+JSONL contains license-related
+hex previews and must remain
+PRIVATE. Updated the diagnostic
+EXE `lecdiag` to redact
+Dallas write input and read/ROM
+output fields in *newly rebuilt*
+JSONL exports, preserving
+codes, lengths and status.
+This changes only the diagnostic
+EXE source; **no replacement
+kernel write path has yet been
+implemented**. See
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
