@@ -3683,3 +3683,37 @@ acknowledgements and all DMA handling are preserved. No synthetic 0x0200
 injection or timer/polling loop was added.
 
 **Not yet compiled or hardware-validated after this change.**
+
+
+## 2026-09-28 successor-chat pre-build review (HWInt/ProBus)
+
+The successor chat verified that the user's uploaded ZIP contains the four
+required historical ProBus traces, not a trace from the new driver. Legacy
+hotplug alone has the three standalone 85FB pending `0x0200` notifications
+(seq 14552/14588/14616) and genuine corresponding opcode-0x88 mask 0x0200,
+followed by 0x82 and 0x4A. The three x64 traces predate patch `70716ba`
+and have no pending 0x0200; preconnected probe enumeration remains distinct.
+See `docs/probus-calibration-ab-comparison.md` for the checked counts.
+
+The patch in `driver/Ioctl.c` and `driver/Acquisition.c` was source-reviewed
+against original `FUN_000160A8`, `FUN_0001619A`, `FUN_000176A2`,
+`FUN_000157A6`, `raw_114f2.asm.txt`, and the x64 ISR/DPC. No obvious
+source-level WDK symbol/type error was identified; this is not a real
+compile result. BAR1 HWInt `0x410` is in the established mapped range; the
+real low-16-bit pending latch is protected with the same `LegacyEventLock`
+as standalone status and opcode-0x88 acknowledgement. No driver changes
+were made during this review, to protect the currently working acquisition.
+
+One unproven concurrency risk to observe during the first test: existing
+`LecCommitLegacyInterruptMask` commits caller-computed full DWORD masks,
+so a concurrent first-time receive-bit-0x08 enable and acquisition-bit-0x01
+toggle could interleave. Do not change the established PCI/DMA code without
+new trace evidence; check normal waveform startup, CFDC2138 completion, and
+status/event flow before one controlled physical unplug/replug.
+
+First perform the scope-side **Debug build-only check**, then use the existing
+scope desktop `Run-LeCroy-XStream-Trace.ps1` helper for build/sign/load and
+the single controlled AP015 hotplug test. Exact commands, stop criteria,
+minimum idle intervals, and requested trace markers are in
+`docs/next-chat-handoff.md`. No post-patch WDK build or real-hardware test
+has yet been reported. CPU limit remains 5%.
