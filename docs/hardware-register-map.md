@@ -109,6 +109,20 @@ BAR2 respectively. The corrected mapping is described below.
 
 ## Recovered Dallas / 1-Wire hardware path
 
+**New schematic corroboration (user-supplied `PCI Card.pdf`, sheet 1,
+2026-09-29):** The separate PCI interface card physically contains
+`U11 DS2433`, labelled `ID Chip`, on the `ID_DATA` net attached
+to `U3 XC2S200E` Spartan-IIE PCI FPGA. It is a concrete
+device-level candidate for this already reverse-engineered BAR2
+ONEWIRE/Dallas path. The PDF does not show the FPGA's internal
+BAR2+0x040 RTL mapping, so that complete wiring is a
+**schematic-plus-original-driver inference**. Crucially,
+`U11` is **not** the front-panel **I2C** EEPROM used after
+ADC-based ProBus probe classification; they are on different
+boards and buses. The same PCI card also has `U6 XC18V02`,
+a third, separately purposed Spartan **configuration PROM**.
+See [`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
+
 The 2008 reference driver establishes the three memory resources in resource-index
 order and passes them to its register-map constructor as BAR0, BAR1 and BAR2.
 
@@ -388,3 +402,38 @@ known host boundary and open electrical mapping questions:
 This information adds an interpretation boundary only and
 does not alter any established BAR address or working driver
 implementation.
+
+
+## Schematic architecture cross-reference: PCI Spartan versus acquisition-board FPGAs (2026-09-29)
+
+Two user-supplied original drawings, `PCI Card.pdf` and
+`Overview.pdf`, have now been reviewed. The separate PCI card
+contains `U3 XC2S200E` Spartan-IIE, PCI-side
+`PI5C3861` bus switches, configuration PROM `U6
+XC18V02`, ID device `U11 DS2433`, and separate
+40-pin receive `J1` / transmit `J2` headers with
+differential `CLOCK`, twelve `D0..D11` data pairs,
+`SYNC`, `RESET_ERR`, and stable-status signals.
+The board Overview separately labels `UP Control (UP)`,
+`Timebase (TB)`, `ADC+MAM (AM)`, `ADC+MAM (AM2)`,
+`FPGA's (FP)`, the four channel front ends and
+`EXT`, plus distinct `I2C(0:5)`,
+`SPI_IO(0:40)`, `MTT_FPGA(0:35)` and
+`ADC_CNTL(0:25)` nets.
+
+The PCI-card FPGA **must not** be conflated with the
+acquisition-board AM/AM2/FP blocks. The schematic
+shows a real PCI FPGA plus off-card receive/transmit
+link; it does NOT reveal the FPGA-internal mapping of
+each driver-visible BAR register, remote-link packet
+encoding or acquisition-firmware internals. The
+known `BAR0/1/2` names and offsets above remain
+source-backed original driver semantics, not net
+names printed inside this electrical drawing. Likewise,
+physical probe control is I2C after ADC classification
+(user information); a host `BAR1 SPICTL/SPIDAT/SPIDIN`
+helper is not direct proof of a probe-side SPI bus.
+See [`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md)
+and [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+The original proprietary source PDFs were NOT
+redistributed into this public repo.
