@@ -572,3 +572,116 @@ are the same as the legacy run, but the currently available IOCTL
 `output_hex` cannot independently expose `LecTransportReceive`'s
 internal `received` count. Do not mark Degauss / Auto Zero or reply
 parity as proven until a fresh post-patch capture confirms the result.
+
+
+## 2026-09-28 23:31: first real regression of raw 85FB framing patch
+
+User workflow in new trace `xstream_trace_20260928_233125.jsonl`:
+start x64 XStream with AP015 attached, invoke Degauss, subsequently trigger
+Auto Zero **manually**, then open/close the clamp several times, and exit.
+This is the **first observed hardware capture after host-only
+`driver/Ioctl.c` patch `3490709`**. Do not conflate this test with the
+preceding automatic post-Degauss Auto Zero run `231656`. Hand-action
+timestamps and XStream's visual response to clamp opening/closing were
+not separately logged.
+
+| Captured result | New trace 233125 |
+|---|---:|
+| Duration from first to last captured IOCTL | ~55.628 s |
+| Captured IOCTL records | 27,947 (seq 1..30,856) |
+| Unobserved entries in 29 capture-snapshot gaps | 2,909 |
+| Last snapshot gap ends | ~28.646 s (none later) |
+| Non-success NTSTATUS among captured calls | 0 |
+| CFDC2110 | 21,366 |
+| CFDC2138 | 5,219 |
+| DMA return DWORD equals request DWORD at input byte offset 11 | 5,219/5,219 |
+| Standalone 85FB/0x01 | 1,135 |
+| Enabled command mask | 0x02BF on every captured standalone status |
+| Pending command mask | **0x0080 on all 1,135 captured status reads** |
+| Pending containing 0x0200 | **0** |
+| Family-1/0x82 | **0** |
+| Family-0/0x4A | 8 |
+| Family-1/0x4A | 10 |
+
+The AP015 was correctly recognized at startup through family-1/0x4A seq
+**507**, `Information=270`, with ASCII `AP015`. The captured 128-byte
+response prefix is byte-identical to startup/reinsertion in run `230614`,
+startup in `231656`, and the legacy x86 seq 14596/14812. Full 270-byte
+equality cannot be inferred because the x64 output preview is truncated.
+
+### Requested-length/0xFF-padded raw reply now matches legacy exactly
+
+The same family-0/0x4A `...47 00` complete request is recorded at:
+- seq **8573**, t=**20.034487 s**, output
+  `0000000000000000000002000000FFFF`;
+- seq **22156**, t=**40.675207 s**, identical output.
+
+Each is followed by family-1/0x4A `...01 0A` at seq 8574 and 22158,
+respectively. Both status responses now report
+`0000000000000000000004000000F300`.
+
+This is byte-for-byte equality for the **47 00 response** with the original
+legacy x86 seq 24205. The old x64 run `231656` sent this request five
+times in a short burst (seq 19883..19887), each with incorrect
+`00000000000000000000040000000000`. In this new run there are only
+the two separately timed 47 00 requests; **there is no five-attempt burst
+for either action**. The corrected framing is therefore hardware-exercised
+and effective for this packet. The first and second requests correlate with
+the user-requested Degauss and manual Auto Zero, in that order. This also
+invalidates any overly broad claim that opcode subcommand `47 12` is the
+necessary representation of every Auto Zero action: **no 47 12 request
+was captured in this manual run**. Its earlier bursts in `231656`
+were associated with automatic follow-up/status notifications; exact
+firmware semantics remain to be recovered.
+
+The separate family-1/0x4A follow-up status is **F3 in both new requests**.
+The compared legacy x86 examples report **F2**. The one-bit difference
+(`0xF3` vs `0xF2`) is a real observed firmware/status payload difference,
+not the host reply-length and FF-padding mismatch just fixed. The physical
+probe state and full semantics of that flag are not established; do not
+force the value to F2 or claim physical Degauss/Auto Zero calibration
+equivalence based only on successful IOCTL responses.
+
+The new run contains **zero `47 12` requests**, so it does not directly
+validate FF/length parity for that individual subcommand; it shares the
+now-tested 85FB host formatting code. It also contains **zero
+family-1/0x82 replies**, so the predicted original-like 0x0006/0x0016
+length and FF-padded tail for 0x82 have **not** yet been hardware-tested.
+Do not mark that part independently validated.
+
+### Separate concern: no captured jaw event notifications
+
+The previous post-HWInt / pre-framing run `231656` had five spontaneous
+status events containing `0x0200`, each followed by family-0/0x88
+acknowledgement and family-1/0x82. With the corrected formatter, **all
+1,135 captured standalone status queries** still show enabled `0x02BF`
+but only pending `0x0080`. There are no family-1/0x82 or
+mask-0x0200 0x88 acknowledgements anywhere in the captured stream,
+although the user reports multiple physical open/close operations.
+Importantly, the final trace snapshot gap ends at ~28.646 s; **447 status
+reads after t=40 s are captured with no gaps and all report pending
+0x0080**. This cannot be dismissed as a missing snapshot around a later
+mechanical event. It does not by itself show whether the device failed
+to assert INTST/HWInt, the ISR/DPC missed it, XStream saw stale probe
+state, or physical actions fell into a different operating state. The
+host-only framing patch does not directly alter INTEN, INTST, HWInt, PCI,
+or DMA, but an indirect host protocol state change remains possible.
+There is no raw ISR/HWInt counter in this JSONL.
+
+Continuous acquisition remains recorded: all 5,219 captured CFDC2138
+calls have status success, Information 4 and a returned DWORD matching
+the correctly parsed requested byte count. The last recorded DMA at
+~55.627 s is a successful 1,024-byte transfer; **1,666 DMA records occur
+after the second 47 00 command**. This is not independent proof of
+visible waveform pixels or all mechanical UI state transitions.
+
+**Decision:** preserve driver patch `3490709` as a narrowly verified
+host formatting correction. Do not make another speculative interrupt,
+PCI or DMA change on the basis of one missing-notification capture.
+Next run should first exercise exactly one AP015 open/close pair with
+no preceding Degauss or Auto Zero, record whether XStream visibly changes
+its jaw state and note relative action times, then repeat one pair after
+a controlled calibration if stable. Check standalone 0x0200, 0x88,
+0x82, actual raw reply lengths/FF tails and DMA. This discriminates a
+jaw-notification regression from a calibration-dependent state without
+confounding another source change.
