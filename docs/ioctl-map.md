@@ -139,6 +139,81 @@ Further information:
 - output length `1..0x200`;
 - requested byte count returned on success.
 
+### 2026-09-29 runtime proof: XStream really sends unsupported Dallas WRITE on x64
+
+The user's private
+`xstream_trace_20260929_011858.jsonl` captures
+a **single real** `0x00223088` from XStream
+running WOW64 under the replacement x64 driver:
+seq **522**, t~**57.303140 s**,
+input length **512**, output length **0**,
+status **`0xC0000010 STATUS_INVALID_DEVICE_REQUEST`**,
+Information 0. The trace has exactly
+608 gap-free entries over ~63.0224566 s,
+with this **sole failure** (607 success).
+Initial READ_DALLAS_MEMORY seq 3
+succeeds with output/info 512;
+an immediate READ_DALLAS_MEMORY
+seq 523 after the failed write
+again succeeds with output/info
+512, and the two captured 128-byte
+read previews are identical. Do
+not claim full 512-byte equivalence
+from truncated previews alone.
+There are 93 differing byte offsets
+between intended WRITE and initial
+READ in their common first 128
+captured bytes, with no raw key
+material disclosed here. The
+full 512-byte intended write is
+not present in JSONL; WRITE input
+preview includes only its first
+256 bytes.
+
+The current x64 `driver/Ioctl.c`
+dispatch initializes
+`status = STATUS_INVALID_DEVICE_REQUEST`
+and has Dallas 0x80/0x84 cases
+but **no 0x88 case**, so this
+exactly explains the user's
+XStream Delete action not surviving
+application restart. This is
+a known native x64 compatibility gap,
+NOT evidence of a failed actual
+physical DS2433 scratchpad write.
+No fake STATUS_SUCCESS should be
+returned without real EEPROM
+programming, since XStream passes
+an entire intended memory image.
+
+The source of the original
+2008 x86 `0x00223088` handler
+is at **VA `0x11F54`** in
+the recovered dispatch. Added
+`11f54`, `asm:11f54`
+and `xref:11f54` to
+`ghidra_scripts/targets.txt`
+to export precise original writer
+C/instructions/references before
+porting 32-byte chunks, scratchpad
+COPY and readback. Avoid assuming
+bare DS2433 write sequences from
+the IOCTL buffer shape alone.
+
+**Trace privacy:** The currently
+uploaded JSONL contains license
+data previews for read/write.
+Do not reproduce it publicly;
+future rebuilt `lecdiag`
+JSONL now redacts `input_hex`
+for WRITE, `output_hex`
+for READ and ROM-ID while keeping
+all numeric status/size fields.
+No kernel write support was
+added in this documentation/
+diagnostic change. See
+`docs/dallas-license-memory-test-plan.md`.
+
 ### 0x00223088: IOCTL_WRITE_DALLAS_MEMORY (original x86 only)
 
 - non-null system buffer required;
