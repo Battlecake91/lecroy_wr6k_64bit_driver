@@ -4,6 +4,27 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Latest trace and original-code review (2026-09-29):**
+Private 011858 captured the same valid Dallas
+family-0x23 ROM response at seq 1 and 607.
+ROM bytes 1..3, viewed as little-endian 24-bit
+serial, match the primary portion of the user's
+displayed scope identifier. The display suffix
+is still unassigned; the exact formatted ID
+is not a literal IOCTL preview string.
+Recently pushed Ghidra `FUN_00011f54`
+and asm establish <=32-byte write steps,
+full requested-length read-back/compare
+and up to three passes. The underlying
+`FUN_00016d90` and `FUN_00016f2c`
+implementations are not among the
+selected exports. Native x64 still
+returns `STATUS_INVALID_DEVICE_REQUEST`
+for WRITE_DALLAS_MEMORY. Distinguish the
+factory ROM ID from the separate 512-byte
+EEPROM data, and keep card-specific
+raw traces private. Full notes:
+`docs/dallas-license-memory-test-plan.md`.
 **NEW DECISIVE WRITE FAILURE (trace
 `xstream_trace_20260929_011858.jsonl`,
 2026-09-29, uploaded private):
