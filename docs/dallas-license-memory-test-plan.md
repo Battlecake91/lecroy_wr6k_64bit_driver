@@ -265,6 +265,117 @@ DS2433 writer/restore gate below before
 any deliberate low-level write or deletion
 on the only licensed PCI card.
 
+## Redacted original image inspected; potential native delete/re-add A/B (2026-09-29)
+
+The user ran the read-only redacted
+`scripts/inspect-dallas-image.ps1 -Before
+license-backups/original-a.bin`. Its result explains why the
+previous hypothetical all-`FF` test-image generator correctly
+declined the input:
+
+| Page(s) and offset(s) | Observed aggregate only (no secret bytes) |
+|---|---|
+| 0..5 / 0x000..0x0BF | predominantly printable content mixed with zero/FF and other bytes; no proof yet of license record boundaries |
+| 6..10 / **0x0C0..0x15F** | **160 consecutive zero bytes** (five completely zero-filled 32-byte pages) |
+| 11 / 0x160..0x17F | 28 zero bytes and four other (non-printable/non-FF) bytes |
+| 12..14 / **0x180..0x1DF** | **96 consecutive zero bytes** (three completely zero-filled 32-byte pages) |
+| 15 / 0x1E0..0x1FF | 29 zero bytes and three FF bytes |
+
+This image uses a large amount of `0x00` fill, **not**
+all-`FF` free pages. Do not interpret a zero-filled region as
+an authenticated free license entry: it may be reserved capacity,
+terminators, structured storage or covered by a global integrity
+check. Likewise, the ASCII-heavy beginning suggests human-readable
+data, but does not establish that XStream keys are plaintext without
+private format inspection. The original user-specific page-by-page
+counts/hash and actual EEPROM contents remain private.
+
+**User-proposed alternative:** delete ONE key using XStream's own
+license manager and then re-add the same legitimate key. The
+native application would exercise the correct record layout and
+possibly the original EEPROM write path. This is only a
+**possible controlled hardware-changing experiment**, not an
+instruction to erase the installed licensed chip immediately.
+
+Safety and interpretability prerequisites:
+
+1. Confirm the exact existing valid key is **independently available**
+   (not solely in the DS2433 and not merely masked by the UI);
+   confirm XStream will allow re-adding it and record current
+   license/feature status privately. Ideally have a second
+   properly backed-up PCI card or a tested spare-chip recovery
+   path. Two matching 512-byte images prove read/backup
+   consistency, **not successful EEPROM restore**.
+2. Prefer the **original 32-bit XStream with original x86 driver**
+   for any intentional native delete/re-add write. Its
+   `0x00223088` Dallas writer exists; native x64 has **no
+   writer** yet. Running the current x64 license UI cannot be
+   claimed as a successful DS2433 write test.
+3. Establish a **no-op control**: capture an independent
+   read-only baseline image; simply launch/close original
+   XStream and its license UI without modifying keys; close
+   it and capture another independent read-only image.
+   Compare both via `inspect-dallas-image.ps1 -Before ...
+   -After ...`. This catches unrelated application
+   housekeeping updates that might occur without a delete.
+4. Only if key re-entry and recovery risks are explicitly
+   acceptable: use native XStream to delete **one** known,
+   re-enterable entry, close it, and save a third private
+   512-byte backup. Run the offline redacted before/after
+   comparison. This may remove an important licensed feature
+   temporarily; do not delete every key or touch ROM ID.
+5. Re-add the **same legitimately owned** key through XStream,
+   close, make a fourth read-only 512-byte image and compare
+   baseline/delete/restored image pairs. A fully matching
+   final image would be powerful evidence of exact restoration;
+   a differing final image does not automatically mean failure
+   because application bookkeeping might be updated. Verify
+   original license recognition and associated XStream feature
+   visibly as a separate functional check.
+6. If XStream refuses a re-entry, fails, or shows a different
+   licensing status, **stop** rather than forcing raw EEPROM
+   writes or reprogramming guessed offset ranges. Keep all
+   pre-change images and the original key information private.
+
+A safe read-only snapshot on the original x86 environment should
+be possible by building the already-present compatible diagnostic
+source with:
+
+```powershell
+& ".\scripts\build-lecdiag.ps1" -Architecture x86
+```
+
+The result is `tools/lecdiag/build/x86/lecdiag.exe`, whose device
+enumeration and original legacy Dallas IOCTLs are designed to
+support either driver. **This particular backup flow on the original
+x86 system has not yet been hardware-tested**; if opening it or
+READ_DALLAS_MEMORY fails, do not interpret that as an erased EEPROM.
+Alternatively, take independent *read-only* snapshots using the
+already-tested x64 `lecdiag dallas-backup` after shutting down
+x86 XStream and booting x64, if the same physical PCI card is
+present. Keep all outputs in the private ignored
+`license-backups/` folder.
+
+For example, comparing only the page/offset structure after two
+independent snapshots exist:
+
+```powershell
+& ".\scripts\inspect-dallas-image.ps1" `
+  -Before ".\license-backups\before-ui.bin" `
+  -After ".\license-backups\after-noop-ui.bin"
+```
+
+If additionally collecting a passive original-x86 trace during
+license editing, **NEVER share the raw
+`0x00223088` input payload or a complete EEPROM write IOCTL
+trace publicly**: that buffer can contain live licensing
+material. Retain only numeric IOCTL IDs, buffer lengths,
+status, sequence order and timings in public documentation,
+with any actual key bytes redacted before sharing.
+Any legitimate actual deletion/addition is a user-controlled
+operation through XStream, separate from our still-unimplemented
+native x64 writer.
+
 ## Future controlled write test, separate authorization required
 
 **Do not erase the installed license memory as the
