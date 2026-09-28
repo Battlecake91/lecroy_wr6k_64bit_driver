@@ -15,18 +15,19 @@ The priority is compatibility with the existing LeCroy user-mode software:
 
 **Current engineering handoff:** [Corrected AP015 jaw-unlock recognition and 85FB parity, 2026-09-29](docs/next-chat-handoff.md). The user explicitly reports XStream correctly warns that an opened AP015 is not locked and measurement accuracy may be affected. Our earlier inference that zero captured pending-0x0200 in particular jaw-only traces meant *failed XStream recognition* was incorrect. New unchanged-driver trace `xstream_trace_20260929_002051.jsonl` directly confirms genuine jaw-state events: open-correlated family-1/0x82 `0x0058` followed by 0x4A status **F7**, and closed-correlated `0x00A7` followed by **F3**, reproducing the earlier `231656` pattern. Physical hotplug and reply-format corrections remain hardware validated; **no demonstrated general jaw, HWInt, PCI or DMA regression** and no speculative code changes.
 
-**Probe/front-panel architecture clarification (2026-09-29):** The user
-confirms a two-stage ProBus identification: an ADC identification value
-first marks the connected device as a ProBus probe; XStream then reads
-the front-panel EEPROM over **I2C**; physical probe control also uses
-**I2C**. This electrical interface is distinct from the confirmed
-family-0 opcode `0x90` local BAR1 **SPI** helper: the relationship
-between that host-to-board helper and front-panel I2C has not yet been
-recovered. The high-level 0x4A AP015 metadata may be EEPROM-derived,
-but the present IOCTL capture alone does not prove the byte mapping or
-show SDA/SCL. See
-[`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md)
-for the user-supplied hardware description, traced facts and limits.
+**Probe/front-panel architecture clarification (2026-09-29):**
+**All five physical front ProBus sockets use I2C exclusively**;
+the AP015 does **not** communicate over SPI. An analog ADC
+identification value first classifies a ProBus connection;
+the front/probe EEPROM is then read over I2C, and all
+physical probe control also uses I2C. The separately
+source-proven local family-0/0x90 BAR1 **SPI** helper
+is an internal board serial path, believed by the user
+to configure ADCs, references and similar hardware;
+specific SPI slave assignments are not yet mapped.
+High-level family-1/0x4A metadata does not itself
+expose raw I2C bytes. See
+[`docs/probus-detection-i2c-architecture.md`](docs/probus-detection-i2c-architecture.md).
 
 **New hardware schematic evidence (2026-09-29):** The user's one-page
 `PCI Card.pdf` identifies the PCI-side `U3 XC2S200E`
@@ -44,13 +45,37 @@ Source drawings are not redistributed due to proprietary content;
 see our derived [PCI card / acquisition board hardware map](docs/pci-card-acquisition-board-topology.md)
 and [ProBus ADC/I2C architecture](docs/probus-detection-i2c-architecture.md).
 
+**PCI licensing EEPROM (user-confirmed):** `U11 DS2433`
+on the PCI card stores **XStream license keys** in its
+512-byte 1-Wire EEPROM, distinct from the eight-byte
+ROM identity, the front probe's I2C EEPROM and
+the U6 XC18V02 FPGA configuration PROM.
+Plaintext key storage is suspected but has not
+been verified privately. The original x86 has
+Dallas ID/read/write IOCTLs, while the current
+x64 driver implements ID/read only; **EEPROM
+write/erase is not ported or tested**.
+A new strictly read-only
+`lecdiag dallas-backup <new-private-file.bin>`
+command saves a double-read-verified 512-byte
+binary image after checking the ROM ID and
+saved file, refusing overwrite. Source
+was committed but **not yet compiled or run on
+the real scope**. The `license-backups/`
+directory is Git-ignored and raw license
+data must never be committed.
+Do not test erase on the installed licensed
+chip before a separate disposable-device
+write/restore test. See
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
 
 - all 27 DeviceControl dispatch values have been recovered;
 - the generic raw register read/write ABI and build query are known;
-- Dallas/1-Wire buffer contracts and low-level access paths are known; the user-supplied PCI schematic now also locates a physical DS2433 on the PCI FPGA's `ID_DATA` net, distinct from the probe/front-panel I2C EEPROM;
+- Dallas/1-Wire ROM ID and read ABI are implemented in x64; the user's schematic locates the physical DS2433 on PCI FPGA `ID_DATA`, and the user confirms its EEPROM stores XStream license keys. The recovered original write IOCTL is not yet ported, and this device is not the front ProBus I2C EEPROM;
 - the named BAR0/BAR1/BAR2 register map has been reconstructed and cross-checked against the register-object initializer;
 - interrupt, DPC, event-signalling, BAR1 message transport and MAM register programming paths have been decoded;
 - the acquisition-buffer path is confirmed to use locked user pages, MDL chains and chained 4 KiB descriptor pages built directly from PFNs; descriptor counts are DWORDs and slot 511 links to the next table page;
