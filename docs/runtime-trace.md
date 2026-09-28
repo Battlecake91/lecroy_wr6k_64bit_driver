@@ -2945,3 +2945,87 @@ jaw-specific trigger/state. Preserve known-good acquisition,
 no synthetic pending flags, <=5% CPU. Full context in
 `docs/probus-calibration-ab-comparison.md` and
 `docs/next-chat-handoff.md`.
+
+
+## Trace 001152 (2026-09-29): four physical hotplug cycles still generate HWInt after response-format fix
+
+User procedure on unchanged post-3490709 driver: unplug/replug AP015
+several times, no separate Degauss/Auto Zero exercise. The first
+reconnection was reportedly displayed temporarily as a different
+"1/2 clamp" type, perhaps due to connector seating; subsequent
+reconnections were recognized correctly. Private JSONL
+`xstream_trace_20260929_001152.jsonl`, ~61.381146 seconds.
+32,675 captured IOCTLs (seq 1..37623), 34 snapshot gaps omitting
+4,948 entries; last gap ends t=32.792085 s. All captured NTSTATUS
+success. CFDC2110=24,976, CFDC2138=6,135; all requested-vs-returned
+DMA byte counts match (requested DWORD at input byte offset 11).
+The last DMA at seq 37611, t~61.380523 s, returns the requested
+1,024 bytes, and 1,062 DMA calls occur after the last insert event.
+
+Standalone 85FB/0x01: 1,361 captured queries, software-enable mask
+0x02BF throughout. Observed pending masks: 1,348 x 0x0080,
+11 x 0x0200, 1 x **0x0280**, 1 x 0x0000. Thus twelve genuine
+0x0200-bearing transitions, each with family-0/0x88 ack
+(11 x mask 0x0200, 1 x mask 0x0280) and family-1/0x82.
+Nine transitions occur **after** the final snapshot gap.
+The earlier concern about a global post-3490709 HWInt regression
+is NOT supported by this physical-hotplug test.
+
+```text
+time s   pending seq / mask  ack seq / mask   family-1/0x82 seq / raw state   correlated action
+27.557   16747 / 0200       16748 / 0200    16754 / 03FF; raw length 000E   unplug 1
+31.662   19245 / 0200       19246 / 0200    19248 / 028C; raw length 0006   reconnect 1
+31.718   19249 / 0280       19250 / 0280    19257 / 0058; raw length 0006   additional first event
+40.564   25308 / 0200       25309 / 0200    25318 / 03FF; raw length 0006   unplug 2
+42.336   26308 / 0200       26309 / 0200    26318 / 00A9; raw length 0006   reconnect 2
+42.386   26320 / 0200       26321 / 0200    26325 / 0058; raw length 0006   additional event
+44.929   27775 / 0200       27776 / 0200    27782 / 03FF; raw length 0006   unplug 3
+47.306   29173 / 0200       29174 / 0200    29183 / 00AA; raw length 0006   reconnect 3
+47.367   29187 / 0200       29188 / 0200    29193 / 0058; raw length 0006   additional event
+49.510   30380 / 0200       30381 / 0200    30390 / 03FF; raw length 0006   unplug 4
+52.275   32018 / 0200       32019 / 0200    32021 / 00A9; raw length 0006   reconnect 4
+52.405   32062 / 0200       32063 / 0200    32065 / 0058; raw length 0006   additional event
+```
+
+After first reinsertion, 0x82 returns the distinctive transient
+0x028C then 0x0058 and XStream does **not** query the 270-byte
+AP015 metadata (unlike later reinsertions). This is correlated
+with the user's ambiguous/wrong first probe display but cannot
+establish that 0x028C formally encodes "1/2 clamp". The next three
+reinsertions do query family-0/1 0x4A AP015 metadata:
+
+```text
+startup  seq 509
+replug2  seq 26342 (setup), 26343 (metadata)
+replug3  seq 29207 (setup), 29208 (metadata)
+replug4  seq 32067 (setup), 32068 (metadata)
+```
+
+All four metadata replies return Information=270 and share
+byte-identical captured **128-byte prefixes**, including "AP015".
+The remaining 142 bytes were not exposed in the JSONL. Raw 0x82
+formatting introduced in commit 3490709 is now hardware-tested:
+the first disconnect reply reports actual 0x000E (=14) and
+11 subsequent replies actual 0x0006 (=6), all with 0xFF
+unused bytes, rather than old fixed-capacity 0x0190/zero padding.
+
+After each normal successful reinsertion, the same family-0/0x4A
+`47 12` packet is sent exactly ONCE: seq 26385, 29250,
+32096. All three full result records match original x86:
+`0000000000000000000002000000FFFF`; subsequent status
+family-1/0x4A `01 0A` at seq 26386, 29251, 32099 returns
+`0000000000000000000004000000F700` each time.
+The old fivefold 47 12 retry burst before the 85FB fix is absent.
+Firmware meaning/physical calibration of F7 remains open.
+
+**Decision:** With unchanged 3490709 formatting, physical hotplug
+does still generate authentic pending-0x0200, 0x88/0x82 and repeated
+AP015 metadata; keep the source code intact. The two previous
+`233125`/`235314` jaw-only runs still lack 0x0200 and are
+a **jaw-specific unresolved question**, not proof of globally
+lost INTEN-0x08. Next useful contrast: one jaw-only open/hold/
+close/hold pair before and after ONE successful physical
+disconnect/reconnect, with no Degauss/Auto Zero. Record the displayed
+state and manual relative action times. Continue <=5% CPU and
+preserve stable acquisition/PCI/DMA; never synthesize pending bits.
+See `docs/probus-calibration-ab-comparison.md` for the full A/B.
