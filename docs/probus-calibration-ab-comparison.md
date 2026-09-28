@@ -422,3 +422,153 @@ pixel continuity. This is a focused success, not universal ProBus parity.
 payload discrepancy was not exercised in this run. Preserve current PCI,
 DMA, interrupt and transfer behavior. Any future probe-specific test should
 isolate each special function without coupling it to another hotplug change.
+
+
+## 2026-09-28 23:16: Degauss / Auto Zero and four jaw-state transitions
+
+New user-supplied pre-framing-fix x64 trace:
+`xstream_trace_20260928_231656.jsonl`. The user started XStream with AP015
+connected, invoked **Degauss (with subsequent automatic Auto Zero)**, opened
+the clamp, closed it, opened it again, and finally closed it in the locked
+position. There are no separate timestamps for individual hand actions.
+This trace was captured after the successful HWInt patch `70716ba`, but
+**before** the newly identified 85FB response-format correction
+`34907090820a582ac360d02120316c8792d7c888`.
+
+### Captured counts and continuity
+
+| Captured fact | Result |
+|---|---:|
+| IOCTL records / sequence range | 35,458 / 1..39,998 |
+| Missing entries due to 39 trace-snapshot gaps | 4,540 |
+| Non-success NTSTATUS among captured records | 0 |
+| CFDC2110 | 27,100 |
+| CFDC2138 | 6,701 |
+| CFDC2138 successful, Information=4, returned bytes=requested bytes (input offset 11) | 6,701 |
+| Standalone 85FB/0x01 | 1,438 |
+| Enabled mask across observed standalone status | 0x02BF |
+| Pending exactly 0x0080 | 1,432 |
+| Pending exactly 0x0200 | 4 |
+| Pending exactly 0x0280 | 1 |
+| Pending exactly 0x0000 | 1 |
+| Family-1/0x82 | 5 |
+| Family-0/0x4A / family-1/0x4A | 36 / 18 |
+
+**DMA parsing correction:** The 15-byte CFDC2138 input is
+`DWORD token; BYTE channel_count; BYTE pair_marker; BYTE channel;
+DWORD config; DWORD requested_bytes`. The requested byte count is at
+input byte offset **11**, not offset 0 (which contains the opaque transfer
+token). All 6,701 captured output DWORDs match that actual byte count.
+Most frequent requests: 2,048 bytes (3,399), 1,024 bytes (1,409),
+8,192 bytes (915), 5,120 bytes (366), 167,936 bytes (309), and
+21,504 bytes (255). Transfers continue to the end at ~68.178 s.
+No observed loss of the DMA IOCTL stream; screenshot-level waveform
+continuity is not established by this kernel trace alone.
+
+### Genuine pending-0x0200 transitions and state correlation
+
+Relative time uses 10-MHz trace ticks, starting at seq 1.
+Every recorded status event below has a corresponding acknowledged
+family-0/0x88 and a subsequent family-1/0x82 handshake. The interpretation
+of mechanical state uses the user's known action order, not a formally
+recovered firmware bit-field.
+
+| Approx. time | Status seq / pending | 0x88 seq / ack mask | 0x82 seq / first status pair | Correlated action |
+|---:|---|---|---|---|
+| 34.163 s | 19902 / 0x0200 | 19903 / 0x0200 | 19916 / `12 00 A7 00` | Post-Degauss notification; clamp still closed |
+| 41.812 s | 24430 / **0x0280** | 24431 / **0x0280** | 24443 / `12 00 58 00` | First opening |
+| 57.832 s | 33777 / 0x0200 | 33778 / 0x0200 | 33787 / `12 00 A7 00` | First closing |
+| 59.820 s | 34908 / 0x0200 | 34909 / 0x0200 | 34918 / `12 00 58 00` | Second opening |
+| 61.894 s | 36079 / 0x0200 | 36080 / 0x0200 | 36089 / `12 00 A7 00` | Closing in locked position |
+
+After the combined 0x0280 notification at seq 24430/24431, another
+standalone status at seq 24437 returns 0x0000 and XStream issues a
+family-0/0x88 mask-0x0000 request at seq 24438. The two jaw states
+alternate `0x0058 -> 0x00A7 -> 0x0058 -> 0x00A7`, in perfect order
+with the physical transitions. The `0x00A7` value is also seen in
+the post-Degauss notification. This is an empirical state correlation,
+not yet a field-by-field decoding (e.g. whether lock state uses other bits).
+No gaps occur immediately around the five captured transitions.
+
+Measured gaps between the nearest recorded DMA IOCTLs straddling the
+five notifications: approximately 185, 112, 34, 35 and 44 ms
+respectively. DMA record counts: 2,884 before the first notification;
+900 / 1,720 / 224 / 232 between successive notifications; 741 after
+the last. Do not read these scheduler/UI delays as proof of board DMA
+stalls. Continuous successful transfers and the absence of an NTSTATUS
+failure are the supported observations.
+
+### Exact Degauss / Auto Zero comparison remains divergent
+
+The input `family-0/0x4A ... 47 00` appears five times at new x64
+seq **19883..19887**, at t~33.946..34.070 s, each returning
+`00000000000000000000040000000000`. The following family-1/0x4A
+`...01 0A` status at seq 19895 returns `...04000000F700`.
+
+Five `family-0/0x4A ... 47 12` requests follow at seq
+19938, 19939, 19941, 19942, 19943 (t~34.349..34.475 s),
+each with the same `...040000000000` response; family-1/0x4A status
+seq 19947 returns `...04000000F100`. The association of this burst
+with automatically invoked Auto Zero is supported by the user's action
+order.
+
+Four more five-request `47 12` bursts follow the four jaw events:
+seq 24460..24464 (status F7), 33802..33806 (status F3),
+34933..34937 (status F7), and 36104..36108 (status F3).
+**Total in this capture: five `47 00` and 25 `47 12`.** These bursts
+show that XStream invokes or retries an automatic adjustment upon each
+mechanical transition; they do not by themselves prove the physical
+calibration outcome.
+
+The byte-identical legacy x86 requests in
+`legacy_xstream_trace_20260928_183409_probus_original.jsonl` returned:
+
+| Identical request | Original x86 captured occurrences / reply | New x64 captured occurrences / reply |
+|---|---|---|
+| `...47 00...` | seq 24205, once: `0000000000000000000002000000FFFF` | five: `00000000000000000000040000000000` |
+| `...47 12...` | seq 14895 and 14900, twice: `0000000000000000000002000000FFFF` | 25: `00000000000000000000040000000000` |
+| Family-1/0x4A `...01 0A...` | seq 14897, 14901, 24207: `...04000000F200` | six: F7, F1, F7, F3, F7, F3 |
+
+For identical family-1/0x82 input, legacy original responses have a
+variable actual host-header count `0x0016` or `0x0006`, with unused
+bytes pre-filled `0xFF`; the current x64 output invariably reports
+capacity `0x0190` (400 bytes) with unused zero bytes. Both IOCTL calls
+report full `Information=412`, which is the caller's aggregate output
+buffer size, not the actual response payload count.
+
+### Static root cause: original 85FB raw-response framing
+
+The original decompilation
+`ghidra_exports/selected/000167f4_FUN_000167f4.c` explicitly:
+
+1. Allocates the caller-requested output record size and fills **every
+   byte with 0xFF** before soliciting the firmware response.
+2. Calls `FUN_0001619A` with destination `response + 6` and capacity
+   `requested_record_bytes - 6`, obtaining an **actual received byte
+   count** via the out-parameter.
+3. On success, sets response DWORD 0 to status and response WORD +4
+   to that actual received byte count, preserving unused 0xFF padding.
+   `FUN_000169B4` then copies the whole output record to the caller.
+
+The previous x64 `driver/Ioctl.c` raw 85FB branch instead zeroes the
+aggregate SystemBuffer up front and advertises
+`recordOutput - 6` regardless of the received byte count. It copies
+only the actually received words, leaving the rest as zero. This
+source-level defect explains the *shape* of both the `0x4A` and `0x82`
+response differences. It is separate from real firmware-state values,
+which remain to be compared after this formatting defect is corrected.
+
+**Host-only patch `34907090820a582ac360d02120316c8792d7c888`** now
+fills only a raw-hardware 85FB result record with 0xFF and writes
+`min(actual_received, payload_capacity)` into its length header, while
+retaining the separately validated family-1/0x99 explicit override.
+The existing original response-fetch trigger, INTEN/HWInt ISR/DPC,
+BAR1 RX transfer, DMA, PCI, command whitelist, normal local responses
+and other acquisition logic were not changed.
+
+**This patch has NOT been compiled or exercised on the scope yet.** It is
+expected to correct both reply formats if the actual received 16-bit words
+are the same as the legacy run, but the currently available IOCTL
+`output_hex` cannot independently expose `LecTransportReceive`'s
+internal `received` count. Do not mark Degauss / Auto Zero or reply
+parity as proven until a fresh post-patch capture confirms the result.
