@@ -4,6 +4,39 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Latest private Dallas structural result (2026-09-29):**
+User ran `scripts/inspect-dallas-image.ps1` on one
+of two previously matching 512-byte backups.
+The data has **many 0x00-filled pages, NOT
+an FF-erased free-page convention**:
+0x0C0..0x15F (pages 6..10, 160 zero bytes)
+and 0x180..0x1DF (pages 12..14, 96
+zero bytes) are fully 0x00, with
+partially mixed pages 0..5, 11 and 15.
+The no-wholly-FF-page abort of the offline
+dummy-image helper was correct but does
+NOT prove no free application license slot.
+Zero-filled pages are also **not** proven
+safe scratch space: record layout,
+checksums and allocation are unknown.
+User can try a native XStream license
+deletion/readdition A/B, but only for
+ONE legitimately owned, independently
+recorded/re-enterable key, ideally after
+a no-op UI control and with original
+x86 XStream/driver supporting Dallas
+write 0x00223088 (still unimplemented
+in x64). Take separate private 512-byte
+read-only before/no-op/after-delete/
+after-readd snapshots and compare
+redacted offset ranges via
+`scripts/inspect-dallas-image.ps1`.
+A double backup is NOT a tested
+restore capability; do not casually
+delete the only licensed key or publish
+raw license memory/IOCTL input. See
+`docs/dallas-license-memory-test-plan.md`
+and current `docs/next-chat-handoff.md`.
 **Latest Dallas result (2026-09-29):** Both
 independent private 512-byte DS2433 backups
 match, but running the **offline**
@@ -4581,3 +4614,74 @@ changes or hardware writes made in this
 turn. Full instructions in
 `docs/dallas-license-memory-test-plan.md`
 and current `docs/next-chat-handoff.md`.
+
+
+## 2026-09-29: original Dallas image structure uses zero padding, native XStream A/B proposed
+
+The user supplied the **redacted 16-page structure**
+from the newly committed local
+`scripts/inspect-dallas-image.ps1`:
+first 6 pages 0x000..0x0BF contain
+many printable bytes and mixed
+zero/other/FF data; pages 6-10
+(0x0C0..0x15F) are entirely zero
+(**160 bytes**); page 11
+(0x160..0x17F) contains 28 zeros
+and 4 other bytes; pages 12-14
+(0x180..0x1DF) are all-zero
+(**96 bytes**); page 15
+(0x1E0..0x1FF) contains 29 zeros
+and three FF bytes. User-specific
+actual EEPROM bytes and license
+keys were NOT published. This
+explains why the preceding
+`create-dallas-dummy-image.ps1`
+appropriately declined to choose
+an all-FF 32-byte page: the image
+uses 0x00 fill, and that alone
+does not tell us which positions
+are application-free. Do not
+degrade the script's guard or
+guess a location to place
+fictional license bytes.
+
+User offers to delete and later
+re-add one XStream license via the
+application's native UI to help
+recover original license storage.
+This may expose a genuine
+before/after record rather than
+a made-up 32-byte marker, but
+must only be a separately
+considered user-controlled step
+after ensuring the SAME legitimate
+key is recorded independently
+and can be typed again. Prefer
+original x86 XStream/driver
+because its Dallas write
+0x00223088 exists, unlike
+replacement x64. Start with
+a no-op control (baseline
+backup; merely open/close
+XStream license UI; another
+read-only backup), then
+if the user accepts risk,
+one delete, backup, legitimate
+same-key re-add, backup;
+analyze only changed byte
+offsets with
+`inspect-dallas-image.ps1
+-Before ... -After ...`.
+Do NOT leak raw write input:
+the trace preview can contain
+license material. If re-add
+is rejected, stop rather
+than issue manual guessed
+EEPROM writes. Two valid
+backups do not prove x64
+write/restore correctness.
+Detailed plan:
+`docs/dallas-license-memory-test-plan.md`.
+No source/driver/hardware
+write was performed in this
+exchange.
