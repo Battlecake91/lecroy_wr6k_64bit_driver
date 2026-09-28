@@ -90,6 +90,20 @@ That matches the private-build component in file version `6.1.1.1002`.
 
 ## Dallas handlers
 
+**Physical board corroboration (user-provided `PCI Card.pdf`, page
+1, 2026-09-29):** the PCI interface itself has `U11
+DS2433` (`ID Chip`) on net `ID_DATA` into
+Spartan-IIE `U3 XC2S200E`. The recovered
+`BAR2+0x040 ONEWIRE` protocol and three Dallas
+memory/ROM IOCTLs below are therefore consistent
+with a **PCI-card-local 1-Wire ID device**, NOT
+the distinct front-panel **I2C** EEPROM used
+during AP015 recognition following an analog ADC
+probe-class value. The schematic alone does
+not expose the U3 RTL for BAR2-to-ID_DATA routing.
+Further information:
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md).
+
 ### 0x00223080: IOCTL_GET_DALLAS_ID
 
 - non-null system buffer required;
@@ -3533,3 +3547,47 @@ for the separate hardware account, source provenance and
 targeted follow-up questions. Existing `driver/Ioctl.c`
 firmware forwarding and SPI register handling are not
 modified by this architecture clarification.
+
+
+## Schematic hardware attribution update (2026-09-29)
+
+Supplied `PCI Card.pdf` and `Overview.pdf` establish
+a structural split that previous host-driver analysis alone
+could not expose. The PCI card uses
+`U3 XC2S200E` Spartan-IIE behind PI5C3861
+PCI-side bus switches, with two 40-pin differential
+off-card headers: `J1 Receive`, `J2 Transmit`;
+clock, twelve data pairs `D0..D11`, SYNC,
+RESET_ERR and stable-status wires are separately
+labelled for receive and transmit. Its
+`U6 XC18V02` is FPGA configuration PROM,
+and `U11 DS2433` is local 1-Wire ID storage.
+The acquisition-board Overview separately
+identifies `Timebase (TB)`, `ADC+MAM (AM/AM2)`,
+`FPGA's (FP)`, `UP Control (UP)`, front
+ends and a distinct `I2C(0:5)` bus.
+
+The existing driver-visible BAR/IOCTL logic operates
+through the PCI interface, but these schematic pages
+do NOT give the internal FPGA's BAR implementation
+or the protocol/firmware on either end of the RX/TX
+link. The acquisition board's AM/AM2/FP FPGA blocks
+are not the PCI Spartan U3. In particular,
+A5FB family-0 opcode `0x90` is demonstrably
+**local BAR1 SPI**, but that should not be
+called the physical probe bus: per the user's
+hardware information, ADC-classified ProBus
+identity is subsequently read from a **front
+EEPROM over I2C**, and physical probe control
+uses I2C. The relation of host SPI/link to
+I2C controller remains open. Family-0/1 0x4A
+can return AP015 metadata, but the physical
+EEPROM address/content and byte-level map
+are not directly available from the trace.
+
+Canonical schematics-based hardware map:
+[`pci-card-acquisition-board-topology.md`](pci-card-acquisition-board-topology.md);
+probe interfaces:
+[`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
+No driver source changes are implied by these
+topology observations.
