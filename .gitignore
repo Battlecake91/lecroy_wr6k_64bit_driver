@@ -25,3 +25,7 @@ packages/
 
 # Local compiler object files
 *.obj
+
+# Private PCI-card DS2433 backups may contain XStream license keys.
+license-backups/
+*.ds2433.bin
