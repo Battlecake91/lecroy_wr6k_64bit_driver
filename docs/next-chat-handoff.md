@@ -1,16 +1,20 @@
-# Active handoff: AP015 HWInt hotplug validated (2026-09-28)
+# Active handoff: HWInt validated; raw 85FB fixed; recheck AP015 jaw events (2026-09-28)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** The original HWInt/AP015 hotplug patch
-`70716ba` is real-hardware validated by traces `230614` and `231656`.
-The subsequent host-side response-format patch `3490709` is deliberately
-minimal but **has not yet been compiled or tested on the scope**.
-This is the immediate next gate; do not confuse the just-analyzed trace
-`231656` with a test of patch `3490709`.
+**LATEST ENGINEERING STATE:** Original HWInt/AP015 event restoration
+`70716ba` passed physical unplug/replug (`230614`) and clamp transitions
+(`231656`). Host-only raw 85FB serializer fix `3490709` has now been
+**real-hardware exercised** in `xstream_trace_20260928_233125.jsonl`:
+the `47 00` reply is byte-identical to original x86, and the old fivefold
+retry burst is absent. **However, this new run has zero pending-0x0200
+events and zero 0x82 exchanges despite reported jaw open/close actions.**
+Do not assert it proves a driver regression or that all ProBus states
+are working: the next task is a calibrated-vs-uncalibrated jaw-only A/B
+with recorded user-visible transitions, without speculative PCI/DMA/IRQ changes.
 
 ## Current verified status
 
@@ -165,6 +169,70 @@ unused bytes as FF. The established family-1/0x99 override stays in place.
 There is no change to actual BAR access, device IRQ, HWInt, receive polling,
 DMA, MAM, or the original firmware command packet. **Unbuilt/untested.**
 
+## First test after raw 85FB host formatting patch: 233125
+
+Scope trace: `xstream_trace_20260928_233125.jsonl` (private user upload,
+**not committed**). User sequence: start XStream with AP015 attached,
+Degauss, then manually trigger Auto Zero, then open/close the clamp
+several times, exit. This is a hardware run of driver patch
+`34907090820a582ac360d02120316c8792d7c888`, *not* the older
+pre-fix trace `231656`.
+
+Observed 55.628 seconds, 27,947 captured IOCTLs (seq 1..30856),
+2,909 unobserved sequence entries in 29 trace-snapshot gaps, **none
+after t=28.646 s**. Zero non-success NTSTATUS among captured IOCTLs.
+21,366 CFDC2110, 5,219 CFDC2138; all DMA returns match requested byte
+count from CFDC2138 input offset **11** and acquisition IOCTLs continue
+until ~55.627 s. There are 1,666 successful DMA calls after the second
+special `47 00` request (~40.675 s). AP015 startup metadata at seq 507,
+Information 270, has the same captured first 128 bytes as `230614`,
+`231656` and the original x86 legacy trace.
+
+**Framing patch succeeds for the exact legacy `47 00` packet:**
+
+| Trace | Same 47 00 input | Returned complete output |
+|---|---|---|
+| Original x86 183409, seq 24205 | one captured | `0000000000000000000002000000FFFF` |
+| Pre-fix x64 231656, seq 19883..19887 | five near-duplicate requests | `00000000000000000000040000000000` |
+| New x64 233125, seq **8573** (~20.034 s) | first user-action correlation | `0000000000000000000002000000FFFF` |
+| New x64 233125, seq **22156** (~40.675 s) | second user-action correlation | `0000000000000000000002000000FFFF` |
+
+The two new requests are ~20.64 s apart and correlate respectively
+with Degauss and the user's later **manual** Auto Zero. Unlike the
+earlier automatic follow-up/jaw-event run, new capture has **zero
+`47 12` requests**. Hence a blanket claim that 47 12 is every Auto
+Zero trigger is inaccurate. The old five-retry bursts do not recur
+for 47 00 in this run. The actual full 16-byte reply parity establishes
+the original `FUN_000167F4` actual-received-length and FF-tail fix
+for this particular request, *not* the still-unobserved post-fix 47 12
+or 0x82 reply shapes.
+
+The following identical family-1/0x4A `...01 0A` status requests
+occur at seq 8574 (~20.066 s) and 22158 (~40.706 s), both returning
+`0000000000000000000004000000F300`. The legacy matched examples
+gave `...F200`. The F3/F2 one-bit payload difference persists after
+the host serializer correction. Firmware meaning, physical calibration
+outcome and exact probe state are unproven. Do not falsify this board
+status to force legacy parity.
+
+**Independent missing-notification observation:** all **1,135**
+standalone 85FB/0x01 status reads report enable mask 0x02BF and
+pending **only 0x0080**; no 0x0200/0x0280, no family-1/0x82, no
+0x88 acknowledgement for mask 0x0200. There are **447 status reads
+after t=40 s and no snapshot gaps after t=28.646 s**, despite the
+reported several physical clamp opening/closing operations. This is
+different from trace 231656, which recorded five real 0x0200-bearing
+notifications during an otherwise similar physical sequence. The
+fix in 3490709 changes only host-side raw reply serialization, with no
+direct IRQ, INTEN, HWInt, firmware send, DMA or PCI modifications.
+Whether changed host control flow/calibration state indirectly relates
+to the missing notifications is **unknown**. This capture has neither
+raw ISR counters nor physical action timestamps/screenshots. Do not
+patch interrupts or hardware registers on assumption alone.
+
+Detailed A/B evidence:
+`docs/probus-calibration-ab-comparison.md` and `docs/runtime-trace.md`.
+
 ## Recovered and now exercised original path
 
 - `FUN_0001619A -> FUN_000160A8(1)` enables BAR0 INTEN bit `0x08`
@@ -217,48 +285,40 @@ in `docs/probus-calibration-ab-comparison.md`. The separate old Ch2
 calibration traces are optional: each newly visited V/div setting calibrates
 once and then caches, so this is not an active bug.
 
-## Immediate next task: build and validate only the raw response-format fix
+## Immediate next task: isolate jaw notification before/after calibration
 
-The probe hotplug path itself has been validated in two real sessions.
-The next test must distinguish host serialization from a genuine board
-reply/state difference. First run a **Debug build** after pulling current
-main, then the normal signed load/capture helper. If the build fails,
-stop without installing; capture the compiler/linker error.
+**Keep current driver code unchanged**. The FF/actual-length response
+correction is now observed working for 47 00, but the absent 0x0200
+notifications on new trace 233125 require one discriminating comparison.
+Use the ordinary elevated scope desktop helper from the workflow below
+(it pulls current main and builds/reloads the Debug driver):
 
-For one short, controlled post-`3490709` run, start with AP015 attached,
-verify visible waveforms and recognition, perform Degauss and let automatic
-Auto Zero finish, note the actual physical/UI result (not merely IOCTL
-success). If baseline remains stable, perform **one** normal open/close
-pair to exercise 0x82; then close XStream normally. If waveform or UI
-becomes abnormal, stop rather than repeating events. Maintain CPU <=5%.
+1. Attach AP015 before XStream. Wait for AP015 metadata and normal
+   waveform. Keep all other controls steady.
+2. **Before any Degauss / Auto Zero**, open AP015 once, hold open for
+   at least five seconds, close it once, hold closed for at least five
+   seconds. Record rough elapsed seconds and **whether XStream visibly
+   recognizes each jaw state**. Watch CPU <=5% and abort for abnormal
+   acquisition.
+3. If phase 2 is stable, perform Degauss, then trigger Auto Zero
+   manually as in run 233125. Note displayed/physical result.
+4. If still stable, perform one further open/close pair, with the same
+   intervals, and close XStream normally.
+5. Parse the JSONL for standalone enabled/pending WORDs (expect enabled
+   0x02BF), spontaneous 0x0200/0x0280, corresponding family-0/0x88
+   acknowledgements, family-1/0x82 actual-length/FF-tail/state words,
+   family-0/1 opcode-0x4A, 47 00 and possible 47 12, follow-up F2/F3,
+   CFDC2138 requested-vs-returned byte counts, NTSTATUS and snapshot
+   omissions. Correlate each result with the separately noted
+   mechanical action times.
 
-Inspect the new JSONL for:
-
-- `...47 00` and `...47 12` second-record header WORD at result byte
-  offset 10. If board's actual RX word count is one, it should now be
-  `0x0002` with unused `FFFF`, matching legacy
-  `...02000000FFFF`; do **not** force this outcome if hardware actually
-  supplies a different count.
-- Family-1/0x82 original-like actual length `0x0006` (or `0x0016`
-  when appropriate) and 0xFF-padded unused response bytes, rather than
-  old hardcoded capacity `0x0190` with zero padding. Its actual state
-  words should still reflect physical open/close.
-- Actual number of repeated 47 00 / 47 12 requests compared with the
-  previous five-per-burst x64 behavior and original one/two requests;
-  the following family-1/0x4A statuses (original F2 vs x64 F7/F1/F3).
-- All real pending-0x0200 / 0x88 / 0x82 interactions, normal AP015
-  presence metadata, uninterrupted working acquisition, requested-vs-
-  returned CFDC2138 byte counts, failures and abnormal event frequency.
-- The full, separately reported user-visible Degauss/Auto Zero effect.
-  Raw packet framing parity alone cannot prove physical calibration.
-
-If new responses still claim length 0x0004 after this patch, the board
-may actually be returning four bytes through LecTransportReceive.
-Do not fabricate a legacy two-byte response: first recover/log the
-internal actual received count **passively**. Do not change any PCI,
-firmware command, IRQ or DMA handling speculatively. Preserve the verified
-hotplug driver baseline and known-good waveform settings. `CFDD219F`
-remains gated, as does unobserved multi-channel CFDC2138.
+This baseline-before-calibration contrast distinguishes an absent
+interrupt from a calibration-dependent probe state. If event 0x0200
+is absent **before** calibration too, inspect passive established
+interrupt sources/INTEN and known-good `231656` directly before any
+proposed code changes. Do not synthesize 0x0200, alter PCI/DMA or exceed
+the established <=5% CPU limit. METHOD_NEITHER `CFDD219F` and
+unobserved multichannel CFDC2138 remain gated.
 
 ## Reusable scope workflow
 
