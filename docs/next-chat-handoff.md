@@ -1,27 +1,28 @@
-# Active handoff: post-formatter hotplug works; isolate jaw-only transitions (2026-09-29)
+# Active handoff: XStream AP015 jaw unlock recognized; correct earlier inference (2026-09-29)
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
 
-**LATEST ENGINEERING STATE:** Original HWInt path commit `70716ba`
-and original raw 85FB reply framing fix `3490709` now have separate
-successful real-hardware proofs. Most importantly, **repeated physical
-AP015 hotplug on unchanged post-formatter driver works** in uploaded trace
-`xstream_trace_20260929_001152.jsonl`: 12 genuine pending-0x0200-bearing
-notifications, all with matching 0x88 and 0x82; four removal events
-and four reconnection groups. The first reconnection temporarily showed
-the wrong "1/2 clamp" type in XStream and did not query AP015 0x4A
-metadata; later three reinsertions did query byte-identical captured
-128-byte AP015 metadata prefixes. The patch is also now hardware
-validated for **actual-length/FF-padded family-1/0x82 and 47 12**:
-each of the three post-reidentification 47 12 commands is one attempt
-and returns the exact original x86 `...02000000FFFF` response.
-The two previous jaw-only test sessions `233125` and `235314`
-still have zero 0x0200; this is **not** a general loss of INTST-0x08.
-The remaining discriminator is jaw-only events before versus after
-ONE normal physical hotplug, no calibration. No source change yet.
+**LATEST ENGINEERING STATE:** The user's own visible XStream behavior
+corrects the previous diagnosis: **opening the AP015 generates an
+explicit not-locked warning about measurement accuracy.** Absence of
+pending-0x0200 in earlier particular IOCTL captures `233125` and
+`235314` never proved XStream failed to recognize the mechanical
+state. In the new user-supplied scope trace
+`xstream_trace_20260929_002051.jsonl` (same unchanged post-`3490709`
+driver), four authentic 0x0200-bearing events all have matching
+0x88/0x82; state `0x0058` at ~24.623 s correlates with opened
+jaw and family-1/0x4A `F7`, while state `0x00A7` at ~49.861 s
+correlates with closed jaw and family-1/0x4A `F3`. That identical
+open/F7 and closed/F3 pairing already appeared in `231656`.
+The event stream also includes `0x03FE` (~35.038 s, an apparent
+removal state) and `0x0057` (~37.458 s), followed by proper AP015
+reidentification. No generic HWInt, jaw recognition, PCI or DMA
+regression is established. **Do not request another routine
+jaw/hotplug test or modify driver code because of the superseded
+inference.** The formatter `3490709` remains working.
 
 ## Current verified status
 
@@ -366,6 +367,71 @@ non-reproduced cause-unknown observation. The meaning of F7
 versus historical F2 and any actual physical calibration quality
 also remain open.
 
+## Latest correction: jaw-open warning observed and traced (002051)
+
+The user explicitly reports XStream displays a not-locked warning
+when the physical AP015 jaw is opened, cautioning that measurement
+accuracy may be affected. Earlier assistant statements equating zero
+captured standalone pending-0x0200 with "XStream does not recognize
+the jaw" were **incorrect**. Preserve the counts in prior captures
+as historical IOCTL observations but do not repeat the alleged UI
+failure or infer an additional polling/status mechanism without
+evidence.
+
+Private real-scope trace:
+`xstream_trace_20260929_002051.jsonl`, on the same `3490709`
+corrected-response build, with **no further driver change**.
+31,200 captured IOCTLs (seq 1..35955), 58.3684694 seconds,
+32 snapshot gaps omitting 4,755 sequence entries, last gap ends
+~23.382490 s; every following relevant event is gap-free. No
+observed NTSTATUS failures. 23,896 CFDC2110, 5,839 CFDC2138,
+all exact requested-vs-returned DMA byte counts (requested DWORD
+at input byte offset 11), last 1,024-byte transfer
+t~58.367987 s.
+
+Standalone 85FB/0x01: 1,292 reads, software enabled mask 0x02BF;
+pending `0x0080` x 1,287, `0x0200` x 3,
+`0x0280` x 1, and `0x0000` x 1. Thus four authentic
+notifications containing 0x0200, each with family-0/0x88
+acknowledgement and family-1/0x82. Every 0x82 result returns
+actual raw length `0x0006`, with 0xFF unused bytes:
+
+| Time | Pending status/ack seq | 0x82 seq and raw status | Correlation |
+|---:|---|---|---|
+| ~24.623 s | 14888 / 14889, mask 0200 | 14891: `000012005800`, **0x0058** | Jaw-open, XStream unlocked warning |
+| ~35.038 s | 21435 / 21436, mask 0280 | 21448: `00001200FE03`, **0x03FE** | Apparent removal-like status; pending briefly zero at seq 21442 |
+| ~37.458 s | 22833 / 22834, mask 0200 | 22843: `000012005700`, **0x0057** | Reconnect-like transition and normal AP015 0x4A metadata seq 22877/22878 |
+| ~49.861 s | 30553 / 30554, mask 0200 | 30563: `00001200A700`, **0x00A7** | Jaw-closed state |
+
+The first opening-like event is followed by one family-0/0x4A
+`47 12` request at seq 14913 -> exact original-x86-matching
+`0000000000000000000002000000FFFF`, then family-1/0x4A
+status seq 14916 ends **F7**. The final closing-like event
+similarly has `47 12` at seq 30580 with exact response, then
+status seq 30581 ends **F3**. The **same pairing** was previously
+captured in `231656`: 0x0058/open -> F7;
+0x00A7/closed -> F3, each repeated twice.
+F7 XOR F3 = 0x04; the meaning of this exact bit has **not**
+been statically recovered, so document it as a correlated
+candidate, not a formal vendor register definition.
+
+AP015 startup metadata seq 506 and subsequent metadata seq 22878
+each have Information=270, and their captured first 128 bytes
+are identical, including literal "AP015". The two other raw
+0x82 words 03FE and 0057 differ by one from earlier
+removal 03FF and open 0058 observations; no proven per-bit
+meaning and no independently provided action timestamps.
+
+**Outcome:** the jaw-unlock UI warning is real and the same
+corrected driver can process genuine 0x0200/0x88/0x82 for
+jaw-state transitions as well as physical reconnect.
+No demonstrated problem justifies reverting `3490709` or
+altering BAR/ISR/PCI/DMA. Earlier `233125` and `235314`
+remain factually zero captured pending-0x0200, but the
+previous interpretation as failed XStream warning/display
+must be retired. See `docs/probus-calibration-ab-comparison.md`
+and `docs/runtime-trace.md` for supporting packet details.
+
 ## Recovered and now exercised original path
 
 - `FUN_0001619A -> FUN_000160A8(1)` enables BAR0 INTEN bit `0x08`
@@ -418,41 +484,28 @@ in `docs/probus-calibration-ab-comparison.md`. The separate old Ch2
 calibration traces are optional: each newly visited V/div setting calibrates
 once and then caches, so this is not an active bug.
 
-## Immediate next task: compare jaw-only events around ONE valid hotplug
+## Current engineering decision: no further jaw regression patch or repeat test
 
-The physical hotplug test explicitly requested in the preceding handoff
-**has been completed successfully** on the unchanged patched driver.
-Do not request another generic hotplug-only run. The remaining useful
-controlled test uses the same unchanged Debug driver and follows:
+The user's XStream warning and trace `002051` **resolve the premise**
+that the mechanical jaw was no longer recognized. The latest trace
+has both genuine open-like 0x0058/F7 and closed-like 0x00A7/F3
+sequences on the corrected host response serializer, along with
+a separate physical reconnect and unchanged acquisition. Do not
+demand another generic physical hotplug/jaw exercise to reproduce
+an alleged UI malfunction which the user has contradicted.
 
-1. With AP015 attached *before* XStream startup, check startup
-   "AP015" metadata and visually normal waveform. **Do not perform
-   Degauss or Auto Zero.**
-2. Open the mechanical AP015 clamp once, hold at least five seconds,
-   close it once, hold at least five seconds. Separately note
-   approximate action times and whether XStream's jaw state display
-   actually changes. Do not touch the connection while doing this.
-3. Physically unplug **once**, wait at least five seconds; reconnect
-   **once**, wait for clearly correct **AP015** recognition (avoid
-   proceeding while the UI transiently displays a wrong "1/2 clamp").
-   Note XStream display and relative unplug/replug times.
-4. Perform exactly one additional jaw open/hold/close/hold pair under
-   the now-stable recognized AP015. Close XStream normally.
-5. In the uploaded JSONL, attribute each standalone pending-0x0200,
-   family-0/0x88 and family-1/0x82 sequence to physical hotplug
-   versus jaw-only movement. Compare the observed 0x82 actual received
-   lengths, FF padding and state words and post-insertion 0x4A
-   metadata. Check CFDC2138 bytes and trace-snapshot gaps.
-   Maintain <=5% scope CPU; abort on abnormal acquisition.
-
-If jaw-only remains silent both before and after hotplug, focus on
-board/probe jaw-specific event generation and probe state, using
-original x86/231656 as source evidence; do not modify generic
-HWInt, ISR, CLRIRQ or DMA which already handle physical hotplug.
-If jaw-only resumes after a valid AP015 reidentification, probe
-configuration/initialization state becomes a testable hypothesis,
-not an established cause. Never manufacture a pending-0x0200 bit.
-No code change is currently justified by the uploaded evidence.
+Retain driver commits `70716ba` (HWInt recovery) and `3490709`
+(actual received-length and 0xFF raw reply padding). Do not change
+IRQ, PCI, MAM or DMA without a concrete new failing observation.
+A separate protocol-research topic remains: decode the actual
+meaning of the changing family-1/0x4A F7/F3 status byte,
+0x82 probe-state words (0x0058/0x00A7; 0x03FE/0x03FF;
+0x0057/0x0058), and the transient wrong-probe first insertion
+in `001152`. Compare original x86 and x64 packets, avoid making
+up firmware meanings, and log screen-observed effects when available.
+Existing safety constraints: <=5% scope CPU, no synthetic pending
+0x0200, preserve below-4-GiB descriptor checks and gated transfer
+IOCTL variants.
 
 ## Reusable scope workflow
 
