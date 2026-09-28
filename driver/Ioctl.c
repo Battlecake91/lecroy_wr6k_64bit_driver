@@ -3285,17 +3285,34 @@ LecIoctlCfDc2110(
                         break;
                     }
 
+                    /*
+                     * Original FUN_000167F4 allocates the requested response
+                     * size and pre-fills it with 0xFF before FUN_0001619A
+                     * receives into response+6. On success, header+4 is
+                     * the ACTUAL received byte count, not the caller's
+                     * available payload capacity.
+                     *
+                     * Short ProBus 0x4A and family-1 0x82 responses expose
+                     * both differences: legacy keeps the unused bytes as
+                     * 0xFF, whereas the previous replacement zero-filled
+                     * them and always advertised (recordOutput - 6).
+                     * Preserve the separately recovered 0x99 override.
+                     */
+                    payloadCapacity = recordOutput - 6;
+                    copyLength = min(
+                        pendingResponseLength,
+                        payloadCapacity);
+
+                    RtlFillMemory(
+                        recordResult,
+                        recordOutput,
+                        0xFF);
                     LecWriteU32(recordResult, 0);
                     LecWriteU16(
                         recordResult + 4,
                         pendingResponseLengthOverride != 0
                             ? pendingResponseLengthOverride
-                            : (USHORT)(recordOutput - 6));
-
-                    payloadCapacity = recordOutput - 6;
-                    copyLength = min(
-                        pendingResponseLength,
-                        payloadCapacity);
+                            : (USHORT)copyLength);
 
                     if (copyLength != 0) {
                         RtlCopyMemory(
