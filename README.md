@@ -13,6 +13,8 @@ The priority is compatibility with the existing LeCroy user-mode software:
 - preserve hardware access semantics;
 - replace the obsolete x86 DriverWorks implementation with maintainable WDK code.
 
+**Current engineering handoff:** [ProBus HWInt / hotplug, 2026-09-28](docs/next-chat-handoff.md). The latest driver change (commit `70716ba`) still awaits its first compile/hardware test. Do not confuse older successful waveform traces with verification of the new interrupt change.
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:

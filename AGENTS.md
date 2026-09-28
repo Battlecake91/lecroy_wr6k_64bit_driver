@@ -3,6 +3,10 @@
 This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
+**Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+It contains the pending HWInt/ProBus hotplug patch status, four required trace
+filenames and one focused next test. Current driver-change commit: `70716bace9ec874cf9b2f123a7946288215e1810` (not yet hardware-tested).
+
 ## Repository and communication
 
 - Repository: `https://github.com/Battlecake91/lecroy_wr6k_64bit_driver`
