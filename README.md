@@ -69,6 +69,34 @@ chip before a separate disposable-device
 write/restore test. See
 [`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
 
+**Dallas license compatibility-test update (2026-09-29):**
+The user has obtained two independent 512-byte backup files
+from the PCI-card DS2433, with **matching SHA-256 hashes**.
+The actual digests and memory images are private. In
+response to a request for a **fabricated test license**,
+[`scripts/create-dallas-dummy-image.ps1`](scripts/create-dallas-dummy-image.ps1)
+now prepares an **offline, private** 512-byte candidate
+by comparing both backups, locating one entirely
+FF-filled 32-byte page (if available), and changing
+only 30 bytes in a new file to the deliberately
+invalid ASCII marker
+`FAKE-XSTREAM-LICENSE-TEST-ONLY`.
+The existing backups and installed device remain
+untouched; no valid XStream entitlement is generated.
+It fails rather than overwriting existing files or
+assuming a nonblank page is unused. **This does
+not prove the chosen page is application-free**.
+The original x86 EEPROM write IOCTL
+`0x00223088` remains **unimplemented in native
+x64**, and live write/restore has not been
+tested. First demonstrate DS2433 write,
+read-back and post-power-cycle restoration
+on a disposable spare chip, not the only
+working XStream license store. See
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
+The offline PowerShell helper itself is
+committed but not yet executed on the scope.
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
