@@ -541,7 +541,12 @@ family byte 0x23, and pass Dallas CRC8 validation.
 The **first three serial bytes at ROM offsets 1..3,
 interpreted as a little-endian 24-bit integer,
 exactly match the primary six-digit scope identifier
-reported by the user**. The trailing two-digit display
+reported by the user**. The same match was independently
+checked in all seven locally available x64 scope captures
+(`230614`, `231656`, `233125`, `235314`, `001152`,
+`002051`, `011858`), with one ROM-ID read per capture except
+the last, which contains two. Each capture showed a stable,
+matching main identifier. The trailing two-digit display
 suffix has not been independently mapped to a ROM byte,
 and the formatted whole identifier does not appear as
 literal ASCII in the captured I/O previews. Do not
