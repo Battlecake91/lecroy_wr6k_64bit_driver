@@ -4,6 +4,39 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Latest Dallas licensing test (2026-09-29):** user ran
+the read-only 512-byte `lecdiag dallas-backup`
+twice on actual scope and reports both saved
+images have IDENTICAL SHA-256 digests. The
+specific private hash and memory image must
+not be published. User next requests a
+**fictional test license**, not a working
+entitlement. Committed
+[`scripts/create-dallas-dummy-image.ps1`](scripts/create-dallas-dummy-image.ps1)
+which purely OFFLINE creates a private
+candidate 512-byte copy by checking that two
+backups match bytewise, finding the last
+fully `0xFF`-filled 32-byte page
+(if one exists), and placing the invalid
+30-byte marker
+`FAKE-XSTREAM-LICENSE-TEST-ONLY`.
+It uses CREATE_NEW and verifies the
+result. No installed EEPROM is written;
+a 0xFF page is NOT proven to be a
+valid vacant license slot or excluded
+from checksums. **Current native x64
+driver has NO original 0x00223088
+WRITE_DALLAS_MEMORY implementation.**
+Do not claim current write/restore
+compatibility. A spare DS2433 must
+first validate the recovered
+scratchpad/copy/verification algorithm
+and safe power-cycle restore. Script
+source was committed but not run by
+assistant on Windows; the candidate
+will be created when user runs it.
+Procedure:
+[`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
 **Important 2026-09-29 user hardware correction:**
 ALL FIVE front-facing ProBus sockets communicate **entirely via
 I2C, not SPI**. A probe-class ADC value comes first;
@@ -4393,3 +4426,69 @@ Detailed instructions:
 Do not update `driver/Ioctl.c`
 write behavior on guesswork, or alter
 current working PCI/IRQ/DMA.
+
+
+## 2026-09-29: two matching private backups and synthetic offline image
+
+The user submitted two matching SHA-256
+hash results from two independent private
+full DS2433 license-memory backup files.
+The previous `lecdiag dallas-backup`
+source already performs two identical
+512-byte reads, before/after 8-byte
+ROM ID comparison, CREATE_NEW, flush,
+on-disk byte-by-byte validation. The
+matching independently saved images are
+additional positive real-scope evidence
+of the **read** path, not the existence
+of a write/restore capability or proof
+that licenses are plaintext. Do not add
+user-specific fingerprints or keys to
+this public repo.
+
+User explicitly asks to add an invented
+license for a future write/read test.
+Source added:
+`scripts/create-dallas-dummy-image.ps1`
+(PowerShell 5.1-compatible syntax intended;
+not yet run on the actual scope). The
+script takes two paths to private
+512-byte backup files and a
+`.ds2433.bin` output path; checks
+distinct source paths and exact byte
+equality; chooses the last fully
+FF-filled 32-byte DS2433 memory page,
+or aborts with no output if none.
+It writes only the 30-byte ASCII
+`FAKE-XSTREAM-LICENSE-TEST-ONLY`
+within an entire **copy** of the
+original, preserving all other
+482 bytes including the last two
+FF bytes of that page. Target file
+uses CREATE_NEW, is re-read/verified,
+and its suffix is Git-ignored.
+The script does not read or modify
+hardware, does not print license
+bytes, and is **NOT** a syntactically
+valid, activatable XStream license.
+Even fully FF pages may be reserved;
+do not infer application validity.
+
+**No live chip write was performed.**
+The native x64 driver currently
+supports `GET_DALLAS_ID` 0x00223080,
+`READ_DALLAS_MEMORY` 0x00223084,
+but does not define/dispatch original
+x86 `WRITE_DALLAS_MEMORY`
+0x00223088. On-card license
+write/erase without tested recovery
+could disable a working scope.
+Recover original 32-byte scratchpad,
+copy authorization, timing, readback
+verification; validate on a spare
+DS2433 first, including after power
+cycle. Further procedure, exact
+private commands:
+`docs/dallas-license-memory-test-plan.md`.
+Do not alter working IRQ, PCI, DMA,
+ProBus or license fields on assumption.
