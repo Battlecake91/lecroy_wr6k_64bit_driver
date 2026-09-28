@@ -173,6 +173,98 @@ then consider a bounded real-card operation only with a
 known-correct full recovery path. Neither writer nor
 hardware programming is part of this new offline script.
 
+## Actual dummy-image result and XStream-native license workflow (2026-09-29)
+
+The user ran the offline
+`scripts/create-dallas-dummy-image.ps1`
+against the two previously matching backups.
+It **correctly refused to produce any output**:
+
+```text
+No entirely 0xFF-filled 32-byte page found.
+No image created; license layout analysis required.
+```
+
+The originals were not modified, no fake test image
+was saved, and the physical DS2433 was not accessed
+by that offline helper. This does **not** mean all
+application-level license-record positions are
+occupied: the memory layout might include non-FF
+padding, metadata, reserved data or a free-record
+flag not aligned to an all-FF page. Never replace
+the guard with a guess or arbitrarily overwrite
+a non-FF section.
+
+**New native-application strategy suggested by the user:**
+potentially use XStream's existing **Add License**
+UI to learn the intended memory layout/validation
+and actual write procedure. The original x86 driver
+implements `WRITE_DALLAS_MEMORY` `0x00223088`;
+the current replacement x64 driver does NOT.
+Therefore, an attempt under current x64 XStream
+cannot prove the missing native x64 writer works.
+Prefer a **passive, metadata-only trace** of the
+original x86 XStream/license workflow (IOCTL
+number, input/output buffer *length*, returned
+status, order and time, NOT EEPROM/license input
+bytes). Entering an **obviously invalid fake
+license** into XStream may be rejected before
+any EEPROM write and is then only evidence about
+input validation. Do not persist a fabricated
+license to the actual card or coerce a rejected
+key. A legitimate, authorized unused license,
+if one exists, may exercise the real XStream
+workflow, but can still modify the only card
+holding working licenses: treat it as a separate,
+explicitly considered hardware-changing action,
+not the automatic next step merely because two
+backups match.
+
+For a locally redacted view of the 512-byte
+image, added an **offline read-only**
+[`scripts/inspect-dallas-image.ps1`](../scripts/inspect-dallas-image.ps1).
+It prints only per-32-byte-page counts of FF,
+zero and printable bytes. With optional
+`-After`, it prints changed offset ranges,
+changed-byte counts and affected pages without
+printing key content, raw memory, strings or
+card-specific hashes.
+
+```powershell
+# Run locally; no device connection and no memory writes.
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git update failed" }
+
+& ".\scripts\inspect-dallas-image.ps1" `
+  -Before ".\license-backups\original-a.bin"
+
+# Only if a real XStream action was deliberately performed and an
+# independent *new* 512-byte read-only backup was made afterward:
+& ".\scripts\inspect-dallas-image.ps1" `
+  -Before ".\license-backups\original-a.bin" `
+  -After ".\license-backups\after-xstream.bin"
+```
+
+Do the application's license action, if elected,
+preferably under the original 32-bit driver to
+observe its actual write implementation. Close
+XStream before attempting read-only snapshot
+commands if driver handles are exclusively
+opened. The identical underlying card can be
+read again using the x64 backup helper after
+booting x64 if capturing directly under the
+original x86 environment is inconvenient.
+Avoid raw original x86 trace publication:
+license-write IOCTL input buffers might
+contain active license material.
+
+**No hardware writer has been added, used or
+validated by this change.** Follow the spare
+DS2433 writer/restore gate below before
+any deliberate low-level write or deletion
+on the only licensed PCI card.
+
 ## Future controlled write test, separate authorization required
 
 **Do not erase the installed license memory as the
