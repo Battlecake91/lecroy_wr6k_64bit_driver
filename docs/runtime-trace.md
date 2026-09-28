@@ -2746,3 +2746,62 @@ pending-0x0200 / 0x88 / 0x82 / 0x4A. This is distinct from the still-open
 Degauss/Auto Zero opcode-0x4A `...47 00` response-parity problem, which
 was not exercised in trace 230614. No new PCI, DMA, polling or fake-pending
 behavior was introduced. See `docs/probus-calibration-ab-comparison.md`.
+
+
+## Trace 231656: ProBus jaw transitions and special-function reply framing
+
+User action sequence: XStream with AP015 already attached; Degauss followed
+automatically by Auto Zero; open clamp; close; open; close in locked
+position. Captured x64 `xstream_trace_20260928_231656.jsonl`, running
+the **verified HWInt driver** before response-format patch `3490709`.
+User actions were not timestamped separately.
+
+The 68.178-second capture has 35,458 recorded IOCTLs (sequence range
+1..39998; 4,540 sequence entries were omitted in 39 snapshot gaps).
+All captured NTSTATUS fields are successful. CFDC2110 occurs 27,100
+times; CFDC2138 occurs 6,701 times. All 6,701 output DWORDs match the
+requested bytes at **CFDC2138 input offset 11**; no recorded DMA byte-count
+error. The last observed DMA is at ~68.177 s.
+
+The 1,438 standalone command-status 85FB/0x01 reads all report enabled
+0x02BF: 1,432 pending 0x0080; four pending 0x0200; one pending
+0x0280; one pending 0x0000. There are five genuine notifications with
+bit 0x0200 set, each followed by family-0/0x88 ack and family-1/0x82:
+
+```text
+t=34.163  seq 19902  pending=0200 -> 19903 ack 0200 -> 19916 0x82: 12 00 A7 00
+t=41.812  seq 24430  pending=0280 -> 24431 ack 0280 -> 24443 0x82: 12 00 58 00
+t=57.832  seq 33777  pending=0200 -> 33778 ack 0200 -> 33787 0x82: 12 00 A7 00
+t=59.820  seq 34908  pending=0200 -> 34909 ack 0200 -> 34918 0x82: 12 00 58 00
+t=61.894  seq 36079  pending=0200 -> 36080 ack 0200 -> 36089 0x82: 12 00 A7 00
+```
+
+The first event follows Degauss while the clamp remained closed. The
+remaining `58/A7/58/A7` alternation is consistent with the reported
+open/close/open/locked-close sequence. The exact status-bit definition
+and whether `locked` needs any other register are not proven. After
+the combined 0x0280 ack, seq 24437 reports pending 0 and seq 24438
+issues a mask-0 ack. No obvious repeating 0x0200 loop is recorded.
+
+The Degauss-related family-0/0x4A `...47 00` request repeats five
+times (seq 19883..19887), every output ending
+`...040000000000`, followed by a family-1/0x4A status `...F700`.
+Automatic `...47 12` appears in five bursts of five calls: the initial
+Auto Zero seq 19938,19939,19941..19943 (subsequent status F100), plus
+a burst after each of the four jaw events (F700, F300, F700, F300).
+Identical legacy original `47 00` and `47 12` requests previously
+returned `...02000000FFFF`; the legacy family-1/0x4A status was
+`...F200` in those reference cases.
+
+A source audit identifies a **host-side serialization defect** independent
+of HWInt and DMA: original `FUN_000167F4` fills its solicited raw
+response allocation with 0xFF and writes actual bytes received into
+header WORD +4, whereas current `driver/Ioctl.c` advertises the
+requested payload capacity and leaves zero padding. This also explains
+the x64 family-1/0x82 response `...90010000...` (reported 0x0190)
+versus legacy `...0600...` / `...1600...` with FF-padded tails.
+A minimal raw 85FB output-format patch was committed as `3490709`
+**after** this trace. It neither injects pending bits nor touches
+BAR, MMIO, synchronous RX logic, or DMA. The patch still awaits a
+compile and real-hardware regression. Do not infer physical Degauss or
+Auto Zero success solely from successful IOCTL NTSTATUS.
