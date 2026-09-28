@@ -812,3 +812,154 @@ diagnostics before proposing any interrupt change. Avoid blind
 register writes and synthetic pending masks; maintain the <=5% CPU
 requirement. If unplug/replug remains functional, investigate the
 mechanical-jaw notification path separately.
+
+
+## 2026-09-29 00:11: repeated physical hotplug on current post-formatter driver
+
+The user performed several physical AP015 unplug/replug cycles during a
+single XStream session, with the **unchanged post-`3490709` driver**,
+without the earlier pre/post-calibration jaw-only sequence. They report
+correct recognition on the later insertions; the first insertion
+temporarily appeared in XStream as a different ("1/2 clamp") probe type,
+possibly owing to connector seating. There are no independently noted
+physical-action timestamps or screenshot. Private user trace:
+`xstream_trace_20260929_001152.jsonl` (not committed to the public repo).
+
+### Quantitative result
+
+| Captured measurement | Value |
+|---|---:|
+| First/last seq; elapsed duration | 1..37623; 61.381146 s |
+| Actually captured `type=ioctl` records | **32,675** |
+| Capture-snapshot gaps / omitted seq entries | 34 / 4,948 |
+| End of final snapshot gap | **t=32.792085 s** |
+| Captured non-success NTSTATUS | **0** |
+| CFDC2110 | 24,976 |
+| CFDC2138 | **6,135** |
+| CFDC2138 returned DWORD equal to requested DWORD at input offset 11 | **6,135 / 6,135** |
+| Last DMA | seq 37611, t=61.380523 s, 1,024 requested/returned |
+| Standalone 85FB/0x01 status reads | **1,361** |
+| Software command-enable word | **0x02BF** throughout |
+| Pending 0x0080 / 0x0200 / 0x0280 / 0x0000 | **1,348 / 11 / 1 / 1** |
+| Genuine notifications containing bit 0x0200 | **12** |
+| Corresponding family-0/0x88 mask 0x0200 / 0x0280 | **11 / 1** |
+| Subsequent family-1/0x82 | **12** |
+| Full AP015 metadata family-1/0x4A (`Information=270`) | **4** (startup + later three reinsertions) |
+| Family-0/0x4A `47 12` | **3** (one after each later successful reidentification) |
+
+All observed notifications have nearby 0x88 and family-1/0x82
+sequences; no trace-snapshot gap occurs in the actual event clusters.
+**Nine of the twelve 0x0200-bearing notifications happen after the
+last snapshot gap**, so they are contiguous even at trace-capture level.
+They are real returned pending bits from the standalone status result
+(`000000000400BF020002` or `000000000400BF028002`), not a
+synthetic probe-presence heuristic or a random firmware-payload match.
+
+### Physical disconnect/reconnect event reconstruction
+
+Times below are relative to the trace's first IOCTL, using the known
+10-MHz capture tick conversion. There are four event groups consistent
+with the user's four physical unplug/replug cycles. The user described
+several cycles but did not separately timestamp the actions.
+
+| Apparent action | t (s) | Status seq / pending | 0x88 seq / ack | 0x82 seq / actual decoded raw reply tail |
+|---|---:|---|---|---|
+| First removal | 27.557 | 16747 / 0200 | 16748 / 0200 | 16754: raw data length 0x000E, last status WORD **0x03FF** |
+| First insertion | 31.662 | 19245 / 0200 | 19246 / 0200 | 19248: **0x028C** |
+| Additional immediate event | 31.718 | 19249 / **0280** | 19250 / **0280** | 19257: **0x0058** (intervening standalone pending 0 and ack 0 at seq 19253/19255) |
+| Second removal | 40.564 | 25308 / 0200 | 25309 / 0200 | 25318: **0x03FF** |
+| Second insertion | 42.336 | 26308 / 0200 | 26309 / 0200 | 26318: **0x00A9** |
+| Additional immediate event | 42.386 | 26320 / 0200 | 26321 / 0200 | 26325: **0x0058** |
+| Third removal | 44.929 | 27775 / 0200 | 27776 / 0200 | 27782: **0x03FF** |
+| Third insertion | 47.306 | 29173 / 0200 | 29174 / 0200 | 29183: **0x00AA** |
+| Additional immediate event | 47.367 | 29187 / 0200 | 29188 / 0200 | 29193: **0x0058** |
+| Fourth removal | 49.510 | 30380 / 0200 | 30381 / 0200 | 30390: **0x03FF** |
+| Fourth insertion | 52.275 | 32018 / 0200 | 32019 / 0200 | 32021: **0x00A9** |
+| Additional immediate event | 52.405 | 32062 / 0200 | 32063 / 0200 | 32065: **0x0058** |
+
+`0x03FF` is consistently seen after a physical removal and is an
+empirical sentinel correlation; the exact meaning of each subsequent
+state word (`0x028C`, `0x00A9`, `0x00AA`, `0x0058`) has not
+yet been statically decoded. Do not call `0x028C` a proved literal
+"1/2 clamp" firmware identifier.
+
+**First-insertion anomaly:** In the first reinsertion event, the board
+returns `0x028C`, an immediate combined pending `0x0280`, then
+`0x0058`; there is **no post-event 270-byte AP015 metadata request**
+before the next removal. This differentiates that transition from
+the next three reinsertions and is consistent with the user's transient
+wrong-probe-type display. Whether connector insertion or firmware
+settling caused it is unknown. At each of the other three reinsertions,
+XStream executes the normal family-0/0x4A setup and family-1/0x4A
+270-byte AP015 metadata query:
+
+```text
+startup:        family-1/0x4A seq   509  t~13.881 s
+reinsertion 2:  family-0/0x4A seq 26342 -> family-1/0x4A seq 26343  t~42.572 s
+reinsertion 3:  family-0/0x4A seq 29207 -> family-1/0x4A seq 29208  t~47.553 s
+reinsertion 4:  family-0/0x4A seq 32067 -> family-1/0x4A seq 32068  t~52.531 s
+```
+
+All four report `Information=270`, carry literal ASCII `AP015`,
+and have **byte-identical captured 128-byte metadata prefixes**.
+The recorder does not contain the remaining 142 output bytes.
+
+### Post-formatter 0x82 and 47 12 parity now exercised
+
+This is the first real-hardware observation of family-1/0x82 **after**
+the narrow original-`FUN_000167F4` response-format fix `3490709`.
+All twelve 0x82 outputs now put the **actual raw firmware data length**
+into the second-result header and preserve **0xFF padding** in all
+recorded unused bytes. The first removal seq 16754 reports raw length
+`0x000E` (14 bytes) and data
+`00001A000500190005001200FF03`. The other eleven 0x82 responses
+report raw length **0x0006** and their actual six bytes, e.g.
+`00001200A900` or `000012005800`, followed by FF padding.
+This confirms the raw 85FB serializer fix beyond 47 00 and startup
+family-1/0x99. It supersedes the earlier "0x82 untested post-fix"
+qualification in preceding historical sections.
+
+Following the three successful reidentifications, XStream issues
+family-0/0x4A `...47 12` exactly once each at seq
+**26385, 29250, 32096**, each with the complete output
+`0000000000000000000002000000FFFF`. This is identical to
+the matching original x86 result and differs from the old fivefold
+pre-fix bursts with `...040000000000`. The respective family-1/
+0x4A `01 0A` statuses at seq 26386, 29251, 32099 still return
+`0000000000000000000004000000F700`; the status-bit meaning
+and physical Auto Zero result remain unknown. These **event-associated**
+47 12 commands must not be confused with the separately user-triggered
+**manual** Auto Zero, which appeared as 47 00 in trace 233125/235314.
+
+### Revised engineering conclusion
+
+The earlier **hypothesis of a global INTST 0x08 / HWInt 0x410 regression
+after host formatter commit 3490709 is falsified for physical hotplug**:
+the same driver successfully reports 12 genuine pending-0x0200-bearing
+notifications, normal matching 0x88 acks and twelve 0x82 replies,
+plus three post-reinsertion AP015 identifications. The hardware command
+interrupt path is not globally disabled by 0xFF padding or the corrected
+raw-response length. The absence of such notifications during purely
+mechanical jaw movements in traces `233125` and `235314` remains
+**separate and unexplained**. It may be related to probe state, event
+generation, timing, or operation-specific handling; no specific cause
+is yet proved, and do not reverse a working host formatter solely on
+temporal association.
+
+All 6,135 captured CFDC2138 transfers have success and return exactly
+their requested size. DMA was observed throughout each unplug/replug
+interval and after the last reinsertion (over 1,000 additional records);
+the last DMA is still successful at trace end. This does **not** by
+itself prove screen-visible waveform quality. There is no CPU or raw
+ISR/DPC rate in this IOCTL-only capture; <=5% CPU is still the
+operating constraint.
+
+For a further jaw-specific discriminator, use the same unchanged
+driver, with AP015 stably identified, and compare **one** controlled
+jaw open/hold/close/hold pair with **one** pair after a single
+successful physical unplug/replug, without Degauss or Auto Zero.
+Record XStream visible jaw/probe state and approximate elapsed action
+times. Check genuine 0x0200/0x88/0x82 from jaw movements separately
+from the known-good physical hotplug sequence. Do not synthesize
+pending bits, force 0x82 state words or change PCI/DMA/interrupt masks
+without specific measured evidence.
