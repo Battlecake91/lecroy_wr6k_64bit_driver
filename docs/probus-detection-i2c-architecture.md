@@ -7,6 +7,27 @@ interface*, not the Windows IOCTL transport implementation.
 
 ## Hardware sequence clarified by the user
 
+**Latest clarification from the user (2026-09-29):** ALL FIVE front
+ProBus probe connectors are physically **I2C-only for probe
+communication**. There is **no SPI connection to the probes**.
+The separate board SPI network is believed by the user to be used
+for internal ADC, reference and similar component configuration;
+the complete SPI-device allocation remains to be independently mapped.
+Do not conflate an FPGA's BAR1 SPI register/host helper with the
+physical front ProBus lines. The overview's `I2C(0:5)` is a
+schematic bus label, not proof that its numerical span literally
+encodes the count of physical connector sockets.
+
+**Independent PCI-side memory:** The user also clarifies that
+`U11 DS2433` **1-Wire EEPROM stores XStream license keys**,
+rather than merely an arbitrary board-ID payload. They expect
+keys may be stored in cleartext, not yet confirmed by a
+private full-memory dump. It remains unrelated to all five
+I2C ProBus connectors. See
+[`dallas-license-memory-test-plan.md`](dallas-license-memory-test-plan.md)
+for a private and read-only first step.
+
+
 The user has clarified the actual LeCroy ProBus probe handling order:
 
 1. **Analog probe-class detection.** An ADC reads a probe-associated
@@ -20,10 +41,13 @@ The user has clarified the actual LeCroy ProBus probe handling order:
 
 This sequence is based on the user's direct hardware information.
 The exact ADC channel, identification values/thresholds, I2C
-controller/master, physical SDA/SCL routing, EEPROM address and
-contents, and the boundary between XStream's high-level decisions
-and board/firmware execution have **not** yet been recovered from
-the available IOCTL captures. In particular, do not assume XStream
+controller/master, routing/multiplexing of the five front
+connections, EEPROM address and contents, and the boundary
+between XStream's high-level decisions and board/firmware
+execution have **not** yet been recovered from the available
+IOCTL captures. The **physical I2C bus choice itself IS confirmed
+by the user's hardware knowledge** and should not remain
+listed as an unresolved SPI-versus-I2C question. In particular, do not assume XStream
 bit-bangs I2C directly just because it initiates the operation.
 
 ## Distinguish all three observable protocol layers
@@ -40,11 +64,13 @@ using `SPICTL` (`BAR1+0xA0`), `SPIDAT` (`+0xA4`),
 `SPIDIN` (`+0xA8`). Its selector-0x0E captures include a
 144-bit serialized packet. These are *verified host-to-board register
 operations*, **not evidence that the electrical bus to the probe is
-SPI rather than I2C**. It is presently unknown whether/how this
-local SPI route is related to the front-panel I2C controller.
-Do not call the probe's physical control bus SPI based on this
-opcode and do not silently identify the SPI selector packet with
-an EEPROM I2C transfer.
+SPI rather than I2C**. The front ProBus connectors are **I2C-only**, as confirmed
+by the user. The BAR1 SPI route is a separately identified
+host/board serial helper, plausibly used for internal ADC,
+reference and other configuration, but the precise device
+assignment requires additional source or hardware evidence.
+Do not reinterpret this SPI selector packet as direct
+electrical signalling on any of the five probe connectors.
 
 The forwarded `0x4A` family-1 metadata result contains ASCII
 `AP015` (Information=270; JSONL records only the first 128
