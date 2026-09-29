@@ -5,6 +5,61 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest completed grouped test (owner result, 2026-09-30):**
+The owner ran `scripts/test-safe-ioctl-batch.ps1` on the
+actual x64 PCI scope and supplied the final summary:
+
+```text
+SAFE ABI BATCH: 9/9 passed; 0 failed.
+All requested safe ABI checks passed.
+```
+
+The originally committed harness also printed a misleading
+red PowerShell 5.1 `NativeCommandError` / `RemoteException`
+at its former `& $diag @Command 2>&1 | Out-String`
+capture line: intentionally negative `raw-ioctl`
+buffer-size tests cause `lecdiag` to write an expected
+error to native stderr, which Windows PowerShell 5.1
+additionally materializes as an ErrorRecord. The nine
+actual checks still returned PASS. A SOURCE-ONLY
+`scripts/test-safe-ioctl-batch.ps1` correction now
+uses `Start-Process -Wait -PassThru` with separate
+redirected stdout/stderr temp files, reads native
+output and exit code, and removes temp files in finally.
+**Corrected harness has not yet been rerun**; do not
+invent a second 9/9 test. No driver, firmware,
+`tools/lecdiag/lecdiag.c` or signed package was
+changed for this presentation-only fix.
+
+Per the owner's test preference do NOT request another
+complete XStream/AP015 regression now, or require
+a same-nine-check rerun solely to validate cosmetic
+log formatting. Continue meaningful STATIC analysis
+of the two remaining high-risk write controls
+(`0x0022303C` register index & bounds;
+`0xCFDC2130` FPGA GPIO bit-banging). The twelve
+static Ghidra targets are already in
+`ghidra_scripts/targets.txt`; NEXT PC-only command:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: inspect remaining register and serial-trigger write paths"
+```
+
+The Ghidra script pulls, runs analysis exports and
+commits/pushes new evidence. It does NOT touch the
+running x64 scope driver. Do NOT fire artificial
+nonzero CFDC2400 pending bits, issue a 266-byte
+indexed register write or program BAR1 GPIODAT
+with arbitrary serial-trigger data on the only
+working scope. Preserve the 24/27 source-level
+top-level IOCTL count (one gated), and defer a
+single XStream regression to a later combined milestone.
+See [grouped ABI result and safety review](
+docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+**Historical immediately preceding queued batch plan:**
+
 **Current owner-requested test cadence (2026-09-30): GROUP REGRESSIONS.**
 The owner explicitly does **not** want to spend time doing a complete
 XStream waveform/AP015 regression after every small development step.
