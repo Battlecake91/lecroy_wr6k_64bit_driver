@@ -5,6 +5,96 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**CURRENT AUTHORITATIVE ORIGINAL-DRIVER ANALYSIS (2026-09-30,
+owner Ghidra commit `00eb49db5efe98042df47ba07a570017cd37419d`):**
+THIRD read-only Ghidra batch has now COMPLETED and
+its findings are integrated in
+[original 43-register list and writer ABI](
+docs/original-register-list-and-write-abi.md).
+Do NOT re-request already completed Ghidra batches.
+Original hardware-subobject `CKeRegisterList` at
+`+0x11EE` owns TWO independent dynamic arrays:
+wrapper pointer table (at object +0x10,
+capacity+0, grow step+4=1, lastIndex+0x0C=-1)
+and 266-byte-record array (second array object
+begins at list+0x1C, record buffer ptr list+0x2C).
+`FUN_00012184` grows the pointer array,
+copying old pointers/freeing previous allocation;
+`FUN_000121FA` does the same with 0x10A-byte
+records. Both return 0xC000009A on allocation failure.
+The second record append's failure is NOT separately
+checked by `FUN_00013FA6` before it sets its
+local success byte (potential but UNOBSERVED mismatch).
+
+The original common list receiver to
+`FUN_000159E2 -> FUN_0001785B` is the SAME
+hardware-subobject+0x11EE list, confirmed by
+the 14847 original ASM argument stack.
+Registration order: six transport entries 0..5,
+15 common entries 6..20, then 22 entries 21..42
+if START/ITMODE setup `FUN_00012FDE` succeeds.
+The successful steady-state original list intends
+43 entries, exactly matching the EXISTING native
+`g_LecLegacyRegisterList[43]` ordering.
+The original list-required-size helper computes
+`(recordLastIndex+1)*266` = 11,438 bytes for 43.
+
+**NEW CRITICAL RECORD-ABI DISCOVERY:** original list
+metadata record offset `+0x101..+0x104` contains
+the PHYSICAL REGISTER OFFSET (from wrapper+0x1C),
+with BAR id byte at +0x100, type byte at +0x105,
+readback DWORD at +0x106. Existing x64
+`LecFillLegacyRegisterEntry` already implements
+this layout correctly. But original missing setter
+`0x0022303C` -> `FUN_0001259A` interprets the
+INCOMING DWORD at `+0x101` as the **ARRAY INDEX**
+and dereferences `pointerTable[index]` WITHOUT
+a local range check before `FUN_000107FE`
+physically writes requested data at +0x106.
+For example GPIODAT's list offset is 0xC4,
+yet its full-init array index is 42. Do NOT
+reuse a list-query 266-byte record unchanged as
+a setter input; reject all unknown/unvalidated
+write inputs. The wrapper `FUN_00012CAC`
+only checks `DAT_0001CD08==0` and exact
+266-byte length, then reports success.
+
+**GPIODAT SHARED WRITER:** original `CFDC2130`
+`FUN_00011CFF` reads BAR1+0xC4 once and
+per input byte updates bits 15:13 using 0xE000,
+writing a full DWORD every time.
+`FUN_000120DC` reads the SAME wrapper +0x318,
+clears bit 16 via `& 0xFFFEFFFF`, then writes
+it; original xrefs prove callers
+`FUN_00012D6A` and `FUN_00012F30` invoke it
+before regular transfer paths. The serial stream
+therefore must NOT be implemented blindly during
+active acquisition; no original loop delay is
+visible, and original pin meanings/synchronization
+remain unresolved. Other generic register-list
+writers can access same pointer without literal
+field+0x318 references.
+
+**Decision after this analysis:** NO new x64 driver
+source/installation changes; original coverage
+remains 24/27 represented (one gated), with
+0x0022303C indexed hardware write,
+0xCFDC2130 serial FPGA programming and
+0x00223088 licensed Dallas WRITE all ABSENT.
+The last owner-reported low-impact on-scope ABI
+batch is 9/9 PASS; no comprehensive post-CFDC2400
+XStream/AP015 regression has yet been reported.
+The owner explicitly prefers a SINGLE practical
+regression after a meaningful combined milestone.
+Further work should prioritize real original
+XStream user-mode evidence for 0x0022303C
+setter-record construction or GPIO ownership,
+not invent a write test on the only working scope.
+Do not claim that 43/43 register-map understanding
+implies full x86 source-byte or functional parity.
+
+**Prior third-export pending instructions below are superseded.**
+
 **LATEST static Ghidra checkpoint (2026-09-30,
 owner commit `92f8a7f67c751c764190206f79cd4bf9ec493753`):**
 Second PC-only writer batch has been completed.
