@@ -1,8 +1,8 @@
-# Active handoff: START/FVER 0x00223044 passed real-scope comparison (2026-09-29)
+# Active handoff: START register and XStream regression passed; map CFDC2194 latch (2026-09-29)
 
-**Latest verified result (late 2026-09-29):** The owner ran
-`tools/lecdiag/build/lecdiag.exe start-register` on the physical
-x64 WaveRunner PCI device and reported:
+## Latest owner-confirmed live state
+
+`lecdiag start-register` on the real PCI hardware:
 
 ```text
 0x00223044 START/FVER: 0x00000002
@@ -10,49 +10,48 @@ BAR0+0x000 reference: 0x00000002
 PASS: legacy 4-byte output matches physical register read.
 ```
 
-The diagnostic successfully reached both read-only DeviceIoControl
-paths and returned matching four-byte values. The newly implemented
-`0x00223044` positive path is therefore **verified on real hardware**,
-against an independent generic BAR0+0x000 read. No physical register
-write or Dallas operation is involved. This does not prove all ABI
-error/length paths or original-x86-versus-x64 equivalence for every
-hardware condition. The latest owner excerpt does not provide full
-build/sign/load console logs or the scope's current Git HEAD; avoid
-claiming those individual script steps as independently verified.
+Both separate read-only requests completed with the same DWORD.
+This validates the positive `0x00223044` path, not every possible
+length/error case; full later signed install logs and scope Git
+HEAD were not supplied. This supersedes an earlier blocked
+non-elevated install and the then-loaded driver's
+`ERROR_INVALID_FUNCTION`.
 
-**Historical initial failure, now superseded:** The earlier
-`build-sign-load-driver.ps1` attempt ran without administrative
-elevation, hit the administrator assertion before installation/PnP,
-and then `lecdiag start-register` failed its first IOCTL with Win32
-`ERROR_INVALID_FUNCTION` (1). No reference read was reached then.
-The newer PASS shows the currently serving driver now accepts the
-new request. For future PowerShell-script checks use the immediate
-`$?` or `try/catch` rather than relying on subsequent
-`$LASTEXITCODE` after a PowerShell `throw`.
+**Subsequent XStream regression owner-confirmed:** after being asked
+to verify waveform display, normal timebase/vertical/coupling/
+bandwidth/trigger controls, 2-channel/10-GS/s where practical,
+AP015 startup recognition, unplug/replug and jaw-unlock warning,
+the owner replied `Ja klappt soweit alles.` Record no observed
+regression in the exercised existing baseline. This is not a
+fresh exhaustive per-case instrumented trace. The immediate
+`0x00223044` hardware + regression task is now closed.
 
-## Immediate next action: XStream regression (NOT YET REPORTED)
+## Next task: original CFDC2194 status producer, source analysis first
 
-Start XStream normally on the x64 scope; check real waveform display,
-amplitude/frequency, timebase and V/div, coupling, bandwidth,
-trigger, and (where practical) two-channel/10-GS/s behavior.
-Check AP015 if already connected, physical removal/reinsertion
-and the existing open/unlocked-jaw warning. Report actual behavior;
-do not label this regression successful until tested.
+Original `FUN_00012BAE` takes exactly a 29-byte output, zeroes it,
+writes DWORD 2 at +4, copies original `this+0x116A` to response
+DWORD +8, and then clears that software latch. The direct
+`field_0x116a.refs.txt` only found its own read/clear; indirect
+or aliased writes remain a possibility. No permanent-zero stub.
 
-If the regression passes, proceed to focused original-driver source
-analysis of `0xCFDC2194` and locate the producer of original
-`this+0x116A`. `FUN_00012BAE` establishes only the exact
-29-byte output (zeroed response, DWORD 2 at +4, captured status DWORD
-at +8, then latch clear). The field scan found only that
-read-and-clear access. Do not fabricate a constant-zero successful
-response or alter established PCI/IRQ/DMA/ProBus behavior speculatively.
+Nearby source already in `ghidra_exports/selected/`:
+- `00013a40_FUN_00013a40.c` (paired `0xCFDC2190` handler):
+  29-byte type-2 input updates global `DAT_0001CE18`, calls
+  `FUN_000107FE` on register helper `this+0x188`, and registers
+  callback `FUN_00012EAE`.
+- `00012eae_FUN_00012eae.c` can invoke `FUN_00011E46`,
+  which writes the global register.
+- None of these exports directly establishes a writer of
+  `this+0x116A`. Investigate address aliases, callback and
+  ISR writers, and initialization before porting `0xCFDC2194`.
 
-**No Dallas WRITE/emulation or chip-isolation work is part of this
-step.** Source details are in [quick handoff](quick-handoff-2026-09-29.md),
-[IOCTL map](ioctl-map.md), [TODO](TODO.md) and `AGENTS.md`.
-The longer dated investigation preserved below is historical; its
-earlier source-only or failed-test statements must not override
-the newer live PASS above.
+Keep proven PCI/IRQ/DMA/AP015 paths untouched. Virtual Dallas
+recovery, physical chip isolation, and writing to the sole licensed
+card remain deliberately deferred. See
+[quick handoff](quick-handoff-2026-09-29.md),
+[IOCTL map](ioctl-map.md) and [TODO](TODO.md).
+The dated investigation below preserves historical failed and
+pending-test snapshots; this newest owner feedback supersedes them.
 
 **Project direction updated (2026-09-29):**
 User explicitly postpones virtual Dallas ROM/EEPROM
