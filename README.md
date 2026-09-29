@@ -215,6 +215,26 @@ original chip still requires the missing native x64 Dallas
 write IOCTL and full read-back validation. Details:
 [`docs/dallas-device-manager-recovery-design.md`](docs/dallas-device-manager-recovery-design.md).
 
+**Replacement-chip recovery clarification (2026-09-29):**
+Restoring the 512-byte memory of a damaged DS2433
+onto a replacement does **not** reproduce the
+factory-programmed ROM identity from which the
+user's main displayed Scope-ID is partly derived.
+Actual binding of every XStream license to that ROM
+has not yet been proven. The current raw
+`dallas-backup` images contain memory only; a
+recovery container must separately preserve the
+complete original eight-byte `dallas-id`.
+An optional explicit virtual Dallas diagnostic mode
+could present the original backed-up host-visible
+ID and memory, including carefully separate
+shadow-write semantics, but cannot reprogram
+a physical ROM and may be insufficient if
+board/FPGA initialization itself requires
+a responding physical 1-Wire chip. This is
+a proposed recovery path, **not yet implemented**.
+See [Dallas recovery architecture](docs/dallas-device-manager-recovery-design.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
