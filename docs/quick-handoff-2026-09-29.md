@@ -4,7 +4,33 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
-## Newest scope test: signed-load and idle CFDC2194 positive path PASS
+## Newest scope result: post-CFDC2194 XStream regression PASS
+
+**Owner-reported post-patch XStream regression PASS (2026-09-30):**
+After the successful signed installation of the new CFDC2194
+error-status ISR/read-and-clear path and correction of CFDC2190
+ERRM programming, the owner completed the requested practical
+XStream check and reported: *"Ich finde keine Fehlfunktionen."*
+Thus no malfunction was observed in the exercised workflow,
+following the previously documented waveform/control/two-channel/
+AP015 regression checklist. This is an owner-reported practical
+regression result, **not** a separately instrumented, item-by-item
+capture or proof that every legacy feature has been tested.
+
+Latest actual checkpoint: Windows x64 Debug build succeeded with
+0 warnings/0 errors; x64 lecdiag built; SYS/CAT signed; PnP
+installation `oem99.inf` and device restart succeeded;
+driver build query 1002 and passive PCI query passed;
+with XStream closed, `lecdiag error-status` returned
+`0x00000000` and verified the exact 29-byte format; XStream
+subsequently showed no owner-observed malfunctions.
+**This is the current working owner-confirmed x64 baseline.**
+Not exercised: a *nonzero* ERRS ISR latch, the persistent-error
+bit-31 branch, concurrent status consumption and unobserved
+acquisition forms. Do not manufacture hardware faults or disturb
+the sole licensed Dallas device to force coverage.
+
+## Previous hardware result: signed-load and idle CFDC2194 positive path PASS
 
 **Owner-reported actual scope validation, 2026-09-30 00:23 local:**
 The new CFDC2194/CFDC2190 source was built, signed, installed and queried
@@ -32,7 +58,7 @@ on the x64 LeCroy scope. The owner supplied the full
 - `DriverVer=09/29/2026,0.2026.930.23` was generated on
   September 30 local because the script uses UTC for DriverVer
   date, while local clock supplies version components.
-- **Remaining immediate gate:** run XStream with the newly installed
+- **Historical next step, subsequently completed with no owner-observed malfunction:** run XStream with the newly installed
   driver and check live waveforms, ordinary controls, two-channel/
   10-GS/s where practical, AP015 preattached identification,
   physical unplug/replug, jaw warning and any new error IRQ storm.
