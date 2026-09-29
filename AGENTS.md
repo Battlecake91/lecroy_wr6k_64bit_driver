@@ -4,6 +4,46 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Current safe implementation handoff (2026-09-29, after new Ghidra push):**
+Original `FUN_00012D24` does a DWORD read
+through original main-object pointer at
+`+0x138`; original initializer
+`FUN_00014847` binds it to BAR0+0x000
+(FVER/START). Native x64 source now
+implements read-only `0x00223044`
+in `driver/Ioctl.c` and the header.
+`lecdiag start-register` now checks
+that its four-byte result matches
+existing generic BAR0+0x000 read.
+This new code is NOT Windows-built or
+hardware-tested yet. Run
+`scripts/build-driver.ps1 -BuildLecdiag`,
+and, on x64 scope only after build
+success with XStream closed, use
+established signed reload plus
+`lecdiag start-register`. Stop
+on any mismatch.
+
+The second exported handler
+`FUN_00012BAE` for `0xCFDC2194`
+has exact 29-byte return layout:
+zeroed response, DWORD2 at offset4,
+status at offset8 from
+`this+0x116A`, then software-latch
+clear. New Ghidra `field:116a`
+finds its single direct read/clear,
+but NO source of the latched value;
+indirect aliases remain possible.
+Therefore this 2194 handler is NOT
+yet ported; do NOT replace unknown
+real status with invented zero.
+See `docs/ioctl-map.md` and
+`docs/next-chat-handoff.md`.
+README must remain current verified
+status and not absorb untested
+milestones. Virtual Dallas/physical
+isolation remain deliberately deferred.
+No Dallas write/emulation change.
 **Documentation and priority policy (2026-09-29):**
 Keep `README.md` a concise, consolidated statement of
 the **current verified project state**. Never append a
