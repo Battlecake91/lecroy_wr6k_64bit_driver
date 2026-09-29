@@ -5,6 +5,42 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest static export checkpoint (2026-09-30):**
+Owner already pushed first write-path Ghidra export as
+`2071cfa7d44199d7e0cde3a7e3cc77e209ffc414`.
+Its `asm_asm_1259a.txt` confirms the 266-byte
+`0x0022303C` request supplies raw index DWORD
+`record+0x101` into unguarded
+`[registerTable+index*4]`, and value DWORD
+`record+0x106` flows into direct physical write
+`FUN_000107FE`. The register-list object is
+`hardware-subobject+0x11EE`, constructed in
+`FUN_00014212` via `FUN_00013434`;
+`FUN_00014847` contains 37 source-level
+`FUN_00013FA6` insertion CALL SITES, NOT a
+verified runtime capacity/length. Do not port an
+unbounded physical indexed writer from this alone.
+
+Nineteen additional STATIC-ONLY PC Ghidra targets
+were queued after this result in
+`ghidra_scripts/targets.txt`. They include function
+and ASM export for 1326E (dynamic list append),
+13230 (element copy), 13434 (constructor), 134AE/
+133C4 (destructor), 14212/14847 (object/hardware
+initialization), plus xrefs for 107FE (other physical
+MMIO write sites), 13FA6 (list registration),
+13434/1326E/13230/134AE/14847.
+
+**NEXT PC Ghidra action, not scope:**
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve indexed register-list bounds and GPIO ownership"
+```
+The script handles pull, analysis export, commit and push.
+No full XStream regression is due until a useful
+combined milestone. See
+[second-batch details](docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
 **Newest completed grouped test (owner result, 2026-09-30):**
 The owner ran `scripts/test-safe-ioctl-batch.ps1` on the
 actual x64 PCI scope and supplied the final summary:
