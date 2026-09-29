@@ -6,8 +6,9 @@
 //
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
 // (for example KeSetEvent), field displacement scans such as field:2e0,
-// full function instruction exports such as asm:18194, or arbitrary address
-// reference scans such as xref:1c8bc.
+// full function instruction exports such as asm:18194, arbitrary address
+// reference scans such as xref:1c8bc, or raw pointer-table snapshots such as
+// dwords:1c62c:16 (base address in hex, count in decimal, 1..64).
 // Address targets export decompiled C plus compact incoming/outgoing function
 // references. Symbol targets export references and the containing caller
 // function names. Field scans export every instruction text containing the
@@ -69,6 +70,25 @@ public class ExportSelected extends GhidraScript {
 
                 if (target.toLowerCase().startsWith("field:")) {
                     writeFieldScan(target.substring("field:".length()));
+                }
+                else if (target.toLowerCase().startsWith("dwords:")) {
+                    String[] spec = target.substring("dwords:".length()).split(":");
+                    Address base = spec.length > 0 ? parseTargetAddress(spec[0]) : null;
+                    int count = -1;
+                    if (spec.length == 2) {
+                        try {
+                            count = Integer.parseInt(spec[1]);
+                        }
+                        catch (NumberFormatException ignored) {
+                            count = -1;
+                        }
+                    }
+                    if (base == null || count < 1 || count > 64) {
+                        printerr("Invalid dwords target (use dwords:<hexbase>:<1..64>): " + target);
+                    }
+                    else {
+                        writeDwordTable(base, count, target);
+                    }
                 }
                 else if (target.toLowerCase().startsWith("asm:")) {
                     Address asmAddr = parseTargetAddress(
@@ -291,6 +311,53 @@ public class ExportSelected extends GhidraScript {
                     r.getReferenceType();
                 if (seen.add(line)) {
                     pw.println(line);
+                }
+            }
+        }
+    }
+
+    /*
+     * Snapshot a literal vtable/other DWORD table independently of Ghidra's
+     * symbolic pointer naming. The +0x24 slot gets a short instruction
+     * preview so the return convention (RET versus RET 0x8, etc.) can be
+     * checked without guessing the target function's name or address.
+     */
+    private void writeDwordTable(Address base, int count, String target)
+            throws Exception {
+        File file = new File(outDir, "dwords_" + sanitize(target) + ".txt");
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+            pw.println("DWORD_TABLE " + base + " COUNT " + count);
+            for (int i = 0; i < count; ++i) {
+                int offset = i * 4;
+                try {
+                    Address entry = base.add(offset);
+                    long raw = getInt(entry) & 0xffffffffL;
+                    Address pointer = toAddr(raw);
+                    Function pointedFunction = fm.getFunctionAt(pointer);
+                    pw.printf("+0x%02X @%s -> 0x%08X", offset, entry, raw);
+                    if (pointedFunction != null) {
+                        pw.print(" " + pointedFunction.getName());
+                    }
+                    pw.println();
+
+                    if (offset == 0x24) {
+                        pw.println("SLOT_0x24_INSTRUCTION_PREVIEW");
+                        Instruction inst =
+                            currentProgram.getListing().getInstructionAt(pointer);
+                        for (int j = 0; j < 24 && inst != null; ++j) {
+                            pw.println("  " + inst.getAddress() + "  " + inst);
+                            if (inst.getMnemonicString().toUpperCase().startsWith("RET")) {
+                                break;
+                            }
+                            inst = currentProgram.getListing()
+                                .getInstructionAfter(inst.getAddress());
+                        }
+                        pw.println("END_SLOT_0x24_PREVIEW");
+                    }
+                }
+                catch (Exception ex) {
+                    pw.printf("+0x%02X <unreadable: %s>%n",
+                        offset, ex.getMessage());
                 }
             }
         }
