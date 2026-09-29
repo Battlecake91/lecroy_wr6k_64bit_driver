@@ -4,6 +4,49 @@ This table is reconstructed from the comparison tree inside `CLecS65AcqDrvDevice
 
 All values below are **confirmed as dispatch values** in the analysed binary.
 
+## Current native x64 coverage snapshot (2026-09-29)
+
+**Do not confuse original x86 dispatch identification with complete native
+x64 feature coverage.** A fresh comparison of the recovered 27-entry
+original dispatch table with the top-level switch in `driver/Ioctl.c`
+finds 22 original dispatch codes represented in x64 (21 with a
+handler representing original behavior to varying degrees, plus the
+deliberately gated `0xCFDD219F`). **Five original codes lack a top-level
+x64 case.** This updates the historical 2026-09-28 six-missing count:
+read-only `0x00223044` has since been implemented, passed a physical
+BAR0+0x000 comparison, and received an owner-confirmed XStream/AP015
+baseline regression check. The additional observed `0x00222400`
+x64 handler is not part of this original 27-entry inventory.
+
+| Original IOCTL not yet in x64 switch | What original selected source establishes | What remains |
+|---|---|---|
+| `0x0022303C` | `FUN_00012CAC` consumes exactly `0x10A` input bytes and passes them to `FUN_0001259A` (`SetOneRegister`), which selects a register wrapper and performs a hardware register write. | Confirm index/address bounds, full input layout and safe observable use before porting any hardware-writing behavior. |
+| `0x00223088` | Dallas WRITE handler `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` have been recovered. | Native writer implementation and spare-DS2433 verification; no write tests on the sole licensed card. |
+| `0xCFDC2130` | Serial-trigger FPGA programming path `FUN_00011CFF` iterates over input bytes and writes an evolving register value. | Validate its register programming protocol, guardrails and actual call conditions before hardware tests. |
+| `0xCFDC2194` | `FUN_00012BAE` produces exactly 29 bytes: DWORD 2 at +4, software status `this+0x116A` at +8, followed by latch clear. | Locate the **producer** and synchronization of the status latch. Its direct-displacement scan found only the consumer; aliases are possible. **Next source-analysis priority.** |
+| `0xCFDC2400` | `FUN_00013A2E` forwards to `FUN_00012EDE`, which requires a 4-byte input, stores a global control value, registers a callback and invokes an internal virtual method. | Characterize callback/state effects and original call timing before a native implementation. |
+
+**Separate from those five missing cases:** `0xCFDD219F` already has
+an explicitly disabled x64 dispatcher branch, but its `METHOD_NEITHER`
+user-pointer, WOW64 and DMA semantics remain an important engineering
+risk. Other original top-level codes that have x64 cases are not
+necessarily complete for every nested subcommand or transfer shape.
+In particular, `0xCFDC2110` has multiple firmware/control subcommands
+and `0xCFDC2138` currently supports only the observed one-channel
+form. The source-visible host command protocol must also be distinguished
+from onboard FPGA/firmware behavior and the separate physical
+front-ProBus ADC/I2C protocol.
+
+The low-risk next step is **static analysis**, not speculative kernel
+writes: track all aliases/initialization and indirect writers of
+`this+0x116A`; inspect the paired `0xCFDC2190` path
+(`FUN_00013A40`), its register helper (`FUN_000107FE`), callback
+`FUN_00012EAE`, and `FUN_00011E46` as neighboring control flow.
+These exports do not by themselves prove the latch producer.
+Use original x86/XStream request frequencies, lengths and statuses to
+prioritize the remaining compatibility work. Never publish genuine
+Dallas ID or license payloads.
+
 ## Recovered dispatch table
 
 | IOCTL | Device type | Function | Method | Handler VA | Recovered behaviour |
