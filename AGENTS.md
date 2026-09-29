@@ -4,6 +4,23 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**New UI feature request (2026-09-29):** User requests a
+Device Manager Dallas EEPROM maintenance page with backup,
+compare, recovery and optional offline hex editing. A native
+x64 device-specific property-page extension DLL is possible
+using `EnumPropPages32`; avoid deprecated co-installers.
+Prefer a standalone maintenance application plus optional
+lightweight Device Manager page. Current INF installs only
+the kernel SYS. Scope identity note: confirmed primary
+display identifier derives from the DS2433's factory ROM
+serial bytes 1..3 (24-bit little-endian), NOT the separate
+512-byte data memory; display suffix remains undecoded.
+A backup cannot alter a replacement chip's factory ROM.
+Current x64 supports ROM/read but not write. Recovery
+requires original writer reconstruction, test-chip
+validation and full post-write verification.
+Design: [`docs/dallas-device-manager-recovery-design.md`](docs/dallas-device-manager-recovery-design.md).
+The UI and hardware writer are not implemented yet.
 **Latest trace and original-code review (2026-09-29):**
 Private 011858 captured the same valid Dallas
 family-0x23 ROM response at seq 1 and 607.
