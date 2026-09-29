@@ -1,0 +1,46 @@
+FUNCTION_ASM 00012bae FUN_00012bae
+00012bae  PUSH EBP
+00012baf  MOV EBP,ESP
+00012bb1  SUB ESP,0x20
+00012bb4  MOV EDX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00012bb7  MOV EAX,dword ptr [EDX + 0x60]
+00012bba  MOV dword ptr [EDX + 0x18],0xc0000002
+00012bc1  CMP dword ptr [EAX + 0x4],0x1d
+00012bc5  PUSH ESI
+00012bc6  MOV ESI,ECX
+00012bc8  JNZ 0x00012c05
+    -> 00012c05
+00012bca  PUSH EDI
+00012bcb  PUSH 0x7
+00012bcd  POP ECX
+00012bce  XOR EAX,EAX
+00012bd0  LEA EDI,[EBP + -0x20]
+    -> Stack[-0x24]
+00012bd3  STOSD.REP ES:EDI
+00012bd5  STOSB ES:EDI
+00012bd6  MOV EDI,dword ptr [EDX + 0xc]
+00012bd9  LEA EAX,[ESI + 0x116a]
+00012bdf  MOV ECX,dword ptr [EAX]
+00012be1  MOV dword ptr [EBP + -0x18],ECX
+    -> Stack[-0x1c]
+00012be4  PUSH 0x7
+00012be6  POP ECX
+00012be7  MOV dword ptr [EBP + -0x1c],0x2
+    -> Stack[-0x20]
+00012bee  LEA ESI,[EBP + -0x20]
+    -> Stack[-0x24]
+00012bf1  MOVSD.REP ES:EDI,ESI
+00012bf3  MOVSB ES:EDI,ESI
+00012bf4  AND dword ptr [EAX],0x0
+00012bf7  AND dword ptr [EDX + 0x18],0x0
+00012bfb  MOV dword ptr [EDX + 0x1c],0x1d
+00012c02  POP EDI
+00012c03  JMP 0x00012c10
+    -> 00012c10
+00012c05  AND dword ptr [EDX + 0x1c],0x0
+00012c09  MOV dword ptr [EDX + 0x18],0xc0000206
+00012c10  MOV EAX,dword ptr [EDX + 0x18]
+00012c13  POP ESI
+00012c14  LEAVE
+00012c15  RET 0x4
