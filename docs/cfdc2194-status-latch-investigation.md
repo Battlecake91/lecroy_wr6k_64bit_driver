@@ -14,8 +14,34 @@ The native x64 implementation has now been committed, Windows-built,
 test-signed, installed and exercised in the **idle 29-byte readback
 positive path** on the owner's real x64 scope. The assistant did not
 run the local WDK/PCI tools itself; the full actual output was
-supplied by the owner. Nonzero ISR-latch validation and XStream
-regression remain open.
+supplied by the owner. Nonzero ISR-latch validation remains open; the subsequent
+owner-reported practical XStream regression found no malfunction.
+
+## Practical XStream regression after signed load: owner PASS (2026-09-30)
+
+After the exact 29-byte `lecdiag error-status` idle diagnostic
+passed on the real PCI scope, the owner was asked to perform the
+standard XStream waveform/settings/two-channel/AP015 checks and
+pay attention to changed ERRM interrupt behaviour. The subsequent
+response was *"Ich finde keine Fehlfunktionen."* Record this as
+**no owner-observed malfunction in the exercised practical
+post-change XStream regression**. The response was not an
+instrumented per-feature matrix; avoid inventing exact results
+for individual unreported configurations.
+
+The current native x64 driver with the CFDC2194 ISR/IOCTL and
+corrected CFDC2190 polarity is therefore the latest
+**owner-confirmed working XStream baseline**. Its 29-byte
+read/clear positive path was separately exercised with XStream
+closed; the returned status was `0x00000000`.
+
+Remaining validation boundaries: the original nonzero ERRS
+interrupt accumulator at `main+0x134A` has been proven in
+source but not observed producing nonzero status on the new
+x64 driver; the reassertion marker at bit 31 has likewise
+not been forced or measured. Never trigger deliberate hardware
+faults on the only working scope or use the latch-consuming
+diagnostic concurrently with XStream.
 
 ## On-scope positive-path validation (owner output, 2026-09-30 00:23 local)
 
@@ -37,10 +63,9 @@ The owner tested the error-status diagnostic with XStream closed. This
 is a **positive ABI and successful device-install validation**;
 `0x00000000` is a plausible idle status and does not mean that
 the nonzero ERRS accumulation or reasserted-error bit 31 path
-has been exercised. No post-change XStream waveform/control/AP015
-regression result has been supplied yet. That is the immediate next
-test; the previous owner-confirmed working XStream/AP015 baseline
-belongs to the earlier START/FVER patch.
+has been exercised. The post-change practical XStream regression was subsequently
+owner-confirmed with no observed malfunction. This idle result
+still does not exercise actual nonzero ERRS accumulation or bit 31.
 
 The generated `DriverVer=09/29/2026,0.2026.930.23`
 despite the local September 30 build is explained by the installer
