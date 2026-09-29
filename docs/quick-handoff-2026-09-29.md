@@ -4,6 +4,67 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## 2026-09-30 update: original CFDC2194 producer SOLVED; source-only port
+
+The owner's PC Ghidra rerun committed fresh exports in
+`540bf87c374d3ea256896c49fdecbeacca8592da`.
+Original `FUN_000108D6` (ISR) **writes** the status consumed
+by `CFDC2194`: the newly found `field_0x134a.refs.txt`
+records `0x10958 OR DWORD [main+0x134A]` (raw BAR0 ERRS).
+`field_0x134d.refs.txt` records
+`0x10A67 OR BYTE [main+0x134D],0x80` (persistent-error bit 31).
+The original dispatcher passes `main+0x1E0` to
+`FUN_00012BAE`, therefore its `this+0x116A` is exactly
+the same DWORD. The old `field:116a` scan missed the
+main-object coordinate; this issue is now **resolved**.
+
+New x64 **source-only** changes are committed on main:
+`driver/Acquisition.c` latches/acknowledges the ERRS IRQ
+and persistent error bit, `driver/LecS65Drv.h` and
+`Driver.c` hold the software latch/ERRM cache,
+`driver/Ioctl.c` implements the 29-byte CFDC2194 reply
+and corrects CFDC2190's type/enable/ERRM inversion,
+and `tools/lecdiag/lecdiag.c` adds `error-status`.
+
+**No successful Windows build, signed reload or XStream
+regression on this NEW source has yet been reported.**
+The owner-confirmed waveform/AP015 baseline following the
+earlier START/FVER fix is still the last verified hardware
+state. The new physical ERRM inversion can change interrupt
+behavior, so build and test carefully before calling it
+verified. Do not inject fake errors or touch Dallas.
+
+### Immediate next command (scope, elevated PowerShell, XStream closed)
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
+
+& ".\scripts\build-driver.ps1" -BuildLecdiag
+if (-not $?) { throw "Windows build failed; STOP" }
+```
+
+Only if build succeeds and the known-good driver is recoverable:
+run the established signed `build-sign-load-driver.ps1` as
+administrator. Then, **before starting XStream**:
+
+```powershell
+& ".\tools\lecdiag\build\lecdiag.exe" error-status
+if ($LASTEXITCODE -ne 0) { throw "CFDC2194 diagnostic failed; STOP" }
+```
+
+The response must be 29 bytes, DWORD type 2 at +4 and
+software-latched status DWORD at +8; the remaining bytes
+are zero. A status of zero on an idle device is acceptable.
+This query **clears/consumes** the latch; never race it with
+XStream. Retest normal waveforms, controls and AP015 afterward.
+For producer proof and detailed validation:
+[CFDC2194 source investigation](
+cfdc2194-status-latch-investigation.md).
+
+## Historical 2026-09-29 validated baseline and investigation notes
+
 ## Latest actual scope result: read-only 0x00223044 PASS (2026-09-29 late)
 
 The owner ran `tools/lecdiag/build/lecdiag.exe start-register` on the
