@@ -1,4 +1,83 @@
-# Active handoff: grouped safe ABI batch BEFORE deferred full XStream regression (2026-09-30)
+# Active handoff: safe ABI batch 9/9 PASS; static register/FPGA-write analysis next (2026-09-30)
+
+## Newest owner-run x64 scope tests
+
+The owner executed `scripts/test-safe-ioctl-batch.ps1`
+on their real installed PCI 1570:0005 native driver.
+They supplied the terminal result:
+
+```text
+SAFE ABI BATCH: 9/9 passed; 0 failed.
+All requested safe ABI checks passed.
+```
+
+The original PowerShell 5.1 harness wrote an additional
+misleading `NativeCommandError` at former line
+`$combined = & $diag @Command 2>&1 | Out-String`.
+This is the PowerShell treatment of `lecdiag` native
+stderr for intentionally invalid request lengths:
+it is not a kernel/IOCTL test failure. The
+**nine checks still passed** according to the
+reported summary. `scripts/test-safe-ioctl-batch.ps1`
+has been updated to use `Start-Process -Wait -PassThru`
+with separate temporary redirected stdout and stderr,
+capture of actual ExitCode and finally cleanup.
+**The corrected harness has NOT been rerun**;
+do not claim a second result. This correction
+changes NO driver source, `lecdiag.c` or kernel binary.
+
+This complements the earlier positive real-scope
+`CFDC2400` zero-mask result
+`input=4 output-capacity=0 returned=0`.
+The nine-case batch includes PCI/build identification,
+passive START/FVER comparison, two positive CFDC2400
+zero-mask forms, two invalid CFDC2400 input lengths
+and two invalid (non-latch-consuming) CFDC2194
+output lengths. No nonzero artificial pending IRQ
+bits or destructive MMIO/Dallas write are included.
+
+## Immediate next action: PC Ghidra export, no repeated XStream test
+
+Per the owner's explicit preference, **batch useful source
+analysis and low-impact checks before ONE later full
+XStream/AP015 regression**. Do not demand a full
+regression after every tiny patch, nor a cosmetic
+rerun of the already-reported 9/9 solely to avoid
+PowerShell stderr decoration.
+
+The twelve STATIC Ghidra targets for original
+`0x0022303C` (index-based register-write,
+`FUN_00012CAC`/`FUN_0001259A`) and
+`0xCFDC2130` (serial FPGA programming
+via `FUN_00011CFF` and physical BAR1 GPIODAT writes)
+are already queued in `ghidra_scripts/targets.txt`.
+Next on the user's separate Ghidra development PC:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: inspect remaining register and serial-trigger write paths"
+```
+
+This pulls newest main, runs the existing read-only
+Ghidra export against the original x86 driver, then
+commits/pushes exported evidence. It does NOT install
+anything on the scope. Inspect resulting register-list
+structure/index bounds and GPIO pin/timing details
+before contemplating a port of either write handler.
+Neither should be probed with fabricated write
+data on the working scope; licensed Dallas WRITE
+`0x00223088` stays deferred to disposable hardware.
+Native top-level represented count remains 24/27,
+including one gated case.
+
+**The complete post-CFDC2400 practical XStream/AP015
+regression remains DEFERRED, not reported PASS**, until
+the next useful combined development milestone.
+Full grouped test and remaining-control analysis:
+[2026-09-30 grouped ABI / static write note](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Historical pre-batch instructions (now superseded)
 
 ## Current owner preference and immediate task
 
