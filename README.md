@@ -47,6 +47,41 @@ Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-b
 - Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
 - XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
 
+### Original register-list ABI independently reconstructed (2026-09-30)
+
+Three separate read-only Ghidra batches now establish the
+original `CKeRegisterList` as two dynamically allocated,
+parallel arrays: one of 32-bit register-wrapper pointers
+and one of **266-byte metadata records**. The original
+full initialization inserts 6 transport, 15 common and
+22 START-conditional entries, for **43 zero-based indices**.
+This independently confirms the ordering already used
+by native `g_LecLegacyRegisterList[43]`; it does not
+increase IOCTL coverage or imply an additional hardware
+regression test.
+
+One important original ABI trap: querying a 266-byte
+register record serializes the PHYSICAL BAR OFFSET at
+record byte `0x101`, but the still-unimplemented
+original setter `0x0022303C` treats an INCOMING
+DWORD at `0x101` as the register ARRAY INDEX,
+then directly writes the selected MMIO register
+without a visible index range guard. These two
+concepts must not be conflated or a query record
+echoed into the setter unchecked.
+
+The other missing serial-FPGA writer `CFDC2130`
+writes BAR1 GPIODAT bits 15:13 per stream byte,
+sharing its full DWORD with bit-16 clearing invoked
+by ordinary transfer handlers. Both remain
+deliberately unported pending proof of safe caller
+semantics and GPIO ownership. The third missing
+case is licensed Dallas WRITE, deferred to
+disposable hardware. Full 43-register mapping,
+field layout and exact original evidence:
+[original register list and writer ABI](
+docs/original-register-list-and-write-abi.md).
+
 ### Grouped low-impact ABI checks (2026-09-30)
 
 For owners who want to batch compatibility validation before a
