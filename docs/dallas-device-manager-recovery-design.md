@@ -136,10 +136,41 @@ The original x86 Ghidra export
 shows 1..512-byte input, chunks at most 32 bytes through
 `FUN_00016d90`, a full requested-length hardware
 read-back through `FUN_00016f2c`, `RtlCompareMemory`,
-and up to three attempts. The low-level helpers are still
-required to match the original controller semantics.
-Do not implement a fake success stub or bypass
-hardware write verification.
+and up to three outer attempts. The low-level helpers
+were subsequently **exported and reviewed** on 2026-09-29:
+
+- `ghidra_exports/selected/00016d90_FUN_00016d90.c`
+  writes a chunk after reset/presence:
+  `0xCC SKIP ROM`, `0x0F WRITE SCRATCHPAD`,
+  little-endian two-byte target address, and 1..32
+  payload bytes. It then resets, issues `0xCC, 0xAA
+  READ SCRATCHPAD`, reads TA1/TA2/E/S, compares the
+  scratchpad data byte by byte, resets again, and
+  issues `0xCC, 0x55 COPY SCRATCHPAD` using
+  the address and returned E/S. The original waits
+  `-1,000,000` in 100-ns units (**100 ms**) after
+  copy authorization. The chunk-level helper has
+  a three-attempt retry loop.
+- `ghidra_exports/selected/00016f2c_FUN_00016f2c.c`
+  reads the requested length from memory address
+  zero via reset/presence, `0xCC, 0xF0, 0x00, 0x00`.
+  The calling original IOCTL compares this
+  requested-length readback to the input data.
+
+Original helper ASM was also exported
+(`asm_asm_16d90.txt`, `asm_asm_16f2c.txt`).
+The x64 code already has working 1-Wire
+reset/write-byte/read-byte primitives;
+this is enough source evidence to design
+the missing native WRITE path, but
+**the port has not yet been implemented,
+compiled, or tested on a disposable device**.
+Retain Dallas mutex serialization,
+explicit presence checks, exact length
+validation, error propagation, and verified
+full-image readback. Do not implement a
+fake success stub or bypass hardware
+write verification.
 
 The DS2433's own specification uses
 `Write Scratchpad` -> verify scratchpad including
@@ -344,22 +375,17 @@ chip must be classified by stage: PCI FPGA
 enumeration/startup vs driver initialization
 vs user-mode XStream license read.
 
-**Latest Ghidra status:** the user reports having
-rerun `scripts/run-ghidra-analysis.ps1`; current
-public HEAD after that run changed only the
-export manifest. The already requested and
-exported writer wrapper `FUN_00011f54`
-exists, but selected C/ASM export files for
-its called `FUN_00016d90` and
-`FUN_00016f2c` still do **not**
-exist on main. To recover the native
-writer, explicitly add `16d90`,
-`asm:16d90`, `16f2c`,
-`asm:16f2c` as export targets
-and rerun the PC-side Ghidra
-export script. Do not claim low-level
-1-Wire write details are proven by
-the wrapper alone.
+**Updated Ghidra status (2026-09-29):** the user
+reran the export after the helper targets were
+added. Both original writer dependencies are now
+present on main as selected decompiled C,
+refs and full ASM (`16d90`, `16f2c`).
+The source provides the actual scratchpad
+write/verify/copy flow and 100-ms post-copy
+delay noted above. Remaining work is a
+bounded x64 implementation plus isolated
+hardware validation, **not further export
+of these two functions**.
 
 ## Build stages (recommended order)
 
@@ -368,9 +394,8 @@ the wrapper alone.
 ID/read/backup code; add stable backup-container
 format and masked compare UI.
 
-**Stage 2:** export and analyze original low-level
-helpers `FUN_00016d90` and `FUN_00016f2c`,
-then port `WRITE_DALLAS_MEMORY` exactly with
+**Stage 2:** use the now-exported original
+helpers `FUN_00016d90` and `FUN_00016f2c` to port `WRITE_DALLAS_MEMORY` exactly with
 scratchpad checks, stop-on-error and full readback.
 Validate on disposable chip and preserve
 all current PCI/IRQ/DMA safety constraints.
