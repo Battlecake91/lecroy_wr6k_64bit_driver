@@ -3694,3 +3694,46 @@ probe interfaces:
 [`probus-detection-i2c-architecture.md`](probus-detection-i2c-architecture.md).
 No driver source changes are implied by these
 topology observations.
+
+
+## Current follow-up: 0x00223044 implemented; CFDC2194 status producer unresolved (2026-09-29)
+
+The user's Ghidra rerun supplied `asm_asm_12d24.txt`,
+`asm_asm_12bae.txt`, `field_0x138.refs.txt` and
+`field_0x116a.refs.txt`. These resolve the two proposed
+compatibility targets to different confidence levels:
+
+- **Original `0x00223044` (FUN_00012D24):** requires
+  **exactly four output bytes**, calls
+  `READ_REGISTER_ULONG(*(main+0x138))` and returns
+  success with `Information=4`. Original startup
+  `FUN_00014847` sets `main+0x138 = BAR0 base+0x000`.
+  Therefore this is a **read-only BAR0 FVER/START DWORD
+  query**. The native x64 driver now implements it
+  as `LECS65_IOCTL_READ_START_REGISTER` using
+  `LecResolveRegister(DevExt,0,0x000)`, checks exact
+  output length and returns four bytes. Source
+  is committed but **Windows build/hardware runtime
+  validation remains pending**. `lecdiag start-register`
+  calls the new legacy IOCTL and independently
+  checks equality with existing generic
+  `REGISTER_READ BAR0+0x000`. No register write occurs.
+- **Original `0xCFDC2194` (FUN_00012BAE):** requires
+  **exactly 29 output bytes**; zero-initializes the
+  response, stores `DWORD 2` at byte offset `+0x04`,
+  copies the stored value from original
+  `main+0x116A` to byte offset `+0x08`,
+  then **clears the stored value**. The field-displacement
+  scan discovers only the handler's own
+  `LEA [ESI+0x116A]`, not the producer of nonzero
+  status. Since aliasing/indirect writes can escape
+  literal-displacement scans, this does NOT prove
+  that the original value is always zero. Do NOT
+  fabricate a constant-zero `STATUS_SUCCESS`
+  handler just for coverage. This second x64
+  implementation remains pending until the
+  true latch source and synchronization are mapped.
+
+The older 2026-09-28 audit below remains historical:
+`0x00223044` has since received an x64 case,
+whereas `0xCFDC2194` remains unported at this point.
