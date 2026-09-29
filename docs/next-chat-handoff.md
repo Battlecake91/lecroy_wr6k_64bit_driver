@@ -1,83 +1,97 @@
-# Active handoff: START register and XStream regression passed; map CFDC2194 latch (2026-09-29)
+# Active handoff: CFDC2194 ISR producer recovered; x64 source patch awaits Windows build (2026-09-30)
 
-## Latest owner-confirmed live state
+## New decisive original-driver result
 
-`lecdiag start-register` on the real PCI hardware:
+The user executed the new PC-side Ghidra export, producing commit
+`540bf87c374d3ea256896c49fdecbeacca8592da`. New literal
+field scan reports identify the previously missing software-latch
+writer in original ISR `FUN_000108D6`:
 
 ```text
-0x00223044 START/FVER: 0x00000002
-BAR0+0x000 reference: 0x00000002
-PASS: legacy 4-byte output matches physical register read.
+0x10958  OR dword ptr [ESI+0x134A],EAX  ; accumulated BAR0 ERRS
+0x10A67  OR byte ptr [ESI+0x134D],0x80  ; persistent-error marker bit 31
 ```
 
-Both separate read-only requests completed with the same DWORD.
-This validates the positive `0x00223044` path, not every possible
-length/error case; full later signed install logs and scope Git
-HEAD were not supplied. This supersedes an earlier blocked
-non-elevated install and the then-loaded driver's
-`ERROR_INVALID_FUNCTION`.
+Original `FUN_000115C4` constructs the hardware subobject at
+`main+0x1E0`; original DeviceControl dispatch at 0x11322
+passes the same subobject to `FUN_00012BAE` (CFDC2194).
+Thus `subobject+0x116A == main+0x134A` exactly. The old
+`field:116a` search missed this **real ISR producer** because
+the two functions use different object bases.
 
-**Subsequent XStream regression owner-confirmed:** after being asked
-to verify waveform display, normal timebase/vertical/coupling/
-bandwidth/trigger controls, 2-channel/10-GS/s where practical,
-AP015 startup recognition, unplug/replug and jaw-unlock warning,
-the owner replied `Ja klappt soweit alles.` Record no observed
-regression in the exercised existing baseline. This is not a
-fresh exhaustive per-case instrumented trace. The immediate
-`0x00223044` hardware + regression task is now closed.
+Original INTST bit 1 (0x02) triggers BAR0 ERRS (+0x004) read and
+OR into the software status. The ISR translates ERRS bits
+10..14 to BAR1 CLRERR bits 0..4, acknowledges ERRS, and on a
+1-us persistent bit-1/unchanged-ERRS check widens ERRM and
+sets status bit 31. Original CFDC2190 accepts 29 input bytes,
+requires type 2 at +4, and uses **nonzero DWORD +8** to set
+INTEN bit 1 while writing its complement to BAR0 ERRM.
+Original CFDC2194 accepts exact 29-byte output, returns DWORD 2
+at +4 and accumulated error status at +8, zero elsewhere,
+then clears the original status latch (Information=29).
 
-## Newly prepared focused Ghidra search (2026-09-30)
+## Source staged on main, NOT hardware tested
 
-Static review found an additional address representation, not
-yet the producer itself: original `FUN_000115C4` passes
-`main+0x1E0` to hardware initializer `FUN_00014847`,
-which sets `subobject+0x138` for START/FVER and is consumed
-by the proven `FUN_00012D24` IOCTL. Under the same
-DeviceControl subobject receiver, `FUN_00012BAE`'s
-`this+0x116A` is `main+0x134A`. The 4-byte latch spans
-`116A..116D` (or `134A..134D` using parent base).
-The original `field:116a` report alone could miss an alias
-or an overlapping byte/WORD/DWORD write.
+The x64 `driver/Acquisition.c` now has the source-backed
+accepted-INTST-0x02 ERRS accumulation/acknowledgment and
+persistent-error flag path. `driver/LecS65Drv.h` and
+`Driver.c` hold/initialize the software latch/ERRM cache.
+`driver/Ioctl.c` implements CFDC2194's 29-byte
+read-and-clear, and corrects the previous CFDC2190
+type/enable and ERRM inversion divergence. New
+`tools/lecdiag/lecdiag.c` command `error-status`
+validates and consumes the status reply with XStream closed.
 
-A focused investigation is committed in
-[cfdc2194-status-latch-investigation.md](cfdc2194-status-latch-investigation.md),
-and `ghidra_scripts/targets.txt` now includes
-`asm:10b30` for the dispatch wrapper, the relevant
-subobject/callback ASM, both overlapping displacement
-families (`1167..116D` and `1347..134D`), and near-LEA
-bases `1160`/`1340`. **These new targets are committed
-but NOT YET EXECUTED** in the PC Ghidra environment.
-The next source step is to run the existing
-`scripts/run-ghidra-analysis.ps1` on the Ghidra PC,
-review the new reports and follow actual write candidates.
-Avoid changes to the working scope driver until proven.
+**There has been no Windows WDK build, signed install or
+hardware test of this new patch in the assistant environment.**
+The last actually verified scope baseline is the successful
+`lecdiag start-register` comparison (`0x00000002` on
+both read paths) and subsequent owner-reported working
+XStream/AP015 regression. The newly changed ERRM programming
+must receive its own regression before being called working.
 
-## Next task: original CFDC2194 status producer, source analysis first
+## Immediate next real-scope action
 
-Original `FUN_00012BAE` takes exactly a 29-byte output, zeroes it,
-writes DWORD 2 at +4, copies original `this+0x116A` to response
-DWORD +8, and then clears that software latch. The direct
-`field_0x116a.refs.txt` only found its own read/clear; indirect
-or aliased writes remain a possibility. No permanent-zero stub.
+With XStream closed and known-good driver recovery available,
+start with build-only in the scope's elevated PowerShell:
 
-Nearby source already in `ghidra_exports/selected/`:
-- `00013a40_FUN_00013a40.c` (paired `0xCFDC2190` handler):
-  29-byte type-2 input updates global `DAT_0001CE18`, calls
-  `FUN_000107FE` on register helper `this+0x188`, and registers
-  callback `FUN_00012EAE`.
-- `00012eae_FUN_00012eae.c` can invoke `FUN_00011E46`,
-  which writes the global register.
-- None of these exports directly establishes a writer of
-  `this+0x116A`. Investigate address aliases, callback and
-  ISR writers, and initialization before porting `0xCFDC2194`.
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "git pull failed; STOP" }
 
-Keep proven PCI/IRQ/DMA/AP015 paths untouched. Virtual Dallas
-recovery, physical chip isolation, and writing to the sole licensed
-card remain deliberately deferred. See
-[quick handoff](quick-handoff-2026-09-29.md),
-[IOCTL map](ioctl-map.md) and [TODO](TODO.md).
-The dated investigation below preserves historical failed and
-pending-test snapshots; this newest owner feedback supersedes them.
+& ".\scripts\build-driver.ps1" -BuildLecdiag
+if (-not $?) { throw "Windows build failed; STOP" }
+```
+
+If the build is successful and driver replacement is ready, use
+the established `.\scripts\build-sign-load-driver.ps1` in the
+same elevated PowerShell. STOP at installation/PnP errors.
+With XStream still closed:
+
+```powershell
+& ".\tools\lecdiag\build\lecdiag.exe" error-status
+if ($LASTEXITCODE -ne 0) { throw "CFDC2194 diagnostic failed; STOP" }
+```
+
+Expect an exactly 29-byte type-2 structure with zero reserved
+bytes; status DWORD may be zero when no enabled error IRQ has
+occurred. This test **consumes** the sticky latch, so never
+run alongside XStream. A successful zero reply proves the
+IOCTL positive ABI, not real nonzero error capture or the
+bit-31 retry branch. Then check normal XStream waveform,
+settings, two-channel where practical, AP015 recognition/
+hotplug/jaw warning and lack of new error-IRQ storms.
+Do not inject artificial hardware faults or resume Dallas work.
+
+Detailed source and caveats:
+[CFDC2194 status-latch investigation](
+cfdc2194-status-latch-investigation.md). Updated
+[IOCTL map](ioctl-map.md) now counts 23 of the 27
+original dispatch codes represented in x64 source, including
+one deliberately gated; four top-level cases are still absent.
+
+## Historical handoff (superseded by the new source-backed producer)
 
 **Project direction updated (2026-09-29):**
 User explicitly postpones virtual Dallas ROM/EEPROM
