@@ -4,6 +4,54 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## Latest actionable state: CFDC2400 source port awaits real-scope build (2026-09-30)
+
+The owner's latest original-driver export
+`b7b31c8bf5a06e9621a3636776673b486f72bfe5`
+identifies derived subobject vtable `0x1C62C`,
+slot `+0x24` at `0x1C650 -> 0x114F2`.
+This thunk directly invokes the existing original DPC
+dispatcher `FUN_00011390` (with `ECX-0x1E0`) and
+returns `RET 0x8`, so the earlier base-vtable no-op
+`0x104A0` hypothesis is conclusively superseded.
+
+Complete original `CFDC2400`: validate exact 4-byte input,
+OR its DWORD into software pending bitmap
+`DAT_0001CE10` via synchronized `LAB_00012EC2`;
+**immediately invoke DPC dispatcher**; return
+STATUS_SUCCESS / Information=0. Native source now
+contains `CFDC2400` case plus
+`LecInjectLegacyPendingAndDispatch` helper that
+atomically ORs the mask and synchronously calls the
+existing x64 DPC at correct IRQL. No new MMIO/
+artificial DPC queue. This is **NOT Windows-built,
+signed/loaded or hardware-tested** yet. The last
+owner-confirmed live-waveform/AP015 baseline is
+still the earlier CFDC2194/CFDC2190 patch.
+Source top-level coverage: 24/27, including one
+gated case; three genuinely absent cases.
+
+**Next on scope, XStream closed:**
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Pull failed; STOP" }
+& ".\scripts\build-driver.ps1" -BuildLecdiag
+if (-not $?) { throw "Build failed; STOP" }
+```
+
+Then only after successful build and known-good
+recovery: elevated `scripts/build-sign-load-driver.ps1`;
+with XStream still closed run
+`tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0`.
+Do NOT test nonzero injected interrupts on the sole
+scope; do normal XStream/AP015 regression after zero.
+Full rationale: [CFDC2400 investigation](
+cfdc2400-software-pending-investigation.md).
+
+## Historical CFDC2400 state before resolved vtable export (superseded)
+
 ## New current analysis: CFDC2400 requires correct derived vtable (2026-09-30)
 
 Existing original `raw_12ec2.asm.txt` proves the
