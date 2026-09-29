@@ -38,10 +38,10 @@ exported reports resolve the missing producer:
 
 ```text
 field_0x134a.refs.txt:
-00010958 FUN_000108d6  OR dword ptr [ESI + 0x134a],EAX
+0x00010958 FUN_000108d6  OR dword ptr [ESI + 0x134a],EAX
 
 field_0x134d.refs.txt:
-00010a67 FUN_000108d6  OR byte ptr [ESI + 0x134d],0x80
+0x00010A67 FUN_000108d6  OR byte ptr [ESI + 0x134d],0x80
 ```
 
 Both are within the **original ISR**. Existing
