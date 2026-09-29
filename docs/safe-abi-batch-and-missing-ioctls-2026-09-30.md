@@ -21,6 +21,47 @@ opened the real PCI 1570:0005 device and returned
 `input=4 output-capacity=0 returned=0`, with empty output.
 No owner-reported post-CFDC2400 XStream regression exists yet.
 
+## Owner-reported grouped ABI run: 9/9 PASS (2026-09-30)
+
+After the original nine-case script was committed, the owner ran it
+on the x64 scope and supplied its terminal summary:
+
+```text
+SAFE ABI BATCH: 9/9 passed; 0 failed.
+All requested safe ABI checks passed.
+```
+
+The shared excerpt also contained a Windows PowerShell 5.1
+`NativeCommandError` referring to the old script line
+`$combined = & $diag @Command 2>&1 | Out-String`.
+That line merges a native program's stderr into PowerShell's
+pipeline. Deliberately invalid `DeviceIoControl` buffer-size
+tests cause `lecdiag` to write an EXPECTED error message to
+stderr, which PowerShell 5.1 then renders as an additional
+red `NativeCommandError` / `RemoteException`. The script
+nevertheless evaluated the actual expected process exit and
+message and reported all nine checks as PASS. This is a
+diagnostic harness presentation issue, **not an observed
+kernel IOCTL failure**.
+
+The script has since been updated to use `Start-Process`
+with separate temporary `-RedirectStandardOutput` and
+`-RedirectStandardError` capture, `-Wait -PassThru`,
+the actual `ExitCode`, system-native text decoding, and
+`try/finally` temporary-file cleanup. This avoids exposing
+expected stderr as PowerShell ErrorRecords while preserving
+the same test cases and strict outcome matching.
+
+**The corrected harness has NOT YET been rerun** on the
+scope; the original harness's terminal 9/9 PASS is the
+owner-reported result. No driver source, `lecdiag.c`,
+signing or kernel binary was changed to fix the cosmetic
+PowerShell behavior. The complete XStream/AP015 regression
+remains intentionally deferred to the next combined milestone,
+as requested by the owner.
+
+## Original batch instructions (test completed, harness updated)
+
 ## Prepared single-command scope test (script committed, not yet executed)
 
 Run with XStream **closed** on the x64 scope from the repo checkout:
@@ -73,8 +114,7 @@ and does not issue arbitrary indexed register writes.
 Even a zero-mask `CFDC2400` call invokes the original-style
 existing DPC dispatch; do not call it strictly passive.
 
-The new script and this document are prepared source artifacts:
-**no new batch results have yet been reported.**
+**Historical pre-run checkpoint:** At the time this section was first written, no batch result was available. The subsequent owner-reported 9/9 result and PowerShell 5.1 stderr-capture correction are documented at the top.
 
 ## Static review of the remaining x86 handlers
 
