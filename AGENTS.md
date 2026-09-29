@@ -5,6 +5,25 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Latest verified source-patch hardware checkpoint (2026-09-30):**
+The owner's `build-sign-load-driver.ps1` succeeded: 0 build
+warnings/0 errors, x64 lecdiag built, SYS/CAT signed, package
+installed as `oem99.inf`, PCI device restarted, build query
+1002, PCI diagnostic passed, and new
+`lecdiag error-status` returned `0x00000000` with
+`PASS: original 29-byte response layout verified.`
+This supersedes the earlier **UNBUILT / UNTESTED** note
+immediately below for build, load and CFDC2194 positive ABI
+only. **XStream acquisition/AP015 regression on this NEW
+CFDC2194/CFDC2190 driver remains unreported.**
+The idle zero error word does not test nonzero ISR status
+latching or the persistent-error branch.
+See the timestamped evidence in
+[CFDC2194 investigation](docs/cfdc2194-status-latch-investigation.md)
+and [quick handoff](docs/quick-handoff-2026-09-29.md).
+
+**Historical development checkpoint, now superseded for build/install/idle positive test:**
+
 **Newest engineering state (2026-09-30, after owner Ghidra export):**
 The new selected `field_0x134a.refs.txt` and
 `field_0x134d.refs.txt` unequivocally find the original
