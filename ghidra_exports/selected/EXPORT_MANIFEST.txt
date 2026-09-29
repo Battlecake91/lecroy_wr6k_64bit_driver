@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 7a9049bb70fd88e36c3efa532eafb6c4221e44c5
+Source commit: 2b2e3e41d1c7c0768ed48eb68056fe9415e7c756
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -86,6 +86,28 @@ Targets:
   asm:12bae
   asm:12d24
   field:138
+  asm:10b30
+  asm:115c4
+  asm:13a40
+  asm:12eae
+  asm:11e46
+  xref:12bae
+  xref:12d24
+  field:1347
+  field:1348
+  field:1349
+  field:134a
+  field:134b
+  field:134c
+  field:134d
+  field:1167
+  field:1168
+  field:1169
+  field:116b
+  field:116c
+  field:116d
+  field:1340
+  field:1160
 
 Exported files:
   00010380_FUN_00010380.c
@@ -491,9 +513,11 @@ Exported files:
   asm_asm_10a8e.txt
   asm_asm_10e3a.txt
   asm_asm_10f30.txt
+  asm_asm_115c4.txt
   asm_asm_11b48.txt
   asm_asm_11bdc.txt
   asm_asm_11c36.txt
+  asm_asm_11e46.txt
   asm_asm_11f54.txt
   asm_asm_12230.txt
   asm_asm_122e2.txt
@@ -502,10 +526,12 @@ Exported files:
   asm_asm_12d24.txt
   asm_asm_12d6a.txt
   asm_asm_12e72.txt
+  asm_asm_12eae.txt
   asm_asm_13768.txt
   asm_asm_137c4.txt
   asm_asm_1381e.txt
   asm_asm_138d4.txt
+  asm_asm_13a40.txt
   asm_asm_13dc6.txt
   asm_asm_155d0.txt
   asm_asm_15802.txt
@@ -536,7 +562,22 @@ Exported files:
   field_0x1022.refs.txt
   field_0x1026.refs.txt
   field_0x1086.refs.txt
+  field_0x1160.refs.txt
+  field_0x1167.refs.txt
+  field_0x1168.refs.txt
+  field_0x1169.refs.txt
   field_0x116a.refs.txt
+  field_0x116b.refs.txt
+  field_0x116c.refs.txt
+  field_0x116d.refs.txt
+  field_0x1340.refs.txt
+  field_0x1347.refs.txt
+  field_0x1348.refs.txt
+  field_0x1349.refs.txt
+  field_0x134a.refs.txt
+  field_0x134b.refs.txt
+  field_0x134c.refs.txt
+  field_0x134d.refs.txt
   field_0x138.refs.txt
   field_0x15e.refs.txt
   field_0x182.refs.txt
@@ -579,6 +620,7 @@ Exported files:
   raw_13914.asm.txt
   raw_13934.asm.txt
   raw_170ee.asm.txt
+  raw_asm_10b30.asm.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
   symbol_KeInitializeDpc_0.refs.txt
@@ -587,4 +629,6 @@ Exported files:
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
   xref_xref_11f54.txt
+  xref_xref_12bae.txt
+  xref_xref_12d24.txt
   xref_xref_1c8bc.txt

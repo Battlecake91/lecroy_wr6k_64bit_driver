@@ -1,0 +1,77 @@
+FUNCTION_ASM 00013a40 FUN_00013a40
+00013a40  PUSH EBP
+00013a41  MOV EBP,ESP
+00013a43  SUB ESP,0x24
+00013a46  PUSH EBX
+00013a47  MOV EBX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+00013a4a  MOV EAX,0xc0000002
+00013a4f  MOV EDX,ECX
+00013a51  MOV dword ptr [EBX + 0x18],EAX
+00013a54  CMP dword ptr [0x0001cd08],0x0
+    -> 0001cd08
+00013a5b  MOV dword ptr [EBP + -0x4],EDX
+    -> Stack[-0x8]
+00013a5e  JZ 0x00013a67
+    -> 00013a67
+00013a60  MOV EAX,0xc00000a3
+00013a65  JMP 0x00013ad5
+    -> 00013ad5
+00013a67  MOV ECX,dword ptr [EBX + 0x60]
+00013a6a  CMP dword ptr [ECX + 0x8],0x1d
+00013a6e  JNZ 0x00013ad0
+    -> 00013ad0
+00013a70  CMP dword ptr [ECX + 0x4],0x0
+00013a74  JNZ 0x00013ad0
+    -> 00013ad0
+00013a76  PUSH ESI
+00013a77  MOV ESI,dword ptr [EBX + 0xc]
+00013a7a  PUSH EDI
+00013a7b  PUSH 0x7
+00013a7d  POP ECX
+00013a7e  LEA EDI,[EBP + -0x24]
+    -> Stack[-0x28]
+00013a81  MOVSD.REP ES:EDI,ESI
+00013a83  MOVSB ES:EDI,ESI
+00013a84  CMP dword ptr [EBP + -0x20],0x2
+    -> Stack[-0x24]
+00013a88  POP EDI
+00013a89  POP ESI
+00013a8a  JNZ 0x00013ad5
+    -> 00013ad5
+00013a8c  MOV EAX,dword ptr [EBP + -0x1c]
+    -> Stack[-0x20]
+00013a8f  TEST EAX,EAX
+00013a91  JZ 0x00013a9c
+    -> 00013a9c
+00013a93  OR dword ptr [0x0001ce18],0x2
+    -> 0001ce18
+00013a9a  JMP 0x00013aa3
+    -> 00013aa3
+00013a9c  AND dword ptr [0x0001ce18],0xfffffffd
+    -> 0001ce18
+00013aa3  NOT EAX
+00013aa5  PUSH EAX
+00013aa6  LEA ECX,[EDX + 0x188]
+00013aac  CALL 0x000107fe
+    -> 000107fe FUN_000107fe
+00013ab1  CALL 0x00010a88
+    -> 00010a88 FUN_00010a88
+00013ab6  PUSH dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00013ab9  MOV EDX,dword ptr [EAX]
+00013abb  PUSH 0x12eae
+    -> 00012eae FUN_00012eae
+00013ac0  MOV ECX,EAX
+00013ac2  CALL dword ptr [EDX]
+00013ac4  AND dword ptr [EBX + 0x1c],0x0
+00013ac8  AND dword ptr [EBX + 0x18],0x0
+00013acc  XOR EAX,EAX
+00013ace  JMP 0x00013adc
+    -> 00013adc
+00013ad0  MOV EAX,0xc0000206
+00013ad5  AND dword ptr [EBX + 0x1c],0x0
+00013ad9  MOV dword ptr [EBX + 0x18],EAX
+00013adc  POP EBX
+00013add  LEAVE
+00013ade  RET 0x4

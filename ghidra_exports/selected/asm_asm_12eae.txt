@@ -1,0 +1,11 @@
+FUNCTION_ASM 00012eae FUN_00012eae
+00012eae  CMP dword ptr [ESP + 0x4],0x0
+    -> Stack[0x4]
+00012eb3  JZ 0x00012ebc
+    -> 00012ebc
+00012eb5  CALL 0x00011e46
+    -> 00011e46 FUN_00011e46
+00012eba  JMP 0x00012ebe
+    -> 00012ebe
+00012ebc  XOR AL,AL
+00012ebe  RET 0x4
