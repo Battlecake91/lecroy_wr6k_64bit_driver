@@ -4,6 +4,41 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## Current next step: grouped safe checks, one later XStream regression
+
+Owner explicitly requests milestone-based XStream regressions,
+not a full waveform/AP015 checklist after every tiny patch.
+The real-PCI CFDC2400 zero-mask positive ABI already passed.
+A new `scripts/test-safe-ioctl-batch.ps1` is committed
+but NOT RUN. It performs nine low-impact checks (build
+identity, PCI, START/FVER, CFDC2400 zero-input/output
+bounds, CFDC2194 rejection of wrong output lengths)
+without building/reloading or injected nonzero IRQ.
+It refuses to run with XStream open.
+
+On the scope, XStream closed:
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Pull failed; STOP" }
+.\scripts\test-safe-ioctl-batch.ps1
+```
+
+Expected 9/9 summary only after actual test. Optional
+`-IncludeErrorStatus` consumes the error latch and
+is deliberately omitted by default. Original missing
+`0x0022303C` is a potentially unbounded indexed
+hardware register write (+0x101 index, +0x106 data
+in 266-byte record), `CFDC2130` performs one physical
+BAR1 GPIODAT 0xE000-masked write per input byte.
+Do not test either with fabricated payload. Full XStream
+regression follows when a combined milestone is ready.
+See [batch and static safety review](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Previous CFDC2400 milestone
+
 ## Newest result: CFDC2400 real-PCI zero-mask ABI PASS (2026-09-30)
 
 The owner ran `lecdiag raw-ioctl 0xCFDC2400 00000000 0`
