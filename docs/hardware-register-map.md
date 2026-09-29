@@ -62,6 +62,31 @@ The BAR labels and offsets below are **confirmed** from the binary. The driver s
 | `BUZZER` | `0x000` |
 | `ONEWIRE` | `0x040` |
 
+## Original ERRS error-latch and acknowledgement path (2026-09-30)
+
+New Ghidra `field:134a` and `field:134d` exports identify
+original ISR `FUN_000108D6` as the writer of the sticky software
+status consumed by `CFDC2194`. On INTST bit `0x02` it reads BAR0
+`ERRS` (+0x004) and ORs that DWORD into `main+0x134A`.
+This is equivalent to hardware-subobject `this+0x116A`, since
+the subobject starts at `main+0x1E0`. It maps ERRS bits
+`0x0400..0x4000` to BAR1 `CLRERR` (+0x004) bits `0x01..0x10`,
+writes the resulting nonzero mask to CLRERR, then acknowledges
+ERRS by writing its raw DWORD back. After INTST ack and a
+1-us delay, persistent INTST bit 1 with unchanged ERRS makes
+the ISR widen the cached BAR0 ERRM mask and set sticky
+status bit `0x80000000` (original byte store at
+`main+0x134D`).
+
+Original `CFDC2190` `FUN_00013A40` requires type DWORD 2
+at record +4. Record DWORD +8 (nonzero/zero) controls global
+INTEN bit 1; the **complement** of that DWORD is written to
+BAR0 ERRM (+0x008). The earlier x64 implementation wrote the
+uncomplemented value and tested the type field as enable;
+the source correction is now committed but still awaits
+Windows build and real-hardware regression. See the full
+[CFDC2194 source investigation](cfdc2194-status-latch-investigation.md).
+
 ## Access width / wrapper metadata
 
 The legacy code creates register wrapper objects containing:
