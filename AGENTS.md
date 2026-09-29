@@ -5,6 +5,43 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest on-scope positive result (2026-09-30; CFDC2400):**
+The owner supplied actual `lecdiag` output after running the
+newly installed native `CFDC2400` code on their real x64
+LeCroy PCI interface (VEN_1570, DEV_0005):
+
+```text
+.\tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0
+Opened device interface: [actual PCI 1570:0005; unique instance omitted]
+IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0
+Output:
+```
+
+This **confirms the zero-mask positive IOCTL ABI in real hardware**
+(input exactly four bytes, request success, returned bytes zero),
+including the installed driver's acceptance of the new case.
+The separate complete build/sign/load transcript was not pasted in
+this particular turn; do not invent the warning count, exact package
+ID or unrelated scope results. A four-byte zero mask leaves the OR
+unchanged, but the original derived-vtable method (and this port)
+runs existing DPC processing unconditionally. It is not a claim
+that nonzero synthetic interrupts were tested.
+
+**IMMEDIATE NEXT GATE: post-CFDC2400 practical XStream regression.**
+Start normal XStream with currently installed new driver; verify
+live waveforms/amplitude/frequency, V/div/timebase,
+coupling/bandwidth, trigger, two channels/10 GS/s as applicable,
+and AP015 preattached recognition, physical unplug/replug,
+unlocked-jaw warning. Watch for startup or IRQ/event regressions
+after the new immediate software DPC path. No new build/reload is
+needed before this regression. Do not run latch-consuming
+`lecdiag error-status` while XStream is active or inject nonzero
+software pending bits merely for coverage. After this regression,
+document actual owner observations and revise the verified
+working baseline accordingly.
+
+**Historical immediately preceding CFDC2400 source-only state:**
+
 **Newest source milestone (2026-09-30, after PC Ghidra export
 commit `b7b31c8bf5a06e9621a3636776673b486f72bfe5`):**
 The previously missing real derived hardware-subobject virtual
