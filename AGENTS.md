@@ -5,6 +5,32 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Owner-reported post-patch XStream regression PASS (2026-09-30):**
+After the successful signed installation of the new CFDC2194
+error-status ISR/read-and-clear path and correction of CFDC2190
+ERRM programming, the owner completed the requested practical
+XStream check and reported: *"Ich finde keine Fehlfunktionen."*
+Thus no malfunction was observed in the exercised workflow,
+following the previously documented waveform/control/two-channel/
+AP015 regression checklist. This is an owner-reported practical
+regression result, **not** a separately instrumented, item-by-item
+capture or proof that every legacy feature has been tested.
+
+Latest actual checkpoint: Windows x64 Debug build succeeded with
+0 warnings/0 errors; x64 lecdiag built; SYS/CAT signed; PnP
+installation `oem99.inf` and device restart succeeded;
+driver build query 1002 and passive PCI query passed;
+with XStream closed, `lecdiag error-status` returned
+`0x00000000` and verified the exact 29-byte format; XStream
+subsequently showed no owner-observed malfunctions.
+**This is the current working owner-confirmed x64 baseline.**
+Not exercised: a *nonzero* ERRS ISR latch, the persistent-error
+bit-31 branch, concurrent status consumption and unobserved
+acquisition forms. Do not manufacture hardware faults or disturb
+the sole licensed Dallas device to force coverage.
+
+**Historical pre-regression checkpoint (superseded for XStream):**
+
 **Latest verified source-patch hardware checkpoint (2026-09-30):**
 The owner's `build-sign-load-driver.ps1` succeeded: 0 build
 warnings/0 errors, x64 lecdiag built, SYS/CAT signed, package
