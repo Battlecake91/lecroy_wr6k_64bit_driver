@@ -7,7 +7,7 @@ against the actual x64 PCI scope and supplied the result:**
 
 ```text
 .\tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0
-Opened device interface: \\?\pci#ven_1570&dev_0005&subsys_00000000&rev_00#4&39fd0a79&0&08f0#{7ac34be9-f766-4f15-9e88-854ba5e2146e}
+Opened device interface: [actual PCI VEN_1570&DEV_0005 scope path; instance path omitted from public doc]
 IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0
 Output:
 ```
@@ -37,11 +37,7 @@ from exact instructions rather than an incorrect base-class-vtable
 assumption. A native x64 source implementation is now committed in
 `driver/LecS65Drv.h`, `driver/Acquisition.c` and `driver/Ioctl.c`.
 
-**Historical pre-test note:** At the time of this analysis the source had not yet been installed/tested. The subsequent owner-supplied real-PCI zero-mask positive test above supersedes that claim for CFDC2400 positive ABI only. The last owner-confirmed working
-XStream/AP015 baseline remains the prior CFDC2194 / corrected CFDC2190
-driver, whose practical regression had no observed malfunction.
-Do not treat the original binary analysis or GitHub source update as
-hardware runtime validation.
+**Historical pre-test note:** The source initially had not been installed/tested. The subsequent owner-supplied real-PCI zero-mask positive test above supersedes this claim for CFDC2400 positive ABI only. The last owner-confirmed fully exercised XStream/AP015 baseline remains the prior CFDC2194 / corrected CFDC2190 driver, whose practical regression had no observed malfunction. The new CFDC2400 XStream regression is still pending.
 
 ## Original request and dispatch contract
 
