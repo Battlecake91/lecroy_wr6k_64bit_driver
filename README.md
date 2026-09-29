@@ -196,6 +196,25 @@ kernel write path has yet been
 implemented**. See
 [`docs/dallas-license-memory-test-plan.md`](docs/dallas-license-memory-test-plan.md).
 
+**Proposed Dallas maintenance UI (2026-09-29):**
+A standalone Windows DS2433 manager and optional Device Manager
+`Dallas EEPROM` property-page extension are planned for
+read-only chip information, private double-verified backup,
+image compare, and future validated restore/offline image editing.
+Windows supports a native device property-page DLL via
+`EnumPropPages32`; avoid deprecated co-installers.
+Our current INF copies only the kernel driver, so this GUI,
+DLL and package integration are **not implemented yet**.
+The observed main display Scope-ID comes from the factory
+DS2433 ROM serial (first three serial bytes, 24-bit
+little-endian), not the writable 512-byte memory; its
+displayed suffix is still unresolved. Restoring a backup
+to another physical chip does not reproduce the original
+factory ROM identity. Restoring an electrically responsive
+original chip still requires the missing native x64 Dallas
+write IOCTL and full read-back validation. Details:
+[`docs/dallas-device-manager-recovery-design.md`](docs/dallas-device-manager-recovery-design.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
