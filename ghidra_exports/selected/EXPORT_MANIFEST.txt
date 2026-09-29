@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: ea03d215a1ec5ab022930dd931dea342dae2da6f
+Source commit: f30d0c7a0236755a1c15f825b29699b7b1ea4394
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -120,6 +120,18 @@ Targets:
   dwords:1c62c:16
   dwords:1c500:16
   dwords:1c8bc:16
+  asm:12cac
+  asm:1259a
+  asm:11cff
+  asm:107fe
+  asm:13fa6
+  asm:13f3c
+  asm:13f70
+  asm:17a98
+  asm:120fa
+  xref:1259a
+  xref:11cff
+  xref:1cd08
 
 Exported files:
   00010380_FUN_00010380.c
@@ -522,6 +534,7 @@ Exported files:
   0001955a_FUN_0001955a.refs.txt
   00019966_FUN_00019966.c
   00019966_FUN_00019966.refs.txt
+  asm_asm_107fe.txt
   asm_asm_10a88.txt
   asm_asm_10a8e.txt
   asm_asm_10e3a.txt
@@ -530,12 +543,16 @@ Exported files:
   asm_asm_11b48.txt
   asm_asm_11bdc.txt
   asm_asm_11c36.txt
+  asm_asm_11cff.txt
   asm_asm_11e46.txt
   asm_asm_11f54.txt
+  asm_asm_120fa.txt
   asm_asm_12230.txt
   asm_asm_122e2.txt
   asm_asm_1232a.txt
+  asm_asm_1259a.txt
   asm_asm_12bae.txt
+  asm_asm_12cac.txt
   asm_asm_12d24.txt
   asm_asm_12d6a.txt
   asm_asm_12e72.txt
@@ -548,6 +565,9 @@ Exported files:
   asm_asm_13a2e.txt
   asm_asm_13a40.txt
   asm_asm_13dc6.txt
+  asm_asm_13f3c.txt
+  asm_asm_13f70.txt
+  asm_asm_13fa6.txt
   asm_asm_155d0.txt
   asm_asm_15802.txt
   asm_asm_15848.txt
@@ -566,6 +586,7 @@ Exported files:
   asm_asm_171de.txt
   asm_asm_172a2.txt
   asm_asm_1731c.txt
+  asm_asm_17a98.txt
   asm_asm_17c16.txt
   asm_asm_17d20.txt
   asm_asm_17ee0.txt
@@ -647,12 +668,15 @@ Exported files:
   symbol_KeSetEvent_0.refs.txt
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
+  xref_xref_11cff.txt
   xref_xref_11f54.txt
+  xref_xref_1259a.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
   xref_xref_12ec2.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
   xref_xref_1c8bc.txt
+  xref_xref_1cd08.txt
   xref_xref_1ce10.txt
   xref_xref_1ce1c.txt
