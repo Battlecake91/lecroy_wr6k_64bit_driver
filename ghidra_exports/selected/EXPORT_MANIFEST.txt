@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: e5c40d31b2f4ebd9ebbfa1b6774dd6e7b6c35b76
+Source commit: b75d1038f2d770869c56a45537c32158eab7767b
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -78,6 +78,10 @@ Targets:
   11f54
   asm:11f54
   xref:11f54
+  16d90
+  16f2c
+  asm:16d90
+  asm:16f2c
 
 Exported files:
   00010380_FUN_00010380.c
@@ -386,6 +390,10 @@ Exported files:
   00016c14_FUN_00016c14.refs.txt
   00016c6a_FUN_00016c6a.c
   00016c6a_FUN_00016c6a.refs.txt
+  00016d90_FUN_00016d90.c
+  00016d90_FUN_00016d90.refs.txt
+  00016f2c_FUN_00016f2c.c
+  00016f2c_FUN_00016f2c.refs.txt
   00016fac_FUN_00016fac.c
   00016fac_FUN_00016fac.refs.txt
   000170ba_FUN_000170ba.c
@@ -506,6 +514,8 @@ Exported files:
   asm_asm_165a6.txt
   asm_asm_166a8.txt
   asm_asm_16a66.txt
+  asm_asm_16d90.txt
+  asm_asm_16f2c.txt
   asm_asm_171de.txt
   asm_asm_172a2.txt
   asm_asm_1731c.txt
