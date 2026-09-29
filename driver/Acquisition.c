@@ -3,8 +3,11 @@
 #define LECS65_BAR0_SGTA   0x040
 #define LECS65_BAR0_IIMTC  0x044
 #define LECS65_BAR0_IIMCL  0x048
+#define LECS65_BAR0_ERRS   0x004
+#define LECS65_BAR0_ERRM   0x008
 #define LECS65_BAR0_INTST  0x080
 #define LECS65_BAR0_INTEN  0x084
+#define LECS65_BAR1_CLRERR  0x004
 #define LECS65_BAR1_CLRIRQ  0x008
 #define LECS65_BAR1_HWINT   0x410
 
@@ -507,7 +510,9 @@ LecInterruptService(
     volatile ULONG* intst;
     volatile ULONG* iimcl;
     volatile ULONG* clrirq;
+    volatile ULONG* errs = NULL;
     ULONG status;
+    ULONG errorState = 0;
 
     UNREFERENCED_PARAMETER(Interrupt);
 
@@ -527,6 +532,40 @@ LecInterruptService(
     status &= devExt->InterruptEnableShadow;
     if (status == 0) {
         return FALSE;
+    }
+
+    /*
+     * The previously unresolved CFDC2194 status producer is the original
+     * ISR itself (FUN_000108D6 at 0x10958). For enabled INTST bit 1 it
+     * reads BAR0 ERRS (+0x004) and ORs the raw DWORD into the sticky
+     * software latch: main+0x134A == hardware-subobject+0x116A.
+     *
+     * Preserve the original order: accumulate first, translate ERRS bits
+     * 10..14 to BAR1 CLRERR bits 0..4, and acknowledge ERRS with the raw
+     * DWORD before the shared INTST acknowledgement below. The mask check
+     * above remains the established x64 IRQ-ownership gate.
+     */
+    if ((status & 0x02UL) != 0) {
+        ULONG clearMask = 0;
+        volatile ULONG* clrerr = (volatile ULONG*)(
+            devExt->Bar[1] + LECS65_BAR1_CLRERR);
+
+        errs = (volatile ULONG*)(devExt->Bar[0] + LECS65_BAR0_ERRS);
+        errorState = READ_REGISTER_ULONG(errs);
+        InterlockedOr(
+            &devExt->LegacyErrorStatusLatch,
+            (LONG)errorState);
+
+        if ((errorState & 0x0400UL) != 0) clearMask |= 0x01UL;
+        if ((errorState & 0x0800UL) != 0) clearMask |= 0x02UL;
+        if ((errorState & 0x1000UL) != 0) clearMask |= 0x04UL;
+        if ((errorState & 0x2000UL) != 0) clearMask |= 0x08UL;
+        if ((errorState & 0x4000UL) != 0) clearMask |= 0x10UL;
+
+        if (clearMask != 0) {
+            WRITE_REGISTER_ULONG(clrerr, clearMask);
+        }
+        WRITE_REGISTER_ULONG(errs, errorState);
     }
 
     /*
@@ -592,6 +631,30 @@ LecInterruptService(
      * Only acknowledge sources that this replacement driver explicitly owns.
      */
     WRITE_REGISTER_ULONG(intst, status);
+
+    /*
+     * Original FUN_000108D6 waits 1 us after acknowledging an ERRS IRQ.
+     * If INTST bit 1 is still set and ERRS is unchanged, it widens the
+     * cached ERRM mask with those error bits and marks bit 31 of the
+     * sticky software latch. This is a genuine second status producer
+     * (original 0x10A67), not a fabricated constant/error-code mapping.
+     */
+    if ((status & 0x02UL) != 0) {
+        KeStallExecutionProcessor(1);
+        if ((READ_REGISTER_ULONG(intst) & 0x02UL) != 0 &&
+            READ_REGISTER_ULONG(errs) == errorState) {
+            ULONG previousMask = (ULONG)InterlockedOr(
+                &devExt->LegacyErrmShadow,
+                (LONG)errorState);
+            volatile ULONG* errm = (volatile ULONG*)(
+                devExt->Bar[0] + LECS65_BAR0_ERRM);
+
+            WRITE_REGISTER_ULONG(errm, previousMask | errorState);
+            InterlockedOr(
+                &devExt->LegacyErrorStatusLatch,
+                (LONG)0x80000000UL);
+        }
+    }
 
     /*
      * The original ISR queues deferred processing for every accepted source,
@@ -803,6 +866,8 @@ LecDisconnectInterrupt(
         InterlockedExchange(
             (volatile LONG*)&DevExt->InterruptPendingShadow,
             0);
+        InterlockedExchange(&DevExt->LegacyErrorStatusLatch, 0);
+        InterlockedExchange(&DevExt->LegacyErrmShadow, (LONG)0xFFFFFFFFUL);
         LecTrace("IRQ disconnected\n");
     }
 }
