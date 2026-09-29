@@ -42,6 +42,7 @@ Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-b
 - The x64 driver is an experimental test build; installation, test signing and hardware changes should be performed on a backed-up reference system.
 - The Dallas EEPROM is **read-only through the current replacement driver**. The physical write/restore path needs implementation and independent validation on a disposable chip before use with a working licensed card.
 - Compatibility is established for the observed XStream transfer forms. The WOW64-sensitive `0xCFDD219F` path, unobserved multi-channel/transfer variants and some legacy service/diagnostic operations remain gated or incomplete.
+- Original `CFDC2194` error-status provenance is now recovered from the legacy ISR. A matching read-and-clear path, plus corrected paired `CFDC2190` error-mask programming, has been committed in x64 **source only**. This latest change is pending Windows build and real-scope regression; the last hardware-verified baseline predates it. See [error status investigation](docs/cfdc2194-status-latch-investigation.md).
 - Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
 - XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
 
