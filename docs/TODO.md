@@ -4,7 +4,7 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Validate newly implemented read-only `0x00223044`:** the original `this+0x138` points to BAR0+0x000 (FVER/START). Native x64 case and `lecdiag start-register` equality diagnostic are committed. Build on Windows first; then use the diagnostic on the real test scope with XStream closed. No writes are necessary.
+- [ ] **Validate newly implemented read-only `0x00223044`:** the original `this+0x138` points to BAR0+0x000 (FVER/START). Native x64 case and `lecdiag start-register` equality diagnostic are committed. The initial signed-load attempt on 2026-09-29 was rejected immediately by the script's admin check (non-elevated shell); the following diagnostic opened the interface but the first new IOCTL failed with Win32 error 1 before generic BAR0 comparison. No successful new-driver installation/handler test is established. Close XStream, retry signed build/load from elevated PowerShell, verify full installer/PnP output, then rerun read-only comparison. Use `$?`/`try-catch` for a throwing PowerShell script, not only `$LASTEXITCODE`. No hardware writes are necessary.
 - [ ] **Complete `0xCFDC2194` read-and-clear status:** Ghidra confirms an exact 29-byte reply (type DWORD 2 at +4; latched DWORD from original `this+0x116A` at +8; then clear latch). The direct field scan found the reader/clearer only; its nonzero producer and concurrency semantics remain unresolved. Map those before porting; never pretend a hardcoded zero is full compatibility.
 
 - [ ] Continue regression testing of normal XStream operation on the real x64 scope, preserving the working PCI, IRQ, DMA and AP015 baseline.
