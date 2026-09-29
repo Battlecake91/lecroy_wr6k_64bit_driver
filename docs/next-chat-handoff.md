@@ -1,4 +1,85 @@
-# Active handoff: CFDC2400 callback found; derived-vtable target pending Ghidra export (2026-09-30)
+# Active handoff: CFDC2400 original semantics complete; native source port awaiting Windows build (2026-09-30)
+
+## Latest decisive evidence: Ghidra export complete
+
+The owner's new PC Ghidra exports were committed as
+`b7b31c8bf5a06e9621a3636776673b486f72bfe5`.
+Original derived hardware-subobject vtable at
+`0x1C62C`, slot `+0x24` at `0x1C650`,
+points to **0x114F2**. The 0x114F2 thunk adjusts
+`ECX -= 0x1E0` (hardware subobject -> main),
+passes through two caller zero DWORDs,
+calls **`FUN_00011390` synchronously**, and
+returns `RET 0x8`. The historical 0x104A0 bare
+RET belongs only to base subobject vtable 0x1C8BC;
+it was never the invoked derived virtual method.
+
+Before the thunk, original `FUN_00012EDE` validates
+exactly a non-null 4-byte METHOD_BUFFERED request and
+via `LAB_00012EC2` ORs the request DWORD into original
+software interrupt pending bitmap `DAT_0001CE10`
+under synchronization. Original full semantics:
+software pending OR, **immediate DPC dispatch**,
+success / Information=0, no speculative register write.
+
+## Native patch source is committed, NOT yet hardware verified
+
+- `driver/LecS65Drv.h` declares `LECS65_IOCTL_CFDC2400`
+  and `LecInjectLegacyPendingAndDispatch`.
+- `driver/Acquisition.c` implements atomic pending-mask
+  OR and calls existing `LecInterruptDpc` immediately
+  (raise to DPC IRQL temporarily only when required to
+  satisfy `KeAcquireSpinLockAtDpcLevel`, then restore).
+- `driver/Ioctl.c` validates exactly 4 input bytes,
+  calls the shared helper, returns zero information.
+- `docs/ioctl-map.md` counts 24/27 original
+  top-level cases now represented (one gated), three
+  absent: `0x0022303C`, `0x00223088`,
+  `0xCFDC2130`.
+
+No Windows WDK build/sign/reload or user-reported
+XStream regression on this **NEW CFDC2400** source
+exists yet. Preserve known-good CFDC2194/CFDC2190
+recovery driver. Do not inject nonzero software
+pending bits on the only working PCI scope.
+
+## Immediate next real-scope action (XStream CLOSED)
+
+First, **build only**; do not combine the first
+compilation with driver installation:
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
+
+& ".\scripts\build-driver.ps1" -BuildLecdiag
+if (-not $?) { throw "CFDC2400 build failed; STOP" }
+```
+
+On a successful WDK build and with a known-good recovery
+version preserved, run the established
+`build-sign-load-driver.ps1` from an elevated PowerShell.
+With XStream still closed:
+
+```powershell
+& ".\tools\lecdiag\build\lecdiag.exe" raw-ioctl 0xCFDC2400 00000000 0
+if ($LASTEXITCODE -ne 0) { throw "CFDC2400 zero-mask test failed; STOP" }
+```
+
+A success returns zero bytes and accepts 4-byte
+little-endian zero input. It is a low-risk ABI test:
+the original code STILL invokes the DPC dispatcher
+with mask zero to process any already pending sources.
+Do not try nonzero synthetic pending bits; after success
+repeat the established live waveform/control/two-channel/
+AP015 test and report actual observations.
+
+Full exact addresses, Ghidra files and architectural
+mapping: [CFDC2400 focused investigation](
+cfdc2400-software-pending-investigation.md).
+
+## Historical pre-export plan, now superseded
 
 ## Latest finding and current required action
 
