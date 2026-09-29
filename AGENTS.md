@@ -5,6 +5,60 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**LATEST static Ghidra checkpoint (2026-09-30,
+owner commit `92f8a7f67c751c764190206f79cd4bf9ec493753`):**
+Second PC-only writer batch has been completed.
+`CKeRegisterList` at hardware-subobject +0x11EE
+contains a pointer array and a separate 0x10A-byte
+record array. Constructor `FUN_00013434` sets
+pointer capacity=0, growth quantum=1 and
+lastIndex=-1. `FUN_00013F3C -> FUN_0001326E ->
+FUN_00012184` appends/grows the pointer array;
+`FUN_00013F70 -> FUN_00013230 -> FUN_000121FA`
+appends/grows the per-register 266-byte record
+array. The original `FUN_0001259A` writer
+itself still has NO evident bounds check before
+`pointerArray[index]` (index from caller record
++0x101; value +0x106) and immediate physical
+`FUN_000107FE` write. Do NOT port raw original
+index semantics without explicit validation.
+
+`FUN_00014847` contains 15 common and 22
+conditional `FUN_00013FA6` insertion calls;
+`FUN_0001785B` adds six calls via
+`FUN_000159E2`, but table receiver identity
+must be established before assigning indices.
+`FUN_000120DC` reads/bar-writes the same
+BAR1 GPIODAT wrapper +0x318 (phys +0xC4)
+and clears bit 16, distinct from `CFDC2130`
+stream's 0xE000 bits 15:13. These are concrete
+hardware writers, not arbitrary safe test IOCTLs.
+
+**THIRD read-only Ghidra target batch (23 new
+targets) is ALREADY in
+`ghidra_scripts/targets.txt`; NOT YET RUN.**
+It asks for `FUN_00012184` growth logic,
+`FUN_00012166` free, `159E2 -> 1785B`
+conditional register insertion, `120DC`
+and additional GPIODAT writer traces,
+ASM/XREFs and object fields. NEXT on separate
+Ghidra PC (not on the scope):
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve register-list growth and shared GPIODAT writers"
+```
+
+No kernel driver source changes, no driver install
+and NO full XStream regression requested now.
+Prior real-scope low-impact ABI suite 9/9 PASS;
+one combined practical XStream/AP015 regression
+is still deferred. See
+[second-batch proof and third-batch request](
+docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+**Earlier static export checkpoint (historical):**
+
 **Newest static export checkpoint (2026-09-30):**
 Owner already pushed first write-path Ghidra export as
 `2071cfa7d44199d7e0cde3a7e3cc77e209ffc414`.
