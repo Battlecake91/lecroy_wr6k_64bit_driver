@@ -4,6 +4,64 @@ Date: 2026-09-30. Scope: existing native x64 WR6k driver,
 the newly owner-tested `CFDC2400` zero-mask positive path,
 and the original x86 static exports.
 
+## Third Ghidra export completed and consolidated
+
+The owner completed the third PC-only original-driver
+export as `00eb49db5efe98042df47ba07a570017cd37419d`.
+This is now the FINALIZED result for the original
+register-list/remaining-writer workstream; earlier
+"third batch queued, not yet run" instructions
+later in this file are historical.
+
+The full analysis and an independently cross-checked
+43-row register ordering are published separately:
+[original register-list construction and writer ABI](
+original-register-list-and-write-abi.md).
+
+Key findings beyond the first two batches:
+
+- The pointer table at `CKeRegisterList+0x10`
+  dynamically reallocates via `FUN_00012184`;
+  the parallel 266-byte record table reallocates
+  via `FUN_000121FA`, both allocating/copying/freeing
+  old pool buffers, returning `0xC000009A` on OOM.
+- The early `FUN_0001785B` six-register transport
+  registration receives the SAME pointer to the
+  register list passed through
+  `FUN_00014847 -> FUN_000159E2`.
+  Intended order: six + fifteen common +
+  twenty-two START-conditional = 43 normal
+  full-initialization entries, **exactly matching**
+  the existing native register list, not a new
+  register-map source change.
+- Serialized list-query metadata at record
+  `+0x101` is a **physical BAR offset**;
+  original SetOneRegister `0x0022303C`
+  instead interprets the *incoming* DWORD
+  at that position as an unvalidated
+  **pointer-array INDEX**. The outer handler
+  validates only readiness and exact 266-byte
+  size, and calls a void physical writer.
+  A queried record must NOT be echoed unmodified
+  as a setter record.
+- `FUN_000120DC` clears GPIODAT bit 16
+  not just at setup: xrefs show original
+  transfer routines `FUN_00012D6A` and
+  `FUN_00012F30` call it. This shares the
+  same full BAR1+0xC4 DWORD used by
+  serial FPGA programmer `CFDC2130`,
+  which writes bits 15:13 in an ordered
+  one-write-per-input-byte stream after one
+  initial register read. Live overlap needs
+  safety and ownership evidence.
+
+Both hazardous write IOCTLs, and licensed Dallas
+WRITE, remain absent from x64. No newly signed
+driver, hardware write test or full XStream
+regression was requested or performed as part
+of this Ghidra-only milestone. Existing owner's
+safe ABI batch remains **9/9 PASS**.
+
 ## Test policy: one practical XStream regression per milestone
 
 The owner explicitly prefers collecting multiple compatible
