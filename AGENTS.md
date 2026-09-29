@@ -4,6 +4,28 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**2026-09-29 latest confirmed Dallas exports:** User completed both
+separate original ROM-ID preservation
+(privately, do not publish bytes)
+and the Ghidra rerun. New exports
+`00016d90` and `00016f2c`
+with ASM now exist on main;
+`16d90` concretely implements
+SKIP ROM, WRITE SCRATCHPAD,
+READ SCRATCHPAD and data verification,
+COPY SCRATCHPAD and 100-ms delay.
+`16f2c` performs a complete
+READ MEMORY operation from zero.
+Original 11f54 provides
+<=32-byte chunks, final full
+readback/compare and retry.
+Use the now-recovered protocol
+when designing x64 writer;
+a still separate virtual
+diagnostic mode should be
+validated before physically
+isolating the DS2433. No
+kernel modification yet.
 **2026-09-29 physical Dallas test sequencing:**
 User offers to isolate the DS2433 physically to validate
 recovery if the chip fails. This is a useful eventual
@@ -28,20 +50,27 @@ wiring and verify original ROM/image afterward.
 Test plan:
 `docs/dallas-device-manager-recovery-design.md`.
 
-User's latest Ghidra run published only
-an updated export manifest; writer-wrapper
-`FUN_00011f54` exists but helper
-`FUN_00016d90` and
-`FUN_00016f2c` exports are still
-missing. Their targets and ASM listings
-have now been committed to
-`ghidra_scripts/targets.txt`.
-PC Ghidra can rerun
-`scripts/run-ghidra-analysis.ps1`.
-Do not guess native x64 WRITE semantics
-before analyzing the actual helper
-functions. No emulation or EEPROM
-write code was implemented here.
+User has now rerun Ghidra successfully:
+both helper decompilation and ASM exports
+`FUN_00016d90` and `FUN_00016f2c`
+are on main and have been reviewed.
+16d90 shows the actual DS2433
+`CC 0F` scratchpad write,
+`CC AA` scratchpad read/data
+comparison, `CC 55` copy using
+TA1/TA2/E/S and 100-ms post-copy
+delay, up to three per-chunk tries.
+16f2c reads the full requested
+length from `CC F0 00 00`;
+the outer handler 11f54 compares
+the final readback and retries.
+The user also confirms the original
+8-byte ROM was backed up privately.
+Exact technical details:
+`docs/dallas-device-manager-recovery-design.md`.
+No emulation or native x64
+EEPROM write code was implemented
+in this Ghidra/docs update.
 **Failed/replaced DS2433 nuance (2026-09-29):**
 A factory-new chip has a different immutable eight-byte
 ROM ID even if original 512-byte EEPROM contents are
@@ -95,8 +124,8 @@ and asm establish <=32-byte write steps,
 full requested-length read-back/compare
 and up to three passes. The underlying
 `FUN_00016d90` and `FUN_00016f2c`
-implementations are not among the
-selected exports. Native x64 still
+implementations have since been
+exported and reviewed. Native x64 still
 returns `STATUS_INVALID_DEVICE_REQUEST`
 for WRITE_DALLAS_MEMORY. Distinguish the
 factory ROM ID from the separate 512-byte
