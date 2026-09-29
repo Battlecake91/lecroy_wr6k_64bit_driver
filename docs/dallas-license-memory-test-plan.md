@@ -570,9 +570,15 @@ The newly pushed original x86 Ghidra handler
 `ghidra_exports/selected/00011f54_FUN_00011f54.c`
 confirms bounded input 1..512, 32-byte write chunks,
 a full requested-length read-back, a bytewise comparison
-and up to three attempts. Calls to internal helpers
-`FUN_00016d90` and `FUN_00016f2c` remain unresolved
-until their own implementations are exported. The
+and up to three attempts. The helper exports have subsequently arrived and
+were reviewed: `FUN_00016d90` uses SKIP ROM `CC`,
+WRITE SCRATCHPAD `0F`, READ SCRATCHPAD `AA`
+including TA1/TA2/E/S and payload comparison,
+and COPY SCRATCHPAD `55` with a 100-ms
+post-copy wait; `FUN_00016f2c` performs
+READ MEMORY from address zero (`CC F0 00 00`).
+See `dallas-device-manager-recovery-design.md`
+for the full staged recovery plan. The
 kernel driver's missing native x64 write handler and
 the sensitive-user-data redaction precautions from
 trace 011858 remain the current status.
@@ -617,8 +623,9 @@ to ROM identity is not yet decoded.
   writer `FUN_00011f54` uses at most 32-byte
   stages, read-back comparison and retries;
   dependent low-level helpers `FUN_00016d90`
-  and `FUN_00016f2c` must be recovered before
-  accurate x64 porting.
+  and `FUN_00016f2c` have now been recovered
+  and analyzed, but no accurate x64 writer or
+  spare-chip verification has been implemented yet.
 - A backup+restore GUI must ensure exact ROM
   compatibility, preserve a fresh image of the
   present chip, show per-page diffs, serialize
@@ -651,3 +658,25 @@ https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/removing-coin
 No actual writer, restore, hex editor,
 Device Manager extension DLL or GUI has
 been built by adding this design documentation.
+
+
+## 2026-09-29: original ROM backup confirmed and low-level writer export completed
+
+The user confirms completion of the separately requested
+private eight-byte `dallas-id` record and Ghidra rerun.
+This is independent of the two previously matching
+512-byte raw EEPROM backups. Do not publish the actual
+ROM, EEPROM values, full legacy trace or license records.
+
+GitHub now contains `00016d90_FUN_00016d90.c`,
+`00016f2c_FUN_00016f2c.c`, references and ASM.
+The first helper performs a <=32-byte physical
+scratchpad write and verifies scratchpad data
+before authorizing EEPROM copy; it then waits
+100 ms and retries as necessary. The second
+helper retrieves a requested-length EEPROM image
+from address 0. `11f54` carries the final
+full-memory compare/retry behavior. The native
+x64 write IOCTL remains NOT implemented;
+these are recovered original x86 facts,
+not an on-device x64 write test.
