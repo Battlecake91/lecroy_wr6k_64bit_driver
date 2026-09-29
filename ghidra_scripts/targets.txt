@@ -95,3 +95,33 @@ field:116a
 asm:12bae
 asm:12d24
 field:138
+
+# 2026-09-30: investigate original CFDC2194 latched DWORD.
+# FUN_000115C4 initializes the hardware subobject at main + 0x1E0.
+# FUN_00012BAE reads and clears subobject + 0x116A.
+# If the same subobject receiver is used in the dispatch, it is
+# main + 0x134A; investigate both representations plus overlapping
+# byte/WORD/DWORD store starting offsets. Exact scans are only a
+# first-pass filter: LEA and indirect pointer writes can evade them.
+asm:115c4
+asm:13a40
+asm:12eae
+asm:11e46
+xref:12bae
+xref:12d24
+field:1347
+field:1348
+field:1349
+field:134a
+field:134b
+field:134c
+field:134d
+field:1167
+field:1168
+field:1169
+field:116b
+field:116c
+field:116d
+# Include potential LEA bases for later +0x0A pointer arithmetic.
+field:1340
+field:1160
