@@ -50,6 +50,23 @@ the exercised existing baseline, not an automated exhaustive
 per-feature acceptance matrix. The immediate `0x00223044`
 hardware + XStream check is now complete.
 
+### 2026-09-30 source advance (not a completed Ghidra rerun)
+
+Original `FUN_000115C4` initializes the hardware subobject at
+`main+0x1E0`. The START/FVER register member `this+0x138`
+is initialized/read on that subobject by `FUN_00014847` and
+`FUN_00012D24`. Thus the `CFDC2194` latch
+`this+0x116A` could also be accessed as `main+0x134A`
+if the same original dispatcher receiver is used. Its four
+bytes span `116A..116D` or `134A..134D`. Added
+dispatch-wrapper, overlapping field and callback export
+targets in `ghidra_scripts/targets.txt` to search both
+representations. Exact scans do not prove the absence of
+indirect writers. Full analysis:
+[CFDC2194 provenance](cfdc2194-status-latch-investigation.md).
+The Ghidra PC rerun is still required; no kernel patch or
+new hardware test performed.
+
 ### Next task: map original CFDC2194 latch producer
 
 `FUN_00012BAE` returns exactly 29 bytes, including the saved
