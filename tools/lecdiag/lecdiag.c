@@ -14,6 +14,7 @@
 #define LECS65_IOCTL_REGISTER_READ     ((DWORD)0xCFDC21C0)
 #define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
 #define LECS65_IOCTL_READ_DALLAS_MEMORY ((DWORD)0x00223084)
+#define LECS65_IOCTL_READ_START_REGISTER ((DWORD)0x00223044)
 #define LECS65_IOCTL_WRITE_DALLAS_MEMORY ((DWORD)0x00223088)
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
@@ -1021,6 +1022,75 @@ static int backup_dallas_memory(HANDLE device, const char* destination)
     return 0;
 }
 
+/*
+ * Read-only check of the original 0x00223044 ABI.
+ * FUN_00012D24 takes its register pointer from object +0x138;
+ * FUN_00014847 initializes this to BAR0+0x000. Compare the
+ * legacy control's DWORD with the existing generic register read.
+ */
+static int query_legacy_start_register(HANDLE h)
+{
+    LECS65_REG_READ_EXT req;
+    DWORD legacy = 0;
+    DWORD generic = 0;
+    DWORD returned = 0;
+
+    req.bar = 0;
+    req.offset = 0;
+
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_READ_START_REGISTER,
+            NULL,
+            0,
+            &legacy,
+            sizeof(legacy),
+            &returned,
+            NULL)) {
+        print_error("0x00223044 START/FVER");
+        return 1;
+    }
+
+    if (returned != sizeof(legacy)) {
+        fprintf(stderr, "0x00223044: expected 4 bytes, got %lu\n",
+            (unsigned long)returned);
+        return 1;
+    }
+
+    returned = 0;
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_REGISTER_READ,
+            &req,
+            sizeof(req),
+            &generic,
+            sizeof(generic),
+            &returned,
+            NULL)) {
+        print_error("REGISTER_READ BAR0+0x000");
+        return 1;
+    }
+
+    if (returned != sizeof(generic)) {
+        fprintf(stderr, "REGISTER_READ: expected 4 bytes, got %lu\n",
+            (unsigned long)returned);
+        return 1;
+    }
+
+    printf("0x00223044 START/FVER: 0x%08lX\n",
+        (unsigned long)legacy);
+    printf("BAR0+0x000 reference: 0x%08lX\n",
+        (unsigned long)generic);
+
+    if (legacy != generic) {
+        fprintf(stderr, "MISMATCH: legacy IOCTL does not match BAR0+0x000\n");
+        return 1;
+    }
+
+    printf("PASS: legacy 4-byte output matches physical register read.\n");
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -1426,6 +1496,7 @@ static void usage(const char* exe)
     printf("  %s dallas-id\n", exe);
     printf("  %s dallas-read [length 1..512]\n", exe);
     printf("  %s dallas-backup <new-private-file.bin> (read-only)\n", exe);
+    printf("  %s start-register (read-only 0x00223044 / BAR0+0)\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
@@ -1517,6 +1588,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "dallas-backup") == 0 && argc == 3) {
         result = backup_dallas_memory(h, argv[2]);
+    }
+    else if (_stricmp(argv[1], "start-register") == 0 && argc == 2) {
+        result = query_legacy_start_register(h);
     }
     else if (_stricmp(argv[1], "raw-ioctl") == 0 && argc == 5) {
         char* end1 = NULL;
