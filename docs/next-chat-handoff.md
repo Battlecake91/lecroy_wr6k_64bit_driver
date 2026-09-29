@@ -1,5 +1,36 @@
 # Active handoff: missing x64 Dallas WRITE identified by real XStream trace (2026-09-29)
 
+**Conditional failed-chip recovery design (2026-09-29):**
+User correctly points out that replacement of a physically
+dead DS2433 changes its *factory* ROM identity, whereas the
+existing raw `original-a.bin`/`original-b.bin` contain
+only 512 writable-memory bytes. The user's main displayed
+Scope-ID component matches factory ROM serial bytes 1..3
+as 24-bit LE. We have **not** proven that every XStream
+license is bound to this identity: do not claim universal
+license invalidation without original-code or replacement
+hardware evidence. Capture the **complete original eight-byte
+ROM separately**, including CRC8, while it can still be
+read. A full, private recovery container must preserve both
+ROM identity and 512-byte contents.
+
+Two different recovery cases: (1) if original ROM and
+EEPROM writing still work, program original EEPROM
+content with an independently verified native writer;
+(2) if original chip is dead or replaced, consider an
+**explicit, opt-in virtual Dallas diagnostic mode**
+serving backed-up original ROM and EEPROM to the
+host via Dallas ID/READ interfaces, and clearly
+handling any write to a distinct shadow state.
+Such a mode would NOT rewrite a replacement chip's
+factory ROM and is NOT a physical repair.
+We have not proved host IOCTL substitution suffices
+if FPGA/board initialization needs physical 1-Wire.
+Details:
+`docs/dallas-device-manager-recovery-design.md`.
+Current x64 driver still does not implement 0x00223088
+WRITE; no virtual mode or chip write has been implemented.
+
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
