@@ -1,0 +1,17 @@
+FUNCTION_ASM 000159e2 FUN_000159e2
+000159e2  MOV EAX,dword ptr [ESP + 0x4]
+    -> Stack[0x4]
+000159e6  MOV EDX,dword ptr [ESP + 0xc]
+    -> Stack[0xc]
+000159ea  PUSH dword ptr [ESP + 0x10]
+    -> Stack[0x10]
+000159ee  MOV dword ptr [ECX + 0x25],EAX
+000159f1  MOV EAX,dword ptr [ESP + 0xc]
+    -> Stack[0x8]
+000159f5  MOV dword ptr [ECX + 0x29],EAX
+000159f8  MOV dword ptr [ECX + 0x2d],EDX
+000159fb  PUSH EAX
+000159fc  ADD ECX,0x31
+000159ff  CALL 0x0001785b
+    -> 0001785b FUN_0001785b
+00015a04  RET 0x10
