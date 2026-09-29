@@ -4264,6 +4264,47 @@ LecS65DeviceControl(
         }
         break;
 
+    case LECS65_IOCTL_CFDC2400:
+        /*
+         * Original FUN_00013A2E -> FUN_00012EDE accepts exactly one
+         * buffered DWORD. The synchronized callback at LAB_00012EC2
+         * executes DAT_0001CE10 |= callerMask. DAT_0001CE10 is the
+         * same pending-interrupt bitmap used by original FUN_000108D6
+         * and consumed by DPC dispatch through FUN_00011DC2/11DD8/etc.
+         *
+         * This x64 driver already uses InterruptPendingShadow for that
+         * bitmap: its ISR updates it with InterlockedOr and its DPC
+         * consumes it using InterlockedExchange. Apply the entire
+         * caller-supplied mask atomically, without an invented filter.
+         *
+         * The final original vtable +0x24 call resolves to 0x104A0,
+         * XOR EAX,EAX; RET: no hardware access and no DPC insertion.
+         * Therefore do NOT schedule a synthetic DPC or touch MMIO.
+         * A zero DWORD is a side-effect-free positive-path test.
+         */
+        information = 0;
+        if (systemBuffer == NULL || inputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_PARAMETER;
+            break;
+        }
+        else {
+            ULONG pendingMask;
+            RtlCopyMemory(
+                &pendingMask,
+                systemBuffer,
+                sizeof(pendingMask));
+
+            (VOID)InterlockedOr(
+                (volatile LONG*)&devExt->InterruptPendingShadow,
+                (LONG)pendingMask);
+
+            status = STATUS_SUCCESS;
+            LecTrace(
+                "CFDC2400 software interrupt pending OR mask=0x%08lX\\n",
+                pendingMask);
+        }
+        break;
+
     case LECS65_IOCTL_CFDC2194:
         /*
          * Original FUN_00012BAE is the paired 29-byte error/status
