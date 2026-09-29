@@ -5,6 +5,68 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest engineering state (2026-09-30, after owner Ghidra export):**
+The new selected `field_0x134a.refs.txt` and
+`field_0x134d.refs.txt` unequivocally find the original
+`CFDC2194` software-latch **producer** in the x86
+interrupt handler `FUN_000108D6`: original VA 0x10958
+ORs raw BAR0 ERRS into `main+0x134A`, and VA 0x10A67
+sets byte `main+0x134D` bit 7 (= status DWORD bit 31)
+on a persistent/reasserted error. Original dispatch
+0x11322 sets the handler receiver to `main+0x1E0`,
+so `FUN_00012BAE`'s `this+0x116A` is EXACTLY the same
+DWORD at `main+0x134A`. The prior literal `field:116a`
+scan was incomplete because the ISR used the main-object
+coordinate. This is now a **proven source result**, not a
+hypothesis; do not request the owner to rerun the same scan.
+
+New **source-only, UNBUILT / UNTESTED on Windows/scope**
+native x64 work is committed:
+- `driver/LecS65Drv.h`, `Driver.c`: sticky atomic ERRS latch
+  and cached BAR0 ERRM mask.
+- `driver/Acquisition.c`: accepted INTST `0x02`
+  accumulates BAR0 ERRS (+0x004), maps ERRS bits 10..14
+  onto BAR1 CLRERR bits 0..4, writes ERRS back, and
+  implements the original 1-us persistent/reasserted
+  check including status bit 31. Does not rewrite
+  unrelated established acquisition IRQ/DPC handling.
+- `driver/Ioctl.c`: new exact 29-byte
+  `LECS65_IOCTL_CFDC2194` (DWORD 2 at +4, sticky
+  status snapshot at +8, otherwise zeros; atomic read/clear).
+  The adjacent `CFDC2190` is corrected to require
+  type DWORD 2 at +4, use DWORD +8 for INTEN bit 1
+  enable/disable, and program **bitwise-complemented**
+  DWORD +8 to physical BAR0 ERRM. This corrects a
+  preexisting x64 semantic divergence from `FUN_00013A40`;
+  startup behavior after correction MUST be regression-tested.
+- `tools/lecdiag/lecdiag.c`: `error-status` reads
+  and consumes the original 29-byte status reply and verifies
+  layout with XStream closed. Do not race this diagnostic
+  against XStream's own potential latch consumption.
+
+**Immediate next action:** perform Windows **build-only**
+(`.\scripts\build-driver.ps1 -BuildLecdiag`) with XStream
+closed. Stop on compiler errors. Only after successful build,
+use the established elevated signed reload procedure with a
+known-good recovery driver available; run
+`.\tools\lecdiag\build\lecdiag.exe error-status` while
+XStream stays closed. Then repeat XStream waveform,
+vertical/timebase, trigger and AP015 regression. Idle
+zero status is acceptable but proves only ABI/read-clear
+execution, NOT that a nonzero error IRQ or sticky bit 31
+occurred. Never inject a hardware fault or write Dallas
+on the one licensed card for this validation.
+Full provenance and commands:
+[CFDC2194 status latch](docs/cfdc2194-status-latch-investigation.md);
+[quick handoff](docs/quick-handoff-2026-09-29.md);
+[TODO](docs/TODO.md). Existing pre-change
+`start-register` real-scope PASS and the owner's
+XStream/AP015 regression remain the last VERIFIED hardware
+baseline; the new source patch has not replaced it yet.
+
+**Historical checkpoint below (before the 2026-09-30 Ghidra
+producer discovery; no longer the next task):**
+
 **Latest verified real-scope feedback (2026-09-29 late):**
 The owner ran `lecdiag start-register` on the real PCI device. New
 read-only `0x00223044` returned START/FVER `0x00000002`; separate
