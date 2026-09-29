@@ -13,7 +13,7 @@ An open reverse-engineering project providing a native Windows x64 replacement f
 | DMA and interrupts | Working, hardware-tested acquisition/transfer paths for the observed command forms, with locked buffers, chained legacy descriptors, completion events and recovered ISR/DPC acknowledgement. Unsupported transfer forms remain gated. |
 | ProBus / AP015 | Probe identification and physical unplug/replug work. XStream detects the AP015 jaw state and displays the unlocked-jaw warning. The host response serializer and pending-command notification path are hardware-tested. |
 | PCI Dallas DS2433 | ROM-ID read with CRC8 verification, 512-byte EEPROM read and private double-verified binary backup work on real hardware. Physical EEPROM writing is not implemented in the x64 driver. |
-| Diagnostics | `lecdiag` provides PCI/register diagnostics, Dallas operations and IOCTL trace capture. Newly rebuilt trace exports redact direct Dallas ROM/read responses and write-request data; older raw traces remain sensitive. |
+| Diagnostics | `lecdiag` provides PCI/register diagnostics, Dallas operations and IOCTL trace capture. The legacy four-byte START/FVER query (`0x00223044`) passed an independent read comparison against BAR0+0x000 on real scope hardware (both `0x00000002`). Newly rebuilt trace exports redact direct Dallas ROM/read responses and write-request data; older raw traces remain sensitive. |
 
 These statements describe the tested hardware and observed XStream paths, not universal compatibility with every WR6k configuration, probe or service function. The original 27 top-level DeviceControl values have been identified; this does not mean every original control or nested command is implemented.
 
