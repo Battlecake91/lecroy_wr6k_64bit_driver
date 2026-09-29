@@ -34,6 +34,25 @@ state. The new physical ERRM inversion can change interrupt
 behavior, so build and test carefully before calling it
 verified. Do not inject fake errors or touch Dallas.
 
+### Windows build feedback (2026-09-30, owner excerpt)
+
+The owner supplied the following two MSVC LINK warnings from the
+new source build (no compile error appeared in the supplied excerpt):
+
+- `LNK4075`: `/INCREMENTAL` ignored due to `/RELEASE`.
+- `LNK4075`: `/EDITANDCONTINUE` ignored due to `/DRIVER`.
+
+Both are option-conflict/precedence warnings, not driver source
+errors and not reasons to alter validated IRQ/DMA logic. A final
+`0 errors` build summary and both actual output files still need
+to be checked before treating the latest source as built
+successfully. **No signed reload, `lecdiag error-status`
+output, or post-change XStream regression was supplied yet.**
+The existing `build-sign-load-driver.ps1` rebuilds driver
+and lecdiag, signs SYS and CAT, updates PnP, and checks the
+newly loaded driver; it **must run elevated** and may restart
+the real PCI device.
+
 ### Immediate next command (scope, elevated PowerShell, XStream closed)
 
 ```powershell
