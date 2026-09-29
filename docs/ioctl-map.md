@@ -49,8 +49,9 @@ returns the DWORD with `Information=4`. Original initialization
 handler returned `0x00000002` to `lecdiag start-register`; its
 independent generic register-read reference for BAR0+0x000 returned
 the same `0x00000002`. The diagnostic explicitly reported PASS.
-This establishes the live positive read path, not the broader
-XStream/AP015 regression or every error-length case.
+This establishes the live positive read path, and a subsequent owner-reported
+XStream/AP015 baseline check found no observed new regression. It does
+not establish every error-length case or exhaustive compatibility.
 
 ## Generic register read: 0xCFDC21C0
 
@@ -3731,8 +3732,8 @@ compatibility targets to different confidence levels:
   `lecdiag start-register` returned `0x00000002` via the legacy
   four-byte `0x00223044` request and `0x00000002` via the separate
   generic `REGISTER_READ BAR0+0x000`, reporting `PASS`.
-  No register write occurs; XStream/AP015 regression after this
-  specific driver change is not yet reported.
+  No register write occurs. After the live PASS, the owner reported
+  the exercised XStream/AP015 baseline still works (`Ja klappt soweit alles`).
 - **Original `0xCFDC2194` (FUN_00012BAE):** requires
   **exactly 29 output bytes**; zero-initializes the
   response, stores `DWORD 2` at byte offset `+0x04`,
