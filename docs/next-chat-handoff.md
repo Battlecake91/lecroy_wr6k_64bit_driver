@@ -57,24 +57,68 @@ Finally power down, restore link, disable virtual
 mode and compare original ROM/EEPROM again. See
 `docs/dallas-device-manager-recovery-design.md`.
 
-**Latest Ghidra:** user's new push updated only
-`ghidra_exports/selected/EXPORT_MANIFEST.txt`;
-the selected exported wrapper `FUN_00011f54`
-was already present, but helper exports
-`FUN_00016d90` and `FUN_00016f2c`
-are still absent. Added `16d90`,
-`16f2c`, `asm:16d90`, `asm:16f2c`
-to persistent `ghidra_scripts/targets.txt`.
-On Ghidra PC run `scripts/run-ghidra-analysis.ps1`
-again; its initial pull updates the targets.
-These helper implementations must be reviewed
-before coding any native EEPROM write. No
-kernel changes made in this turn.
+**NEW CONFIRMED Ghidra and backup state (2026-09-29):**
+The user confirms the Ghidra export was rerun
+and their original eight-byte ROM was saved
+separately in the private `license-backups/`
+directory; actual identifying bytes were NOT
+shared or committed. GitHub main now has
+`ghidra_exports/selected/00016d90_FUN_00016d90.c`
+and `00016f2c_FUN_00016f2c.c`, their XREF
+reports, and ASM exports. Reviewed both:
+`16d90` resets/presence-checks, SKIP ROM
+`CC`, WRITE SCRATCHPAD `0F`, two-byte
+little-endian address, up to 32 payload
+bytes; it resets, READ SCRATCHPAD
+`CC AA`, obtains TA1/TA2/E/S,
+checks data bytes, resets, COPY
+SCRATCHPAD `CC 55` with address/E/S,
+then sleeps using relative -1,000,000
+100-ns ticks (**100 ms**). Its own
+retry loop has three attempts.
+`16f2c` performs full requested-length
+READ MEMORY starting at address zero
+via `CC F0 00 00`; original
+`11f54` uses its readback plus
+`RtlCompareMemory`, <=32-byte chunks,
+and up to three outer retries.
+These are source-backed hardware
+protocol facts and allow planning
+an accurate x64 writer, but **no
+x64 writer, virtual mode, hardware
+test or device-manager UI has been
+implemented yet**. Do not ask the
+user for another export of the
+same two functions.
+
+Next: independently implement
+read-only virtual ID/READ and
+private shadow-memory handling,
+verify with original chip attached,
+then consider only a reversible
+electrically checked chip-isolation
+test. The real writer is a distinct
+development track requiring spare
+DS2433 validation. Updated detailed
+technical write sequence:
+`docs/dallas-device-manager-recovery-design.md`.
+
 
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
 active branch: `main`.
+
+**2026-09-29 completed handoff:** original DS2433
+full eight-byte ROM ID has reportedly
+been saved privately; the second
+Ghidra run successfully exported
+original low-level writer `16d90`
+and reader `16f2c`, including ASM.
+See latest confirmed Ghidra state
+above for command sequence and
+pending x64 development. Do not
+publish private ROM/EEPROM data.
 
 **2026-09-29 additional evidence:** private Dallas ROM reads
 at trace 011858 seq 1/607 are identical and CRC-valid,
@@ -84,8 +128,7 @@ six-digit displayed scope identifier. The display
 suffix is not yet mapped. The pushed original
 writer wrapper FUN_00011f54 was reviewed:
 up to 512 input bytes, <=32-byte chunks, full
-readback/compare, up to three passes; called
-helpers 16d90 and 16f2c have not yet been exported.
+readback/compare, up to three passes; called helpers 16d90 and 16f2c were subsequently exported and reviewed, as recorded above.
 A software-only test image is not a replacement
 for actual programmed EEPROM contents. Keep
 private identifiers and license bytes out of
@@ -120,8 +163,8 @@ EEPROM image onto a different
 chip cannot recreate the old
 ROM identity. Current x64 Dallas
 ROM/read works; write 0x00223088
-does not. Source recovery of
-low-level helpers 16d90/16f2c,
+does not. Source-guided implementation using
+exported helpers 16d90/16f2c,
 spare-chip validation, full
 readback and then optional GUI
 are required. See
