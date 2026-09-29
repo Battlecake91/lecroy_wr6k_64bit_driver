@@ -291,6 +291,8 @@ unresolved question.
 
 ## Validate virtual mode before disconnecting the real chip
 
+> **Deferred development backlog (2026-09-29).** This entire virtual-emulation/physical-disconnection test is documented for later work, not the next implementation task. See [TODO](TODO.md).
+
 **2026-09-29 follow-up:** the user is willing to perform a
 reversible physical disconnection of the Dallas IC to determine
 whether a host-side virtual recovery path remains functional
@@ -410,7 +412,7 @@ a native x64 `EnumPropPages32` extension DLL,
 after evaluating the current INF/catalog/signing
 package. Avoid legacy co-installer dependencies.
 
-**Independent investigation:** verify whether an
+**Deferred TODO, not the next development step:** verify whether an
 existing properly owned, identity-bound backup
 can support an explicit *virtual Dallas diagnostic*
 path, including behavior when the physical
