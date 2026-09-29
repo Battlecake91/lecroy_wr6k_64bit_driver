@@ -4,7 +4,8 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] Next narrowly scoped IOCTL parity pass: map all writers to the original `this+0x116A` status latch before implementing `0xCFDC2194` (29-byte read-and-clear response). Separately resolve the register-object at original `this+0x138` before implementing read-only `0x00223044`. Ghidra targets `field:116a`, `asm:12bae`, `asm:12d24`, `field:138` are staged. Do not return an invented always-zero status or guess which MMIO register is read.
+- [ ] **Validate newly implemented read-only `0x00223044`:** the original `this+0x138` points to BAR0+0x000 (FVER/START). Native x64 case and `lecdiag start-register` equality diagnostic are committed. Build on Windows first; then use the diagnostic on the real test scope with XStream closed. No writes are necessary.
+- [ ] **Complete `0xCFDC2194` read-and-clear status:** Ghidra confirms an exact 29-byte reply (type DWORD 2 at +4; latched DWORD from original `this+0x116A` at +8; then clear latch). The direct field scan found the reader/clearer only; its nonzero producer and concurrency semantics remain unresolved. Map those before porting; never pretend a hardcoded zero is full compatibility.
 
 - [ ] Continue regression testing of normal XStream operation on the real x64 scope, preserving the working PCI, IRQ, DMA and AP015 baseline.
 - [ ] Complete and validate the remaining legacy IOCTL and acquisition variants. In particular, keep `0xCFDD219F` (WOW64-sensitive `METHOD_NEITHER`) and unobserved transfer forms gated until their memory and DMA semantics are proven.
