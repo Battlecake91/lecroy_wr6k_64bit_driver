@@ -1,4 +1,89 @@
-# Active handoff: CFDC2400 on-scope zero-mask ABI PASS; XStream regression next (2026-09-30)
+# Active handoff: grouped safe ABI batch BEFORE deferred full XStream regression (2026-09-30)
+
+## Current owner preference and immediate task
+
+The owner explicitly wants **more development/testing in a useful
+batch before doing one lengthy XStream waveform/control/AP015
+regression**, rather than full XStream re-testing for every tiny
+IOCTL change. Maintain test status honestly: the newly installed
+CFDC2400 implementation passed its real-scope zero-mask
+positive ABI test, but its comprehensive post-change
+XStream regression is **not yet performed**.
+
+A new source-controlled scope script
+`scripts/test-safe-ioctl-batch.ps1` (not yet executed)
+performs **nine low-impact checks** with XStream closed,
+WITHOUT any driver build/sign/reload, nonzero pending
+IRQ injection, FPGA/serial-trigger programming or Dallas
+writing:
+
+1. `lecdiag build`: build 1002 and exactly four response bytes.
+2. `lecdiag pci`: vendor/device 1570:0005.
+3. `lecdiag start-register`: compares 0x00223044 with
+   passive BAR0+0x000 read.
+4. `CFDC2400` four zero bytes, output capacity zero:
+   success and zero bytes returned.
+5. Same four zero bytes, output capacity four:
+   success and still zero bytes returned.
+6. Malformed `CFDC2400` three-byte input:
+   expected DeviceIoControl failure, Win32 87.
+7. Malformed `CFDC2400` five-byte input: same rejection.
+8. `CFDC2194` output capacity 28: rejected before
+   consuming its error-status latch.
+9. `CFDC2194` output capacity 30: same rejection.
+
+The script refuses to run when XStream is active.
+Optional `-IncludeErrorStatus` adds a TENTH,
+**consuming** valid CFDC2194 29-byte read/clear;
+the default deliberately omits it. Even a zero
+CFDC2400 mask invokes the original-style existing DPC
+dispatcher; it is not strictly passive.
+
+**NEXT on REAL x64 SCOPE, XStream closed:**
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
+.\scripts\test-safe-ioctl-batch.ps1
+```
+
+Expected summary IF all pass:
+`SAFE ABI BATCH: 9/9 passed; 0 failed.`
+The owner has not yet run this new script.
+No extra WDK build or driver installation is necessary
+for this script-only addition. Report actual batch
+outcome, then continue grouped development. Full
+XStream regression is deferred as requested until
+the next useful combined milestone.
+
+## New source-only analysis of the three missing originals
+
+- `0x0022303C`: exactly 0x10A-byte buffered
+  SetOneRegister path. Original `FUN_0001259A`
+  reads record index DWORD at +0x101 and value
+  DWORD at +0x106, indexes dynamic register-wrapper
+  pointer table without an evident bounds check and
+  `FUN_000107FE` actually writes the selected MMIO
+  register. Do not port/test blindly.
+- `0xCFDC2130`: input byte stream drives BAR1
+  GPIODAT +0x0C4, masked upper field 0xE000,
+  one *physical register write per input byte*.
+  Reproducing it requires pin/timing/ownership safety,
+  not a superficial success stub.
+- `0x00223088`: Dallas DS2433 licensing WRITE
+  remains intentionally deferred until disposable
+  hardware is available.
+
+New static read-only Ghidra targets are queued but
+not run in `ghidra_scripts/targets.txt`.
+No code was added for these risky original values;
+24/27 source top-level representations (one gated)
+remain. See [grouped tests and static remaining
+handler analysis](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Previous handoff: CFDC2400 zero-mask positive path
 
 ## Latest actual PCI validation (owner-supplied)
 
