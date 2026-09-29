@@ -4264,6 +4264,45 @@ LecS65DeviceControl(
         }
         break;
 
+    case LECS65_IOCTL_CFDC2400:
+        /*
+         * Original FUN_00013A2E -> FUN_00012EDE requires exactly one
+         * buffered DWORD (no output). LAB_00012EC2 synchronously ORs
+         * that whole DWORD into DAT_0001CE10, the original pending
+         * interrupt bitmap. Its derived hardware-subobject vtable
+         * slot 0x1C62C+0x24 points to thunk 0x114F2, which directly
+         * invokes DPC dispatcher FUN_00011390 (not the base-vtable
+         * no-op at 0x104A0).
+         *
+         * The shared x64 helper atomically injects the pending bits,
+         * then synchronously invokes our existing DPC processing at
+         * DISPATCH_LEVEL, retaining the original immediate behavior
+         * without introducing a guessed hardware register write.
+         * A zero input still processes any already-pending sources.
+         */
+        information = 0;
+        if (systemBuffer == NULL || inputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_PARAMETER;
+            break;
+        }
+        else {
+            ULONG pendingMask;
+            RtlCopyMemory(
+                &pendingMask,
+                systemBuffer,
+                sizeof(pendingMask));
+
+            status = LecInjectLegacyPendingAndDispatch(
+                devExt,
+                pendingMask);
+
+            LecTrace(
+                "CFDC2400 pending OR and immediate DPC: mask=0x%08lX status=0x%08X\n",
+                pendingMask,
+                status);
+        }
+        break;
+
     case LECS65_IOCTL_CFDC2194:
         /*
          * Original FUN_00012BAE is the paired 29-byte error/status
