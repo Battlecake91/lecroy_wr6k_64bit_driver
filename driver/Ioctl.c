@@ -4180,8 +4180,9 @@ LecS65DeviceControl(
          * Static analysis of FUN_00013A40 plus the original runtime trace
          * establish the startup-relevant fields:
          *
-         *   +0x04 DWORD: controls global interrupt-mask bit 1
-         *   +0x08 DWORD: bitwise inverted before writing BAR0 ERRM (+0x008)
+         *   +0x04 DWORD: required structure type 2
+         *   +0x08 DWORD: enables/disables global INTEN bit 1 according to
+         *                nonzero/zero, and is inverted for BAR0 ERRM (+0x008)
          *
          * The remaining bytes belong to the paired 0xCFDC2194
          * status/readback structure and are preserved as ABI padding here.
@@ -4209,6 +4210,13 @@ LecS65DeviceControl(
                 (PUCHAR)systemBuffer + 8,
                 sizeof(errorMaskRequest));
 
+            /* Original FUN_00013A40 accepts only type 2 at offset +4. */
+            if (control != 2UL) {
+                status = STATUS_NOT_IMPLEMENTED;
+                information = 0;
+                break;
+            }
+
             /*
              * Original FUN_00013A40 inverts the incoming field before
              * programming BAR0 ERRM through FUN_000107FE. Preserve that
@@ -4234,7 +4242,7 @@ LecS65DeviceControl(
                         0,
                         0);
 
-                if (control != 0) {
+                if (errorMaskRequest != 0) {
                     newInterruptMask |= 0x02UL;
                 }
                 else {
