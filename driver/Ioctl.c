@@ -4112,6 +4112,46 @@ LecS65DeviceControl(
         }
         break;
 
+    case LECS65_IOCTL_READ_START_REGISTER:
+        /*
+         * Original FUN_00012D24 reads the DWORD register pointer held
+         * at original object +0x138. FUN_00014847 initializes that
+         * pointer to the base of PCI BAR0, i.e. START/FVER offset 0.
+         * Only the output buffer size (exactly four bytes) is checked
+         * by the original; it returns Information=4 on success.
+         * This is a read-only compatibility request.
+         */
+        if (systemBuffer == NULL ||
+            outputLength != sizeof(ULONG)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+        else {
+            volatile ULONG* startRegister;
+
+            status = LecResolveRegister(
+                devExt,
+                0,
+                0x000,
+                &startRegister);
+
+            if (NT_SUCCESS(status)) {
+                *(PULONG)systemBuffer =
+                    READ_REGISTER_ULONG(startRegister);
+                information = sizeof(ULONG);
+            }
+            else {
+                information = 0;
+            }
+
+            LecTrace(
+                "legacy 0x00223044 BAR0+0x000 read -> 0x%08X info=%Iu\n",
+                status,
+                information);
+        }
+        break;
+
     case LECS65_IOCTL_SET_EVENT_0:
         status = LecIoctlSetSingleEvent(
             devExt,
