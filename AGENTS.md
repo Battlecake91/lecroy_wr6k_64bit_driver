@@ -5,79 +5,42 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
-**Latest actual scope feedback (2026-09-29 late):** The first attempted
-`scripts/build-sign-load-driver.ps1` terminated at its administrator
-check because PowerShell was **not elevated**; no new driver was
-installed or PnP-restarted by that attempt. A locally present new
-`lecdiag.exe start-register` opened the PCI interface, but
-`DeviceIoControl(0x00223044, in=0, out=4)` returned Win32
-`ERROR_INVALID_FUNCTION` (1). The generic BAR0 read was not reached.
-An old loaded SYS lacking the new case is the immediate hypothesis,
-not a demonstrated code regression. The visible `$LASTEXITCODE`
-check after the throwing PowerShell script did not detect failure.
-Next: XStream closed, **elevated PowerShell**, pull current `main`,
-run signed build/load, check immediate `$?` and full PnP results,
-then rerun read-only `lecdiag start-register` and compare both DWORDs.
-See the revised quick handoff for exact commands. No successful
-hardware validation or XStream regression yet. Do not resume
-`CFDC2194` or Dallas work prematurely.
+**Latest verified real-scope feedback (2026-09-29 late):**
+The owner ran `lecdiag start-register` on the actual PCI device. The
+new read-only legacy IOCTL `0x00223044` returned START/FVER DWORD
+`0x00000002`; the separate generic register read of BAR0+0x000
+returned exactly `0x00000002`. Diagnostic reported:
+`PASS: legacy 4-byte output matches physical register read.`
+Thus the four-byte positive path is now hardware-validated on the
+currently loaded driver. This supersedes the *earlier* failed call,
+which occurred after `build-sign-load-driver.ps1` stopped at its
+non-elevated administrator check and the then-loaded driver returned
+Win32 `ERROR_INVALID_FUNCTION`. The latest feedback did not include
+full build/sign/install logs, current scope Git HEAD or any subsequent
+XStream/AP015 regression result; do not mark those individual
+observations verified. No BAR write or Dallas interaction was done
+by the comparator.
 
-**Fast current-state handoff (2026-09-29):** [`docs/quick-handoff-2026-09-29.md`](docs/quick-handoff-2026-09-29.md) now records the first actual (blocked) install attempt, the failed initial `0x00223044` request against an unverified loaded driver, exact elevated retry commands, and the still-blocked `0xCFDC2194` latch provenance. Start there. No successful new-handler hardware validation is established.
-**Current safe implementation handoff (2026-09-29, after new Ghidra push):**
-Original `FUN_00012D24` does a DWORD read
-through original main-object pointer at
-`+0x138`; original initializer
-`FUN_00014847` binds it to BAR0+0x000
-(FVER/START). Native x64 source now
-implements read-only `0x00223044`
-in `driver/Ioctl.c` and the header.
-`lecdiag start-register` now checks
-that its four-byte result matches
-existing generic BAR0+0x000 read.
-The first scope signed-reload attempt did not pass
-the administrator gate; successful loading and hardware
-validation of the new case are still pending. On the
-x64 scope, close XStream, run the established signed
-reload from an elevated PowerShell, then use
-`lecdiag start-register`. Stop on any load/IOCTL error
-or DWORD mismatch.
+**Immediate next test:** start XStream normally, verify visible live
+waveforms and existing control operations, physical AP015 identification,
+unplug/replug, and known open-jaw warning. Record the real regression
+result. If it passes, the next source analysis is original `0xCFDC2194`:
+its 29-byte read-and-clear response is reconstructed, but the
+nonzero producer/concurrency for original `this+0x116A` is unresolved.
+Do not add a permanent-zero fake-success handler. Leave virtual Dallas
+emulation, hardware DS2433 isolation and any writes on the sole
+licensed chip deferred. See [quick handoff](docs/quick-handoff-2026-09-29.md),
+[current handoff](docs/next-chat-handoff.md) and [TODO](docs/TODO.md).
 
-The second exported handler
-`FUN_00012BAE` for `0xCFDC2194`
-has exact 29-byte return layout:
-zeroed response, DWORD2 at offset4,
-status at offset8 from
-`this+0x116A`, then software-latch
-clear. New Ghidra `field:116a`
-finds its single direct read/clear,
-but NO source of the latched value;
-indirect aliases remain possible.
-Therefore this 2194 handler is NOT
-yet ported; do NOT replace unknown
-real status with invented zero.
-See `docs/ioctl-map.md` and
-`docs/next-chat-handoff.md`.
-README must remain current verified
-status and not absorb untested
-milestones. Virtual Dallas/physical
-isolation remain deliberately deferred.
-No Dallas write/emulation change.
 **Documentation and priority policy (2026-09-29):**
-Keep `README.md` a concise, consolidated statement of
-the **current verified project state**. Never append a
-chronological discovery diary or preserve superseded
-claims in README; use specialist `docs/` files,
-`docs/runtime-trace.md`, and this/handoff
-document for investigative history instead.
-Maintain outstanding work in [`docs/TODO.md`](docs/TODO.md).
-The user has explicitly **deferred** the virtual Dallas
-ROM/EEPROM emulator and any physical DS2433
-disconnection experiment. These are backlog items,
-**not** the next immediate development step.
-No kernel implementation or physical isolation
-is authorized by merely recording the idea.
-The read-only backup and existing normal-scope
-baseline remain unchanged.
+Keep `README.md` a concise, consolidated statement of **verified
+current project state**, not a development diary. Keep full investigation
+history and prior superseded failed attempts in specialist `docs/`,
+`docs/runtime-trace.md`, and this/handoff file. Maintain outstanding
+tasks in `docs/TODO.md`. The user explicitly deferred virtual Dallas
+ROM/EEPROM emulation and any physical DS2433 disconnection test.
+They are backlog items, not immediate implementation authorization.
+
 **2026-09-29 latest confirmed Dallas exports:** User completed both
 separate original ROM-ID preservation
 (privately, do not publish bytes)
