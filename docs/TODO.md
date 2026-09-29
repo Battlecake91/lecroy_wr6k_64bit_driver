@@ -4,6 +4,8 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
+- [ ] Next narrowly scoped IOCTL parity pass: map all writers to the original `this+0x116A` status latch before implementing `0xCFDC2194` (29-byte read-and-clear response). Separately resolve the register-object at original `this+0x138` before implementing read-only `0x00223044`. Ghidra targets `field:116a`, `asm:12bae`, `asm:12d24`, `field:138` are staged. Do not return an invented always-zero status or guess which MMIO register is read.
+
 - [ ] Continue regression testing of normal XStream operation on the real x64 scope, preserving the working PCI, IRQ, DMA and AP015 baseline.
 - [ ] Complete and validate the remaining legacy IOCTL and acquisition variants. In particular, keep `0xCFDD219F` (WOW64-sensitive `METHOD_NEITHER`) and unobserved transfer forms gated until their memory and DMA semantics are proven.
 - [ ] Investigate any remaining differences in AP015 calibration/control replies where physical behavior has not yet been independently verified. Normal probe identification, hotplug and the open-jaw warning are already working.
