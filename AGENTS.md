@@ -6,30 +6,41 @@ Every agent/chat working on this project should read it first and keep it curren
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
 **Latest verified real-scope feedback (2026-09-29 late):**
-The owner ran `lecdiag start-register` on the actual PCI device. The
-new read-only legacy IOCTL `0x00223044` returned START/FVER DWORD
-`0x00000002`; the separate generic register read of BAR0+0x000
-returned exactly `0x00000002`. Diagnostic reported:
-`PASS: legacy 4-byte output matches physical register read.`
-Thus the four-byte positive path is now hardware-validated on the
-currently loaded driver. This supersedes the *earlier* failed call,
-which occurred after `build-sign-load-driver.ps1` stopped at its
-non-elevated administrator check and the then-loaded driver returned
-Win32 `ERROR_INVALID_FUNCTION`. The latest feedback did not include
-full build/sign/install logs, current scope Git HEAD or any subsequent
-XStream/AP015 regression result; do not mark those individual
-observations verified. No BAR write or Dallas interaction was done
-by the comparator.
+The owner ran `lecdiag start-register` on the real PCI device. New
+read-only `0x00223044` returned START/FVER `0x00000002`; separate
+generic BAR0+0x000 reference read returned `0x00000002`, and the
+diagnostic reported PASS. This live positive-path result supersedes
+the previous `ERROR_INVALID_FUNCTION` from an older loaded driver
+after an elevated-build attempt was blocked by missing admin rights.
+The complete later build/sign/load transcript and scope Git HEAD
+were not supplied as independent evidence.
 
-**Immediate next test:** start XStream normally, verify visible live
-waveforms and existing control operations, physical AP015 identification,
-unplug/replug, and known open-jaw warning. Record the real regression
-result. If it passes, the next source analysis is original `0xCFDC2194`:
-its 29-byte read-and-clear response is reconstructed, but the
-nonzero producer/concurrency for original `this+0x116A` is unresolved.
-Do not add a permanent-zero fake-success handler. Leave virtual Dallas
-emulation, hardware DS2433 isolation and any writes on the sole
-licensed chip deferred. See [quick handoff](docs/quick-handoff-2026-09-29.md),
+**Post-change XStream regression: owner reports all exercised checks
+working (2026-09-29 late).** Following the PASS, the owner was asked
+about live waveforms, ordinary vertical/timebase/coupling/bandwidth/
+trigger behavior, two-channel 10-GS/s where practical, and AP015
+detection, physical hotplug and jaw-unlock indication. Reply:
+`Ja klappt soweit alles.` This closes the immediate regression,
+but is an owner-reported baseline confirmation, not a full
+instrumented per-feature trace matrix. No new regression reported.
+
+**Next source-analysis target: `0xCFDC2194`.** Original
+`FUN_00012BAE` produces an exact 29-byte read-and-clear response;
+its status field comes from software latch `this+0x116A`.
+A literal-displacement scan found only the handler's own read/clear,
+not a nonzero producer. Related original `0xCFDC2190` handler
+`FUN_00013A40` accepts a 29-byte type-2 command, updates
+`DAT_0001CE18`, invokes `FUN_000107FE` on register helper
+`this+0x188`, and registers callback `FUN_00012EAE`.
+That callback can invoke `FUN_00011E46`, which writes the global
+register. These are a verified adjacent control path, **not** a
+proven writer of `this+0x116A`. Investigate indirect aliases,
+callback/IRQ and initialization before implementing `0xCFDC2194`.
+Do not fabricate a permanent-zero success. Preserve working
+PCI/IRQ/DMA/ProBus. Virtual Dallas recovery, physical chip isolation
+and writes to the licensed DS2433 remain deferred.
+
+See [quick handoff](docs/quick-handoff-2026-09-29.md),
 [current handoff](docs/next-chat-handoff.md) and [TODO](docs/TODO.md).
 
 **Documentation and priority policy (2026-09-29):**
