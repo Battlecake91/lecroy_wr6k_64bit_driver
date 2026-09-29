@@ -53,13 +53,50 @@ function Invoke-LecdiagCheck {
     Write-Host ("[{0:00}] {1}" -f $script:CheckCount, $Name)
     Write-Host ("lecdiag {0}" -f ($Command -join " "))
 
-    # On Windows PowerShell 5.1 an expected negative native test can write
-    # stderr as an ErrorRecord. Continue and inspect BOTH output and exit.
-    $combined = & $diag @Command 2>&1 | Out-String
-    $exitCode = $LASTEXITCODE
+    # Windows PowerShell 5.1 converts native stderr into non-terminating
+    # NativeCommandError records when using '& ... 2>&1'. That creates a
+    # misleading red PowerShell error for EXPECTED invalid-buffer tests,
+    # even if all 9 checks pass. Capture both native streams to separate
+    # temporary files instead, and always judge the actual process exit code
+    # plus the combined native output. Our fixed lecdiag args need no quoting.
+    $captureStem = Join-Path ([System.IO.Path]::GetTempPath()) (
+        "lecdiag-" + [System.Guid]::NewGuid().ToString("N"))
+    $stdoutPath = $captureStem + ".stdout.txt"
+    $stderrPath = $captureStem + ".stderr.txt"
 
-    if (-not [string]::IsNullOrWhiteSpace($combined)) {
-        Write-Host ($combined.TrimEnd())
+    try {
+        $process = Start-Process -FilePath $diag -ArgumentList $Command `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath -ErrorAction Stop
+
+        $exitCode = [int]$process.ExitCode
+        # lecdiag uses the native Windows C runtime/FormatMessageA for text.
+        # Use the system ANSI code page rather than PowerShell's UTF-8 guess.
+        $stdout = [System.IO.File]::ReadAllText(
+            $stdoutPath, [System.Text.Encoding]::Default)
+        $stderr = [System.IO.File]::ReadAllText(
+            $stderrPath, [System.Text.Encoding]::Default)
+        $combined = $stdout + [Environment]::NewLine + $stderr
+
+        if (-not [string]::IsNullOrWhiteSpace($stdout)) {
+            Write-Host ($stdout.TrimEnd())
+        }
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+            # An expected native error message is data, not a PS exception.
+            Write-Host ($stderr.TrimEnd())
+        }
+    }
+    catch {
+        $script:FailedCount++
+        Write-Host (
+            "CHECK FAIL: lecdiag launch/capture error: " +
+            $_.Exception.Message) -ForegroundColor Red
+        return
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force `
+            -ErrorAction SilentlyContinue
     }
 
     if ($exitCode -eq $ExpectedExit -and
