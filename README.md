@@ -47,6 +47,26 @@ Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-b
 - Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
 - XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
 
+### Grouped low-impact ABI checks (2026-09-30)
+
+For owners who want to batch compatibility validation before a
+time-consuming full XStream waveform/AP015 regression, the
+source-controlled `scripts/test-safe-ioctl-batch.ps1`
+provides **nine** focused, low-impact ABI checks against
+the installed native driver with XStream closed. These
+cover legacy build/PCI identity, passive START/FVER
+comparison, `CFDC2400` four-byte zero-mask/output
+bounds and invalid buffer-size rejection, plus
+`CFDC2194` wrong output-size rejection before the
+latch-consuming path. The script does not install
+drivers, write Dallas EEPROM, program the serial-trigger
+FPGA or inject nonzero software pending bits.
+Zero-mask `CFDC2400` still invokes the existing DPC
+dispatcher by original design. The script is
+**prepared but not yet reported run on real scope**.
+See [grouped test and safety notes](
+docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
 ## Build and diagnostic workflow
 
 Use an administrative PowerShell on the development/test system. The project uses Visual Studio/MSBuild and the Windows Driver Kit. Keep a recoverable image of the working scope OS before installing an experimental driver. See the installation instructions for test-signing prerequisites and exact procedures.
