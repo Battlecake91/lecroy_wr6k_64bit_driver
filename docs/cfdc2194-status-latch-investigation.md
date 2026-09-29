@@ -94,7 +94,8 @@ software latch `subobject+0x116A`.
 `ghidra_scripts/targets.txt` now requests additional exports using
 the **existing** `ExportSelected.java` syntax:
 
-- `asm:115c4`, `asm:13a40`, `asm:12eae`,
+- `asm:10b30` (DeviceControl dispatch-wrapper context) plus
+  `asm:115c4`, `asm:13a40`, `asm:12eae`,
   `asm:11e46`, and the incoming `xref` reports for
   `12bae` and `12d24`.
 - `field:1167` through `field:116d` (the `116a` scan already
