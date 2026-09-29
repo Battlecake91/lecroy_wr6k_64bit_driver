@@ -62,9 +62,18 @@ latch-consuming path. The script does not install
 drivers, write Dallas EEPROM, program the serial-trigger
 FPGA or inject nonzero software pending bits.
 Zero-mask `CFDC2400` still invokes the existing DPC
-dispatcher by original design. The script is
-**prepared but not yet reported run on real scope**.
-See [grouped test and safety notes](
+dispatcher by original design. **Owner-reported real-scope
+batch result (2026-09-30): `9/9 passed; 0 failed`.**
+The initial batch script also displayed an irrelevant
+Windows PowerShell 5.1 `NativeCommandError` while capturing
+stderr from an *expected negative* IOCTL request.
+The harness is now corrected to collect stdout/stderr
+separately via `Start-Process`; the corrected harness
+has not separately been rerun. No driver change was made.
+The complete post-CFDC2400 XStream/AP015 practical
+regression is deliberately deferred to one combined
+milestone at the owner's request.
+See [grouped test result and safety notes](
 docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
 
 ## Build and diagnostic workflow
