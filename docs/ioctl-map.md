@@ -14,11 +14,17 @@ deliberately gated: `0xCFDD219F`). **Three** original values still
 lack any top-level x64 case. The separate observed x64
 `0x00222400` handler is outside the 27-value original inventory.
 
-**Verification boundary:** CFDC2400 has been mapped and staged in
-source based on the latest literal derived-subobject vtable export,
-but has **NOT** yet been Windows-built, signed/loaded or scope-tested.
-The most recent owner-confirmed working waveform/AP015 baseline is
-still the earlier successfully installed CFDC2194/CFDC2190 patch.
+**Latest real PCI verification (owner report, 2026-09-30):**
+the installed native `CFDC2400` handler accepted the exact
+four-byte zero-mask request on PCI 1570:0005:
+`lecdiag raw-ioctl 0xCFDC2400 00000000 0` returned
+`IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0`
+and empty output. The full separate build/sign/install transcript
+was not supplied with this test. **Post-change XStream/AP015
+regression is still pending**; nonzero synthetic pending-mask
+behavior remains intentionally untested. The earlier
+CFDC2194/CFDC2190 driver is the last owner-confirmed practical
+XStream regression baseline.
 
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
@@ -90,10 +96,10 @@ and restores caller IRQL. Empty input (four zero bytes)
 still invokes immediate processing of any previously pending
 sources, matching the unconditional original virtual call.
 
-**Not built or hardware tested yet.** With XStream closed,
-first build only, then after successful signed install perform
-the zero-mask `lecdiag raw-ioctl 0xCFDC2400 00000000 0`
-and a normal XStream/AP015 regression. Do not use a nonzero
+**Later owner-reported scope result (2026-09-30):** the installed
+new `CFDC2400` case passed the real-PCI zero-mask ABI positive
+path: exactly 4 bytes accepted, success and 0 bytes returned.
+The normal XStream/AP015 regression has not yet been reported. Do not use a nonzero
 injected software interrupt mask on the sole scope merely
 to test coverage. See the complete
 [CFDC2400 original and x64 analysis](
