@@ -1,4 +1,100 @@
-# Active handoff: second register/FPGA export complete; third PC-only Ghidra batch queued (2026-09-30)
+# Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
+
+## Current authoritative state, no additional scope work needed now
+
+The owner's THIRD separate-PC read-only Ghidra
+run was pushed as
+`00eb49db5efe98042df47ba07a570017cd37419d`.
+It has ALREADY BEEN FETCHED AND ANALYZED,
+alongside the first/second exports. See the
+new comprehensive English documentation:
+[original two-array 43-register architecture
+and write-IOCTL ABI](original-register-list-and-write-abi.md).
+Do not ask the owner to repeat those three runs.
+
+Important new closure:
+
+1. The original `CKeRegisterList` lives at
+   hardware-subobject+0x11EE, initialized by
+   `FUN_00013434`. It has separate dynamic
+   register-wrapper pointer and 266-byte
+   metadata arrays, each with capacity,
+   grow increment=1, lastIndex initially=-1
+   and pointer/status fields.
+2. `FUN_00012184` is the newly proved dynamic
+   pointer-array growth/copy/free routine;
+   `FUN_000121FA` handles 266-byte metadata
+   growth. Both return 0xC000009A on allocation
+   failure. `FUN_00013FA6` checks first append
+   success, but does not verify second metadata
+   append success before returning its own bool.
+3. Exact original common list receiver is passed
+   from `FUN_00014847` through
+   `FUN_000159E2 -> FUN_0001785B`: six
+   transport regs first, 15 common direct
+   regs next, then 22 conditional regs if
+   `FUN_00012FDE` START/ITMODE init succeeds.
+   Normal successful profile intends exactly
+   **43 entries indices 0..42**, matching
+   existing x64 `g_LecLegacyRegisterList[43]`.
+   Query-format list size = `43*0x10A =
+   11,438 bytes (0x2CAE)`.
+4. **Important differing semantics in the
+   same input byte positions:** a list-QUERY
+   record at `+0x101` contains the register's
+   PHYSICAL BAR OFFSET, while missing original
+   setter `0x0022303C` interprets that DWORD
+   as the POINTER-ARRAY INDEX, with its
+   value DWORD at `+0x106`. The original
+   setter itself performs no index/lastIndex
+   validation and calls `FUN_000107FE` for
+   immediate MMIO. A read-query record may
+   not be echoed as a setter request.
+   Example GPIODAT BAR1 offset 0xC4 vs
+   full-profile list index 42.
+5. `CFDC2130` bit-bangs BAR1 GPIODAT
+   `+0xC4`, updating mask `0xE000`
+   in one FULL-DWORD write for EACH input
+   byte. Another original helper
+   `FUN_000120DC` clears bit 16 of
+   the SAME register before regular
+   transfer handlers `FUN_00012D6A`
+   and `FUN_00012F30`. Potential concurrent
+   GPIO ownership and edge ordering require
+   evidence/serialization; do not synthesize
+   test programming on the real scope.
+6. The third absent original value
+   `0x00223088` is the licensed Dallas
+   EEPROM WRITE and remains deferred until
+   disposable hardware exists.
+
+**No kernel driver source was changed by
+this static-only third analysis.** Native
+top-level inventory remains 24/27
+(one gated), three high-risk cases absent.
+Latest owner's real-scope low-impact ABI
+batch `9/9 passed; 0 failed`; corrected
+PowerShell stderr-only harness has not
+separately been rerun. Complete
+post-CFDC2400 practical XStream/AP015
+regression stays deliberately DEFERRED,
+per owner's preference to group compatible
+work into one substantive milestone.
+
+**Best next engineering step:** consolidate
+this static result (done in linked doc),
+review existing original XStream IOCTL traces
+or original user-mode producer of the
+266-byte `0x0022303C` setter record before
+even considering a safe indexed writer.
+If such caller evidence is unavailable,
+further arbitrary Ghidra batches do not
+justify risk to the only licensed scope.
+No fresh scope test or Ghidra command is
+required from the owner as a consequence
+of this analysis alone.
+
+## Historical second-batch handoff (superseded)
 
 ## Immediate current state and next step
 
