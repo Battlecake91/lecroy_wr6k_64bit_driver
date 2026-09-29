@@ -1,4 +1,65 @@
-# Active handoff: CFDC2194 signed-load, idle diagnostic and XStream regression PASS (2026-09-30)
+# Active handoff: CFDC2400 callback found; derived-vtable target pending Ghidra export (2026-09-30)
+
+## Latest finding and current required action
+
+Original `CFDC2400` is METHOD_BUFFERED; `FUN_00012EDE` accepts
+exactly a four-byte DWORD and a non-null input pointer, otherwise
+returns `STATUS_INVALID_PARAMETER`. Existing original
+`ghidra_exports/selected/raw_12ec2.asm.txt` reveals
+`LAB_00012EC2` does:
+
+```asm
+00012EC9 MOV EAX,[0x0001CE1C]       ; caller DWORD
+00012ECE OR  dword ptr [0x0001CE10],EAX ; sticky pending IRQ bitmap
+```
+
+The old `docs/ioctl-map.md` statement that its last virtual
+`+0x24` call is a no-op at `0x104A0` was identified as a
+**wrong/unverified object-vtable attribution**. Original dispatch
+at 0x112EA passes `main+0x1E0` (hardware subobject), whose
+active derived vtable is `0x1C62C`, not the main-object
+vtable at `0x1C500`. The target pointer must be obtained
+from **0x1C650 = 0x1C62C+0x24**. Additionally the
+original `FUN_00012EDE` pushes two zero DWORD arguments
+and performs no cleanup after the virtual CALL;
+`0x104A0` ends in a bare `RET`, so treating it as this
+particular call target is ABI-inconsistent. The pending-bit
+callback is source-proven; the final virtual side effect is
+**not yet identified**.
+
+A provisional x64 software-only case was REVERTED immediately
+upon finding the discrepancy. No new driver code is to be
+built/loaded on the scope; the established, working
+CFDC2194/CFDC2190 XStream baseline remains intact.
+The original top-level coverage stays **23/27**, one gated,
+four cases missing including CFDC2400.
+
+`ghidra_scripts/ExportSelected.java` now implements
+literal `dwords:<hexbase>:<1..64>` dumps and previews the
+`+0x24` target instructions; `ghidra_scripts/targets.txt`
+requests `dwords:1c62c:16`, `dwords:1c500:16`,
+`dwords:1c8bc:16` and the surrounding ASM/XREFs.
+
+**Only next action is a PC Ghidra export**, not a scope driver test:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+
+& ".\scripts\run-ghidra-analysis.ps1" -CommitMessage "analysis: resolve CFDC2400 derived-vtable slot"
+```
+
+It auto pulls, exports and pushes. Examine new
+`ghidra_exports/selected/dwords_dwords_1c62c_16.txt`
+slot `+0x24`; if the target is nontrivial, export its
+full function next. Only then determine whether native
+`CFDC2400` can safely use `InterlockedOr` on
+`InterruptPendingShadow` with any additional original
+post-callback effects. Do not test a nonzero injected mask
+on the only working scope. Details:
+[cfdc2400-software-pending-investigation.md](
+cfdc2400-software-pending-investigation.md).
+
+## Last confirmed scope baseline (no new patch installed)
 
 ## Current validated operating state
 
