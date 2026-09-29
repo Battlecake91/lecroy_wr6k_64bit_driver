@@ -58,6 +58,7 @@
 #define LECS65_IOCTL_SET_EVENT_1          ((ULONG)0xCFDC218C)
 #define LECS65_IOCTL_CFDC2190              ((ULONG)0xCFDC2190)
 #define LECS65_IOCTL_CFDC2194              ((ULONG)0xCFDC2194)
+#define LECS65_IOCTL_CFDC2400              ((ULONG)0xCFDC2400)
 #define LECS65_IOCTL_REGISTER_READ     ((ULONG)0xCFDC21C0)
 #define LECS65_IOCTL_REGISTER_WRITE    ((ULONG)0xCFDC21C4)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((ULONG)0xCFDC21C8)
@@ -339,6 +340,14 @@ VOID LecInterruptDpc(
     _In_opt_ PVOID DeferredContext,
     _In_opt_ PVOID SystemArgument1,
     _In_opt_ PVOID SystemArgument2);
+/*
+ * CFDC2400's derived hardware-subobject vtable +0x24 calls original
+ * DPC dispatcher synchronously after a software pending-bit OR.
+ * Mirror that operation at safe DPC IRQL, using the existing core.
+ */
+NTSTATUS LecInjectLegacyPendingAndDispatch(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG PendingMask);
 
 NTSTATUS LecRegisterTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
