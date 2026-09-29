@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: f30d0c7a0236755a1c15f825b29699b7b1ea4394
+Source commit: f7424d3459ba6ede46dfdd60fe8bca3783e389fc
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -132,6 +132,25 @@ Targets:
   xref:1259a
   xref:11cff
   xref:1cd08
+  1326e
+  13230
+  13434
+  134ae
+  133c4
+  14212
+  asm:1326e
+  asm:13230
+  asm:13434
+  asm:134ae
+  asm:14212
+  asm:14847
+  xref:107fe
+  xref:13fa6
+  xref:13434
+  xref:1326e
+  xref:13230
+  xref:134ae
+  xref:14847
 
 Exported files:
   00010380_FUN_00010380.c
@@ -264,12 +283,20 @@ Exported files:
   00012f30_FUN_00012f30.refs.txt
   00012fde_FUN_00012fde.c
   00012fde_FUN_00012fde.refs.txt
+  00013230_FUN_00013230.c
+  00013230_FUN_00013230.refs.txt
+  0001326e_FUN_0001326e.c
+  0001326e_FUN_0001326e.refs.txt
   0001329e_FUN_0001329e.c
   0001329e_FUN_0001329e.refs.txt
+  000133c4_FUN_000133c4.c
+  000133c4_FUN_000133c4.refs.txt
   0001340c_FUN_0001340c.c
   0001340c_FUN_0001340c.refs.txt
   00013434_FUN_00013434.c
   00013434_FUN_00013434.refs.txt
+  000134ae_FUN_000134ae.c
+  000134ae_FUN_000134ae.refs.txt
   000134f6_FUN_000134f6.c
   000134f6_FUN_000134f6.refs.txt
   00013768_FUN_00013768.c
@@ -558,6 +585,10 @@ Exported files:
   asm_asm_12e72.txt
   asm_asm_12eae.txt
   asm_asm_12ede.txt
+  asm_asm_13230.txt
+  asm_asm_1326e.txt
+  asm_asm_13434.txt
+  asm_asm_134ae.txt
   asm_asm_13768.txt
   asm_asm_137c4.txt
   asm_asm_1381e.txt
@@ -568,6 +599,8 @@ Exported files:
   asm_asm_13f3c.txt
   asm_asm_13f70.txt
   asm_asm_13fa6.txt
+  asm_asm_14212.txt
+  asm_asm_14847.txt
   asm_asm_155d0.txt
   asm_asm_15802.txt
   asm_asm_15848.txt
@@ -668,12 +701,19 @@ Exported files:
   symbol_KeSetEvent_0.refs.txt
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
+  xref_xref_107fe.txt
   xref_xref_11cff.txt
   xref_xref_11f54.txt
   xref_xref_1259a.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
   xref_xref_12ec2.txt
+  xref_xref_13230.txt
+  xref_xref_1326e.txt
+  xref_xref_13434.txt
+  xref_xref_134ae.txt
+  xref_xref_13fa6.txt
+  xref_xref_14847.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
   xref_xref_1c8bc.txt
