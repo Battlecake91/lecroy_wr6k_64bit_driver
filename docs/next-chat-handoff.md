@@ -20,6 +20,44 @@ for actual programmed EEPROM contents. Keep
 private identifiers and license bytes out of
 public artifacts. See the Dallas test plan.
 
+**LATEST FEATURE REQUEST (2026-09-29):** User
+wants Device Manager custom Dallas
+EEPROM Properties tab and standalone
+maintenance/recovery UI: preserve
+the installed PCI DS2433 license image,
+open and compare a dump, recover a
+corrupted but electrically responsive
+DS2433 and optionally edit a private
+copy. Windows supports native x64
+device property-page extension DLL
+registered with `EnumPropPages32`;
+avoid deprecated co-installers.
+The current INF copies only SYS,
+so the DLL and its packaging are
+future work. A full manager should
+remain separate from Device Manager.
+Factory 64-bit Dallas ROM (family
+0x23/serial/CRC) is IMMUTABLE and
+separate from the writable
+512-byte EEPROM; the user's
+six-digit main Scope-ID comes
+from ROM serial bytes 1..3 as
+24-bit little-endian, while
+the display's two-digit suffix
+remains unknown. Rewriting an
+EEPROM image onto a different
+chip cannot recreate the old
+ROM identity. Current x64 Dallas
+ROM/read works; write 0x00223088
+does not. Source recovery of
+low-level helpers 16d90/16f2c,
+spare-chip validation, full
+readback and then optional GUI
+are required. See
+`docs/dallas-device-manager-recovery-design.md`.
+No UI or kernel writer was
+implemented from this design.
+
 **LATEST ENGINEERING STATE:** The user attempted
 to Delete one XStream license under the
 current x64 replacement driver; after XStream
@@ -96,6 +134,101 @@ reidentification. No generic HWInt, jaw recognition, PCI or DMA
 regression is established. **Do not request another routine
 jaw/hotplug test or modify driver code because of the superseded
 inference.** The formatter `3490709` remains working.
+
+## Requested future feature: Device Manager Dallas EEPROM tab / recovery (2026-09-29)
+
+The user requests a recoverability feature for other
+LeCroy owners whose PCI-side Dallas license
+EEPROM was accidentally corrupted and needed
+external chip programming: a custom **Dallas
+EEPROM** tab in the Windows Device Manager
+device Properties with **Backup / Open / Compare
+/ Restore / Advanced Edit**. A normal native x64
+**property-page extension DLL** can be registered
+using device-specific `EnumPropPages32` in
+the INF (Microsoft's documented Win32 mechanism).
+Do not introduce deprecated/co-installer-based
+property pages; those affect current Microsoft
+driver signing. Because full recovery deserves
+a larger protected UI, propose shared user-mode
+logic and a standalone
+`LeCroy Dallas Manager.exe`, with the optional
+Device Manager tab showing hardware status,
+backup and a recovery-manager launcher.
+The current INF `driver/LecS65AcqDrv.inf`
+has custom DataAcquisition class, ClassInstall32
+and ONLY the SYS copied: no current property
+page DLL or manager is implemented. Keep
+the current driver package working and
+check INF/catalog/signing separately.
+
+**Correct physical identity distinction:**
+DS2433 ROM is factory-programmed
+family 0x23 + 48-bit serial + Dallas
+CRC8; 512-byte EEPROM is distinct
+license-data storage. Primary six-digit
+Scope-ID prefix in the user's display
+matches ROM bytes 1..3 as a 24-bit LE
+integer across seven private captures.
+The two-digit display suffix and complete
+formatted field are not yet decoded.
+Writing a 512-byte backup to a
+replacement DS2433 cannot change
+its ROM or necessarily recreate the
+old scope/license identity. If ROM
+cannot be read at all, same-board
+software restore may be impossible;
+the hardware could still need an
+external programmer/repair.
+
+**Recommended recovery design:** private
+versioned backup container includes
+original full ROM, 512 EEPROM bytes,
+SHA-256, version and timestamp;
+support legacy raw 512-byte `.bin`
+as unbound without its ROM metadata.
+During restore, read actual ROM and
+CRC, require matching identity, capture
+another backup of current contents,
+show page diffs, serialize against
+XStream, use original 32-byte
+scratchpad/copy/verification behavior,
+stop on first failure and read back
+all 512 bytes. Advanced hex editing
+acts on a separate private file copy
+by default, not directly on live
+licensing memory. Do not invent
+license formats or genuine keys.
+Optional temporary *virtual shadow
+READ* may aid diagnosis but does
+not physically repair EEPROM and
+is not a substitute for a writer.
+
+**Implementation staging:** (1) standalone
+read-only manager on existing working
+0x80 ROM/0x84 READ/lecdiag backup;
+(2) recover Ghidra dependencies
+`FUN_00016d90`/`FUN_00016f2c`,
+port original `0x00223088`,
+exercise on spare DS2433 including
+post-power-cycle readback and
+interruption; (3) enable verified
+restore/expert offline image editing;
+(4) integrate optional x64
+`EnumPropPages32` property-page DLL
+after packaging/signing checks.
+NO UI or new kernel writer has
+actually been added yet.
+
+Canonical design:
+[`dallas-device-manager-recovery-design.md`](dallas-device-manager-recovery-design.md).
+Manufacturer DS2433 datasheet confirms
+separate factory 64-bit ROM, EEPROM
+16 x 32 bytes, 32-byte scratchpad,
+and 1-Wire copy requiring stable
+bus supply. Windows docs:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/install/specific-requirements-for-device-property-page-providers--property-pag
+https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/removing-coinstallers
 
 ## Decisive Dallas write trace: XStream DID try; x64 returned invalid request (011858) (2026-09-29)
 
