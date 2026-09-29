@@ -1,4 +1,9 @@
-# Active handoff: missing x64 Dallas WRITE identified by real XStream trace (2026-09-29)
+# Active handoff: validate new read-only 0x00223044 on x64 scope (2026-09-29)
+
+**SHORT VERSION / ZIP HANDOFF BASIS:** [quick-handoff-2026-09-29.md](quick-handoff-2026-09-29.md).
+Next user will supply the **result of the previously requested Windows build/sign-load and `lecdiag start-register` comparison**.
+These results are still pending, not presumed to pass.
+User explicitly requested a ZIP for moving to a new chat. Use the compact handoff first; this long document preserves technical investigation history.
 
 **2026-09-29 late implementation update: FVER IOCTL 0x00223044 added (source only).**
 After the user's new Ghidra push (selected ASM
