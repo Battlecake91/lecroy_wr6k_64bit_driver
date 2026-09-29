@@ -1,4 +1,72 @@
-# Active handoff: safe ABI batch 9/9 PASS; static register/FPGA-write analysis next (2026-09-30)
+# Active handoff: second register/FPGA export complete; third PC-only Ghidra batch queued (2026-09-30)
+
+## Immediate current state and next step
+
+The owner has ALREADY pushed the second original x86
+static analysis in commit
+`92f8a7f67c751c764190206f79cd4bf9ec493753`.
+It establishes that the 266-byte original
+`0x0022303C` register-list data structure has a
+dynamic pointer array and parallel record array:
+`FUN_0001326E -> FUN_00012184` grows/adds a
+pointer, while `FUN_00013230 -> FUN_000121FA`
+grows/copies corresponding 266-byte records.
+The constructor `FUN_00013434` initializes
+`lastIndex = -1`, pointer capacity zero,
+increment quantum one. Original write routine
+`FUN_0001259A` directly dereferences
+`pointerArray[callerIndex]` without checking
+capacity/lastIndex in that function. Exact caller
+record field offsets: index DWORD `+0x101`,
+write-value DWORD `+0x106`. No direct hardware
+test of this risky IOCTL is authorized.
+
+Original hardware init `FUN_00014847` has 15 common
+and 22 conditional `FUN_00013FA6` registration
+call sites, but that is NOT proof of runtime entry
+count. Another `FUN_000159E2 -> FUN_0001785B`
+path contains six calls whose receiver/table identity
+is still to be resolved. Original `FUN_000120DC`
+also manipulates the `+0x318` BAR1 GPIODAT
+wrapper: clears bit 16 (`& 0xFFFEFFFF`),
+while original `CFDC2130` controls bits 15:13
+(`0xE000`) for EVERY byte. Native GPIO
+ownership/timing must be characterized before
+porting serial-trigger FPGA programming.
+
+**A THIRD batch of 23 original-binary read-only
+Ghidra targets is NOW committed to
+`ghidra_scripts/targets.txt`, not yet executed.**
+It includes `12184`, `12166`, `1785B`,
+`16C92`, `179E2`, ASM for `121FA`,
+`159E2`, `13FA6`, `120DC` and related
+XREF/field scans.
+
+NEXT on the **SEPARATE Ghidra PC**, not Scope:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve register-list growth and shared GPIODAT writers"
+```
+
+Runner auto pulls/exports/commits/pushes; fetch
+new files on its return. This does NOT touch the
+x64 kernel driver or hardware. The owner has also
+completed scope safe ABI batch **9/9 PASS**;
+the PowerShell 5.1 stderr presentation issue
+was fixed in the harness without requiring a
+repeat. **Complete XStream/AP015 regression stays
+DEFERRED per owner's explicit milestone preference.**
+No new driver code was added for original hardware
+writers or licensed Dallas WRITE. Native original
+IOCTL top-level source representation remains 24/27
+(one deliberately gated).
+
+Detailed findings:
+[grouped ABI and missing originals analysis](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Previous checkpoint after first writer export
 
 ## Newest owner-run x64 scope tests
 
