@@ -4,6 +4,44 @@ This table is reconstructed from the comparison tree inside `CLecS65AcqDrvDevice
 
 All values below are **confirmed as dispatch values** in the analysed binary.
 
+## Finalized third static register-list/GPIO investigation (2026-09-30)
+
+The owner Ghidra export `00eb49db5efe98042df47ba07a570017cd37419d`
+and previous two batches now reconstruct the original
+`CKeRegisterList` two-array layout, growth/cleanup,
+the precise 266-byte metadata ABI, and the successful
+**6 transport + 15 common + 22 START-conditional = 43**
+register insertion order. This independently corroborates
+the existing native `g_LecLegacyRegisterList[43]`
+ordering already captured from original-driver runtime.
+
+Critical **record field mismatch**: the list-query record
+at `+0x101` contains a **physical register offset**
+(see `FUN_00013FA6` metadata serialization), but original
+setter `FUN_0001259A` reinterprets `+0x101` as a
+zero-based **pointer-table index** and never validates its
+range locally. The outer 0x0022303C handler checks
+only readiness and exactly 266 input bytes, then
+returns success after the unchecked physical write.
+The read format must not simply be echoed to the setter;
+this needs original user-mode evidence and explicit
+validation before any x64 write implementation.
+
+The serial FPGA programmer `CFDC2130` modifies
+BAR1 GPIODAT mask `0xE000` once per byte.
+`FUN_000120DC` clears GPIODAT bit 16 before two
+ordinary transfer paths (`FUN_00012D6A` and
+`FUN_00012F30`); blindly implementing per-byte
+programming during live acquisition risks stale
+full-DWORD writes across shared GPIO state.
+**Both writer IOCTLs remain intentionally absent**
+from x64. Licensed Dallas WRITE `0x00223088` is
+also absent. Coverage remains **24/27 represented,
+one gated**, and no source/build/scope regression
+change is implied by static Ghidra exports.
+See [original 43-register architecture and writer
+ABI](original-register-list-and-write-abi.md).
+
 ## Current native x64 coverage snapshot (2026-09-30)
 
 The captured original x86 build identifies **27 top-level IOCTL dispatch
@@ -28,7 +66,7 @@ XStream regression baseline.
 
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
-| `0x0022303C` | Exact 0x10A (266)-byte record when gate `DAT_1CD08==0`; `FUN_0001259A` uses a caller DWORD register-table index at record +0x101 and value at +0x106; `FUN_000107FE` caches and physically writes selected MMIO register. No index bounds check is visible in that helper. | Recover actual register table index bounds/mapping; never issue fabricated write records on real scope. |
+| `0x0022303C` | Exact 0x10A (266)-byte record with ready gate `DAT_1CD08==0`. Setter `FUN_0001259A` interprets incoming DWORD `+0x101` as an **unchecked pointer-table index** and DWORD `+0x106` as data, then physically writes selected MMIO via `FUN_000107FE`. **ABI trap:** list-query metadata instead serializes the register's physical BAR OFFSET at record `+0x101`, not its array index (e.g. GPIODAT offset `0xC4` vs index 42). | Never echo a query record as an unchecked write. Validate real index/known register and authorization before contemplating a native port. See [full original list and write ABI](original-register-list-and-write-abi.md). |
 | `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
 | `0xCFDC2130` | Non-null, nonempty input; `FUN_00011CFF` reads BAR1 GPIODAT (+0xC4), replaces only bits 15:13 (`0xE000`) with bits 7:5 of each input byte shifted <<8, then writes physical register **once per byte**. | Preserve stream sequence/timing and other GPIO ownership; no fabricated programming on working board. |
 
