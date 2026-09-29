@@ -1,8 +1,29 @@
-# Active handoff: validate new read-only 0x00223044 on x64 scope (2026-09-29)
+# Active handoff: elevated signed reload needed before 0x00223044 validation (2026-09-29)
+
+**Newest scope feedback (late 2026-09-29):** The owner attempted
+`scripts/build-sign-load-driver.ps1` from a **non-elevated**
+PowerShell and hit its administrator assertion before any signing,
+installation or PnP restart. The immediately following
+`lecdiag start-register` opened the device interface but the initial
+`0x00223044` returned Win32 error 1
+(`ERROR_INVALID_FUNCTION`). No BAR0 reference read or DWORD
+comparison was reached. An older installed driver without the
+new case is the current leading explanation, not proof of a defect in
+the new read-only case. Pure-build log and actual loaded SYS revision
+were not provided. The caller's `$LASTEXITCODE` check did not catch
+the PowerShell-script `throw`. **Next:** close XStream; open elevated
+PowerShell; `git pull --ff-only origin main`; rerun signed
+`build-sign-load-driver.ps1`; check its immediate `$?` and
+all installation/PnP output; only then run the read-only
+`lecdiag start-register` comparator. Full commands are in
+[quick-handoff-2026-09-29.md](quick-handoff-2026-09-29.md).
+If either step fails, stop there. Do not progress to
+`CFDC2194`, Dallas writes/emulation, or chip isolation.
+
+
 
 **SHORT VERSION / ZIP HANDOFF BASIS:** [quick-handoff-2026-09-29.md](quick-handoff-2026-09-29.md).
-Next user will supply the **result of the previously requested Windows build/sign-load and `lecdiag start-register` comparison**.
-These results are still pending, not presumed to pass.
+The first signed-load attempt was blocked by missing elevation; the first IOCTL call failed as recorded above. A successful newly loaded-driver comparison and XStream regression remain pending.
 User explicitly requested a ZIP for moving to a new chat. Use the compact handoff first; this long document preserves technical investigation history.
 
 **2026-09-29 late implementation update: FVER IOCTL 0x00223044 added (source only).**
@@ -43,7 +64,7 @@ possible. Do NOT create an always-zero
 stub or guess the latch source; map
 its producer/concurrency before porting.
 
-**NEXT user hardware handoff:** perform
+**Originally requested user hardware handoff (partly attempted; see newest feedback above):** perform
 Windows build first:
 `./scripts/build-driver.ps1 -BuildLecdiag`.
 If successful and device test setup is
