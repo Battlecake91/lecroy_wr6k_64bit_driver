@@ -1,6 +1,34 @@
 # CFDC2400: synchronized pending-bit injection and immediate DPC dispatch (2026-09-30)
 
-## Verification state
+## Latest real-PCI positive-path result (owner output, 2026-09-30)
+
+**The owner ran the newly staged `CFDC2400` zero-mask IOCTL
+against the actual x64 PCI scope and supplied the result:**
+
+```text
+.\tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0
+Opened device interface: \\?\pci#ven_1570&dev_0005&subsys_00000000&rev_00#4&39fd0a79&0&08f0#{7ac34be9-f766-4f15-9e88-854ba5e2146e}
+IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0
+Output:
+```
+
+This establishes positive-path acceptance of the original four-byte
+buffered input on the real PCI interface, NTSTATUS success and
+`IoStatus.Information=0` with no output bytes. The installed driver
+therefore recognizes the newly added case. The full separate Windows
+build/sign/install transcript was *not* included with this particular
+result; do not fabricate an MSBuild warning count, package version or
+additional verification details.
+
+**Still open:** the owner's practical XStream waveform/control/
+two-channel/10-GS/s and AP015 detection/hotplug regression on this
+newly installed `CFDC2400` patch. The zero mask does not establish
+nonzero pending-bit injection behavior, and because the original
+derived virtual call unconditionally runs DPC processing, the request
+must not be described as a completely passive query. Do not induce
+nonzero synthetic IRQ sources on the single working scope.
+
+## Original pre-hardware-verification state (superseded for zero-mask ABI)
 
 The owner's PC Ghidra rerun committed decisive literal vtable exports
 in **`b7b31c8bf5a06e9621a3636776673b486f72bfe5`**.
@@ -9,8 +37,7 @@ from exact instructions rather than an incorrect base-class-vtable
 assumption. A native x64 source implementation is now committed in
 `driver/LecS65Drv.h`, `driver/Acquisition.c` and `driver/Ioctl.c`.
 
-**IMPORTANT: New source is not yet Windows-built, signed/reloaded, or
-tested on the real oscilloscope.** The last owner-confirmed working
+**Historical pre-test note:** At the time of this analysis the source had not yet been installed/tested. The subsequent owner-supplied real-PCI zero-mask positive test above supersedes that claim for CFDC2400 positive ABI only. The last owner-confirmed working
 XStream/AP015 baseline remains the prior CFDC2194 / corrected CFDC2190
 driver, whose practical regression had no observed malfunction.
 Do not treat the original binary analysis or GitHub source update as
@@ -182,7 +209,7 @@ clear. This is a source-backed behavioral mapping, not an
 assertion of perfect concurrency equivalence for every
 legacy interleaving.
 
-## Safe next scope sequence
+## Historical prescribed first test (zero-mask positive path subsequently PASS)
 
 **Build-only first**, with XStream closed, the known-good
 driver recovery available and an ordinary shell in the
