@@ -7,20 +7,24 @@ All values below are **confirmed as dispatch values** in the analysed binary.
 ## Current native x64 coverage snapshot (2026-09-30)
 
 The captured original x86 build identifies **27 top-level IOCTL dispatch
-values** (26 buffered, one METHOD_NEITHER). The implemented,
-Windows-built and owner-tested idle `0xCFDC2194` addition brings
-the native x64 top-level switch to **23/27 represented** (22 having varying degrees of functional
-implementation, one explicitly gated: `0xCFDD219F`). **Four**
-original codes still have no top-level x64 case. The additional
-observed x64 `0x00222400` handler is outside the original 27-value
-inventory.
+values** (26 buffered, one METHOD_NEITHER). The newly source-implemented `0xCFDC2400` pending-control case
+brings the native x64 top-level switch to **24/27 represented**
+(23 having varying degrees of functional implementation, one
+deliberately gated: `0xCFDD219F`). **Three** original values still
+lack any top-level x64 case. The separate observed x64
+`0x00222400` handler is outside the 27-value original inventory.
+
+**Verification boundary:** CFDC2400 has been mapped and staged in
+source based on the latest literal derived-subobject vtable export,
+but has **NOT** yet been Windows-built, signed/loaded or scope-tested.
+The most recent owner-confirmed working waveform/AP015 baseline is
+still the earlier successfully installed CFDC2194/CFDC2190 patch.
 
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
 | `0x0022303C` | `FUN_00012CAC` consumes a 0x10A-byte register-control record and forwards it to `FUN_0001259A` to write a selected hardware register. | Verify index/bounds and actual use before hardware-writing port. |
 | `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
 | `0xCFDC2130` | `FUN_00011CFF` iterates input bytes while programming serial-trigger FPGA registers. | Validate programming effects and appropriate hardware safeguards. |
-| `0xCFDC2400` | Exact 4-byte input; original `LAB_00012EC2` ORs caller DWORD into global pending IRQ bitmap `DAT_0001CE10`. The subsequent virtual call is through **hardware-subobject** derived vtable `0x1C62C + 0x24`, still unresolved. | Check raw pointer at `0x1C650` and target ABI/side effects before porting. A provisional x64 case was reverted; leave tested baseline unchanged. |
 
 **Newly represented and tested on real scope: `0xCFDC2194`.**
 The owner completed targeted Ghidra exports. Original ISR
@@ -50,44 +54,49 @@ and variant `0xCFDC2138`) do not imply full behavior for all original
 subcommands and transfer shapes. The earlier 2026-09-28 coverage
 audit later in this file remains historical rather than current.
 
-## Latest CFDC2400 investigation: pending callback proved, virtual slot unresolved (2026-09-30)
+## CFDC2400 completed original analysis and source-only port (2026-09-30)
 
-The original dispatch passes `main+0x1E0` to `FUN_00013A2E`,
-which delegates to `FUN_00012EDE`. A previously archived raw
-instruction window `raw_12ec2.asm.txt` already includes its
-entire synchronized callback `LAB_00012EC2`:
+The 2026-09-30 PC Ghidra export commit
+`b7b31c8bf5a06e9621a3636776673b486f72bfe5`
+resolves the formerly confused virtual method:
 
-```asm
-00012EC9 MOV EAX,[0x0001CE1C]
-00012ECE OR  dword ptr [0x0001CE10],EAX
-```
+- Original `FUN_00012EDE` accepts a required exact four-byte
+  METHOD_BUFFERED input; stores it to `DAT_0001CE1C`.
+- The synchronized callback `LAB_00012EC2` ORs the entire DWORD
+  into original ISR/DPC pending bitmap `DAT_0001CE10`.
+- The dispatcher passes hardware subobject `main+0x1E0`
+  with **active derived vtable `0x1C62C`**, not the
+  base vtable `0x1C8BC` or main vtable `0x1C500`.
+- Actual derived virtual `+0x24` slot at `0x1C650`
+  points to **`0x114F2`**, not the base-class no-op
+  `0x104A0`.
+- The thunk at `0x114F2` adjusts `ECX` by `-0x1E0`,
+  passes the two caller DWORDs through and calls original
+  DPC dispatcher **`FUN_00011390` synchronously**. It ends
+  with `RET 0x8`, precisely matching the observed ABI.
+- Thus full behavior is the pending-bitmap OR **followed
+  by immediate existing DPC processing**, not an MMIO write,
+  synthetic hardware interrupt, new queued DPC or no-op.
 
-Here `DAT_0001CE1C` is the user's entire four-byte DWORD
-and `DAT_0001CE10` is the original software-pending
-interrupt bitmap, also updated by ISR `FUN_000108D6`
-and consumed through the DPC bit helpers.
+The native port is staged via
+`LECS65_IOCTL_CFDC2400` in `driver/LecS65Drv.h`,
+`LecInjectLegacyPendingAndDispatch` in
+`driver/Acquisition.c` and the 4-byte validation case in
+`driver/Ioctl.c`. The helper ORs all caller bits into the
+per-device `InterruptPendingShadow` atomically, temporarily
+raises to `DISPATCH_LEVEL` if needed to satisfy the existing
+DPC spinlock contract, invokes `LecInterruptDpc` **directly**
+and restores caller IRQL. Empty input (four zero bytes)
+still invokes immediate processing of any previously pending
+sources, matching the unconditional original virtual call.
 
-**Correction to historical 0x104A0 mapping below:** the
-hardware subobject's active derived vtable is at
-`0x1C62C` (main+0x1E0, assigned at 0x10B5C);
-the actual final `FUN_00012EDE` method
-`[vtable+0x24]` therefore comes from the DWORD
-at **0x1C650**, not main vtable `0x1C500`.
-The documented no-op at `0x104A0` consists of
-`XOR EAX,EAX; RET` and is ABI-incompatible with the
-two zero DWORDs explicitly pushed before the virtual
-call and not caller-cleaned afterwards. Until the
-correct slot is dumped, do **not** assume that the
-original complete CFDC2400 handler has no additional
-effects. A provisional native CFDC2400 case and
-constant were reverted before any build/deployment.
-Coverage remains **23/27 native top-level cases
-represented**, one gated and four absent.
-
-A read-only Ghidra `dwords:<hexbase>:<count>` exporter
-and targets for `1c62c`, `1c500`, `1c8bc`
-are now committed but not yet run on the user's PC.
-See [full CFDC2400 analysis and next command](
+**Not built or hardware tested yet.** With XStream closed,
+first build only, then after successful signed install perform
+the zero-mask `lecdiag raw-ioctl 0xCFDC2400 00000000 0`
+and a normal XStream/AP015 regression. Do not use a nonzero
+injected software interrupt mask on the sole scope merely
+to test coverage. See the complete
+[CFDC2400 original and x64 analysis](
 cfdc2400-software-pending-investigation.md).
 
 ## Recovered dispatch table
@@ -1946,9 +1955,13 @@ This closes the essential event-registration ABI: user-mode passes 32-bit event 
 
 ### 0xCFDC2400 -> 0x12EDE
 
-`FUN_00012ede` requires a non-null four-byte input buffer. It copies the input DWORD to global `DAT_0001CE1C` and executes `LAB_00012EC2` under the driver's interrupt-synchronization helper returned by `0x10A88`. Later raw assembly already proves that `LAB_00012EC2` ORs the caller's entire DWORD into pending bitmap `DAT_0001CE10`. It then invokes the hardware-subobject (not main-object) virtual method `+0x24` with `(0, 0)`.
+`FUN_00012ede` requires a non-null exact four-byte input buffer. It copies the DWORD to global `DAT_0001CE1C` and executes `LAB_00012EC2` under synchronization via `0x10A88`. The callback ORs the entire DWORD into software pending bitmap `DAT_0001CE10`. It then invokes the derived hardware-subobject virtual `+0x24` with two zero arguments.
 
-**2026-09-30 correction:** the final derived-subobject vtable is `0x1C62C` and its exact slot DWORD is at `0x1C650`. Its target and side effects still need export; see the current CFDC2400 section above.
+**Later decisive export (2026-09-30):** vtable `0x1C62C`,
+slot DWORD `0x1C650` resolves to thunk **`0x114F2`**,
+which synchronously calls the existing original DPC
+dispatcher `0x11390` and ends with `RET 0x8`.
+See the current CFDC2400 section above.
 
 ### Process-registration bookkeeping
 
@@ -1985,11 +1998,17 @@ program transfer registers / reset completion event
 
 The virtual hooks are therefore transfer-interrupt enable/disable hooks rather than opaque DMA start/stop methods.
 
-### 0x104A0: no-op body confirmed, attribution to CFDC2400 REVOKED (2026-09-30 correction)
+### 0x104A0: base-class no-op, not the actual CFDC2400 virtual call (resolved 2026-09-30)
 
-Original `raw_104a0.asm.txt` indeed contains `XOR EAX,EAX; RET` at `0x104A0`. An older vtable analysis attributed the later `CFDC2400` virtual `+0x24` call to this routine. That specific **attribution is now unverified and ABI-inconsistent**: `CFDC2400` receives the hardware subobject at `main+0x1E0` with active derived vtable `0x1C62C`, whereas earlier analysis conflated it with the main object at vtable `0x1C500`. The real pointer slot to read is `0x1C650`. Moreover, original `FUN_00012EDE` pushes two zero DWORDs before the virtual call without any subsequent caller-side stack adjustment, whereas `0x104A0` has a bare `RET` with no argument cleanup.
-
-**The OR into `DAT_1CE10` is proved, but the complete handler is not yet closed.** Do not port it based on the apparent 0x104A0 no-op until the correct derived-subobject slot/target is exported.
+Original `raw_104a0.asm.txt` indeed contains
+`XOR EAX,EAX; RET` at `0x104A0`, and the fresh base
+hardware-subobject vtable dump confirms it as
+`0x1C8BC + 0x24`. This is **not the method invoked** by
+the constructed derived subobject: its active vtable
+`0x1C62C + 0x24` resolves to `0x114F2`, which
+directly invokes DPC `0x11390` and ends in
+`RET 0x8`. The previous base-vtable mapping has
+now been corrected; see the current CFDC2400 section above.
 
 ### 0x12E18: process-owned transfer cleanup
 
