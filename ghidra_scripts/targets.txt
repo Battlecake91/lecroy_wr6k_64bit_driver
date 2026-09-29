@@ -127,3 +127,24 @@ field:116d
 # Include potential LEA bases for later +0x0A pointer arithmetic.
 field:1340
 field:1160
+
+# 2026-09-30: CFDC2400 follow-up. The raw callback LAB_00012EC2
+# unquestionably ORs the caller DWORD into global pending DAT_0001CE10.
+# Do NOT assume vtable +0x24 is the existing main-vtable 0x104A0 no-op.
+# Dispatch 0x112EA passes ECX=main+0x1E0, whose active derived vtable
+# is 0x1C62C (constructor at 0x10B5C). The old 0x104A0 no-op is RET,
+# but 0x12EDE pushes TWO DWORD arguments before the virtual call:
+# a plain RET target would corrupt the caller stack.
+# Export both object vtables as literal DWORDs with slot +0x24 preview.
+asm:13a2e
+asm:12ede
+asm:10a88
+asm:104a0
+xref:12ec2
+xref:1ce10
+xref:1ce1c
+xref:1c62c
+xref:1c500
+dwords:1c62c:16
+dwords:1c500:16
+dwords:1c8bc:16
