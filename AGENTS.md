@@ -22,7 +22,7 @@ See the revised quick handoff for exact commands. No successful
 hardware validation or XStream regression yet. Do not resume
 `CFDC2194` or Dallas work prematurely.
 
-**Fast current-state handoff (2026-09-29):** [`docs/quick-handoff-2026-09-29.md`](docs/quick-handoff-2026-09-29.md) records the new source-only `0x00223044` case, the pending Windows build/install/`lecdiag start-register` result which the user will provide to the NEXT chat, and the still-blocked `0xCFDC2194` latch provenance. Start there. No test success is implied by the source commits.
+**Fast current-state handoff (2026-09-29):** [`docs/quick-handoff-2026-09-29.md`](docs/quick-handoff-2026-09-29.md) now records the first actual (blocked) install attempt, the failed initial `0x00223044` request against an unverified loaded driver, exact elevated retry commands, and the still-blocked `0xCFDC2194` latch provenance. Start there. No successful new-handler hardware validation is established.
 **Current safe implementation handoff (2026-09-29, after new Ghidra push):**
 Original `FUN_00012D24` does a DWORD read
 through original main-object pointer at
@@ -34,14 +34,13 @@ in `driver/Ioctl.c` and the header.
 `lecdiag start-register` now checks
 that its four-byte result matches
 existing generic BAR0+0x000 read.
-This new code is NOT Windows-built or
-hardware-tested yet. Run
-`scripts/build-driver.ps1 -BuildLecdiag`,
-and, on x64 scope only after build
-success with XStream closed, use
-established signed reload plus
-`lecdiag start-register`. Stop
-on any mismatch.
+The first scope signed-reload attempt did not pass
+the administrator gate; successful loading and hardware
+validation of the new case are still pending. On the
+x64 scope, close XStream, run the established signed
+reload from an elevated PowerShell, then use
+`lecdiag start-register`. Stop on any load/IOCTL error
+or DWORD mismatch.
 
 The second exported handler
 `FUN_00012BAE` for `0xCFDC2194`
