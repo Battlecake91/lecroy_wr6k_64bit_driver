@@ -5,6 +5,78 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Current owner-requested test cadence (2026-09-30): GROUP REGRESSIONS.**
+The owner explicitly does **not** want to spend time doing a complete
+XStream waveform/AP015 regression after every small development step.
+Collect a useful, safe test/implementation milestone first, then request
+**one** full XStream practical regression for the combined changes.
+This supersedes the historical "immediate next XStream regression"
+wording below as a scheduling instruction; the post-CFDC2400
+XStream result is still objectively PENDING, not implicitly PASS.
+
+The owner already demonstrated installed `CFDC2400` zero-mask
+positive ABI success on real PCI. A new scope-side nine-case script
+`scripts/test-safe-ioctl-batch.ps1` is now committed but **has
+NOT yet been executed**. It checks driver build 1002, PCI 1570:0005,
+passive START/FVER-vs-BAR0 comparison, CFDC2400 four-byte ZERO
+mask with output capacities 0 and 4, 3-byte and 5-byte rejected
+CFDC2400 input (Win32 ERROR_INVALID_PARAMETER = 87), and CFDC2194
+wrong output capacities 28/30 (rejected before consuming latch).
+With optional `-IncludeErrorStatus` it also consumes one
+valid 29-byte CFDC2194 status read; OMIT that switch by default.
+The script refuses to run if XStream process is active and requires
+only the already-built `tools/lecdiag/build/lecdiag.exe`; it does
+NOT sign/load/reboot, inject any nonzero software pending bits,
+issue Dallas writes or program serial-trigger FPGA/GPIO.
+Note that even CFDC2400 ZERO mask still invokes existing DPC
+processing, per original semantics; do not mislabel that action
+as entirely passive.
+
+NEXT useful user action on the x64 scope, with XStream closed
+(no driver reload necessary):
+
+```powershell
+Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
+.\scripts\test-safe-ioctl-batch.ps1
+```
+
+Expected only after actual execution: `SAFE ABI BATCH: 9/9
+passed; 0 failed.` Report the complete output/any failure;
+expected DeviceIoControl failures for invalid buffer sizes
+are successes in this test suite. Do NOT claim 9/9 in advance.
+Read [grouped safety/test and remaining original IOCTL analysis](
+docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+STATIC original-handler progress:
+- `0x0022303C` (`FUN_00012CAC`) requires an exact
+  0x10A-byte (266B) buffer when global gate `DAT_1CD08==0`.
+  `FUN_0001259A` reads a signed/unchecked DWORD register
+  wrapper-table index at record offset +0x101 and a DWORD
+  value at +0x106, then `FUN_000107FE` caches and writes
+  the selected physical register. No safe bounds guard
+  visible in the helper; DO NOT port/call with fabricated
+  record until actual table/index mapping is known.
+- `0xCFDC2130` (`FUN_00011CFF`) requires a non-null,
+  nonempty byte stream; it reads BAR1 GPIODAT (+0xC4)
+  through hardware-subobject wrapper +0x318 and on EACH
+  input byte replaces only 0xE000 with
+  `((byte << 8) & 0xE000)`, then commits a real MMIO
+  DWORD via `FUN_000107FE`. Preserve byte-stream
+  timing/order; not a safe arbitrary live scope probe.
+- Licensed Dallas `0x00223088` remains deliberately
+  deferred until a disposable chip is available.
+Twelve additional static-only Ghidra export targets for
+these two write paths have been queued in
+`ghidra_scripts/targets.txt`, NOT yet executed.
+No extra driver code was added for them. Native top-level
+representation stays **24/27** with one gated, three absent.
+Finish safe ABI batch and further static analysis before
+the ONE deferred XStream regression.
+
+**Historical pre-batching immediate test request (superseded):**
+
 **Newest on-scope positive result (2026-09-30; CFDC2400):**
 The owner supplied actual `lecdiag` output after running the
 newly installed native `CFDC2400` code on their real x64
