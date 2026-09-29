@@ -4,6 +4,40 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## Current newest scope outcome: grouped 9/9 ABI PASS (2026-09-30)
+
+Owner ran the existing scope `scripts/test-safe-ioctl-batch.ps1`:
+`SAFE ABI BATCH: 9/9 passed; 0 failed.` / 
+`All requested safe ABI checks passed.`
+A PowerShell 5.1 `NativeCommandError` was ALSO printed by
+the original native `2>&1 | Out-String` capture during
+an intentionally negative buffer-size test. The nine actual
+expectations were nevertheless met, per the owner's
+reported harness result. Fixed the script to capture
+stdout/stderr separately via `Start-Process -Wait -PassThru`
+and verify its process exit code. Fixed harness not yet
+rerun, and no x64 kernel driver or lecdiag binary was
+changed.
+
+Owner wants ONE lengthy XStream regression per combined
+milestone; post-CFDC2400 XStream/AP015 practical
+regression stays pending, not assumed passed.
+
+**Next on separate Ghidra PC**, for the static-only
+register/serial-FPGA original paths already queued
+in `ghidra_scripts/targets.txt`:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: inspect remaining register and serial-trigger write paths"
+```
+
+No new kernel install or artificial IOCTL write request.
+See [grouped ABI and static write details](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Historical pre-run batch instruction (superseded)
+
 ## Current next step: grouped safe checks, one later XStream regression
 
 Owner explicitly requests milestone-based XStream regressions,
