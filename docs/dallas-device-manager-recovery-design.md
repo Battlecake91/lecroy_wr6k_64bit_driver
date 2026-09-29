@@ -103,7 +103,7 @@ from physical chip replacement and warn on ROM mismatch.
 No fake ROM-ID injection into normal XStream operation
 is implied by this recovery feature.
 
-## Proposed Dellas tab and standalone manager features
+## Proposed Dallas tab and standalone manager features
 
 | Function | Status and desired behavior |
 |---|---|
