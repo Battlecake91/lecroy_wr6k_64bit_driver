@@ -4,6 +4,24 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+
+**Latest actual scope feedback (2026-09-29 late):** The first attempted
+`scripts/build-sign-load-driver.ps1` terminated at its administrator
+check because PowerShell was **not elevated**; no new driver was
+installed or PnP-restarted by that attempt. A locally present new
+`lecdiag.exe start-register` opened the PCI interface, but
+`DeviceIoControl(0x00223044, in=0, out=4)` returned Win32
+`ERROR_INVALID_FUNCTION` (1). The generic BAR0 read was not reached.
+An old loaded SYS lacking the new case is the immediate hypothesis,
+not a demonstrated code regression. The visible `$LASTEXITCODE`
+check after the throwing PowerShell script did not detect failure.
+Next: XStream closed, **elevated PowerShell**, pull current `main`,
+run signed build/load, check immediate `$?` and full PnP results,
+then rerun read-only `lecdiag start-register` and compare both DWORDs.
+See the revised quick handoff for exact commands. No successful
+hardware validation or XStream regression yet. Do not resume
+`CFDC2194` or Dallas work prematurely.
+
 **Fast current-state handoff (2026-09-29):** [`docs/quick-handoff-2026-09-29.md`](docs/quick-handoff-2026-09-29.md) records the new source-only `0x00223044` case, the pending Windows build/install/`lecdiag start-register` result which the user will provide to the NEXT chat, and the still-blocked `0xCFDC2194` latch provenance. Start there. No test success is implied by the source commits.
 **Current safe implementation handoff (2026-09-29, after new Ghidra push):**
 Original `FUN_00012D24` does a DWORD read
