@@ -1,5 +1,26 @@
 # Active handoff: missing x64 Dallas WRITE identified by real XStream trace (2026-09-29)
 
+**Project direction updated (2026-09-29):**
+User explicitly postpones virtual Dallas ROM/EEPROM
+emulation and physical DS2433 isolation testing.
+These are [deferred TODO items](TODO.md), not the
+next task. The device and kernel source remain
+untouched by this documentation change.
+
+`README.md` has been **rewritten as a concise
+canonical current-state overview**; no historic
+trial/error, outdated milestone claims or
+per-trace diary entries belong there. Retain
+detail and prior investigation in the dedicated
+`docs/` pages and this engineering handoff.
+Active backlog still includes broader XStream
+regression work and source-guided native
+Dallas WRITE 0x00223088 (after separate
+spare-chip verification); other features
+are tracked in `docs/TODO.md`.
+
+
+
 **Conditional failed-chip recovery design (2026-09-29):**
 User correctly points out that replacement of a physically
 dead DS2433 changes its *factory* ROM identity, whereas the
