@@ -4,48 +4,44 @@ This table is reconstructed from the comparison tree inside `CLecS65AcqDrvDevice
 
 All values below are **confirmed as dispatch values** in the analysed binary.
 
-## Current native x64 coverage snapshot (2026-09-29)
+## Current native x64 coverage snapshot (2026-09-30)
 
-**Do not confuse original x86 dispatch identification with complete native
-x64 feature coverage.** A fresh comparison of the recovered 27-entry
-original dispatch table with the top-level switch in `driver/Ioctl.c`
-finds 22 original dispatch codes represented in x64 (21 with a
-handler representing original behavior to varying degrees, plus the
-deliberately gated `0xCFDD219F`). **Five original codes lack a top-level
-x64 case.** This updates the historical 2026-09-28 six-missing count:
-read-only `0x00223044` has since been implemented, passed a physical
-BAR0+0x000 comparison, and received an owner-confirmed XStream/AP015
-baseline regression check. The additional observed `0x00222400`
-x64 handler is not part of this original 27-entry inventory.
+The captured original x86 build identifies **27 top-level IOCTL dispatch
+values** (26 buffered, one METHOD_NEITHER). The latest source-only
+`0xCFDC2194` addition brings the native x64 top-level switch to
+**23/27 represented** (22 having varying degrees of functional
+implementation, one explicitly gated: `0xCFDD219F`). **Four**
+original codes still have no top-level x64 case. The additional
+observed x64 `0x00222400` handler is outside the original 27-value
+inventory.
 
-| Original IOCTL not yet in x64 switch | What original selected source establishes | What remains |
+| Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
-| `0x0022303C` | `FUN_00012CAC` consumes exactly `0x10A` input bytes and passes them to `FUN_0001259A` (`SetOneRegister`), which selects a register wrapper and performs a hardware register write. | Confirm index/address bounds, full input layout and safe observable use before porting any hardware-writing behavior. |
-| `0x00223088` | Dallas WRITE handler `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` have been recovered. | Native writer implementation and spare-DS2433 verification; no write tests on the sole licensed card. |
-| `0xCFDC2130` | Serial-trigger FPGA programming path `FUN_00011CFF` iterates over input bytes and writes an evolving register value. | Validate its register programming protocol, guardrails and actual call conditions before hardware tests. |
-| `0xCFDC2194` | `FUN_00012BAE` produces exactly 29 bytes: DWORD 2 at +4, software status `this+0x116A` at +8, followed by latch clear. | Locate the **producer** and synchronization of the status latch. Its direct-displacement scan found only the consumer; aliases are possible. **Next source-analysis priority.** |
-| `0xCFDC2400` | `FUN_00013A2E` forwards to `FUN_00012EDE`, which requires a 4-byte input, stores a global control value, registers a callback and invokes an internal virtual method. | Characterize callback/state effects and original call timing before a native implementation. |
+| `0x0022303C` | `FUN_00012CAC` consumes a 0x10A-byte register-control record and forwards it to `FUN_0001259A` to write a selected hardware register. | Verify index/bounds and actual use before hardware-writing port. |
+| `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
+| `0xCFDC2130` | `FUN_00011CFF` iterates input bytes while programming serial-trigger FPGA registers. | Validate programming effects and appropriate hardware safeguards. |
+| `0xCFDC2400` | `FUN_00013A2E` forwards to `FUN_00012EDE`, a four-byte control/callback path. | Confirm callback/state effects and runtime need before porting. |
 
-**Separate from those five missing cases:** `0xCFDD219F` already has
-an explicitly disabled x64 dispatcher branch, but its `METHOD_NEITHER`
-user-pointer, WOW64 and DMA semantics remain an important engineering
-risk. Other original top-level codes that have x64 cases are not
-necessarily complete for every nested subcommand or transfer shape.
-In particular, `0xCFDC2110` has multiple firmware/control subcommands
-and `0xCFDC2138` currently supports only the observed one-channel
-form. The source-visible host command protocol must also be distinguished
-from onboard FPGA/firmware behavior and the separate physical
-front-ProBus ADC/I2C protocol.
+**Newly represented but not hardware-validated: `0xCFDC2194`.**
+The user completed targeted Ghidra exports. The status producer
+is confirmed inside original ISR `FUN_000108D6`: it accumulates
+BAR0 ERRS at `main+0x134A` (equivalent to hardware subobject
+`this+0x116A`) and may set bit 31 upon persistent error/reassertion.
+Original `FUN_00012BAE` returns and clears the same latch in an
+exact 29-byte response. Native x64 source now implements the ERRS
+latch/ack path and reply, and corrects the paired `CFDC2190` type,
+enable-bit and inverted ERRM programming semantics. This has **not**
+been Windows-built or tested on the actual scope yet. A new
+`lecdiag error-status` command provides a consuming/read-and-clear
+positive-path test with XStream closed. Full provenance, limits and
+test procedure: [CFDC2194 status-latch analysis](
+cfdc2194-status-latch-investigation.md).
 
-The low-risk next step is **static analysis**, not speculative kernel
-writes: track all aliases/initialization and indirect writers of
-`this+0x116A`; inspect the paired `0xCFDC2190` path
-(`FUN_00013A40`), its register helper (`FUN_000107FE`), callback
-`FUN_00012EAE`, and `FUN_00011E46` as neighboring control flow.
-These exports do not by themselves prove the latch producer.
-Use original x86/XStream request frequencies, lengths and statuses to
-prioritize the remaining compatibility work. Never publish genuine
-Dallas ID or license payloads.
+The gated `0xCFDD219F` still needs careful WOW64/MDL/DMA validation.
+Other represented top-level handlers (especially nested `0xCFDC2110`
+and variant `0xCFDC2138`) do not imply full behavior for all original
+subcommands and transfer shapes. The earlier 2026-09-28 coverage
+audit later in this file remains historical rather than current.
 
 ## Recovered dispatch table
 
@@ -3770,6 +3766,11 @@ probe interfaces:
 No driver source changes are implied by these
 topology observations.
 
+## Historical 2026-09-29 CFDC2194 status investigation (superseded)
+
+The source producer was unknown at this time. The 2026-09-30 ISR
+export and new source-only port are recorded in the current section
+above and in the dedicated status-latch analysis.
 
 ## Current follow-up: 0x00223044 implemented; CFDC2194 status producer unresolved (2026-09-29)
 
