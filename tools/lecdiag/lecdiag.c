@@ -15,6 +15,7 @@
 #define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
 #define LECS65_IOCTL_READ_DALLAS_MEMORY ((DWORD)0x00223084)
 #define LECS65_IOCTL_READ_START_REGISTER ((DWORD)0x00223044)
+#define LECS65_IOCTL_CFDC2194           ((DWORD)0xCFDC2194)
 #define LECS65_IOCTL_WRITE_DALLAS_MEMORY ((DWORD)0x00223088)
 
 #define LECS65_IOCTL_DEBUG_GET_STATS \
@@ -1091,6 +1092,69 @@ static int query_legacy_start_register(HANDLE h)
     return 0;
 }
 
+/*
+ * Read and consume the original 29-byte CFDC2194 software error latch.
+ * This is not a physical ERRS register read and must not be used while
+ * XStream is concurrently expecting to consume the same pending status.
+ */
+static int query_legacy_error_status(HANDLE h)
+{
+    BYTE response[29];
+    DWORD returned = 0;
+    DWORD type = 0;
+    DWORD errorStatus = 0;
+    size_t i;
+
+    ZeroMemory(response, sizeof(response));
+    if (!DeviceIoControl(
+            h,
+            LECS65_IOCTL_CFDC2194,
+            NULL,
+            0,
+            response,
+            sizeof(response),
+            &returned,
+            NULL)) {
+        print_error("0xCFDC2194 ERROR_STATUS");
+        return 1;
+    }
+
+    if (returned != sizeof(response)) {
+        fprintf(stderr,
+            "CFDC2194: expected 29 bytes, got %lu\n",
+            (unsigned long)returned);
+        return 1;
+    }
+
+    memcpy(&type, response + 4, sizeof(type));
+    memcpy(&errorStatus, response + 8, sizeof(errorStatus));
+
+    if (type != 2) {
+        fprintf(stderr,
+            "CFDC2194: invalid structure type %lu (expected 2)\n",
+            (unsigned long)type);
+        return 1;
+    }
+
+    for (i = 0; i < sizeof(response); ++i) {
+        if ((i < 4 || i >= 12) && response[i] != 0) {
+            fprintf(stderr,
+                "CFDC2194: nonzero reserved byte at offset %lu\n",
+                (unsigned long)i);
+            return 1;
+        }
+    }
+
+    printf("0xCFDC2194 error status (read/clear): 0x%08lX\n",
+        (unsigned long)errorStatus);
+    if ((errorStatus & 0x80000000UL) != 0) {
+        printf("  original ISR persistent-error/reassertion flag is set\n");
+    }
+
+    printf("PASS: original 29-byte response layout verified.\n");
+    return 0;
+}
+
 static int read_register(HANDLE h, unsigned bar, unsigned long offset)
 {
     LECS65_REG_READ_EXT req;
@@ -1497,6 +1561,7 @@ static void usage(const char* exe)
     printf("  %s dallas-read [length 1..512]\n", exe);
     printf("  %s dallas-backup <new-private-file.bin> (read-only)\n", exe);
     printf("  %s start-register (read-only 0x00223044 / BAR0+0)\n", exe);
+    printf("  %s error-status (CFDC2194 read-and-clear; close XStream)\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
@@ -1591,6 +1656,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "start-register") == 0 && argc == 2) {
         result = query_legacy_start_register(h);
+    }
+    else if (_stricmp(argv[1], "error-status") == 0 && argc == 2) {
+        result = query_legacy_error_status(h);
     }
     else if (_stricmp(argv[1], "raw-ioctl") == 0 && argc == 5) {
         char* end1 = NULL;
