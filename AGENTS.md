@@ -5,6 +5,63 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest source milestone (2026-09-30, after PC Ghidra export
+commit `b7b31c8bf5a06e9621a3636776673b486f72bfe5`):**
+The previously missing real derived hardware-subobject virtual
+`+0x24` has been **resolved** by raw vtable dump:
+`0x1C62C+0x24 -> 0x1C650 -> 0x114F2`.
+The thunk at 0x114F2 adjusts receiver by -0x1E0, calls
+original `FUN_00011390` (DPC dispatcher) DIRECTLY and
+synchronously, and ends in `RET 0x8`. The earlier
+base-class no-op `0x104A0` was from vtable `0x1C8BC`,
+not the active derived vtable. Original complete CFDC2400
+therefore: validate exact 4-byte buffered input, synchronize/
+OR caller DWORD into `DAT_0001CE10`, immediately run the
+existing DPC dispatcher, report Information=0/STATUS_SUCCESS.
+
+New x64 **SOURCE-ONLY, NOT YET BUILT/LOADED/TESTED** port:
+- `driver/LecS65Drv.h`: `LECS65_IOCTL_CFDC2400` and
+  `LecInjectLegacyPendingAndDispatch` prototype.
+- `driver/Acquisition.c`: use `InterlockedOr` on existing
+  `InterruptPendingShadow`, temporarily raise to
+  `DISPATCH_LEVEL` (existing DPC spinlock contract),
+  call `LecInterruptDpc` DIRECTLY, restore caller IRQL.
+  No new hardware registers, artificial IRQ or queued DPC.
+  Even zero mask runs dispatcher, matching original code.
+- `driver/Ioctl.c`: exact four-byte input with non-null
+  system buffer; STATUS_INVALID_PARAMETER otherwise,
+  positive status from helper and Information=0.
+- `docs/ioctl-map.md` now counts **24/27** original
+  top-level values represented (one gated), **three**
+  absent: `0x0022303C`, `0x00223088`,
+  `0xCFDC2130`.
+
+**Next on REAL SCOPE: build only first**, with XStream
+closed, at
+`C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver`:
+
+```powershell
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Pull failed; STOP" }
+& ".\scripts\build-driver.ps1" -BuildLecdiag
+if (-not $?) { throw "New CFDC2400 build failed; STOP" }
+```
+
+If successful and with previous working driver recoverable,
+use established elevated `scripts/build-sign-load-driver.ps1`.
+Then with XStream still closed run ONLY
+`tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0`.
+Expected: 4-byte accepted input, Information/returned 0.
+Avoid nonzero injected pending bits on the working scope.
+Then perform normal live XStream waveform/control/AP015
+regression. Do not report the new patch as verified before
+the owner supplies actual Windows/scope output. See
+[CFDC2400 investigation](docs/cfdc2400-software-pending-investigation.md).
+The preceding CFDC2194/CFDC2190 owner-confirmed runtime
+is still the last verified hardware baseline.
+
+**Historical pre-export CFDC2400 hypothesis, superseded below:**
+
 **Newest open source-analysis gate: original CFDC2400 (2026-09-30).**
 Existing `ghidra_exports/selected/raw_12ec2.asm.txt` proves
 its synchronized callback `LAB_00012EC2` does
