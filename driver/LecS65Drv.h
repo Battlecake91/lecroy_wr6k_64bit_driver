@@ -57,6 +57,7 @@
 #define LECS65_IOCTL_SET_EVENT_0          ((ULONG)0xCFDC2180)
 #define LECS65_IOCTL_SET_EVENT_1          ((ULONG)0xCFDC218C)
 #define LECS65_IOCTL_CFDC2190              ((ULONG)0xCFDC2190)
+#define LECS65_IOCTL_CFDC2194              ((ULONG)0xCFDC2194)
 #define LECS65_IOCTL_REGISTER_READ     ((ULONG)0xCFDC21C0)
 #define LECS65_IOCTL_REGISTER_WRITE    ((ULONG)0xCFDC21C4)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((ULONG)0xCFDC21C8)
@@ -251,6 +252,10 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     USHORT ReservedInterrupt;
     volatile ULONG InterruptEnableShadow;
     volatile ULONG InterruptPendingShadow;
+    /* Original FUN_000108D6 accumulates ERRS at main+0x134A. */
+    volatile LONG LegacyErrorStatusLatch;
+    /* BAR0 ERRM cached wrapper value (original main+0x38C). */
+    volatile LONG LegacyErrmShadow;
     KDPC InterruptDpc;
 
     KSPIN_LOCK LegacyEventLock;
