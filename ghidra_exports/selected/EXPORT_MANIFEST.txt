@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 2b2e3e41d1c7c0768ed48eb68056fe9415e7c756
+Source commit: ea03d215a1ec5ab022930dd931dea342dae2da6f
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -108,6 +108,18 @@ Targets:
   field:116d
   field:1340
   field:1160
+  asm:13a2e
+  asm:12ede
+  asm:10a88
+  asm:104a0
+  xref:12ec2
+  xref:1ce10
+  xref:1ce1c
+  xref:1c62c
+  xref:1c500
+  dwords:1c62c:16
+  dwords:1c500:16
+  dwords:1c8bc:16
 
 Exported files:
   00010380_FUN_00010380.c
@@ -510,6 +522,7 @@ Exported files:
   0001955a_FUN_0001955a.refs.txt
   00019966_FUN_00019966.c
   00019966_FUN_00019966.refs.txt
+  asm_asm_10a88.txt
   asm_asm_10a8e.txt
   asm_asm_10e3a.txt
   asm_asm_10f30.txt
@@ -527,10 +540,12 @@ Exported files:
   asm_asm_12d6a.txt
   asm_asm_12e72.txt
   asm_asm_12eae.txt
+  asm_asm_12ede.txt
   asm_asm_13768.txt
   asm_asm_137c4.txt
   asm_asm_1381e.txt
   asm_asm_138d4.txt
+  asm_asm_13a2e.txt
   asm_asm_13a40.txt
   asm_asm_13dc6.txt
   asm_asm_155d0.txt
@@ -556,6 +571,9 @@ Exported files:
   asm_asm_17ee0.txt
   asm_asm_1807a.txt
   asm_asm_18194.txt
+  dwords_dwords_1c500_16.txt
+  dwords_dwords_1c62c_16.txt
+  dwords_dwords_1c8bc_16.txt
   field_0x1006.refs.txt
   field_0x100a.refs.txt
   field_0x101e.refs.txt
@@ -620,6 +638,7 @@ Exported files:
   raw_13914.asm.txt
   raw_13934.asm.txt
   raw_170ee.asm.txt
+  raw_asm_104a0.asm.txt
   raw_asm_10b30.asm.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
@@ -631,4 +650,9 @@ Exported files:
   xref_xref_11f54.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
+  xref_xref_12ec2.txt
+  xref_xref_1c500.txt
+  xref_xref_1c62c.txt
   xref_xref_1c8bc.txt
+  xref_xref_1ce10.txt
+  xref_xref_1ce1c.txt
