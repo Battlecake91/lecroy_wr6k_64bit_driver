@@ -1,5 +1,68 @@
 # Active handoff: missing x64 Dallas WRITE identified by real XStream trace (2026-09-29)
 
+**2026-09-29 late implementation update: FVER IOCTL 0x00223044 added (source only).**
+After the user's new Ghidra push (selected ASM
+`asm_asm_12d24.txt` and `asm_asm_12bae.txt`,
+displacement reports `field_0x138.refs.txt`
+and `field_0x116a.refs.txt`) we confirmed
+two different issues.
+
+**DONE in GitHub source, Windows build and live
+test NOT YET RUN:** Original `FUN_00012D24`
+reads the register pointer stored at original
+`this+0x138`; `FUN_00014847`
+initializes that pointer to **BAR0+0x000**
+(FVER/START). Added
+`LECS65_IOCTL_READ_START_REGISTER 0x00223044`
+in `driver/LecS65Drv.h` and a read-only
+dispatcher case in `driver/Ioctl.c`
+which requires four output bytes, resolves
+BAR0+0x000 and returns the register DWORD,
+Information=4. Added `lecdiag start-register`,
+which calls this legacy IOCTL with input
+length zero, then the existing generic
+register-read interface for BAR0+0,
+and checks both four-byte outputs match.
+Source/diagnostic do **no register write**.
+
+**CFDC2194 NOT YET IMPLEMENTED:** Original
+`FUN_00012BAE` returns a zeroed 29-byte
+structure, sets DWORD at offset 4 to 2,
+reads original software latch
+`this+0x116A` into DWORD at offset 8
+and clears the original latch. Field
+scan found ONLY the read-and-clear
+instruction in this handler, no direct
+producer; alias/indirect writes are still
+possible. Do NOT create an always-zero
+stub or guess the latch source; map
+its producer/concurrency before porting.
+
+**NEXT user hardware handoff:** perform
+Windows build first:
+`./scripts/build-driver.ps1 -BuildLecdiag`.
+If successful and device test setup is
+ready, use the established signed reload
+`./scripts/build-sign-load-driver.ps1`
+on the x64 scope, with XStream closed.
+Then run `./tools/lecdiag/build/lecdiag.exe
+start-register` (safe, read-only).
+Compare both printed DWORDs; on mismatch
+do not proceed to further IOCTL changes.
+Retest normal XStream waveform/AP015 only
+after successful diagnostic. All Dallas
+write/emulation/physical chip work is
+unchanged and virtual recovery remains
+deferred in TODO.
+
+Technical records:
+`docs/ioctl-map.md` and `docs/TODO.md`.
+README remains a VERIFIED-current-state
+overview and should only be updated
+after actual scope validation, not merely
+because a new source case was committed.
+
+
 **Project direction updated (2026-09-29):**
 User explicitly postpones virtual Dallas ROM/EEPROM
 emulation and physical DS2433 isolation testing.
