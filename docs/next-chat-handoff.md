@@ -31,6 +31,46 @@ Details:
 Current x64 driver still does not implement 0x00223088
 WRITE; no virtual mode or chip write has been implemented.
 
+**Physical Dallas absence test plan (2026-09-29):**
+User proposes temporarily disconnecting the DS2433 to prove
+a virtual Dallas host recovery mode can support a failed
+physical chip. DO NOT make disconnection the first step.
+Preserve complete original eight-byte ROM ID (the current
+512-byte raw backups do not include it), two verified memory
+images and current x64 operating state. First implement
+explicit software-only Dallas IOCTL ID/READ handling from
+the archived same-chip image with no actual 1-Wire transfer
+in those handlers. Treat any virtual WRITE as a separate
+shadow-image action, not physical chip programming; no
+such emulator/writer has been implemented yet. Verify
+the emulator with chip attached, including proving it
+uses the virtual bytes and not a live hardware read.
+Only then, with powered-off and electrically checked
+hardware, consider reversible isolation of the PCI
+card `U11` from FPGA `U3` on `ID_DATA`.
+Never hot-disconnect, short the bus or cut a PCB trace
+on guesswork. Check whether PCI enumeration, driver
+initialization and subsequently XStream function
+without hardware response. Failure before IOCTL startup
+means host-level emulation alone is insufficient.
+Finally power down, restore link, disable virtual
+mode and compare original ROM/EEPROM again. See
+`docs/dallas-device-manager-recovery-design.md`.
+
+**Latest Ghidra:** user's new push updated only
+`ghidra_exports/selected/EXPORT_MANIFEST.txt`;
+the selected exported wrapper `FUN_00011f54`
+was already present, but helper exports
+`FUN_00016d90` and `FUN_00016f2c`
+are still absent. Added `16d90`,
+`16f2c`, `asm:16d90`, `asm:16f2c`
+to persistent `ghidra_scripts/targets.txt`.
+On Ghidra PC run `scripts/run-ghidra-analysis.ps1`
+again; its initial pull updates the targets.
+These helper implementations must be reviewed
+before coding any native EEPROM write. No
+kernel changes made in this turn.
+
 **Read this file and `AGENTS.md` before changing the driver.**
 Conversation in German, repository documentation and source comments in English.
 Repository: https://github.com/Battlecake91/lecroy_wr6k_64bit_driver;
