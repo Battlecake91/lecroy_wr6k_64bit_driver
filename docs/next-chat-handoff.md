@@ -1,3 +1,43 @@
+# Active handoff: CFDC2194 signed-load and idle diagnostic passed; XStream regression next (2026-09-30)
+
+## Latest actual hardware result
+
+**Owner-reported actual scope validation, 2026-09-30 00:23 local:**
+The new CFDC2194/CFDC2190 source was built, signed, installed and queried
+on the x64 LeCroy scope. The owner supplied the full
+`.\\scripts\\build-sign-load-driver.ps1` transcript:
+- MSBuild Debug|x64 succeeded with **0 warnings, 0 errors**; SYS output
+  `x64\\Debug\\LecS65AcqDrv.sys`. The up-to-date inner build
+  printed `ClCompile: All outputs are up-to-date`, which is expected
+  after the preceding source build.
+- `tools\\lecdiag\\build\\lecdiag.exe` built, x64 PE machine 0x8664.
+- Test-signed SYS and CAT; Inf2Cat signability: no errors/warnings.
+- PnP installation succeeded as `oem99.inf` on
+  `PCI\\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`;
+  PnP device restart succeeded.
+- Newly opened PCI device interface returned driver build
+  **1002** (Information=4). Passive PCI read returned
+  vendor/device 1570:0005, BDF 4:1.0, memory space and bus master
+  enabled, IRQ line 19/pin 1.
+- With XStream closed, new `lecdiag error-status` returned
+  `0xCFDC2194 error status (read/clear): 0x00000000`
+  followed by `PASS: original 29-byte response layout verified.`
+  This confirms real-hardware acceptance and format of the
+  exact 29-byte CFDC2194 reply, not a nonzero ISR error latch,
+  bit-31 persistent-error branch or full XStream compatibility.
+- `DriverVer=09/29/2026,0.2026.930.23` was generated on
+  September 30 local because the script uses UTC for DriverVer
+  date, while local clock supplies version components.
+- **Remaining immediate gate:** run XStream with the newly installed
+  driver and check live waveforms, ordinary controls, two-channel/
+  10-GS/s where practical, AP015 preattached identification,
+  physical unplug/replug, jaw warning and any new error IRQ storm.
+  Do not run `lecdiag error-status` while XStream is consuming
+  the same sticky latch, and do not artificially trigger hardware
+  faults or access licensed Dallas memory destructively.
+
+## Historical source-recovery and pre-build plan (completed through idle diagnostic)
+
 # Active handoff: CFDC2194 ISR producer recovered; x64 source patch awaits Windows build (2026-09-30)
 
 ## New decisive original-driver result
