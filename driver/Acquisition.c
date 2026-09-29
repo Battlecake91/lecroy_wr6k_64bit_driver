@@ -804,6 +804,60 @@ LecInterruptDpc(
     }
 }
 
+/*
+ * Original CFDC2400 (FUN_00012EDE) copies a caller DWORD into
+ * DAT_0001CE1C, ORs it into DAT_0001CE10 under interrupt
+ * synchronization (LAB_00012EC2), then calls the *derived hardware
+ * subobject* virtual slot +0x24 (table 0x1C62C, entry 0x1C650).
+ * The actual slot points to thunk 0x114F2, which adjusts this by
+ * -0x1E0 and directly invokes original DPC dispatcher FUN_00011390.
+ *
+ * Invoke the existing replacement DPC processing immediately, not
+ * KeInsertQueueDpc: that would change the observable timing. Its event
+ * spin-lock operations require DISPATCH_LEVEL, so temporarily raise
+ * IRQL if DeviceControl was entered below that level. Never invent
+ * BAR writes or a hardware interrupt to implement this request.
+ *
+ * A zero mask still runs the pending dispatcher, exactly as the
+ * original unconditional post-callback virtual call does. A nonzero
+ * mask is software interrupt injection, not a passive query.
+ */
+NTSTATUS
+LecInjectLegacyPendingAndDispatch(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONG PendingMask
+    )
+{
+    KIRQL callerIrql = KeGetCurrentIrql();
+    KIRQL previousIrql = callerIrql;
+    BOOLEAN raisedIrql = FALSE;
+
+    if (callerIrql > DISPATCH_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    (VOID)InterlockedOr(
+        (volatile LONG*)&DevExt->InterruptPendingShadow,
+        (LONG)PendingMask);
+
+    if (callerIrql < DISPATCH_LEVEL) {
+        previousIrql = KeRaiseIrqlToDpcLevel();
+        raisedIrql = TRUE;
+    }
+
+    LecInterruptDpc(
+        &DevExt->InterruptDpc,
+        DevExt,
+        NULL,
+        NULL);
+
+    if (raisedIrql) {
+        KeLowerIrql(previousIrql);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 LecConnectInterrupt(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
