@@ -137,6 +137,8 @@ LecS65AddDevice(
 
     devExt = (PLECS65_DEVICE_EXTENSION)deviceObject->DeviceExtension;
     RtlZeroMemory(devExt, sizeof(*devExt));
+    /* Original BAR0 ERRM register wrapper starts with cached 0xFFFFFFFF. */
+    devExt->LegacyErrmShadow = (LONG)0xFFFFFFFFUL;
     KeInitializeMutex(&devExt->DallasMutex, 0);
     KeInitializeMutex(&devExt->TransferMutex, 0);
     InitializeListHead(&devExt->TransferList);
