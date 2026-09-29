@@ -1,4 +1,46 @@
-# Active handoff: CFDC2400 original semantics complete; native source port awaiting Windows build (2026-09-30)
+# Active handoff: CFDC2400 on-scope zero-mask ABI PASS; XStream regression next (2026-09-30)
+
+## Latest actual PCI validation (owner-supplied)
+
+The owner executed the newly implemented CFDC2400 request
+against the physical x64 PCI device (VEN_1570, DEV_0005).
+Reported diagnostic output, with the unique Windows PCI
+instance string elided here:
+
+```text
+.\tools\lecdiag\build\lecdiag.exe raw-ioctl 0xCFDC2400 00000000 0
+Opened device interface: [real PCI 1570:0005]
+IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0
+Output:
+```
+
+**CFDC2400 zero-mask positive ABI is now verified on the
+actual installed scope driver.** Exact 4-byte input was
+accepted, NTSTATUS was successful and the returned byte
+count was 0. The full separate build/sign/load transcript
+was *not* pasted for this result, so do not assert exact
+compiler warnings, INF/CAT identity or other unverifiable
+details. No nonzero software IRQ mask was injected.
+Since original `0x114F2` directly calls DPC `0x11390`,
+the successful zero-mask invocation also reached the new
+handler's intended immediate-dispatch path, but it is
+not an instrumented proof of individual internal branches.
+
+**NEXT:** Have the owner start XStream using the *currently
+installed CFDC2400 driver* and perform practical
+waveform/amplitude/frequency, V/div/timebase,
+coupling/bandwidth/trigger, two-channel/10-GS/s
+where applicable, and AP015 recognition + physical
+unplug/replug/open-jaw checks. Note IRQ or startup
+anomalies if any. No repeated build/load or deliberate
+nonzero injected interrupt is needed. Do not consume
+`lecdiag error-status` concurrently with XStream.
+After the owner reports a clean check, update the
+working baseline; until then, the previous CFDC2194/
+CFDC2190 build is the last owner-confirmed practical
+XStream regression PASS.
+
+## Previous handoff before the positive scope diagnostic
 
 ## Latest decisive evidence: Ghidra export complete
 
