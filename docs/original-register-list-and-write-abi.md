@@ -251,6 +251,16 @@ original functions share a register-wrapper at
 - `FUN_000120DC` also reads the same wrapper,
   clears bit **16** with `v & 0xFFFEFFFF`,
   and writes the resulting full DWORD.
+- **New caller attribution:** `FUN_000120DC` is invoked
+  by `FUN_00012D6A` and `FUN_00012F30` immediately
+  before their respective existing data-transfer/
+  acquisition-related command paths. Consequently the
+  bit-16 clear is not an isolated setup-time action:
+  normal transfer traffic can own another bit of the
+  same full-DWORD GPIODAT register. This strengthens
+  the need to serialize any future `CFDC2130` stream
+  against ongoing acquisition. The exact physical pin
+  meaning of bit 16 has not been independently proved.
 - Original `FUN_00014847` constructs the
   `GPIODIR` wrapper at BAR1 `+0xC0` and
   `GPIODAT` at BAR1 `+0xC4`.
