@@ -7,9 +7,9 @@ All values below are **confirmed as dispatch values** in the analysed binary.
 ## Current native x64 coverage snapshot (2026-09-30)
 
 The captured original x86 build identifies **27 top-level IOCTL dispatch
-values** (26 buffered, one METHOD_NEITHER). The latest source-only
-`0xCFDC2194` addition brings the native x64 top-level switch to
-**23/27 represented** (22 having varying degrees of functional
+values** (26 buffered, one METHOD_NEITHER). The implemented,
+Windows-built and owner-tested idle `0xCFDC2194` addition brings
+the native x64 top-level switch to **23/27 represented** (22 having varying degrees of functional
 implementation, one explicitly gated: `0xCFDD219F`). **Four**
 original codes still have no top-level x64 case. The additional
 observed x64 `0x00222400` handler is outside the original 27-value
@@ -22,19 +22,26 @@ inventory.
 | `0xCFDC2130` | `FUN_00011CFF` iterates input bytes while programming serial-trigger FPGA registers. | Validate programming effects and appropriate hardware safeguards. |
 | `0xCFDC2400` | `FUN_00013A2E` forwards to `FUN_00012EDE`, a four-byte control/callback path. | Confirm callback/state effects and runtime need before porting. |
 
-**Newly represented but not hardware-validated: `0xCFDC2194`.**
-The user completed targeted Ghidra exports. The status producer
-is confirmed inside original ISR `FUN_000108D6`: it accumulates
-BAR0 ERRS at `main+0x134A` (equivalent to hardware subobject
-`this+0x116A`) and may set bit 31 upon persistent error/reassertion.
-Original `FUN_00012BAE` returns and clears the same latch in an
-exact 29-byte response. Native x64 source now implements the ERRS
-latch/ack path and reply, and corrects the paired `CFDC2190` type,
-enable-bit and inverted ERRM programming semantics. This has **not**
-been Windows-built or tested on the actual scope yet. A new
-`lecdiag error-status` command provides a consuming/read-and-clear
-positive-path test with XStream closed. Full provenance, limits and
-test procedure: [CFDC2194 status-latch analysis](
+**Newly represented and tested on real scope: `0xCFDC2194`.**
+The owner completed targeted Ghidra exports. Original ISR
+`FUN_000108D6` OR-accumulates BAR0 ERRS into
+`main+0x134A` (hardware subobject `this+0x116A`),
+and marks a persistent error by setting bit 31. Original
+`FUN_00012BAE` returns and clears the software latch in
+an exact 29-byte reply. The native x64 ISR/IOCTL implementation
+and correction of paired `CFDC2190` type/enable/ERRM
+inversion were subsequently Windows-built, test-signed and
+installed on the actual scope (owner log 2026-09-30:
+0 warnings/0 errors). `lecdiag error-status` with XStream
+closed returned `0x00000000` and
+`PASS: original 29-byte response layout verified.`
+After the requested XStream waveform/control/two-channel/AP015
+practical regression, the owner reported *"Ich finde keine
+Fehlfunktionen."* This is a successful owner-reported
+regression in the exercised configuration, not an itemized
+measurement matrix. Nonzero ISR error accumulation and
+persistent bit-31 behavior still lack a real runtime test.
+See [CFDC2194 status-latch investigation](
 cfdc2194-status-latch-investigation.md).
 
 The gated `0xCFDD219F` still needs careful WOW64/MDL/DMA validation.
