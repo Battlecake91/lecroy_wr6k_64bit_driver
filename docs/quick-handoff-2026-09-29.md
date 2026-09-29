@@ -4,6 +4,56 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## Latest original binary analysis: third batch COMPLETE (2026-09-30)
+
+Owner Ghidra push `00eb49db5efe98042df47ba07a570017cd37419d`
+has been fetched, reviewed and documented in
+[original 43-register architecture / remaining
+write IOCTL ABI](original-register-list-and-write-abi.md).
+The old "next run" Ghidra commands lower in this
+historical quick handoff are superseded.
+
+`CKeRegisterList` at hardware-subobject+0x11EE
+has independently growing pointer (4-byte/entry)
+and metadata (0x10A-byte/entry) arrays.
+`FUN_00012184` handles pointer growth;
+`FUN_000121FA` handles metadata growth.
+`FUN_0001785B` inserts the initial SIX transport
+registers into that SAME list, followed by
+15 common and 22 START-conditional registers;
+43 total intended indices 0..42 on fully
+successful initialization. This is the exact
+ordering already implemented in native
+`g_LecLegacyRegisterList[43]`.
+
+**Crucial setter ABI mismatch:** original query
+record at `+0x101` holds physical BAR OFFSET
+(constructed by `FUN_00013FA6`), whereas
+original missing SET IOCTL `0x0022303C`
+takes an ARRAY INDEX at the same incoming
+position. `FUN_0001259A` directly dereferences
+that index and writes physical MMIO WITHOUT
+local bounds validation. E.g. GPIODAT offset
+`0xC4`, but intended array index 42.
+Do not copy queried records into setter calls.
+
+`CFDC2130` also remains unported: original
+loop writes the `0xE000` field of BAR1
+GPIODAT (+0xC4) for EACH supplied byte;
+ordinary transfer routines `FUN_00012D6A`
+and `FUN_00012F30` both use
+`FUN_000120DC` to clear BIT16 of that
+same physical register. Avoid arbitrary writes
+and preserve PCI scope. Licensed Dallas
+WRITE remains deferred. Native IOCTL
+representation **24/27**, one gated, unchanged.
+
+Last scope safe ABI group: **9/9 PASS**.
+Owner wants one future combined XStream/AP015
+regression instead of one after each small
+analysis or patch. No scope action required
+solely for this static Ghidra result.
+
 ## Current newest scope outcome: grouped 9/9 ABI PASS (2026-09-30)
 
 Owner ran the existing scope `scripts/test-safe-ioctl-batch.ps1`:
