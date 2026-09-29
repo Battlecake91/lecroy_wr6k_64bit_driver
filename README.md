@@ -2,7 +2,7 @@
 
 An open reverse-engineering project providing a native Windows x64 replacement for the legacy 32-bit LeCroy `LecS65AcqDrv.sys` (S65 / WaveRunner 6000 acquisition hardware). The goal is to run the original XStream user-mode software on 64-bit Windows while preserving its device interfaces, IOCTL ABI and hardware behavior.
 
-> **Status (2026-09-29): Experimental, running on a real WaveRunner scope.** XStream starts and acquires live waveforms using the replacement driver. This is an ongoing compatibility project, not a fully validated production driver or an official LeCroy release.
+> **Status (2026-09-30): Experimental, running on a real WaveRunner scope.** XStream starts and acquires live waveforms using the replacement driver. This is an ongoing compatibility project, not a fully validated production driver or an official LeCroy release.
 
 ## Current functionality
 
@@ -42,7 +42,7 @@ Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-b
 - The x64 driver is an experimental test build; installation, test signing and hardware changes should be performed on a backed-up reference system.
 - The Dallas EEPROM is **read-only through the current replacement driver**. The physical write/restore path needs implementation and independent validation on a disposable chip before use with a working licensed card.
 - Compatibility is established for the observed XStream transfer forms. The WOW64-sensitive `0xCFDD219F` path, unobserved multi-channel/transfer variants and some legacy service/diagnostic operations remain gated or incomplete.
-- Original `CFDC2194` error-status provenance is recovered from the legacy ISR. A matching 29-byte read-and-clear path plus corrected paired `CFDC2190` error-mask programming has been **built, test-signed, installed and positively queried on the real x64 scope** (2026-09-30, owner-provided build/install log: 0 warnings/0 errors, PnP restart success, idle `lecdiag error-status` `0x00000000`, 29-byte-format PASS). The new driver's XStream waveform/control/AP015 regression and real nonzero error-IRQ behavior are **still pending**, so the last verified full XStream baseline predates this patch. See [error status investigation](docs/cfdc2194-status-latch-investigation.md).
+- Original `CFDC2194` error-status provenance is recovered from the legacy ISR. A matching 29-byte read-and-clear path plus corrected paired `CFDC2190` error-mask programming has been **built, test-signed, installed and positively queried on the real x64 scope** (2026-09-30, owner-provided build/install log: 0 warnings/0 errors, PnP restart success, idle `lecdiag error-status` `0x00000000`, 29-byte-format PASS). After installation, the owner completed the requested practical XStream waveform/control/two-channel/AP015 regression and reported **no observable malfunction**. This establishes the latest owner-confirmed working practical baseline, although real nonzero error-IRQ accumulation and persistent-error status bit 31 remain unexercised. See [error status investigation](docs/cfdc2194-status-latch-investigation.md).
 - Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
 - XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
 
