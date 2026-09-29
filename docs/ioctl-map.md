@@ -28,9 +28,9 @@ XStream regression baseline.
 
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
-| `0x0022303C` | `FUN_00012CAC` consumes a 0x10A-byte register-control record and forwards it to `FUN_0001259A` to write a selected hardware register. | Verify index/bounds and actual use before hardware-writing port. |
+| `0x0022303C` | Exact 0x10A (266)-byte record when gate `DAT_1CD08==0`; `FUN_0001259A` uses a caller DWORD register-table index at record +0x101 and value at +0x106; `FUN_000107FE` caches and physically writes selected MMIO register. No index bounds check is visible in that helper. | Recover actual register table index bounds/mapping; never issue fabricated write records on real scope. |
 | `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
-| `0xCFDC2130` | `FUN_00011CFF` iterates input bytes while programming serial-trigger FPGA registers. | Validate programming effects and appropriate hardware safeguards. |
+| `0xCFDC2130` | Non-null, nonempty input; `FUN_00011CFF` reads BAR1 GPIODAT (+0xC4), replaces only bits 15:13 (`0xE000`) with bits 7:5 of each input byte shifted <<8, then writes physical register **once per byte**. | Preserve stream sequence/timing and other GPIO ownership; no fabricated programming on working board. |
 
 **Newly represented and tested on real scope: `0xCFDC2194`.**
 The owner completed targeted Ghidra exports. Original ISR
@@ -59,6 +59,30 @@ Other represented top-level handlers (especially nested `0xCFDC2110`
 and variant `0xCFDC2138`) do not imply full behavior for all original
 subcommands and transfer shapes. The earlier 2026-09-28 coverage
 audit later in this file remains historical rather than current.
+
+## Grouped milestone test policy and remaining writes (2026-09-30)
+
+The owner wants one full practical XStream/AP015 regression per
+useful combined milestone, **not** after every individual IOCTL.
+The new, not-yet-executed
+`scripts/test-safe-ioctl-batch.ps1` bundles nine
+low-impact checks with XStream closed, including positive
+`CFDC2400` four-byte ZERO-mask cases, wrong input size
+rejection and `CFDC2194` malformed output-size rejection
+without consuming the error latch. No driver reload or
+nonzero software pending bit is issued by the script.
+
+Two of the three remaining unrepresented originals are
+confirmed hardware-write paths: `0x0022303C` indexed
+register write, and `CFDC2130` masked per-byte
+BAR1 GPIODAT serial-trigger programming. Their detailed
+record offsets, gate states and physical register side
+effects are described in
+[grouped validation and static write review](
+safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+No native cases have been added for these risky controls.
+The third absent value `0x00223088` is licensed Dallas
+EEPROM WRITE, intentionally deferred.
 
 ## CFDC2400 completed original analysis and source-only port (2026-09-30)
 
