@@ -4,6 +4,34 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
+## Newest result: CFDC2400 real-PCI zero-mask ABI PASS (2026-09-30)
+
+The owner ran `lecdiag raw-ioctl 0xCFDC2400 00000000 0`
+on the actual scope PCI device (1570:0005) and supplied:
+
+```text
+IOCTL 0xCFDC2400 succeeded: input=4 output-capacity=0 returned=0
+Output:
+```
+
+The installed native case recognizes exactly four input bytes,
+reports success, and returns no data. The unique device-instance
+path is intentionally omitted here. A separate complete build/
+sign/install transcript was not supplied with this specific test;
+no nonzero pending IRQ bit or full XStream compatibility was
+demonstrated. Zero-mask still triggers the original-style
+immediate existing DPC processing, so it is not a passive query.
+
+**Immediate next owner action:** start XStream on the current
+installed CFDC2400 driver; run normal waveforms/controls/
+two-channel 10 GS/s/AP015 preattached + unplug/replug +
+jaw-warning regression. No further build or loading required
+before this test. Avoid injecting a nonzero interrupt mask.
+The preceding CFDC2194/CFDC2190 XStream baseline remains
+the last practical XStream regression confirmed working.
+
+## Historical prior CFDC2400 source-only checkpoint
+
 ## Latest actionable state: CFDC2400 source port awaits real-scope build (2026-09-30)
 
 The owner's latest original-driver export
