@@ -258,6 +258,109 @@ image. Whether replacement-chip behavior affects
 the manufacturer's licensing policy is a separate
 unresolved question.
 
+## Validate virtual mode before disconnecting the real chip
+
+**2026-09-29 follow-up:** the user is willing to perform a
+reversible physical disconnection of the Dallas IC to determine
+whether a host-side virtual recovery path remains functional
+with a physically failed or missing DS2433. This should be
+the final test, **not** the first diagnostic step.
+
+The existing schematic shows PCI-side DS2433 `U11`
+connected to Spartan-IIE `U3` on net `ID_DATA`.
+The available driver trace establishes host-facing
+`GET_DALLAS_ID` / `READ_DALLAS_MEMORY`
+traffic, but does not establish whether the PCI
+FPGA or its startup path independently requires
+a physical 1-Wire answer before any Windows IOCTL.
+
+A controlled staged test:
+
+1. **Preserve original identity and data first:**
+   two matching private full-memory images already
+   exist. Record the original **complete 8-byte ROM
+   ID including CRC8 separately** while hardware
+   still functions; existing `dallas-backup`
+   saves memory only.
+2. **Virtual mode with intact hardware:** a diagnostic
+   variant responds to host Dallas ID and full-memory
+   READ from the verified archived ROM and EEPROM,
+   without issuing live 1-Wire transactions on
+   those paths. Record counters for virtual vs
+   physical accesses. Any virtual writes should
+   modify a distinct, private 512-byte shadow
+   image and maintain correct visible read-after-write
+   behavior; never accidentally program U11.
+   Native x64 WRITE 0x00223088 remains absent,
+   so this behavior is future implementation work,
+   not a current working feature.
+3. **Verify emulation independently:** compare
+   the known private original ID/image against
+   direct physical data while both are still
+   available, then select a copy-only, carefully
+   identified benign test field for virtual-only
+   response testing. Do not guess an all-zero
+   region means an unused license record or
+   generate working license entitlements.
+   Explicitly test that no direct board access
+   occurs in the virtual host IOCTL handlers.
+4. **Only then consider physical absence:**
+   power down, remove external power and
+   use an electrically sound, **reversible**
+   isolation method for the DS2433's `ID_DATA`
+   connection (jumper/adapter where possible).
+   Do not short the net, hot-disconnect, lift
+   a pin or cut a trace without checking
+   PCB layout, pull-up/power topology and
+   safety constraints. If no safe reversible
+   mechanism exists, defer hardware absence
+   testing. Scope recovery must not itself
+   cause a second fault.
+5. **Test two distinct boot conditions:** with
+   the physical device absent, observe first
+   whether the PCI device enumerates and the
+   kernel driver initializes at all; next,
+   with virtual mode already configured,
+   observe whether XStream successfully
+   receives the archived host-visible
+   Dallas ID and memory. If PCI FPGA
+   hardware requires the physical ID
+   independently at power-up, responding
+   later at the IOCTL layer is insufficient.
+6. **Return to baseline:** power down,
+   restore the original electrical connection,
+   disable virtual mode, repeat ROM ID
+   and full-memory read-only checks and
+   compare against original private images.
+   Capture only redacted diagnostics.
+
+**Interpretation:** virtual success with original
+DS2433 still electrically attached proves
+host-side substitution, **not** operation with
+dead hardware. A subsequent successful
+physical-absence test is necessary for the
+stronger recovery claim. Failure with absent
+chip must be classified by stage: PCI FPGA
+enumeration/startup vs driver initialization
+vs user-mode XStream license read.
+
+**Latest Ghidra status:** the user reports having
+rerun `scripts/run-ghidra-analysis.ps1`; current
+public HEAD after that run changed only the
+export manifest. The already requested and
+exported writer wrapper `FUN_00011f54`
+exists, but selected C/ASM export files for
+its called `FUN_00016d90` and
+`FUN_00016f2c` still do **not**
+exist on main. To recover the native
+writer, explicitly add `16d90`,
+`asm:16d90`, `16f2c`,
+`asm:16f2c` as export targets
+and rerun the PC-side Ghidra
+export script. Do not claim low-level
+1-Wire write details are proven by
+the wrapper alone.
+
 ## Build stages (recommended order)
 
 **Stage 1:** implement a small read-only
