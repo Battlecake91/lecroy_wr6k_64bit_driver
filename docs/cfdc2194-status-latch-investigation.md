@@ -10,9 +10,43 @@ error after acknowledgement. The original `0xCFDC2194` handler
 `FUN_00012BAE` reads and clears exactly that DWORD via the hardware
 subobject-relative coordinate `this+0x116A`.
 
-The native x64 implementation has now been **source-committed**, not
-Windows-built, loaded or hardware-tested by the assistant. Do not
-confuse original source proof with native x64 runtime validation.
+The native x64 implementation has now been committed, Windows-built,
+test-signed, installed and exercised in the **idle 29-byte readback
+positive path** on the owner's real x64 scope. The assistant did not
+run the local WDK/PCI tools itself; the full actual output was
+supplied by the owner. Nonzero ISR-latch validation and XStream
+regression remain open.
+
+## On-scope positive-path validation (owner output, 2026-09-30 00:23 local)
+
+The source patch described below **has now been built, signed and
+installed on the real x64 LeCroy scope**. Actual user-supplied
+`build-sign-load-driver.ps1` output confirms:
+
+| Stage | Supplied result |
+|---|---|
+| MSBuild Debug/x64 (latest invocation) | Successful; 0 warnings, 0 errors; `x64/Debug/LecS65AcqDrv.sys` |
+| `lecdiag` build | Successful x64, PE machine `0x8664` |
+| Test signature / Inf2Cat | SYS signed, CAT generated/signed, no signability warnings/errors |
+| Windows PnP | Package `oem99.inf` installed on PCI 1570:0005, device restart successful |
+| Driver query | Build 1002, returned 4 bytes |
+| PCI passive query | BDF 4:1.0, PCI vendor/device 1570:0005, memory space/bus master enabled, IRQ line 19/pin 1 |
+| New `CFDC2194` idle test | `error-status` returns `0x00000000` and `PASS: original 29-byte response layout verified.` |
+
+The owner tested the error-status diagnostic with XStream closed. This
+is a **positive ABI and successful device-install validation**;
+`0x00000000` is a plausible idle status and does not mean that
+the nonzero ERRS accumulation or reasserted-error bit 31 path
+has been exercised. No post-change XStream waveform/control/AP015
+regression result has been supplied yet. That is the immediate next
+test; the previous owner-confirmed working XStream/AP015 baseline
+belongs to the earlier START/FVER patch.
+
+The generated `DriverVer=09/29/2026,0.2026.930.23`
+despite the local September 30 build is explained by the installer
+using `ToUniversalTime()` for INF date while retaining local
+clock components for its version number; the device installation
+reported success.
 
 ## Decisive alias and original function chain
 
@@ -115,7 +149,7 @@ information. The original handler's explicit load/copy/clear is
 not atomic; the x64 code uses an `InterlockedExchange` to
 avoid losing an ISR update between load and clear.
 
-## Native x64 implementation committed, pending build/hardware test
+## Native x64 implementation committed and idle readback hardware-tested
 
 | File | Source change |
 |---|---|
@@ -136,7 +170,7 @@ No Dallas write/emulation, probe command, DMA descriptor or
 unrelated acquisition handler was intentionally changed. The
 updated kernel is **not yet an observed working baseline**.
 
-## Controlled next test on the actual x64 scope
+## Original controlled test plan and outstanding XStream regression
 
 1. Retain the previously known-good driver/OS recovery path. Close
    XStream and use an elevated PowerShell to build the new source.
