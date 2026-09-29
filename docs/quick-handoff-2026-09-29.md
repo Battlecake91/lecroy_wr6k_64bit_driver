@@ -4,64 +4,65 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
-## Exactly what to expect from the next user turn
+## Actual first scope feedback (2026-09-29 late evening)
 
-The previous chat made a narrow, **source-only** implementation of the
-original 32-bit IOCTL `0x00223044` on the replacement x64 kernel driver
-and added a read-only `lecdiag start-register` validation command.
-**The user has NOT yet reported a Windows build, installed this new
-version, or returned hardware diagnostic output.**
+The owner has now returned a **partial console result** for the newly
+committed read-only `0x00223044` compatibility test:
 
-The user was asked to:
+- `scripts/build-sign-load-driver.ps1` threw
+  `Run this script from an elevated PowerShell window.` from its
+  first `Assert-Administrator` call (line 13). **This invocation did
+  not build, sign, install, or PnP-restart the new kernel driver.**
+  A prior pure-build success is not independently verifiable from the
+  supplied console fragment because its build log was omitted.
+- The following interactive
+  `if ($LASTEXITCODE -ne 0) { throw "Installation fehlgeschlagen" }`
+  did not stop execution. `$LASTEXITCODE` reflects the last native
+  executable, not a reliable success/failure code from a PowerShell
+  script throwing an exception. Use an immediate `$?` check (or
+  a `try/catch`) for the script invocation.
+- The locally present `lecdiag.exe start-register` opened the
+  device interface successfully, but its **first**
+  `DeviceIoControl(0x00223044, in=0, out=4)` failed with Win32
+  error 1 (`ERROR_INVALID_FUNCTION`). The generic BAR0 reference
+  request was therefore **not executed**, and no two-register
+  comparison occurred. Because the signed reload never ran, an older
+  installed driver missing this new dispatcher case is the immediate
+  working explanation, **not a proven kernel-code regression**.
+  The existing dispatcher defaults unknown IOCTLs to
+  `STATUS_INVALID_DEVICE_REQUEST`; further proof requires the
+  elevated reload and repeated read-only diagnostic.
 
-1. On their working Windows x64 scope, update the checkout at
-   `C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver`:
-   `git pull --ff-only origin main`.
-2. First build without installing:
-   `& ".\scripts\build-driver.ps1" -BuildLecdiag`.
-3. **Only if the build succeeds** and after closing XStream, run
-   the established signed install/reload from an **elevated PowerShell**:
-   `& ".\scripts\build-sign-load-driver.ps1"`.
-   It builds again, signs SYS/CAT using the existing configured test
-   certificate, installs via the Driver Store, restarts the PnP PCI
-   device, then performs build and passive PCI checks.
-4. Run the **read-only** new comparison:
-   `& ".\tools\lecdiag\build\lecdiag.exe" start-register`.
-   It invokes legacy `0x00223044` with no input and a four-byte
-   output buffer, then independently invokes the existing generic
-   BAR0+0 register read and checks **both DWORD values are identical**.
-5. **Report the actual console output / error and exit code** in the
-   next conversation. If there is a build, signing, PnP, IOCTL, or
-   register-value mismatch, stop at that step and diagnose before
-   continuing. If successful, perform the ordinary XStream waveform,
-   controls and AP015 recognition regression. Do not assume either
-   build or hardware validation has happened merely because source
-   commits exist.
+### Next action on the real x64 scope
 
-Commands to paste into elevated PowerShell **on the x64 scope**:
+Close XStream first. Open **Windows PowerShell as administrator**
+(right-click -> Run as administrator), then run:
 
 ```powershell
 Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
 git pull --ff-only origin main
-if ($LASTEXITCODE -ne 0) { throw "Git pull failed; stop" }
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
 
-# Read and inspect build output before installing anything:
-& ".\scripts\build-driver.ps1" -BuildLecdiag
-if ($LASTEXITCODE -ne 0) { throw "Build failed; stop" }
-
-# Close XStream BEFORE the next command. Requires Administrator:
 & ".\scripts\build-sign-load-driver.ps1"
-if ($LASTEXITCODE -ne 0) { throw "Driver signing/load failed; stop" }
+if (-not $?) { throw "Build/sign/load script failed; STOP" }
 
-# New read-only compatibility test:
 & ".\tools\lecdiag\build\lecdiag.exe" start-register
-if ($LASTEXITCODE -ne 0) { throw "Start-register comparison failed; stop" }
+if ($LASTEXITCODE -ne 0) { throw "0x00223044 read/compare failed; STOP" }
 ```
 
-The last step is a passive read; it must **not** write to the
-DS2433, BAR registers, or license storage. Installation/reload itself
-does restart the PCI device, so run only on the agreed test scope
-after closing the XStream application.
+The signed-load script rebuilds the kernel driver **and** lecdiag, signs
+the SYS/CAT with the configured test certificate, installs the package,
+restarts the target PCI device and runs build/passive-PCI checks. Do
+not bypass an installation, PnP, or verification error. Report the
+**entire installer console output** and then the new `start-register`
+result, including both hex DWORDs if they are returned. A simple
+`lecdiag build` response of legacy build `1002` is an ABI-compatibility
+constant, not a unique fingerprint of the newly loaded binary.
+Only after `start-register` reports `PASS` should the normal
+XStream waveform/control/AP015 regression test be performed.
+
+No Dallas, BAR register write, hardware isolation, or `CFDC2194`
+implementation is part of this troubleshooting step.
 
 ## Source facts just recovered from the user's Ghidra push
 
