@@ -5,6 +5,59 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**Newest open source-analysis gate: original CFDC2400 (2026-09-30).**
+Existing `ghidra_exports/selected/raw_12ec2.asm.txt` proves
+its synchronized callback `LAB_00012EC2` does
+`DAT_0001CE10 |= DAT_0001CE1C` on a non-null receiver.
+The original user input is a required exact FOUR-byte DWORD;
+`DAT_0001CE10` is the ISR/DPC software pending bitmap.
+The callback itself performs no MMIO or DPC insertion.
+
+**Critical correction to historical vtable prose below:** the
+`CFDC2400` dispatch at original 0x112EA passes
+`main+0x1E0`, NOT the main object, to `FUN_00013A2E`
+and `FUN_00012EDE`. The hardware subobject's active
+derived vtable is original `0x0001C62C` (constructor
+`FUN_00010B3C` at 0x10B5C); the method called after
+the callback is its slot `+0x24`, i.e. pointer DWORD
+at **0x0001C650**. The earlier attribution of this
+call to `0x000104A0` (`XOR EAX,EAX; RET`)
+is **NOT VERIFIED and ABI-inconsistent**: original
+`FUN_00012EDE` pushes TWO DWORDs before calling the
+virtual method and has no caller-side cleanup. A bare RET
+would unbalance the stack. Do not treat this old
+main-vtable mapping as proof of a no-op for CFDC2400.
+Actual derived slot and target must be exported first.
+
+To preserve the working scope baseline, the provisional
+new x64 `CFDC2400` constant/case drafted during analysis
+was REVERTED. `driver/Ioctl.c` and `LecS65Drv.h`
+have no CFDC2400 port; **23/27** original top-level
+codes remain represented in x64 source (one gated),
+four absent including CFDC2400. No native scope/driver
+installation is requested now.
+
+NEW Ghidra exporter support for `dwords:<hexbase>:<count>`
+has been committed in `ghidra_scripts/ExportSelected.java`,
+with literal table and slot +0x24 instruction preview.
+`ghidra_scripts/targets.txt` now requests
+`dwords:1c62c:16` (correct derived subobject),
+`dwords:1c500:16` (main object), `dwords:1c8bc:16`
+(base subobject), and original callback/dispatch ASM.
+These targets have NOT YET BEEN EXECUTED on the PC Ghidra
+environment. Next step: the owner runs
+`scripts/run-ghidra-analysis.ps1` on their Ghidra PC
+with commit message `analysis: resolve CFDC2400 derived-vtable slot`.
+Then inspect `ghidra_exports/selected/dwords_dwords_1c62c_16.txt`,
+especially `+0x24`; decompile actual target if needed.
+Full proof, ABI caveat and command:
+[CFDC2400 pending callback investigation](
+docs/cfdc2400-software-pending-investigation.md).
+Leave the previously verified waveform/AP015/PCI/IRQ/DMA
+driver untouched until actual virtual method semantics are known.
+
+**Historical checkpoint (CFDC2194 validation):**
+
 **Owner-reported post-patch XStream regression PASS (2026-09-30):**
 After the successful signed installation of the new CFDC2194
 error-status ISR/read-and-clear path and correction of CFDC2190
