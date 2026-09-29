@@ -4,6 +4,29 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Failed/replaced DS2433 nuance (2026-09-29):**
+A factory-new chip has a different immutable eight-byte
+ROM ID even if original 512-byte EEPROM contents are
+programmed. The leading six-digit displayed Scope-ID
+component matches ROM serial bytes 1..3 LE; the
+remaining display suffix is still not decoded.
+License binding to that ROM has NOT been proven,
+so universal license invalidation must remain a
+conditional risk, not a fact. Current
+`lecdiag dallas-backup` exports only the 512
+memory bytes; separately save complete original
+`dallas-id` before loss of the original chip.
+For a physically dead/replaced chip, an optional
+virtual Dallas source could conceptually return
+the archived ROM and image through host ID/READ
+(and coherent separate shadow-write behavior),
+but this does not program hardware, and it is
+not yet known if PCI FPGA/firmware boot also
+requires the actual device. Distinguish this
+from genuine in-place EEPROM restoration.
+Documented design:
+`docs/dallas-device-manager-recovery-design.md`.
+No virtual/restore writer has been implemented.
 **New UI feature request (2026-09-29):** User requests a
 Device Manager Dallas EEPROM maintenance page with backup,
 compare, recovery and optional offline hex editing. A native
