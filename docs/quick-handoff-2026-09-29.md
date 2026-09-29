@@ -4,7 +4,39 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
-## Newest scope result: post-CFDC2194 XStream regression PASS
+## New current analysis: CFDC2400 requires correct derived vtable (2026-09-30)
+
+Existing original `raw_12ec2.asm.txt` proves the
+`CFDC2400` callback ORs the four-byte caller value into
+global pending bitmap `DAT_0001CE10` under interrupt
+synchronization. However the original dispatch passes
+`main+0x1E0`, the hardware subobject with **derived vtable
+0x1C62C**; final virtual slot `+0x24` is at `0x1C650`.
+Older prose mapping that call to `0x104A0` no-op is
+ABI-inconsistent (the call pushes two DWORDs, but
+`0x104A0` is bare RET) and must not be relied upon.
+A provisional CFDC2400 x64 case was reverted before
+any Windows build. The last signed/verified CFDC2194
+XStream baseline is unchanged, with 23/27 represented
+top-level original codes.
+
+New read-only Ghidra target `dwords:1c62c:16` plus
+comparison vtables and ASM is committed. Next, the
+owner runs on the *Ghidra PC*, **not scope**:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+& ".\scripts\run-ghidra-analysis.ps1" -CommitMessage "analysis: resolve CFDC2400 derived-vtable slot"
+```
+
+Then inspect
+`ghidra_exports/selected/dwords_dwords_1c62c_16.txt`
+slot `+0x24`. All specifics:
+[CFDC2400 investigation](cfdc2400-software-pending-investigation.md).
+
+## Historical last scope result: post-CFDC2194 XStream regression PASS
+
+
 
 **Owner-reported post-patch XStream regression PASS (2026-09-30):**
 After the successful signed installation of the new CFDC2194
