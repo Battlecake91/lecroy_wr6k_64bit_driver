@@ -9,7 +9,7 @@ An open reverse-engineering project providing a native Windows x64 replacement f
 | Area | Verified or implemented state |
 | --- | --- |
 | PCI and Windows interfaces | Native x64 WDM/PnP binding for `PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`, mapped BARs, recovered legacy interface GUIDs and common register/IOCTL access. |
-| XStream acquisition | Real waveform display and recurring acquisitions on scope hardware. The user has tested timebase, vertical scale, coupling, bandwidth, trigger changes and 2-channel / 10-GS/s operation. |
+| XStream acquisition | Real waveform display and recurring acquisitions on scope hardware. The user has tested timebase, vertical scale, coupling, bandwidth, trigger changes and 2-channel / 10-GS/s operation. Following the `0x00223044` register-query change, the owner reported no observed regression in the exercised XStream/AP015 baseline. |
 | DMA and interrupts | Working, hardware-tested acquisition/transfer paths for the observed command forms, with locked buffers, chained legacy descriptors, completion events and recovered ISR/DPC acknowledgement. Unsupported transfer forms remain gated. |
 | ProBus / AP015 | Probe identification and physical unplug/replug work. XStream detects the AP015 jaw state and displays the unlocked-jaw warning. The host response serializer and pending-command notification path are hardware-tested. |
 | PCI Dallas DS2433 | ROM-ID read with CRC8 verification, 512-byte EEPROM read and private double-verified binary backup work on real hardware. Physical EEPROM writing is not implemented in the x64 driver. |
