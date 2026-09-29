@@ -1,93 +1,58 @@
-# Active handoff: elevated signed reload needed before 0x00223044 validation (2026-09-29)
+# Active handoff: START/FVER 0x00223044 passed real-scope comparison (2026-09-29)
 
-**Newest scope feedback (late 2026-09-29):** The owner attempted
-`scripts/build-sign-load-driver.ps1` from a **non-elevated**
-PowerShell and hit its administrator assertion before any signing,
-installation or PnP restart. The immediately following
-`lecdiag start-register` opened the device interface but the initial
-`0x00223044` returned Win32 error 1
-(`ERROR_INVALID_FUNCTION`). No BAR0 reference read or DWORD
-comparison was reached. An older installed driver without the
-new case is the current leading explanation, not proof of a defect in
-the new read-only case. Pure-build log and actual loaded SYS revision
-were not provided. The caller's `$LASTEXITCODE` check did not catch
-the PowerShell-script `throw`. **Next:** close XStream; open elevated
-PowerShell; `git pull --ff-only origin main`; rerun signed
-`build-sign-load-driver.ps1`; check its immediate `$?` and
-all installation/PnP output; only then run the read-only
-`lecdiag start-register` comparator. Full commands are in
-[quick-handoff-2026-09-29.md](quick-handoff-2026-09-29.md).
-If either step fails, stop there. Do not progress to
-`CFDC2194`, Dallas writes/emulation, or chip isolation.
+**Latest verified result (late 2026-09-29):** The owner ran
+`tools/lecdiag/build/lecdiag.exe start-register` on the physical
+x64 WaveRunner PCI device and reported:
 
+```text
+0x00223044 START/FVER: 0x00000002
+BAR0+0x000 reference: 0x00000002
+PASS: legacy 4-byte output matches physical register read.
+```
 
+The diagnostic successfully reached both read-only DeviceIoControl
+paths and returned matching four-byte values. The newly implemented
+`0x00223044` positive path is therefore **verified on real hardware**,
+against an independent generic BAR0+0x000 read. No physical register
+write or Dallas operation is involved. This does not prove all ABI
+error/length paths or original-x86-versus-x64 equivalence for every
+hardware condition. The latest owner excerpt does not provide full
+build/sign/load console logs or the scope's current Git HEAD; avoid
+claiming those individual script steps as independently verified.
 
-**SHORT VERSION / ZIP HANDOFF BASIS:** [quick-handoff-2026-09-29.md](quick-handoff-2026-09-29.md).
-The first signed-load attempt was blocked by missing elevation; the first IOCTL call failed as recorded above. A successful newly loaded-driver comparison and XStream regression remain pending.
-User explicitly requested a ZIP for moving to a new chat. Use the compact handoff first; this long document preserves technical investigation history.
+**Historical initial failure, now superseded:** The earlier
+`build-sign-load-driver.ps1` attempt ran without administrative
+elevation, hit the administrator assertion before installation/PnP,
+and then `lecdiag start-register` failed its first IOCTL with Win32
+`ERROR_INVALID_FUNCTION` (1). No reference read was reached then.
+The newer PASS shows the currently serving driver now accepts the
+new request. For future PowerShell-script checks use the immediate
+`$?` or `try/catch` rather than relying on subsequent
+`$LASTEXITCODE` after a PowerShell `throw`.
 
-**2026-09-29 late implementation update: FVER IOCTL 0x00223044 added (source only).**
-After the user's new Ghidra push (selected ASM
-`asm_asm_12d24.txt` and `asm_asm_12bae.txt`,
-displacement reports `field_0x138.refs.txt`
-and `field_0x116a.refs.txt`) we confirmed
-two different issues.
+## Immediate next action: XStream regression (NOT YET REPORTED)
 
-**DONE in GitHub source, Windows build and live
-test NOT YET RUN:** Original `FUN_00012D24`
-reads the register pointer stored at original
-`this+0x138`; `FUN_00014847`
-initializes that pointer to **BAR0+0x000**
-(FVER/START). Added
-`LECS65_IOCTL_READ_START_REGISTER 0x00223044`
-in `driver/LecS65Drv.h` and a read-only
-dispatcher case in `driver/Ioctl.c`
-which requires four output bytes, resolves
-BAR0+0x000 and returns the register DWORD,
-Information=4. Added `lecdiag start-register`,
-which calls this legacy IOCTL with input
-length zero, then the existing generic
-register-read interface for BAR0+0,
-and checks both four-byte outputs match.
-Source/diagnostic do **no register write**.
+Start XStream normally on the x64 scope; check real waveform display,
+amplitude/frequency, timebase and V/div, coupling, bandwidth,
+trigger, and (where practical) two-channel/10-GS/s behavior.
+Check AP015 if already connected, physical removal/reinsertion
+and the existing open/unlocked-jaw warning. Report actual behavior;
+do not label this regression successful until tested.
 
-**CFDC2194 NOT YET IMPLEMENTED:** Original
-`FUN_00012BAE` returns a zeroed 29-byte
-structure, sets DWORD at offset 4 to 2,
-reads original software latch
-`this+0x116A` into DWORD at offset 8
-and clears the original latch. Field
-scan found ONLY the read-and-clear
-instruction in this handler, no direct
-producer; alias/indirect writes are still
-possible. Do NOT create an always-zero
-stub or guess the latch source; map
-its producer/concurrency before porting.
+If the regression passes, proceed to focused original-driver source
+analysis of `0xCFDC2194` and locate the producer of original
+`this+0x116A`. `FUN_00012BAE` establishes only the exact
+29-byte output (zeroed response, DWORD 2 at +4, captured status DWORD
+at +8, then latch clear). The field scan found only that
+read-and-clear access. Do not fabricate a constant-zero successful
+response or alter established PCI/IRQ/DMA/ProBus behavior speculatively.
 
-**Originally requested user hardware handoff (partly attempted; see newest feedback above):** perform
-Windows build first:
-`./scripts/build-driver.ps1 -BuildLecdiag`.
-If successful and device test setup is
-ready, use the established signed reload
-`./scripts/build-sign-load-driver.ps1`
-on the x64 scope, with XStream closed.
-Then run `./tools/lecdiag/build/lecdiag.exe
-start-register` (safe, read-only).
-Compare both printed DWORDs; on mismatch
-do not proceed to further IOCTL changes.
-Retest normal XStream waveform/AP015 only
-after successful diagnostic. All Dallas
-write/emulation/physical chip work is
-unchanged and virtual recovery remains
-deferred in TODO.
-
-Technical records:
-`docs/ioctl-map.md` and `docs/TODO.md`.
-README remains a VERIFIED-current-state
-overview and should only be updated
-after actual scope validation, not merely
-because a new source case was committed.
-
+**No Dallas WRITE/emulation or chip-isolation work is part of this
+step.** Source details are in [quick handoff](quick-handoff-2026-09-29.md),
+[IOCTL map](ioctl-map.md), [TODO](TODO.md) and `AGENTS.md`.
+The longer dated investigation preserved below is historical; its
+earlier source-only or failed-test statements must not override
+the newer live PASS above.
 
 **Project direction updated (2026-09-29):**
 User explicitly postpones virtual Dallas ROM/EEPROM
