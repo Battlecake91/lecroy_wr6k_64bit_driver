@@ -38,6 +38,20 @@ All values below are **confirmed as dispatch values** in the analysed binary.
 
 The access bits decode to `FILE_ANY_ACCESS` for all entries.
 
+## Legacy START/FVER read: 0x00223044
+
+Original `FUN_00012D24` requires an output buffer of exactly four
+bytes, reads original main-object register pointer `+0x138` and
+returns the DWORD with `Information=4`. Original initialization
+`FUN_00014847` points this at BAR0+0x000.
+
+**2026-09-29 real-scope verification:** the native x64 read-only
+handler returned `0x00000002` to `lecdiag start-register`; its
+independent generic register-read reference for BAR0+0x000 returned
+the same `0x00000002`. The diagnostic explicitly reported PASS.
+This establishes the live positive read path, not the broader
+XStream/AP015 regression or every error-length case.
+
 ## Generic register read: 0xCFDC21C0
 
 This request is now identified with high confidence.
@@ -3713,11 +3727,12 @@ compatibility targets to different confidence levels:
   as `LECS65_IOCTL_READ_START_REGISTER` using
   `LecResolveRegister(DevExt,0,0x000)`, checks exact
   output length and returns four bytes. Source
-  is committed but **Windows build/hardware runtime
-  validation remains pending**. `lecdiag start-register`
-  calls the new legacy IOCTL and independently
-  checks equality with existing generic
-  `REGISTER_READ BAR0+0x000`. No register write occurs.
+  is now **confirmed on the real x64 scope for this positive path**:
+  `lecdiag start-register` returned `0x00000002` via the legacy
+  four-byte `0x00223044` request and `0x00000002` via the separate
+  generic `REGISTER_READ BAR0+0x000`, reporting `PASS`.
+  No register write occurs; XStream/AP015 regression after this
+  specific driver change is not yet reported.
 - **Original `0xCFDC2194` (FUN_00012BAE):** requires
   **exactly 29 output bytes**; zero-initializes the
   response, stores `DWORD 2` at byte offset `+0x04`,
