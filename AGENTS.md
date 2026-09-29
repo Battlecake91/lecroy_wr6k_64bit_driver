@@ -4,6 +4,44 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**2026-09-29 physical Dallas test sequencing:**
+User offers to isolate the DS2433 physically to validate
+recovery if the chip fails. This is a useful eventual
+test, **not** the first action. Complete same-card ROM
+ID must be separately backed up (existing `dallas-backup`
+only saves 512 writable memory bytes). Implement
+an explicit virtual host-facing Dallas ID/READ
+path and separate coherent shadow WRITE state first,
+with no actual 1-Wire transactions in emulated
+handlers. Test with real chip still connected,
+then consider reversible ID_DATA isolation
+**only with power removed and electrical
+topology verified**. No hot unplug, shorts
+or destructive PCB modification on assumptions.
+With device absent, assess PCI enumeration
+and FPGA/driver startup separately from
+XStream license behavior. If PCI/FPGA
+depends on physical 1-Wire before driver
+IOCTLs, host emulation alone cannot
+recover a dead chip. Restore original
+wiring and verify original ROM/image afterward.
+Test plan:
+`docs/dallas-device-manager-recovery-design.md`.
+
+User's latest Ghidra run published only
+an updated export manifest; writer-wrapper
+`FUN_00011f54` exists but helper
+`FUN_00016d90` and
+`FUN_00016f2c` exports are still
+missing. Their targets and ASM listings
+have now been committed to
+`ghidra_scripts/targets.txt`.
+PC Ghidra can rerun
+`scripts/run-ghidra-analysis.ps1`.
+Do not guess native x64 WRITE semantics
+before analyzing the actual helper
+functions. No emulation or EEPROM
+write code was implemented here.
 **Failed/replaced DS2433 nuance (2026-09-29):**
 A factory-new chip has a different immutable eight-byte
 ROM ID even if original 512-byte EEPROM contents are
