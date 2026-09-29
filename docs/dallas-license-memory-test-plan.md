@@ -576,3 +576,78 @@ until their own implementations are exported. The
 kernel driver's missing native x64 write handler and
 the sensitive-user-data redaction precautions from
 trace 011858 remain the current status.
+
+
+## Recovery UI proposal: on-card restore through Device Manager and standalone app (2026-09-29)
+
+The user reports that other owners have recovered apparently
+"bricked" PCI Dallas devices by programming the DS2433
+externally and requests equivalent **backup, recovery
+and image-editing operations in the Windows Device Manager
+device properties**. This is feasible as a native
+Windows property-page extension, with a full standalone
+manager for recovery when Device Manager is inconvenient.
+Implementation design, packaging risks and safety gates:
+[`dallas-device-manager-recovery-design.md`](dallas-device-manager-recovery-design.md).
+
+**Important scope-ID distinction:** the **primary** six-hex-digit
+display identifier observed on this user's scope matches
+factory ROM serial bytes 1..3 (little-endian 24-bit),
+not a 512-byte EEPROM field. The two-character suffix
+remains unproven. The 64-bit ROM has factory family 0x23,
+48-bit serial and CRC8; the separately writable
+512-byte image stores user-confirmed XStream
+license data. Restoring a saved image onto another
+physical DS2433 does NOT replace that new device's
+factory ROM, and any vendor-specific license binding
+to ROM identity is not yet decoded.
+
+**Recovery capability limits:**
+
+- If DS2433 still responds to 1-Wire ROM and memory
+  operations but the writable image is corrupted,
+  a verified same-card private backup can be a
+  restoration source once the x64 writer works.
+- If ROM/presence/physical 1-Wire connection is lost,
+  driver-level restore via the PCI card cannot be
+  assumed possible; hardware repair, chip replacement
+  or an external programmer may remain necessary.
+- Current x64 replacement has Dallas ROM and
+  full image READ, not WRITE. Original x86
+  writer `FUN_00011f54` uses at most 32-byte
+  stages, read-back comparison and retries;
+  dependent low-level helpers `FUN_00016d90`
+  and `FUN_00016f2c` must be recovered before
+  accurate x64 porting.
+- A backup+restore GUI must ensure exact ROM
+  compatibility, preserve a fresh image of the
+  present chip, show per-page diffs, serialize
+  against running XStream, verify scratchpad/copy
+  and every EEPROM page, stop on mismatch and
+  compare the full 512-byte image after restoration.
+  Manual hex editing must operate on a file
+  copy by default, not silently touch the card.
+- The diagnostic image format should bind
+  full ROM ID, 512-byte contents, SHA-256 and
+  format version in a **private** file.
+  Continue to support existing raw 512-byte
+  binaries, clearly marking them unbound if
+  no matching ROM-ID metadata exists.
+
+The manufacturer documents a separately
+factory-lasered 64-bit ROM and a 512-byte
+EEPROM with 32-byte scratchpad. Its
+Copy Scratchpad operation requires stable
+bus power through the write interval:
+https://www.analog.com/media/en/technical-documentation/data-sheets/DS2433.pdf
+
+Microsoft documents `EnumPropPages32` for native
+device-specific property-page extension DLLs,
+while classic co-installers are deprecated
+and introduce signing problems:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/install/specific-requirements-for-device-property-page-providers--property-pag
+https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/removing-coinstallers
+
+No actual writer, restore, hex editor,
+Device Manager extension DLL or GUI has
+been built by adding this design documentation.
