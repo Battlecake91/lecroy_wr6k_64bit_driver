@@ -103,6 +103,8 @@ field:138
 # main + 0x134A; investigate both representations plus overlapping
 # byte/WORD/DWORD store starting offsets. Exact scans are only a
 # first-pass filter: LEA and indirect pointer writes can evade them.
+# Confirm callback/dispatch wrapper: main-object receiver vs hardware subobject.
+asm:10b30
 asm:115c4
 asm:13a40
 asm:12eae
