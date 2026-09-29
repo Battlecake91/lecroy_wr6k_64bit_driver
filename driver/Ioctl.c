@@ -4181,7 +4181,7 @@ LecS65DeviceControl(
          * establish the startup-relevant fields:
          *
          *   +0x04 DWORD: controls global interrupt-mask bit 1
-         *   +0x08 DWORD: value written to BAR0 ERRM (offset 0x008)
+         *   +0x08 DWORD: bitwise inverted before writing BAR0 ERRM (+0x008)
          *
          * The remaining bytes belong to the paired 0xCFDC2194
          * status/readback structure and are preserved as ABI padding here.
@@ -4195,7 +4195,8 @@ LecS65DeviceControl(
         }
         else {
             ULONG control;
-            ULONG errorMask;
+            ULONG errorMaskRequest;
+            ULONG programmedErrm;
             ULONG newInterruptMask;
             volatile ULONG* errm;
 
@@ -4204,10 +4205,17 @@ LecS65DeviceControl(
                 (PUCHAR)systemBuffer + 4,
                 sizeof(control));
             RtlCopyMemory(
-                &errorMask,
+                &errorMaskRequest,
                 (PUCHAR)systemBuffer + 8,
-                sizeof(errorMask));
+                sizeof(errorMaskRequest));
 
+            /*
+             * Original FUN_00013A40 inverts the incoming field before
+             * programming BAR0 ERRM through FUN_000107FE. Preserve that
+             * physical register value in the shadow used by the recovered
+             * FUN_000108D6 error-reassertion branch.
+             */
+            programmedErrm = ~errorMaskRequest;
             status = LecResolveRegister(
                 devExt,
                 0,
@@ -4215,7 +4223,10 @@ LecS65DeviceControl(
                 &errm);
 
             if (NT_SUCCESS(status)) {
-                WRITE_REGISTER_ULONG(errm, errorMask);
+                InterlockedExchange(
+                    &devExt->LegacyErrmShadow,
+                    (LONG)programmedErrm);
+                WRITE_REGISTER_ULONG(errm, programmedErrm);
 
                 newInterruptMask =
                     (ULONG)InterlockedCompareExchange(
@@ -4237,10 +4248,51 @@ LecS65DeviceControl(
 
             information = 0;
             LecTrace(
-                "CFDC2190 control=0x%08lX ERRM=0x%08lX -> 0x%08X\n",
+                "CFDC2190 control=0x%08lX ERRM input=0x%08lX programmed=0x%08lX -> 0x%08X\n",
                 control,
-                errorMask,
+                errorMaskRequest,
+                programmedErrm,
                 status);
+        }
+        break;
+
+    case LECS65_IOCTL_CFDC2194:
+        /*
+         * Original FUN_00012BAE is the paired 29-byte error/status
+         * readback. Original ISR FUN_000108D6 ORs BAR0 ERRS into main
+         * +0x134A (hardware subobject +0x116A), with bit 31 used by
+         * its persistent-error retry path. The reply is zero-filled,
+         * DWORD 2 at +4 and the accumulated DWORD at +8, then the
+         * original software latch is cleared. Use an atomic exchange
+         * here so a simultaneous ISR update is never silently lost.
+         *
+         * Only the exact output length is checked by the original.
+         * A successful read consumes the pending software status.
+         */
+        if (systemBuffer == NULL || outputLength != 29) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            information = 0;
+            break;
+        }
+        else {
+            ULONG type = 2UL;
+            ULONG errorSnapshot = (ULONG)InterlockedExchange(
+                &devExt->LegacyErrorStatusLatch,
+                0);
+
+            RtlZeroMemory(systemBuffer, 29);
+            RtlCopyMemory((PUCHAR)systemBuffer + 4, &type, sizeof(type));
+            RtlCopyMemory(
+                (PUCHAR)systemBuffer + 8,
+                &errorSnapshot,
+                sizeof(errorSnapshot));
+
+            status = STATUS_SUCCESS;
+            information = 29;
+            LecTrace(
+                "CFDC2194 read/clear ERR status=0x%08lX info=%Iu\n",
+                errorSnapshot,
+                information);
         }
         break;
 
