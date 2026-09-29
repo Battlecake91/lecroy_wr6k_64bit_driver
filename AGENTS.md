@@ -43,6 +43,28 @@ and writes to the licensed DS2433 remain deferred.
 See [quick handoff](docs/quick-handoff-2026-09-29.md),
 [current handoff](docs/next-chat-handoff.md) and [TODO](docs/TODO.md).
 
+**Active CFDC2194 static-analysis advance (2026-09-30):**
+Original `FUN_000115C4` invokes hardware initializer
+`FUN_00014847(main+0x1E0,...)`. Original `FUN_00012D24` consumes
+the `this+0x138` BAR0 START/FVER member that initializer sets.
+For `FUN_00012BAE` (`CFDC2194`), its latched DWORD
+`this+0x116A` is therefore also a **candidate**
+`main+0x134A` under the shared dispatcher receiver
+(`0x1E0 + 0x116A = 0x134A`); verify receiver flow in
+the original DeviceControl wrapper, not just the C labels.
+The previous `field:116a` direct scan alone cannot rule out
+a writer using `main+0x134A`, overlapping stores, or an
+indirect pointer. Added `asm:10b30` wrapper context,
+`asm:115c4`, neighboring callback instructions and direct
+`field:` targets for overlapping starts at `1167..116D`
+and `1347..134D`, plus nearby candidate LEA bases, in
+`ghidra_scripts/targets.txt`. **Targets committed; Ghidra
+has not yet rerun them.** No real status producer or correct
+synchronization established, and no x64 kernel patch made.
+Detailed evidence, conditional address arithmetic and safe
+PC export command:
+[CFDC2194 provenance investigation](docs/cfdc2194-status-latch-investigation.md).
+
 **Current original/x64 dispatch audit (2026-09-29 late):**
 All **27** original top-level IOCTL codes are identified, but that
 does NOT imply full original behavior is understood or ported.
