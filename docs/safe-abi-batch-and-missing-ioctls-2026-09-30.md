@@ -214,6 +214,58 @@ deferred until a disposable DS2433 is available.
 No synthetic write or destructive license testing
 belongs in this compatibility batch.
 
+## Second PC-only Ghidra batch queued after first export (`2071cfa`)
+
+The owner successfully pushed the first dangerous-writer
+static export as commit `2071cfa7d44199d7e0cde3a7e3cc77e209ffc414`.
+Its `asm_asm_1259a.txt` reconfirms the exact source-level
+absence of an obvious local bounds check:
+
+```asm
+000125CB MOV ECX,[ESI+0x10]      ; register table pointer
+000125CF MOV EDI,[EAX+0x101]    ; caller-supplied index
+000125D5 MOV ESI,[ECX+EDI*4]    ; select wrapper
+000125D8 PUSH DWORD PTR [EAX+0x106] ; caller-supplied value
+000125E0 CALL 0x000107FE        ; cached + physical DWORD write
+```
+
+In the original `FUN_00014212`, `CKeRegisterList`
+is constructed by `FUN_00013434` at hardware-subobject
+offset `+0x11EE`. Original `FUN_00014847` has
+**37 static call sites** for `FUN_00013FA6` with that
+list receiver, split between common and conditional
+initialization. The number of successful registered
+entries at runtime is not thereby proved to be 37.
+The list constructor, append/reallocation helper,
+index mapping and error paths must be resolved before
+any native `0x0022303C` hardware writer is considered.
+
+A **second static-only Ghidra batch** has now been added
+to `ghidra_scripts/targets.txt` and has NOT YET RUN.
+It asks for original full function and ASM at
+`1326e` (table insert/reallocation),
+`13230` (element copy),
+`13434` (list constructor),
+`134ae`/`133c4` (destruction),
+`14212` (subobject construction), and complete
+`14847` initialization ASM. It also requests
+xref scans for the physical MMIO wrapper `107fe`,
+register insert `13fa6`, list constructor
+`13434`, append/copy helpers, destructor and
+device setup `14847`.
+
+Run this **only on the separate Ghidra PC**:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve indexed register-list bounds and GPIO ownership"
+```
+
+The script already performs pull/export/commit/push.
+No new scope driver code, fresh build, nonzero software
+IRQ input, arbitrary BAR writes or XStream regression
+is needed to collect this original-binary evidence.
+
 ## Recommended continuation
 
 1. Obtain and review the nine-case batch output without
