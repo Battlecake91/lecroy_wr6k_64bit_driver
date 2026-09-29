@@ -26,6 +26,32 @@ regression in the exercised existing baseline. This is not a
 fresh exhaustive per-case instrumented trace. The immediate
 `0x00223044` hardware + regression task is now closed.
 
+## Newly prepared focused Ghidra search (2026-09-30)
+
+Static review found an additional address representation, not
+yet the producer itself: original `FUN_000115C4` passes
+`main+0x1E0` to hardware initializer `FUN_00014847`,
+which sets `subobject+0x138` for START/FVER and is consumed
+by the proven `FUN_00012D24` IOCTL. Under the same
+DeviceControl subobject receiver, `FUN_00012BAE`'s
+`this+0x116A` is `main+0x134A`. The 4-byte latch spans
+`116A..116D` (or `134A..134D` using parent base).
+The original `field:116a` report alone could miss an alias
+or an overlapping byte/WORD/DWORD write.
+
+A focused investigation is committed in
+[cfdc2194-status-latch-investigation.md](cfdc2194-status-latch-investigation.md),
+and `ghidra_scripts/targets.txt` now includes
+`asm:10b30` for the dispatch wrapper, the relevant
+subobject/callback ASM, both overlapping displacement
+families (`1167..116D` and `1347..134D`), and near-LEA
+bases `1160`/`1340`. **These new targets are committed
+but NOT YET EXECUTED** in the PC Ghidra environment.
+The next source step is to run the existing
+`scripts/run-ghidra-analysis.ps1` on the Ghidra PC,
+review the new reports and follow actual write candidates.
+Avoid changes to the working scope driver until proven.
+
 ## Next task: original CFDC2194 status producer, source analysis first
 
 Original `FUN_00012BAE` takes exactly a 29-byte output, zeroes it,
