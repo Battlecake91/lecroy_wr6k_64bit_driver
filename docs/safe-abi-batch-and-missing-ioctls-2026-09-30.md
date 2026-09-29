@@ -214,6 +214,89 @@ deferred until a disposable DS2433 is available.
 No synthetic write or destructive license testing
 belongs in this compatibility batch.
 
+## Second Ghidra batch received; third targeted batch queued (`92f8a7f`)
+
+The owner successfully pushed the second original-driver static export
+at `92f8a7f67c751c764190206f79cd4bf9ec493753`.
+Original assembly and new decompilations establish an important
+**two-layer register list**:
+
+- `FUN_00013434` constructs `CKeRegisterList` at
+  hardware-subobject `+0x11EE`. Its pointer-array
+  subobject starts at list offset `+0x00`;
+  the 266-byte record array starts at `+0x1C`.
+  The pointer table initially has capacity zero and
+  `lastIndex = -1` at offset `+0x0C`, with
+  grow quantum `+0x04 = 1`.
+- `FUN_00013F3C` -> `FUN_0001326E` appends the
+  register-wrapper pointer. `FUN_0001326E`
+  calls still-unexported `FUN_00012184` to
+  grow/check the pointer table, then writes
+  `pointerArray[index] = wrapper` and updates
+  `lastIndex` if insertion succeeded.
+- `FUN_00013F70` -> `FUN_00013230` appends the
+  corresponding 266-byte metadata record.
+  `FUN_00013230` calls `FUN_000121FA`,
+  which grows an allocated block of fixed
+  `0x10A`-byte entries, copies prior entries,
+  and stores the new complete record.
+- **`FUN_0001259A` does not invoke either
+  grow helper, nor check capacity or `lastIndex`
+  before reading `pointerArray[callerIndex]`
+  and passing it to `FUN_000107FE` for
+  a physical register write.** The original
+  `0x0022303C` request copies an exact 266-byte
+  caller record; its index DWORD is at record
+  `+0x101` and its data DWORD at `+0x106`.
+  Porting should require an explicit valid-index
+  and per-register write authorization policy,
+  not just a buffer-size check.
+
+Original `asm_asm_14847.txt` contains 15 common
+`FUN_00013FA6` registration calls and another
+22 in a conditional initialization block. This
+gives 37 static call sites but is not a guarantee
+of 37 successful entries in every hardware mode.
+Original `FUN_0001785B` contains another six
+`FUN_00013FA6` calls reached through
+`FUN_000159E2`; their exact receiver/list
+identity should be checked before assigning
+index numbers or assuming a maximum.
+
+**Additional shared GPIO owner identified:**
+`FUN_000120DC` reads the very same
+hardware-subobject `+0x318` GPIODAT wrapper
+(BAR1+0xC4), clears bit 16
+(`value & 0xFFFEFFFF`) and writes it using
+`FUN_000107FE`. Original `CFDC2130`
+instead changes bits 15:13 (`0xE000`)
+once for EACH serial programming byte.
+Any native implementation must account for
+concurrent GPIO ownership and preserve
+the original per-byte writes.
+
+To close these remaining questions, **23 new
+static-only targets** are queued in
+`ghidra_scripts/targets.txt`, NOT RUN yet.
+They include `FUN_00012184` capacity growth,
+`FUN_00012166` list destruction,
+the `159E2 -> 1785B` registration path,
+GPIODAT helper `120DC`, adjacent writers
+`16C92/179E2`, related ASM/XREF reports,
+and object-field usage at `+0x318`,
+`+0x334` and `+0x11EE`.
+
+The separate PC can generate all of these in one run:
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve register-list growth and shared GPIODAT writers"
+```
+
+No installation, XStream regression or injected register
+write is needed for this static reverse engineering.
+The 24/27 native top-level count remains unchanged.
+
 ## Second PC-only Ghidra batch queued after first export (`2071cfa`)
 
 The owner successfully pushed the first dangerous-writer
