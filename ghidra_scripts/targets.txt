@@ -170,3 +170,32 @@ asm:120fa
 xref:1259a
 xref:11cff
 xref:1cd08
+
+# 2026-09-30 second static batch (after commit 2071cfa):
+# Trace CKeRegisterList constructed by FUN_00013434 at hardware-subobject
+# +0x11EE; original FUN_00014847 contains 37 FUN_00013FA6 insert call
+# sites split across common/conditional hardware paths. FUN_0001259A
+# reads table[index] without an apparent explicit bounds check.
+# Need list reallocation (1326e), element-copy (13230), constructor
+# (13434), teardown (134ae/133c4), active FPGA/hardware setup
+# (14847/14212), and all MMIO write-wrapper callers (xref:107fe).
+# READ-ONLY ORIGINAL x86 Ghidra export, not a scope hardware test.
+1326e
+13230
+13434
+134ae
+133c4
+14212
+asm:1326e
+asm:13230
+asm:13434
+asm:134ae
+asm:14212
+asm:14847
+xref:107fe
+xref:13fa6
+xref:13434
+xref:1326e
+xref:13230
+xref:134ae
+xref:14847
