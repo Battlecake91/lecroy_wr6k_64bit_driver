@@ -4300,7 +4300,7 @@ LecS65DeviceControl(
 
             status = STATUS_SUCCESS;
             LecTrace(
-                "CFDC2400 software interrupt pending OR mask=0x%08lX\\n",
+                "CFDC2400 software interrupt pending OR mask=0x%08lX\n",
                 pendingMask);
         }
         break;
