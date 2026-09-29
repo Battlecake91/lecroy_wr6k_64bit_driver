@@ -151,7 +151,7 @@ successful build/hardware output.
   Replacement DS2433 would have a new immutable ROM identity.
   Whether every actual license binds to this ID is unproven.
 - User deliberately **DEFERRED** virtual Dallas ROM/EEPROM
-  emulation, Device Manager recovery exploration and physical
+  emulation and physical
   chip isolation tests. These remain in [TODO](TODO.md) and
   [Dallas recovery design](dallas-device-manager-recovery-design.md),
   NOT the next action.
