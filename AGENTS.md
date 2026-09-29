@@ -4,6 +4,7 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Fast current-state handoff (2026-09-29):** [`docs/quick-handoff-2026-09-29.md`](docs/quick-handoff-2026-09-29.md) records the new source-only `0x00223044` case, the pending Windows build/install/`lecdiag start-register` result which the user will provide to the NEXT chat, and the still-blocked `0xCFDC2194` latch provenance. Start there. No test success is implied by the source commits.
 **Current safe implementation handoff (2026-09-29, after new Ghidra push):**
 Original `FUN_00012D24` does a DWORD read
 through original main-object pointer at
