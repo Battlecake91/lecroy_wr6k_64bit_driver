@@ -235,6 +235,25 @@ a responding physical 1-Wire chip. This is
 a proposed recovery path, **not yet implemented**.
 See [Dallas recovery architecture](docs/dallas-device-manager-recovery-design.md).
 
+**Dallas source-analysis milestone (2026-09-29):**
+The user confirms their original eight-byte
+DS2433 ROM ID was archived privately in
+addition to two previously matching
+512-byte memory backups. The updated
+Ghidra export now includes original
+`FUN_00016d90` (verified 32-byte
+scratchpad write/read/copy sequence and
+100-ms post-copy wait) and
+`FUN_00016f2c` (full requested-length
+read from EEPROM address zero), both
+with ASM. No x64 hardware writer or
+software-only virtual Dallas mode has
+yet been implemented. We will validate
+a virtual ID/READ path with the real
+chip connected before considering
+reversible physical isolation.
+See [Dallas recovery design](docs/dallas-device-manager-recovery-design.md).
+
 ## Current state
 
 The reconstruction has progressed well beyond the initial outer-interface pass:
