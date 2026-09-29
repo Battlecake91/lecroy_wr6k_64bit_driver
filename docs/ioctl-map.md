@@ -81,6 +81,23 @@ Dallas ID or license payloads.
 
 The access bits decode to `FILE_ANY_ACCESS` for all entries.
 
+## Active CFDC2194 latch-origin research (2026-09-30)
+
+`FUN_00012BAE` returns a 29-byte status record and reads/clears
+the DWORD at hardware-subobject `this+0x116A`. `FUN_000115C4`
+constructs the hardware subobject at `main+0x1E0` via
+`FUN_00014847`; under the shared dispatch receiver this makes
+`main+0x134A` a second candidate representation of the latch.
+Previous direct-displacement `field:116a` output finding only
+the consumer cannot exclude direct `134a`-based or indirect
+writes. The Ghidra targets now cover overlapping byte/WORD/DWORD
+start offsets for both representations, nearby LEA bases and the
+dispatch wrapper. These **new target results are pending a PC Ghidra
+run**; the producer and synchronization remain unknown.
+See [focused source evidence and follow-up](
+cfdc2194-status-latch-investigation.md). No native
+`CFDC2194` implementation should be added from guesses.
+
 ## Legacy START/FVER read: 0x00223044
 
 Original `FUN_00012D24` requires an output buffer of exactly four
