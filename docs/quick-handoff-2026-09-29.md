@@ -39,22 +39,32 @@ included in the latest console excerpt. When running PowerShell scripts,
 check immediate `$?` or use `try/catch`; a later `$LASTEXITCODE`
 does not reliably catch a PowerShell `throw`.
 
-### Immediate next test: XStream / AP015 regression
+### Follow-up XStream / AP015 regression: owner reports PASS
 
-Start XStream normally on the real x64 scope. Verify that a genuine
-waveform remains visible, that timebase, V/div, coupling, bandwidth
-and trigger still work, and (where practical) two-channel / 10-GS/s
-operation. Check preconnected AP015 recognition and connector
-unplug/replug; XStream should also display the known open/unlocked-jaw
-warning when applicable. Report actual observations. Do not label
-this regression passed until the user supplies its result.
+After `start-register` passed, the owner was asked to check genuine
+waveforms, ordinary vertical/timebase/coupling/bandwidth/trigger
+operations, 2-channel/10-GS/s where practical, preconnected AP015,
+physical removal/reinsertion and the known open-jaw warning.
+Reply: `Ja klappt soweit alles.` Record no observed regression in
+the exercised existing baseline, not an automated exhaustive
+per-feature acceptance matrix. The immediate `0x00223044`
+hardware + XStream check is now complete.
 
-If the regression remains intact, the next source-guided compatibility
-target is original `0xCFDC2194`: identify the *producer* and
-synchronization of original `this+0x116A` before implementing the exact
-29-byte read-and-clear reply. A fabricated constant-zero latch is not
-acceptable. Keep virtual Dallas recovery, DS2433 physical isolation
-and writes on the licensed original chip out of this work.
+### Next task: map original CFDC2194 latch producer
+
+`FUN_00012BAE` returns exactly 29 bytes, including the saved
+status DWORD from `this+0x116A` at +8, then clears the latch.
+The direct field scan only found that read-and-clear site.
+Paired original `FUN_00013A40` (CFDC2190) calls
+`FUN_000107FE` on `this+0x188` and registers callback
+`FUN_00012EAE` which can call `FUN_00011E46` for a
+global register write. This adjacent path **does not prove**
+the origin of `this+0x116A`. Inspect aliases/indirect writes,
+callback/IRQ and initialization before any kernel implementation.
+A constant-zero successful response is not a substitute.
+
+Do not disturb working PCI/IRQ/DMA/AP015, or resume deferred
+virtual Dallas, hardware isolation or licensed-chip writing.
 
 ## Source facts just recovered from the user's Ghidra push
 
