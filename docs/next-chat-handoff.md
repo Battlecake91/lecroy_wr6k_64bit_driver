@@ -36,6 +36,42 @@ and two invalid (non-latch-consuming) CFDC2194
 output lengths. No nonzero artificial pending IRQ
 bits or destructive MMIO/Dallas write are included.
 
+## First write-path Ghidra export already returned; second batch now queued
+
+The owner ran and pushed the first read-only original
+writer analysis in commit
+`2071cfa7d44199d7e0cde3a7e3cc77e209ffc414`.
+`asm_asm_1259a.txt` confirms
+`[registerTable+callerIndex*4]` (index from record
+`+0x101`, value from record `+0x106`) immediately
+feeds `FUN_000107FE` physical register write, with
+no index validation visible in that local function.
+
+`FUN_00014212` constructs a CKeRegisterList at
+hardware-subobject `+0x11EE`, and `FUN_00014847`
+contains 37 STATIC `FUN_00013FA6` registration call
+sites (not a proved runtime table length). In order
+to determine insertion/index bounds and which other
+code owns shared GPIO/MMIO wrappers, 19 more Ghidra
+targets have NOW been committed to
+`ghidra_scripts/targets.txt`, including 1326E/13230
+table append/copy, 13434 list construction,
+134AE/133C4 teardown, full 14212/14847 ASM
+and xrefs for 107FE, 13FA6, 14847.
+
+**NEXT PC-ONLY batch (second run not yet performed):**
+
+```powershell
+Set-Location "C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver"
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: resolve indexed register-list bounds and GPIO ownership"
+```
+
+No scope testing or XStream regression necessary now.
+See [grouped ABI result and original write-path
+analysis](safe-abi-batch-and-missing-ioctls-2026-09-30.md).
+
+## Previous Ghidra run instruction (completed by owner)
+
 ## Immediate next action: PC Ghidra export, no repeated XStream test
 
 Per the owner's explicit preference, **batch useful source
