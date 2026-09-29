@@ -43,6 +43,26 @@ and writes to the licensed DS2433 remain deferred.
 See [quick handoff](docs/quick-handoff-2026-09-29.md),
 [current handoff](docs/next-chat-handoff.md) and [TODO](docs/TODO.md).
 
+**Current original/x64 dispatch audit (2026-09-29 late):**
+All **27** original top-level IOCTL codes are identified, but that
+does NOT imply full original behavior is understood or ported.
+The current `driver/Ioctl.c` switch covers **22/27** of those codes,
+including explicitly gated WOW64-sensitive `0xCFDD219F`;
+the five lacking x64 cases after the successful START/FVER addition
+are `0x0022303C` (original register-write record),
+`0x00223088` (recovered original Dallas writer, not safely ported),
+`0xCFDC2130` (serial-trigger FPGA programming),
+`0xCFDC2194` (29-byte status read-and-clear, latch producer unknown)
+and `0xCFDC2400` (internal four-byte control/callback path).
+`0x00222400` in x64 is outside the 27-value captured original
+dispatch. Original `0xCFDC2110` nested commands and alternate
+`0xCFDC2138` transfer forms are not all covered merely because
+their top-level code is dispatched. See latest
+[IOCTL map](docs/ioctl-map.md) and [TODO](docs/TODO.md).
+Prioritize source analysis of `this+0x116A` next; do not enable a
+permanent-zero fake handler or perform destructive EEPROM/FPGA
+write tests just to raise a numerical coverage count.
+
 **Documentation and priority policy (2026-09-29):**
 Keep `README.md` a concise, consolidated statement of **verified
 current project state**, not a development diary. Keep full investigation
