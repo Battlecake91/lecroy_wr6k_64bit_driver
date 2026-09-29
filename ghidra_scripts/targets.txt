@@ -148,3 +148,25 @@ xref:1c500
 dwords:1c62c:16
 dwords:1c500:16
 dwords:1c8bc:16
+
+
+# 2026-09-30: remaining original dangerous write handlers (STATIC ONLY).
+# Original 0x0022303C copies 0x10A bytes and FUN_0001259A uses
+# untrusted DWORD index at +0x101 to address registerList.table[index];
+# the physical DWORD write value is at +0x106. Find the real table size
+# and index mapping before implementing a guarded native port.
+# CFDC2130 applies each input byte's high 3 bits to BAR1 GPIODAT
+# mask 0xE000 and writes immediately. Do NOT test a nonzero payload
+# on the production scope. Target dumps are read-only on the Ghidra PC.
+asm:12cac
+asm:1259a
+asm:11cff
+asm:107fe
+asm:13fa6
+asm:13f3c
+asm:13f70
+asm:17a98
+asm:120fa
+xref:1259a
+xref:11cff
+xref:1cd08
