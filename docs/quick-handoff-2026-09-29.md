@@ -4,65 +4,57 @@ This file describes the **latest actionable state**, not the historical investig
 
 **Public repository:** https://github.com/Battlecake91/lecroy_wr6k_64bit_driver (branch `main`).
 
-## Actual first scope feedback (2026-09-29 late evening)
+## Latest actual scope result: read-only 0x00223044 PASS (2026-09-29 late)
 
-The owner has now returned a **partial console result** for the newly
-committed read-only `0x00223044` compatibility test:
+The owner ran `tools/lecdiag/build/lecdiag.exe start-register` on the
+real x64 scope and supplied this output (non-sensitive):
 
-- `scripts/build-sign-load-driver.ps1` threw
-  `Run this script from an elevated PowerShell window.` from its
-  first `Assert-Administrator` call (line 13). **This invocation did
-  not build, sign, install, or PnP-restart the new kernel driver.**
-  A prior pure-build success is not independently verifiable from the
-  supplied console fragment because its build log was omitted.
-- The following interactive
-  `if ($LASTEXITCODE -ne 0) { throw "Installation fehlgeschlagen" }`
-  did not stop execution. `$LASTEXITCODE` reflects the last native
-  executable, not a reliable success/failure code from a PowerShell
-  script throwing an exception. Use an immediate `$?` check (or
-  a `try/catch`) for the script invocation.
-- The locally present `lecdiag.exe start-register` opened the
-  device interface successfully, but its **first**
-  `DeviceIoControl(0x00223044, in=0, out=4)` failed with Win32
-  error 1 (`ERROR_INVALID_FUNCTION`). The generic BAR0 reference
-  request was therefore **not executed**, and no two-register
-  comparison occurred. Because the signed reload never ran, an older
-  installed driver missing this new dispatcher case is the immediate
-  working explanation, **not a proven kernel-code regression**.
-  The existing dispatcher defaults unknown IOCTLs to
-  `STATUS_INVALID_DEVICE_REQUEST`; further proof requires the
-  elevated reload and repeated read-only diagnostic.
-
-### Next action on the real x64 scope
-
-Close XStream first. Open **Windows PowerShell as administrator**
-(right-click -> Run as administrator), then run:
-
-```powershell
-Set-Location "C:\Users\LeCroyUser\Git\lecroy_wr6k_64bit_driver"
-git pull --ff-only origin main
-if ($LASTEXITCODE -ne 0) { throw "Git pull failed; STOP" }
-
-& ".\scripts\build-sign-load-driver.ps1"
-if (-not $?) { throw "Build/sign/load script failed; STOP" }
-
-& ".\tools\lecdiag\build\lecdiag.exe" start-register
-if ($LASTEXITCODE -ne 0) { throw "0x00223044 read/compare failed; STOP" }
+```text
+Opened device interface: \\?\pci#ven_1570&dev_0005&subsys_00000000&rev_00#...#{7ac34be9-f766-4f15-9e88-854ba5e2146e}
+0x00223044 START/FVER: 0x00000002
+BAR0+0x000 reference: 0x00000002
+PASS: legacy 4-byte output matches physical register read.
 ```
 
-The signed-load script rebuilds the kernel driver **and** lecdiag, signs
-the SYS/CAT with the configured test certificate, installs the package,
-restarts the target PCI device and runs build/passive-PCI checks. Do
-not bypass an installation, PnP, or verification error. Report the
-**entire installer console output** and then the new `start-register`
-result, including both hex DWORDs if they are returned. A simple
-`lecdiag build` response of legacy build `1002` is an ABI-compatibility
-constant, not a unique fingerprint of the newly loaded binary.
-Only after `start-register` reports `PASS` should the normal
-XStream waveform/control/AP015 regression test be performed.
+**Verified:** the newly implemented legacy 4-byte output request
+`0x00223044` is accepted by the driver currently serving the real PCI
+device. Its returned DWORD (`0x00000002`) equals the result of the
+separate generic register-read IOCTL for physical BAR0+0x000,
+also `0x00000002`. This is read-only, with no BAR write or Dallas access.
+It verifies this request's live successful path and consistency with the
+generic BAR0 read, not every edge case or a separate original-x86
+side-by-side measurement. The user's current message does not include
+the complete pure-build/signed-install log or the scope's Git HEAD;
+do not infer those individual steps or claim a completed XStream
+regression from the successful diagnostic alone.
 
-No Dallas, BAR register write, hardware isolation, or `CFDC2194`
-implementation is part of this troubleshooting step.
+**Prior blocked attempt, now superseded for this IOCTL:** the first
+`scripts/build-sign-load-driver.ps1` invocation used a non-elevated
+PowerShell and stopped at its administrator assertion, without installing
+a driver. The subsequent diagnostic failed its first new IOCTL with
+Win32 `ERROR_INVALID_FUNCTION` (1) before any reference comparison.
+The new PASS establishes that this earlier error is not the current
+result. The precise corrective installation commands used were not
+included in the latest console excerpt. When running PowerShell scripts,
+check immediate `$?` or use `try/catch`; a later `$LASTEXITCODE`
+does not reliably catch a PowerShell `throw`.
+
+### Immediate next test: XStream / AP015 regression
+
+Start XStream normally on the real x64 scope. Verify that a genuine
+waveform remains visible, that timebase, V/div, coupling, bandwidth
+and trigger still work, and (where practical) two-channel / 10-GS/s
+operation. Check preconnected AP015 recognition and connector
+unplug/replug; XStream should also display the known open/unlocked-jaw
+warning when applicable. Report actual observations. Do not label
+this regression passed until the user supplies its result.
+
+If the regression remains intact, the next source-guided compatibility
+target is original `0xCFDC2194`: identify the *producer* and
+synchronization of original `this+0x116A` before implementing the exact
+29-byte read-and-clear reply. A fabricated constant-zero latch is not
+acceptable. Keep virtual Dallas recovery, DS2433 physical isolation
+and writes on the licensed original chip out of this work.
 
 ## Source facts just recovered from the user's Ghidra push
 
@@ -112,10 +104,10 @@ Recent relevant source additions:
 - `docs/ioctl-map.md`: original reference and pending build/hardware validation.
 - `docs/TODO.md`: remaining work.
 
-There has been **no Windows build or hardware test** from the
-assistant's development environment. Do not mark the new
-feature as verified in `README.md` until the user returns
-successful build/hardware output.
+The assistant did not build or run Windows binaries in its own environment.
+The owner has now supplied the successful real-scope `start-register`
+read comparison above. Only the XStream/AP015 post-change regression
+remains unreported; do not treat it as passed.
 
 ## Stable verified baseline / boundaries
 
