@@ -183,6 +183,81 @@ Further recovery safety requirements:
    path; external hardware programming or
    replacement may still be unavoidable.
 
+## Separate recovery case: replacement DS2433 with a different factory ROM
+
+**2026-09-29 discussion, conditional hypothesis rather than a proven
+licensing rule:** the user notes that replacing a dead DS2433
+necessarily changes its immutable factory ROM ID. We have traced
+the principal displayed scope-identifier component to ROM
+serial bytes 1..3 (little-endian 24-bit). We have **not** yet
+demonstrated how or whether XStream cryptographically or
+otherwise binds every license entry to the full ROM ID.
+Therefore, do not state that *all* licenses on a replacement
+device are invariably invalid; this is a plausible risk to
+test using legitimately owned backups and documented
+original-versus-replacement behavior.
+
+A **software-only virtual Dallas mode** is conceptually
+different from programming replacement EEPROM hardware:
+
+- **Physical in-place repair:** if the original DS2433 ROM
+  still responds and EEPROM writes work, restore its
+  own original 512-byte image. Its factory ROM is preserved.
+- **Physical replacement:** a new ordinary DS2433 has a
+  different factory 64-bit ROM, regardless of which
+  512 EEPROM bytes are programmed into it. A copied
+  image cannot make it the original physical device.
+- **Virtual diagnostic/recovery representation:** with
+  a previously authenticated complete original
+  backup, a clearly labeled, opt-in *virtual* data
+  source could return the archived ROM identity
+  through the existing `GET_DALLAS_ID 0x00223080`
+  host interface and the archived 512-byte image
+  through `READ_DALLAS_MEMORY 0x00223084` to test
+  whether normal XStream starts and displays
+  legitimately held options. A **static-only**
+  read injection is insufficient for applications
+  that later issue `WRITE_DALLAS_MEMORY 0x00223088`
+  (the user has already captured a 512-byte
+  XStream license-change request); a deliberate,
+  separate virtual test mode would need a coherent
+  persistent *shadow-image* handling policy for
+  that control, and must not claim to have modified
+  the physical DS2433. No such mode exists yet.
+
+**Unproven boot dependency:** if PCI FPGA, acquisition-board
+firmware, initialization or other board-level procedures
+require the physical DS2433 itself rather than merely
+using the Windows IOCTL ROM/memory interfaces, software
+substitution only at the host IOCTL boundary might not
+be sufficient. Recover and test all Dallas access paths
+and startup failure behavior before claiming virtual
+recovery works for an electrically dead chip.
+
+**Backup format implications:** raw 512-byte `.bin`
+saves only writable memory. Reliable identity-preserving
+diagnostics need the separately obtained *entire*
+factory eight-byte ROM (including family, six-byte
+serial and CRC8), a 512-byte image, version, integrity
+check and a clear source/ownership association in a
+private backup container. Old `original-a.bin` and
+`original-b.bin` should NOT be assumed to encode
+the factory ROM. The existing `lecdiag dallas-id`
+can read the ROM independently **while the original
+chip remains electrically accessible**. Loss of
+an original chip without such a record could leave
+the virtual identity incomplete.
+
+A virtual view is an optional diagnostic/recovery
+mechanism, not a rewrite of immutable hardware
+identity or evidence of a physical chip repair.
+Keep default driver behavior hardware-backed;
+isolate virtual mode, clearly display active
+source, and never silently switch to a saved
+image. Whether replacement-chip behavior affects
+the manufacturer's licensing policy is a separate
+unresolved question.
+
 ## Build stages (recommended order)
 
 **Stage 1:** implement a small read-only
@@ -206,6 +281,16 @@ status/backup/recovery-launch property tab via
 a native x64 `EnumPropPages32` extension DLL,
 after evaluating the current INF/catalog/signing
 package. Avoid legacy co-installer dependencies.
+
+**Independent investigation:** verify whether an
+existing properly owned, identity-bound backup
+can support an explicit *virtual Dallas diagnostic*
+path, including behavior when the physical
+chip is absent. First establish whether
+all original driver and FPGA startup access
+is covered by the known host IOCTLs; do not
+equate host-response emulation with a
+physical DS2433 restore.
 
 The feature is maintenance/recovery of the
 owner's existing PCI-card memory. It neither
