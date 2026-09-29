@@ -199,3 +199,42 @@ xref:1326e
 xref:13230
 xref:134ae
 xref:14847
+
+# 2026-09-30 third static batch (after owner export 92f8a7f):
+# FUN_0001326E appends pointer-table entries via FUN_00012184,
+# while FUN_00013230 copies 266-byte records via FUN_000121FA.
+# FUN_0001259A directly indexes [table+callerIndex*4] without
+# comparing to list.lastIndex (+0x0C) or capacity (+0x00).
+# Recover exact growth/overflow handling, allocation granularity,
+# initial sentinel -1, and which entries can be selected safely.
+# FUN_00014847 has 15 common plus 22 conditional registration sites.
+# FUN_000159E2 -> FUN_0001785B has 6 additional InsertRegister
+# sites; inspect receiver identity before adding to either count.
+# Also trace GPIODAT wrapper (+0x318, BAR1+0xC4) ownership:
+# FUN_000120DC clears bit 16, while CFDC2130 programs 0xE000
+# per byte. Investigate related writers only through original x86.
+# READ-ONLY PC EXPORT ONLY. NEVER transmit synthetic write payloads
+# for CFDC2130, 0022303C or licensed Dallas 00223088 to real scope.
+12184
+12166
+1785b
+16c92
+179e2
+asm:12184
+asm:121fa
+asm:12166
+asm:1785b
+asm:159e2
+asm:120dc
+asm:16c92
+asm:179e2
+xref:12184
+xref:121fa
+xref:12166
+xref:1785b
+xref:159e2
+xref:120dc
+xref:1ce20
+field:318
+field:334
+field:11ee
