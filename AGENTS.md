@@ -4,6 +4,22 @@ This file is the persistent hand-off and operating guide for this repository.
 Every agent/chat working on this project should read it first and keep it current.
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
+**Documentation and priority policy (2026-09-29):**
+Keep `README.md` a concise, consolidated statement of
+the **current verified project state**. Never append a
+chronological discovery diary or preserve superseded
+claims in README; use specialist `docs/` files,
+`docs/runtime-trace.md`, and this/handoff
+document for investigative history instead.
+Maintain outstanding work in [`docs/TODO.md`](docs/TODO.md).
+The user has explicitly **deferred** the virtual Dallas
+ROM/EEPROM emulator and any physical DS2433
+disconnection experiment. These are backlog items,
+**not** the next immediate development step.
+No kernel implementation or physical isolation
+is authorized by merely recording the idea.
+The read-only backup and existing normal-scope
+baseline remain unchanged.
 **2026-09-29 latest confirmed Dallas exports:** User completed both
 separate original ROM-ID preservation
 (privately, do not publish bytes)
