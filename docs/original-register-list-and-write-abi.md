@@ -168,6 +168,32 @@ required output size as
 `LecFillLegacyRegisterList` already implement
 the observed fully initialized profile.
 
+## User-mode setter ambiguity resolved by runtime + DLL
+
+The first real original `0x0022303C` runtime call is now captured and
+its producing user-mode code has been statically recovered from
+`lecaladdinhwaccesspcisvr.dll`.
+
+Observed request after writing the unchanged `TxCount` value:
+
+```text
++0x000..+0x100 = zero
++0x101 DWORD   = 2  (list index for TxCount)
++0x105         = zero
++0x106 DWORD   = 2  (new/current value)
+```
+
+The DLL builds this request from scratch and explicitly writes the selected
+register enum/index to `+0x101`, proving that the query-offset versus
+setter-index mismatch is intentional ABI, not a decompiler artifact.
+Detailed private-binary evidence and disassembly:
+[kernel PCI register setter user-mode proof](
+kernel-pci-register-setter-usermode.md).
+
+A hardened x64 port can therefore validate a real index against the known
+43-entry table instead of guessing. The remaining design question is
+write authorization/policy, not request-layout recovery.
+
 ## Original XStream GUI page now identified
 
 Owner screenshot evidence maps the recovered register-list ABI to the
