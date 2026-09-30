@@ -5812,3 +5812,17 @@ XStream to compare all 512.
 The dispatcher failure alone
 already proves the core bug.
 
+
+
+## First MSVC build attempt for lecwatch and immediate fix
+
+Owner build attempt on 2026-09-30 failed before link/runtime with three
+straightforward source omissions: duplicate `_CRT_SECURE_NO_WARNINGS`,
+undefined `_countof`, and undefined
+`CTL_CODE/METHOD_BUFFERED/FILE_READ_ACCESS`. No executable was produced, so
+the following PowerShell "lecwatch.exe not found" message was expected.
+
+Commit `a668ee368985c0f079a92d1a4f0b4274d0924049` removes the duplicate macro
+and adds `<stdlib.h>` and `<winioctl.h>`. The corrected source has not yet
+received the owner's follow-up MSVC build result. Do not report lecwatch as
+build-verified until that rerun succeeds.
