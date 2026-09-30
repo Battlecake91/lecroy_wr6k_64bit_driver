@@ -5,6 +5,15 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**LONG-TERM RELEASE GOAL (owner decision, 2026-09-30):** this project is explicitly
+intended to end with a **WHQL/WHCP-certified Microsoft-signed Windows x64 production
+driver**, not merely a working test-signed replacement. Treat local HLK readiness as
+a required release milestone before spending money on the EV certificate. The final
+target is normal installation on supported Windows systems without test-signing mode.
+Do not describe WHQL/WHCP certification as already achieved. See README project goals,
+`docs/TODO.md`, and `docs/driver-signing-and-funding.md`.
+
+
 **FIRST DRY RUN RESULT (owner, 2026-09-30):** unified `-Mode Dry` successfully
 built the driver with **0 warnings / 0 errors** and built x64 `lecdiag`
 (PE machine 0x8664). Source contracts then showed **6/8 PASS**. Both failures were
