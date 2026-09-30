@@ -1,7 +1,8 @@
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
-    [switch]$BuildLecdiag
+    [switch]$BuildLecdiag,
+    [switch]$BuildLecwatch
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,5 +56,15 @@ if ($BuildLecdiag) {
     & (Join-Path $PSScriptRoot "build-lecdiag.ps1")
     if ($LASTEXITCODE -ne 0) {
         throw "lecdiag build failed with exit code $LASTEXITCODE."
+    }
+}
+
+
+if ($BuildLecwatch) {
+    Write-Host ""
+    Write-Host "Building lecwatch..."
+    & (Join-Path $PSScriptRoot "build-lecwatch.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        throw "lecwatch build failed with exit code $LASTEXITCODE."
     }
 }
