@@ -14,14 +14,13 @@ Do not describe WHQL/WHCP certification as already achieved. See README project 
 `docs/TODO.md`, and `docs/driver-signing-and-funding.md`.
 
 
-**FIRST DRY RUN RESULT (owner, 2026-09-30):** unified `-Mode Dry` successfully
-built the driver with **0 warnings / 0 errors** and built x64 `lecdiag`
-(PE machine 0x8664). Source contracts then showed **6/8 PASS**. Both failures were
-harness-only: Windows PowerShell 5.1 parsed CFDC/CFDD hex literals above
-0x7FFFFFFF as signed Int32, causing UInt32 conversion/comparison failures.
-Commit `95be1ba4ebaf229b58d115fca3b5b9e12d0a267b` fixes the suite to compare
-canonical 8-digit uppercase hex strings instead of numeric literals. **Rerun required;
-do not yet claim full Dry PASS.**
+**DRY REGRESSION VERIFIED (owner, 2026-09-30):** after the PowerShell 5.1
+hex-literal fix in commit `95be1ba4ebaf229b58d115fca3b5b9e12d0a267b`, the owner
+reran `scripts/test-driver.ps1 -Mode Dry`. Driver build completed with
+**0 warnings / 0 errors**, `lecdiag` built as x64 PE machine 0x8664, and the
+hardware-independent contracts finished **8/8 PASS, 0 failed** with final
+`REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
+development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
 **NEW REGRESSION HARNESS (2026-09-30, SOURCE-SIDE ONLY):**
 `scripts/test-driver.ps1` is now the unified test entry point with
