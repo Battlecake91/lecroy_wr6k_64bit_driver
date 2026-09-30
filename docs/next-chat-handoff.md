@@ -42,7 +42,7 @@ the mapped DWORD MMIO write, Information=0. Avoid exploratory writes;
 the real same-value MMIO write already proved the path.
 
 See [runtime trace](runtime-trace.md) and
-[original register-list/write ABI](original-register-list-and-write-abi.md).
+[original register-list/write ABI](original-register-list-and-write-abi.md).\nDedicated user-mode proof: [KernelPCIRegisters SetOneRegister caller](kernel-pci-register-setter-usermode.md).
 
 ## Previous trace evidence (still valid, but setter is no longer unseen)
 
