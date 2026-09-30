@@ -295,6 +295,28 @@ separate cached-word/IO writes. It would be
 incorrect to label every caller of
 `FUN_000107FE` a GPIODAT writer.
 
+## New original-runtime evidence from broad normal UI exercise
+
+The owner's private original-x86 trace
+`legacy_xstream_trace_setregister.jsonl` was captured while deliberately
+changing channel enable state, all channels to 20 mV/div, coupling,
+bandwidth, timebase, sample rate, four-to-two-channel 10-GS/s mode, and
+multiple trigger source/slope/type/Width-condition settings.
+
+Across **184,862 valid native IOCTL records**, neither
+`0x0022303C` nor `0xCFDC2130` occurs at all. The main original
+acquisition interface carries **182,588 native IOCTL calls, all with
+NTSTATUS success**. This is meaningful negative evidence: the two hazardous
+writers are not part of the exercised ordinary UI path. It is not proof
+that service/developer/rare modes never use them.
+
+The same trace returns a complete original `0x00223040` list of
+**11,438 bytes (43 x 266)**. Parsed public metadata for all 43 records
+(name, BAR, physical offset, type) matches this document's recovered
+order and the native `g_LecLegacyRegisterList[43]` **43/43**.
+The raw trace stays private because it also contains device-specific
+Dallas/license and identifier data. See [runtime trace notes](runtime-trace.md).
+
 ## Test status and decision
 
 - Real native `CFDC2400` zero-mask ABI success reported.
