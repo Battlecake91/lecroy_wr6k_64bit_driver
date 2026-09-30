@@ -1,4 +1,48 @@
-# Active handoff: broad original-x86 UI trace excludes hazardous writers from normal control path (2026-09-30)
+# Active handoff: normal + Developer/Service original traces both exclude hazardous writers (2026-09-30)
+
+## Newest owner evidence: Developer/Service-menu original-x86 trace
+
+Owner supplied private `legacy_xstream_trace_setregister_2.jsonl`
+after traversing Developer/Service menus and reading many exposed
+diagnostic/status pages. Parsed **13,076 valid JSON records**:
+9,338 native IOCTL calls plus 2,020 Win32 IOCTL records.
+Original main acquisition/control handle: **7,141 native calls,
+all 7,141 STATUS_SUCCESS**.
+
+Exact target result:
+- ZERO `0x0022303C` SetOneRegister;
+- ZERO `0xCFDC2130` serial-trigger FPGA;
+- ZERO `0x00223088` Dallas WRITE;
+- ZERO `0xCFDC21C4` raw register WRITE.
+
+This is independent of the previous broad normal-UI trace, which also
+contained zero target writers. The service traversal therefore strongly
+supports leaving these hazardous top-level writers absent unless actual
+user-mode caller evidence proves they are needed.
+
+Service-only evidence relative to the previous normal trace:
+- the only additional top-level LeCroy IOCTL code is `CFDC21C8`
+  (two successful driver-build=1002 queries);
+- eleven new CFDC2110 request shapes:
+  eight family1/op42 JTAG query buffers (each twice),
+  family1/A2 twice, family1/A1 twice, and one family0/op84
+  selector 0x17 generic forwarded board request;
+- A1/A2 are the already decoded Revision page:
+  A1 -> BAR1 ACQFVER +0x0C, A2 -> BAR0 FVER +0x00;
+- indexed `0x00223040` reads additionally request
+  index 1 RxControl and index 2 TxCount;
+- `CFDC21C0` reads BAR0 offsets 0x00,04,08,0C,10,14 twice.
+
+Do NOT ask owner to deliberately click unknown service "write register"
+or FPGA-programming actions just to force these dangerous IOCTLs.
+The safest next evidence remains the already-running binary scan for
+little-endian `3C 30 22 00` (0x0022303C). If scan hits an EXE/DLL,
+inspect that binary statically and recover the setter request producer.
+
+Sanitized evidence: [runtime trace](runtime-trace.md).
+Raw trace remains private because it contains local/device-specific data.
+
+## Previous broad normal-UI trace evidence (still valid)
 
 ## Newest owner evidence: private original XStream trace
 
