@@ -3209,3 +3209,20 @@ program's newly updated JSONL exporter now omits Dallas
 WRITE input and READ/ROM-ID output previews, while preserving
 metadata and status. This requires rebuilding `lecdiag` and
 does not modify already-created traces or the kernel.
+
+
+## Proposed live GUI monitor
+
+For interactive feature correlation, a native user-mode `lecwatch` GUI is
+proposed on top of the existing read-only debug trace ring. It should show
+recently observed IOCTLs as activity indicators, maintain a live log, support
+"hide known" filtering, operator action markers, action-window comparison and
+idle-baseline suppression. No kernel change is required for the first version.
+
+Important: the current trace entry is recorded after IOCTL completion, so the
+UI must call an illuminated indicator "recently observed", not literally
+"currently executing". Because `0xCFDC2110` multiplexes nested commands,
+semantic filtering should operate on decoded subcommands as well as the
+top-level IOCTL where possible.
+
+Full design: [live IOCTL monitor](live-ioctl-monitor-design.md).
