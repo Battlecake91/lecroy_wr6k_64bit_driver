@@ -106,12 +106,12 @@ remain blank and are marked redacted.
 
 ## Trace loss
 
-The driver ring contains 256 records and the monitor polls it every 100 ms.
+The driver ring contains 256 records. After the first real acquisition-heavy session exposed trace gaps, the monitor polls it every 10 ms.
 Sequence numbers are used for deduplication and gap detection. The status line
 shows the number of records that were missed because the ring advanced past the
 last observed sequence.
 
-If real use shows persistent gaps, the next optimization should be a private
+The first owner session still reported 810 dropped records with the original 100-ms polling interval, so this is now a measured limitation rather than a hypothetical one. If 10-ms polling still shows persistent gaps, the next optimization should be a private
 "records newer than sequence N" diagnostic ABI. The kernel transport is not
 changed pre-emptively in this first version.
 
@@ -147,3 +147,40 @@ arguments. This was a build-system omission, not a runtime/driver failure.
 
 A fresh owner MSVC build after `979a836` is still required before the tool is
 build-verified.
+
+
+## First real live session
+
+The owner successfully built and ran `lecwatch` alongside XStream on the real
+x64 WaveRunner system on 2026-09-30. This establishes the GUI/device-interface
+connection and live trace path in practice.
+
+Observed behavior:
+
+- `0xCFDC2110` is extremely active while acquisition is running;
+- its live activity stops immediately when acquisition is stopped;
+- changing XStream's **Use Auxiliary Output for** setting produces
+  `0xCFDC2110` activity;
+- the first saved session retained 5,000 events and reported 810 sequence gaps,
+  demonstrating that the original 100-ms polling interval was too slow for
+  acquisition bursts.
+
+Offline review of that session also found a decoder bug in the first GUI build:
+50-byte CFDC2110 record-type-1 MAM blocks were incorrectly displayed as
+`F0/0x00`, `F0/0x02`, or `F0/0x04`. The record header at offset +4 is
+authoritative; these are not command-family opcodes.
+
+The corrected monitor now:
+
+- parses CFDC2110 record type before interpreting family/opcode;
+- labels record-type-1/2 traffic as MAM programming;
+- labels known acquisition/control commands including family-1 `0x50/0x51`
+  MTT transfer, family-0 `0x90` SPI transfer, family-2 `0x02` MTTCTL,
+  family-2 `0x01` timer, family-2 `0x05` ITMODE and family-2 `0x10`
+  LEDCTL;
+- recognizes 85FB pending-response fetch records;
+- polls every 10 ms instead of 100 ms;
+- retains 20,000 in-memory session events instead of 5,000;
+- writes `qpc_frequency` and session format version 2 into new JSONL headers.
+
+These changes are tool-only and do not modify the kernel driver.
