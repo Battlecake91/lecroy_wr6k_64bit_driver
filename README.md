@@ -114,6 +114,16 @@ field layout and exact original evidence:
 [original register list and writer ABI](
 docs/original-register-list-and-write-abi.md).
 
+### Automated regression layers (2026-09-30)
+
+The unified runner now exposes `Dry`, `Hardware`, `XStream` and `All` modes.
+Dry is owner-verified 8/8 and Hardware is owner-verified 11/11. The new XStream
+COM E2E layer is implemented but not yet runtime-verified. It covers acquisition,
+waveform retrieval, reversible vertical/timebase/coupling/bandwidth controls and
+optional AP015 probe-name plus signal measurement assertions. See
+[regression testing](docs/regression-testing.md) and
+[XStream automation regression](docs/xstream-automation-regression-testing.md).
+
 ### Grouped low-impact ABI checks (2026-09-30)
 
 For owners who want to batch compatibility validation before a
