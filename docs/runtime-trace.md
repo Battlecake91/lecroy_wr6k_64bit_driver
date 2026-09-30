@@ -1,4 +1,80 @@
 # Runtime trace capture
+## 2026-09-30 original-x86 Developer/Service-menu trace: hazardous setters still absent
+
+Private owner capture: `legacy_xstream_trace_setregister_2.jsonl`.
+The owner traversed the Developer/Service menus and read as many exposed
+diagnostic/status pages as practical. The private raw trace is not committed.
+
+The capture is complete JSONL: **13,076 valid records**, including
+**9,338 `nt_ioctl` calls** and 2,020 Win32-level `ioctl` records.
+The original main acquisition/control handle carries **7,141 native IOCTLs;
+all 7,141 return `STATUS_SUCCESS`**.
+
+Most importantly, exhaustive parsing finds **zero occurrences** of:
+
+- `0x0022303C` SetOneRegister;
+- `0xCFDC2130` serial-trigger FPGA/GPIODAT programmer;
+- `0x00223088` Dallas EEPROM WRITE;
+- `0xCFDC21C4` direct raw register WRITE.
+
+This extends the previous normal-UI negative evidence substantially:
+neither the broad normal oscilloscope-control session nor this
+read-oriented Developer/Service traversal uses the two remaining hazardous
+register/FPGA top-level writers. It still does not prove that factory,
+calibration, firmware-update, explicit write/edit, or other rare code paths
+never use them.
+
+### Service-specific traffic that *was* observed
+
+Compared byte-for-byte with the previous broad normal-UI trace, this
+Developer/Service capture introduces only **one additional top-level
+LeCroy IOCTL code**: `CFDC21C8`, queried twice and returning legacy
+driver build **1002** each time.
+
+It also adds eleven `CFDC2110` request shapes not present in the normal
+trace:
+
+- eight distinct family-1 opcode-`0x42` JTAG read/query buffers,
+  each issued twice;
+- family-1 opcode `0xA2` twice;
+- family-1 opcode `0xA1` twice;
+- one family-0 opcode-`0x84`, selector `0x17`, forwarded through
+  the already-recovered generic board-message class.
+
+The A1/A2 cluster matches the already recovered Revision-page behavior:
+
+```text
+family1/A1 -> BAR1 ACQFVER (0x00C)
+family1/A2 -> BAR0 FVER    (0x000)
+```
+
+The same service region then issues `CFDC21C8`, making this a strong
+runtime marker for the Service -> AladdinAcqBoard revision/identification
+path. All of these calls succeed on the original driver.
+
+The service traversal also exercises read-only register diagnostics more
+deeply than the prior normal trace:
+
+- `0x00223040` indexed register-list reads for index **1 = RxControl**
+  and index **2 = TxCount** in addition to the startup/full-list/index-0
+  queries;
+- `CFDC21C0` direct BAR0 reads at offsets
+  `0x00, 0x04, 0x08, 0x0C, 0x10, 0x14`, repeated twice.
+
+These are all already represented by the current x64 compatibility design.
+No new physical-write handler is implied.
+
+### Consequence
+
+A user-visible read-oriented Developer/Service traversal still does not
+produce a real `0x0022303C` request. Do **not** deliberately invoke an
+unknown register-write or FPGA-programming service action on the only
+working/licensed scope merely to force one. The safest and highest-value
+next evidence remains the owner's pending static binary scan for
+little-endian `3C 30 22 00` in the installed XStream EXE/DLL set.
+If a binary contains it, trace its user-mode caller and request construction
+before deciding whether the native driver should ever expose this writer.
+
 
 ## 2026-09-30 original-x86 broad UI trace: SetOneRegister/serial-FPGA paths absent
 
