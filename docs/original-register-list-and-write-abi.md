@@ -168,6 +168,29 @@ required output size as
 `LecFillLegacyRegisterList` already implement
 the observed fully initialized profile.
 
+## Original XStream GUI page now identified
+
+Owner screenshot evidence maps the recovered register-list ABI to the
+original Service UI page:
+
+```text
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters
+```
+
+The visible register list starts with the same ordered entries as the
+43-entry kernel list (`TxControl`, `RxControl`, `TxCount`,
+`RxCount`, `SetIRQ`, `HWInt`, `FVER`, ...). Selecting
+`TxControl` shows address `400 H`, a hexadecimal value field and a
+`Read` button. The corresponding service trace uses `0x00223040` for
+indexed register retrieval.
+
+This page is therefore the strongest current user-mode candidate for the
+unseen SetOneRegister companion. However, the screenshot exposes no
+explicit `Write` control and no runtime `0x0022303C` call was observed
+during extensive read-only traversal. Do not edit/submit the value field
+until the page implementation or a binary constant/call site proves how
+writes are initiated and how record+0x101 is populated.
+
 ## Critical ABI distinction: register OFFSET is not register INDEX
 
 This is especially important for the missing
