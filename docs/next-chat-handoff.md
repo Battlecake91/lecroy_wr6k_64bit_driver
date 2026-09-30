@@ -20,6 +20,20 @@ hardware-independent contracts finished **8/8 PASS, 0 failed** with final
 `REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
 development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
+## XStream E2E implementation added, runtime verification pending
+
+`tests/xstream/test-xstream-e2e.ps1` is now integrated as
+`scripts/test-driver.ps1 -Mode XStream`; `-Mode All` now runs Dry -> Hardware ->
+XStream. The initial suite tests COM activation, C1/Horizontal automation access,
+forced-trigger acquisition, waveform samples/DataArray, and reversible V/div,
+timebase, coupling and bandwidth changes. Optional `-ExpectedProbeName`,
+`-ExpectedAmplitudeVpp` and `-ExpectedFrequencyHz` assertions are supported.
+AP015 basic identity uses legacy `Acquisition.C1.ProbeName`.
+
+Do not claim XStream E2E PASS yet: this new script has not been executed on the
+scope. Exact WaveRunner 6000 Browser paths are still needed for explicit trigger
+configuration, two-channel/10-GS/s assertions and AP015 jaw/hotplug state.
+
 ## Hardware regression verified 11/11 on real scope
 
 The owner executed `scripts/test-driver.ps1 -Mode Hardware` on 2026-09-30 with
