@@ -27,6 +27,7 @@
 
 #define WM_APP_TRACE_BATCH (WM_APP + 1)
 #define WM_APP_TRACE_STATE (WM_APP + 2)
+#define LECWATCH_COPYDATA_MAGIC ((ULONG_PTR)0x4C574154UL) /* "LWAT" */
 
 #define ID_TIMER_UI 1
 #define ID_ACTIVITY 1001
@@ -976,19 +977,23 @@ static void add_user_marker(void)
     rebuild_log();
 }
 
-static void start_action(void)
+static BOOL start_action_named(const wchar_t* label)
 {
     unsigned i;
     LARGE_INTEGER now;
 
     if (g_actionActive) {
         MessageBeep(MB_ICONWARNING);
-        return;
+        return FALSE;
     }
 
-    GetWindowTextW(g_markerEdit, g_actionLabel, _countof(g_actionLabel));
-    if (g_actionLabel[0] == L'\0') {
-        StringCchCopyW(g_actionLabel, _countof(g_actionLabel), L"Action");
+    if (label != NULL && label[0] != L'\0') {
+        StringCchCopyW(g_actionLabel, _countof(g_actionLabel), label);
+    } else {
+        GetWindowTextW(g_markerEdit, g_actionLabel, _countof(g_actionLabel));
+        if (g_actionLabel[0] == L'\0') {
+            StringCchCopyW(g_actionLabel, _countof(g_actionLabel), L"Action");
+        }
     }
 
     QueryPerformanceCounter(&now);
@@ -1008,6 +1013,12 @@ static void start_action(void)
     EnableWindow(g_actionStart, FALSE);
     EnableWindow(g_actionEnd, TRUE);
     rebuild_log();
+    return TRUE;
+}
+
+static void start_action(void)
+{
+    (void)start_action_named(NULL);
 }
 
 static void end_action(void)
@@ -1816,6 +1827,60 @@ static LRESULT CALLBACK window_proc(
         g_connectionError = (DWORD)lParam;
         update_status_text();
         return 0;
+
+    case WM_COPYDATA:
+        {
+            const COPYDATASTRUCT* copy = (const COPYDATASTRUCT*)lParam;
+            wchar_t command[512];
+            size_t chars;
+
+            if (copy == NULL ||
+                copy->dwData != LECWATCH_COPYDATA_MAGIC ||
+                copy->lpData == NULL ||
+                copy->cbData < sizeof(wchar_t) ||
+                copy->cbData > sizeof(command)) {
+                return FALSE;
+            }
+
+            chars = copy->cbData / sizeof(wchar_t);
+            if (chars >= _countof(command)) {
+                chars = _countof(command) - 1;
+            }
+
+            RtlCopyMemory(command, copy->lpData, chars * sizeof(wchar_t));
+            command[chars] = L'\0';
+            if (chars != 0 && command[chars - 1] == L'\0') {
+                command[chars - 1] = L'\0';
+            }
+
+            if (wcsncmp(command, L"MARKER\t", 7) == 0) {
+                LARGE_INTEGER now;
+                wchar_t text[480];
+                QueryPerformanceCounter(&now);
+                StringCchPrintfW(
+                    text,
+                    _countof(text),
+                    L"AUTO: %s",
+                    command + 7);
+                add_marker_at(now.QuadPart, text);
+                rebuild_log();
+                return TRUE;
+            }
+
+            if (wcsncmp(command, L"ACTION_START\t", 13) == 0) {
+                return start_action_named(command + 13) ? TRUE : FALSE;
+            }
+
+            if (wcscmp(command, L"ACTION_END") == 0) {
+                if (!g_actionActive) {
+                    return FALSE;
+                }
+                end_action();
+                return TRUE;
+            }
+
+            return FALSE;
+        }
 
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
