@@ -1,4 +1,47 @@
-# Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
+# Active handoff: broad original-x86 UI trace excludes hazardous writers from normal control path (2026-09-30)
+
+## Newest owner evidence: private original XStream trace
+
+The owner supplied `legacy_xstream_trace_setregister.jsonl` after
+exercising: channel enable/disable, all channels to 20 mV/div,
+coupling, bandwidth, timebase, sample rate, four-to-two-channel
+10 GS/s, trigger CH2->CH1, positive->negative slope, Edge->Width,
+and Width Less Than->Out Of Range.
+
+Parsed file status:
+- 199,741 valid JSON records + one incomplete final JSON line;
+- 184,862 valid `nt_ioctl` records;
+- main acquisition/control handle: **182,588 native calls, all
+  `STATUS_SUCCESS`**;
+- **ZERO `0x0022303C` SetOneRegister calls**;
+- **ZERO `0xCFDC2130` serial-trigger FPGA calls**;
+- ZERO `0x00223088` Dallas WRITE and ZERO `0xCFDC21C4`
+  raw register-write calls.
+
+This strongly indicates the two remaining dangerous register/FPGA
+writers are NOT required for the exercised normal oscilloscope controls.
+Do not implement them merely for a 27/27 headline.
+
+The trace also contains a full original `0x00223040` register-list
+reply of **11,438 bytes = 43 x 266**. Parsing all 43 public metadata
+records (name, BAR, offset, type) gives **43/43 exact matches** to
+the current native `g_LecLegacyRegisterList[43]` and the static
+Ghidra ordering. Raw runtime values and the private raw trace are
+NOT committed because the file also contains device-specific
+Dallas/license and identifier material.
+
+**NEXT evidence expected from owner:** pending binary scan of the
+original XStream install for little-endian IOCTL constant
+`3C 30 22 00` (= `0x0022303C`). If a matching EXE/DLL is found,
+obtain that binary and statically trace the user-mode caller and
+construction of the 266-byte setter request. The current trace alone
+does not justify any new hardware-writing driver code or scope test.
+
+Complete sanitized findings:
+[runtime-trace 2026-09-30 section](runtime-trace.md) and
+[original register-list/write ABI](original-register-list-and-write-abi.md).
+
+## Previous static-analysis checkpoint (still valid)
 
 ## Live IOCTL monitor implemented in source; first Windows run pending
 
