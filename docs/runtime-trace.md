@@ -3226,3 +3226,35 @@ semantic filtering should operate on decoded subcommands as well as the
 top-level IOCTL where possible.
 
 Full design: [live IOCTL monitor](live-ioctl-monitor-design.md).
+
+
+## Native live monitor implementation
+
+A native x64 GUI named `lecwatch` is now implemented in source on top of the
+same private trace ring used by `lecdiag trace-capture`. It does not require a
+kernel change or driver reload.
+
+Build:
+
+```powershell
+.\scripts\build-lecwatch.ps1
+```
+
+Run:
+
+```powershell
+.\tools\lecwatch\build\lecwatch.exe
+```
+
+The monitor polls every 100 ms on a worker thread, starts at the current
+sequence rather than replaying stale ring contents, reports sequence gaps,
+shows recent IOCTL activity and a live log, decodes selected `CFDC2110`
+family/opcode forms, supports semantic filtering, learns an idle baseline,
+records operator markers/action windows, and saves annotated JSONL.
+
+Dallas payloads are redacted in UI details and persisted sessions. The monitor
+never sends arbitrary legacy controls.
+
+**Verification status:** source implemented; MSVC build and real-scope live use
+have not yet been reported. See [live monitor design and implementation](live-ioctl-monitor-design.md)
+and [tool README](../tools/lecwatch/README.md).
