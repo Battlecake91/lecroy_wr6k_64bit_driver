@@ -93,7 +93,7 @@ This closes the user-mode caller/record-construction blocker for
 exact 266-byte input; validate index < 43/current known list;
 map ONLY via g_LecLegacyRegisterList; resolve BAR/offset safely;
 Information=0; never reproduce original unchecked array dereference.
-No further exploratory physical writes are needed to prove this path.
+No further exploratory physical writes are needed to prove this path. See `docs/kernel-pci-register-setter-usermode.md` for the sanitized DLL/trace proof.
 
 **KERNELPCIREGISTERS UI IDENTIFIED (2026-09-30):**
 Owner screenshot maps `0x00223040` register-list reads to
