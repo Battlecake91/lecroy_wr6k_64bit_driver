@@ -62,35 +62,39 @@ function Get-HexDefine {
         $Text,
         "(?m)^\s*#define\s+$escaped\s+.*?0x([0-9A-Fa-f]{8})")
     if (-not $match.Success) { return $null }
-    return [Convert]::ToUInt32($match.Groups[1].Value, 16)
+
+    # Return canonical text instead of a numeric PowerShell literal.
+    # Windows PowerShell 5.1 parses 0x80000000..0xFFFFFFFF as signed Int32,
+    # which makes CFDC/CFDD IOCTL values negative before a UInt32 cast.
+    return $match.Groups[1].Value.ToUpperInvariant()
 }
 
 $represented = [ordered]@{
-    "LECS65_IOCTL_00222400" = 0x00222400
-    "LECS65_IOCTL_DELAY_MILLISECONDS" = 0x00222C00
-    "LECS65_IOCTL_SET_FLAG_BYTE" = 0x00222C04
-    "LECS65_IOCTL_SET_TRACE_CONTROL" = 0x00223000
-    "LECS65_IOCTL_QUERY_BUFFER_A" = 0x00223004
-    "LECS65_IOCTL_QUERY_BUFFER_B" = 0x00223040
-    "LECS65_IOCTL_READ_START_REGISTER" = 0x00223044
-    "LECS65_IOCTL_GET_DALLAS_ID" = 0x00223080
-    "LECS65_IOCTL_READ_DALLAS_MEMORY" = 0x00223084
-    "LECS65_IOCTL_SET_THREE_EVENTS" = 0x00223100
-    "LECS65_IOCTL_CFDC2110" = 0xCFDC2110
-    "LECS65_IOCTL_REGISTER_TRANSFER" = 0xCFDC2124
-    "LECS65_IOCTL_UNREGISTER_TRANSFER" = 0xCFDC2128
-    "LECS65_IOCTL_CFDC212C" = 0xCFDC212C
-    "LECS65_IOCTL_ACQUIRE_BUFFERED" = 0xCFDC2138
-    "LECS65_IOCTL_SET_EVENT_0" = 0xCFDC2180
-    "LECS65_IOCTL_CFDC2184" = 0xCFDC2184
-    "LECS65_IOCTL_SET_EVENT_1" = 0xCFDC218C
-    "LECS65_IOCTL_CFDC2190" = 0xCFDC2190
-    "LECS65_IOCTL_CFDC2194" = 0xCFDC2194
-    "LECS65_IOCTL_REGISTER_READ" = 0xCFDC21C0
-    "LECS65_IOCTL_REGISTER_WRITE" = 0xCFDC21C4
-    "LECS65_IOCTL_GET_DRIVER_BUILD" = 0xCFDC21C8
-    "LECS65_IOCTL_CFDC2400" = 0xCFDC2400
-    "LECS65_IOCTL_ACQUIRE_NEITHER" = 0xCFDD219F
+    "LECS65_IOCTL_00222400" = "00222400"
+    "LECS65_IOCTL_DELAY_MILLISECONDS" = "00222C00"
+    "LECS65_IOCTL_SET_FLAG_BYTE" = "00222C04"
+    "LECS65_IOCTL_SET_TRACE_CONTROL" = "00223000"
+    "LECS65_IOCTL_QUERY_BUFFER_A" = "00223004"
+    "LECS65_IOCTL_QUERY_BUFFER_B" = "00223040"
+    "LECS65_IOCTL_READ_START_REGISTER" = "00223044"
+    "LECS65_IOCTL_GET_DALLAS_ID" = "00223080"
+    "LECS65_IOCTL_READ_DALLAS_MEMORY" = "00223084"
+    "LECS65_IOCTL_SET_THREE_EVENTS" = "00223100"
+    "LECS65_IOCTL_CFDC2110" = "CFDC2110"
+    "LECS65_IOCTL_REGISTER_TRANSFER" = "CFDC2124"
+    "LECS65_IOCTL_UNREGISTER_TRANSFER" = "CFDC2128"
+    "LECS65_IOCTL_CFDC212C" = "CFDC212C"
+    "LECS65_IOCTL_ACQUIRE_BUFFERED" = "CFDC2138"
+    "LECS65_IOCTL_SET_EVENT_0" = "CFDC2180"
+    "LECS65_IOCTL_CFDC2184" = "CFDC2184"
+    "LECS65_IOCTL_SET_EVENT_1" = "CFDC218C"
+    "LECS65_IOCTL_CFDC2190" = "CFDC2190"
+    "LECS65_IOCTL_CFDC2194" = "CFDC2194"
+    "LECS65_IOCTL_REGISTER_READ" = "CFDC21C0"
+    "LECS65_IOCTL_REGISTER_WRITE" = "CFDC21C4"
+    "LECS65_IOCTL_GET_DRIVER_BUILD" = "CFDC21C8"
+    "LECS65_IOCTL_CFDC2400" = "CFDC2400"
+    "LECS65_IOCTL_ACQUIRE_NEITHER" = "CFDD219F"
 }
 
 Test-Contract "legacy driver build remains 1002" {
@@ -101,7 +105,7 @@ Test-Contract "legacy driver build remains 1002" {
 Test-Contract "25 represented driver IOCTL constants keep their numeric values" {
     foreach ($entry in $represented.GetEnumerator()) {
         $actual = Get-HexDefine -Text $driverText -Name $entry.Key
-        if ($null -eq $actual -or [uint32]$actual -ne [uint32]$entry.Value) {
+        if ($null -eq $actual -or $actual -ne [string]$entry.Value) {
             return $false
         }
     }
@@ -119,9 +123,9 @@ Test-Contract "selected native IOCTLs still have dispatch references in Ioctl.c"
 }
 
 Test-Contract "public ABI keeps the three known hazardous controls documented" {
-    (Get-HexDefine $publicText "LECS65_IOCTL_0022303C") -eq 0x0022303C -and
-    (Get-HexDefine $publicText "LECS65_IOCTL_WRITE_DALLAS_MEMORY") -eq 0x00223088 -and
-    (Get-HexDefine $publicText "LECS65_IOCTL_PROG_SERTRIG_FPGA") -eq 0xCFDC2130
+    (Get-HexDefine $publicText "LECS65_IOCTL_0022303C") -eq "0022303C" -and
+    (Get-HexDefine $publicText "LECS65_IOCTL_WRITE_DALLAS_MEMORY") -eq "00223088" -and
+    (Get-HexDefine $publicText "LECS65_IOCTL_PROG_SERTRIG_FPGA") -eq "CFDC2130"
 }
 
 Test-Contract "hazardous controls remain intentionally absent from native driver header" {
