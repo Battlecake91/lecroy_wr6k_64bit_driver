@@ -6,10 +6,10 @@ The replacement driver now has one front-end regression runner:
 
     .\scripts\test-driver.ps1 -Mode Dry
     .\scripts\test-driver.ps1 -Mode Hardware
+    .\scripts\test-driver.ps1 -Mode XStream
     .\scripts\test-driver.ps1 -Mode All
 
-XStream end-to-end automation is deliberately the next layer and is not part of
-this first implementation.
+XStream end-to-end automation is now implemented as the third regression layer.
 
 ## Dry mode
 
@@ -63,21 +63,34 @@ The optional consuming error-status read remains explicit:
 
     .\scripts\test-driver.ps1 -Mode Hardware -IncludeErrorStatus
 
+## XStream mode
+
+XStream mode uses the installed XStream application through its local COM automation
+server. It performs acquisition/waveform checks plus reversible vertical, horizontal,
+coupling and bandwidth control roundtrips. Optional expected probe name,
+amplitude and frequency assertions are available.
+
+    .\scripts\test-driver.ps1 -Mode XStream
+    .\scripts\test-driver.ps1 -Mode XStream -ExpectedProbeName AP015
+    .\scripts\test-driver.ps1 -Mode XStream -ExpectedAmplitudeVpp 1 -ExpectedFrequencyHz 1000
+
+The first implementation is not yet runtime-verified on the scope.
+
 ## All mode
 
-All runs Dry first and Hardware second:
+All now runs Dry, then Hardware, then XStream:
 
     .\scripts\test-driver.ps1 -Mode All
 
-Any terminating failure stops the runner. This makes the same entry point usable
-interactively now and by a future self-hosted hardware CI runner later.
+XStream must be closed when All starts because the Hardware layer deliberately
+refuses to run concurrently with it. The XStream COM step starts or connects to
+XStream only after the hardware checks complete.
 
-## Planned third layer
+Any terminating failure stops the runner.
 
-XStream E2E will be added after these lower layers are established. Its design is
-documented in docs/xstream-automation-regression-testing.md.
+## Three-layer regression architecture
 
-The intended final layering is:
+The intended layering is:
 
 1. Dry: build plus source/ABI contracts, no hardware.
 2. Hardware: direct safe driver/PCI regression.
