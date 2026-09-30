@@ -29,7 +29,9 @@ param(
 
     [string]$ExpectedProbeName,
 
-    [switch]$SkipXStreamControlChanges
+    [switch]$SkipXStreamControlChanges,
+
+    [switch]$TraceXStreamActions
 )
 
 Set-StrictMode -Version Latest
@@ -97,6 +99,9 @@ if ($Mode -eq "XStream" -or $Mode -eq "All") {
         }
         if ($SkipXStreamControlChanges) {
             $args.SkipControlChanges = $true
+        }
+        if ($TraceXStreamActions) {
+            $args.TraceActions = $true
         }
 
         & $xstreamSuite @args
