@@ -28,6 +28,27 @@ This file tracks unfinished work and deferred features. The current, verified ca
 - [ ] Port the native DS2433 `WRITE_DALLAS_MEMORY` (`0x00223088`) using the recovered x86 handler `FUN_00011f54` and helpers `FUN_00016d90` / `FUN_00016f2c`. Validate the real scratchpad/write/copy/readback sequence first on a disposable DS2433, including error handling and post-power-cycle verification. Do not return fabricated success or experiment with the sole licensed chip.
 - [ ] Add a private backup container that binds the complete eight-byte Dallas ROM ID (including CRC8) to the 512-byte memory image and an integrity checksum; retain raw 512-byte `.bin` import/export for compatibility.
 
+## Release certification goal
+
+- [ ] **Reach HLK readiness before purchasing the EV certificate:** set up a local
+  HLK/VHLK controller and use the real WaveRunner PCI system as the test client.
+  Run the applicable device/driver tests, record the selected test matrix and fix or
+  explicitly justify every failure that blocks a production submission.
+- [ ] **Establish the Microsoft Hardware Developer Program identity:** once local HLK
+  readiness is credible, obtain the required EV code-signing certificate and enroll
+  the project owner in the Hardware Dev Center.
+- [ ] **Produce a WHCP submission package:** generate a clean release build, complete
+  the required HLK runs for the supported target configuration(s), create the signed
+  HLK package and submit it through the Windows Hardware Compatibility Program.
+- [ ] **Final release goal: WHQL/WHCP-certified driver:** publish a Microsoft-signed
+  production package that installs on supported Windows systems without test-signing
+  mode. Preserve the exact tested driver/package sources and certification evidence so
+  releases remain reproducible.
+
+This certification track is a first-class project objective. Attestation/test signing
+may still be useful during development, but it is not considered the final release
+state.
+
 ## Planned maintenance tooling
 
 - [ ] Extend the existing read-only `lecdiag dallas-backup` workflow with offline image verification and a guarded, independently tested restore path once physical writing is proven.
