@@ -114,3 +114,21 @@ last observed sequence.
 If real use shows persistent gaps, the next optimization should be a private
 "records newer than sequence N" diagnostic ABI. The kernel transport is not
 changed pre-emptively in this first version.
+
+
+## First MSVC build attempt
+
+The owner's first Windows/MSVC build attempt on 2026-09-30 correctly exposed
+three source-side build omissions:
+
+- duplicate `_CRT_SECURE_NO_WARNINGS` definition (source plus command line);
+- missing declaration of `_countof`;
+- missing `CTL_CODE`, `METHOD_BUFFERED` and `FILE_READ_ACCESS` definitions.
+
+Commit `a668ee3` fixes these by removing the duplicate source macro and adding
+`<stdlib.h>` plus `<winioctl.h>`.
+
+The failed build produced no `lecwatch.exe`, so the subsequent
+`tools\lecwatch\build\lecwatch.exe` launch failure was expected and is not
+a runtime failure of the monitor. A fresh owner MSVC build after `a668ee3` is
+still required before the GUI can be called build-verified.
