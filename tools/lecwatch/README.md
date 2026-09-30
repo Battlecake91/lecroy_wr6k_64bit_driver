@@ -184,3 +184,61 @@ The corrected monitor now:
 - writes `qpc_frequency` and session format version 2 into new JSONL headers.
 
 These changes are tool-only and do not modify the kernel driver.
+
+
+## Automated XStream E2E action tracing
+
+The XStream E2E regression can now drive reversible scope actions and mark the
+exact action windows directly inside a running `lecwatch` instance.
+
+Build and start the current monitor:
+
+```powershell
+git pull --ff-only origin main
+.\scripts\build-lecwatch.ps1
+.\tools\lecwatch\build\lecwatch.exe
+```
+
+Then, in a second PowerShell:
+
+```powershell
+.\scripts\test-driver.ps1 -Mode XStream -TraceXStreamActions
+```
+
+When `-TraceXStreamActions` is enabled, the E2E script uses a small
+`WM_COPYDATA` bridge to send synchronous control messages to the
+`LecWatchMainWindow` window class. No additional driver/debug IOCTL is added.
+
+The current traced actions are:
+
+- forced-trigger acquisition;
+- C1 vertical-scale apply and restore;
+- horizontal timebase apply and restore;
+- C1 coupling apply and restore;
+- C1 bandwidth-limit apply and restore.
+
+Each action produces normal `ACTION START` / `ACTION END` markers and the
+existing per-top-level-IOCTL action count summary in the live log. The E2E
+script waits 100 ms before sending `ACTION END` so the 10-ms trace reader can
+ingest the tail of the just-completed driver burst.
+
+If `-TraceXStreamActions` is requested without a compatible running
+`lecwatch`, the E2E script stops before touching XStream controls.
+
+After the E2E run, save the lecwatch session and summarize it:
+
+```powershell
+python .\tools\lecwatch\summarize-actions.py ".\lecwatch_session.jsonl" --markdown ".\lecwatch_action_summary.md"
+```
+
+The summarizer sorts marker/IOCTL events by QPC, then reports for every action:
+
+- action duration when the format-v2 QPC frequency is available;
+- total retained IOCTL count;
+- non-success status count;
+- per-top-level-IOCTL counts;
+- nested/detail counts;
+- number of distinct input-payload variants per detail.
+
+This makes repeated E2E runs directly useful for assigning XStream controls to
+driver traffic without manually clicking Start/End Action around every change.
