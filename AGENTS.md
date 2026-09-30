@@ -22,6 +22,14 @@ hardware-independent contracts finished **8/8 PASS, 0 failed** with final
 `REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
 development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
+**HARDWARE REGRESSION EXPANDED (2026-09-30, NOT YET RERUN):**
+the hardware layer now has eleven default checks. New passive checks query private
+debug stats (version 1, legacy build 1002) and mapped BAR metadata (version 1,
+three non-zero logical BAR mappings) before the previous nine ABI checks. No new
+MMIO writes, Dallas writes, FPGA programming or nonzero IRQ injection were added.
+Run via `scripts/test-driver.ps1 -Mode Hardware`. Preserve status honestly:
+old suite = owner-reported 9/9 PASS; expanded suite = pending actual 11-check run.
+
 **NEW REGRESSION HARNESS (2026-09-30, SOURCE-SIDE ONLY):**
 `scripts/test-driver.ps1` is now the unified test entry point with
 `-Mode Dry|Hardware|All`. Dry builds driver+lecdiag by default and then runs
