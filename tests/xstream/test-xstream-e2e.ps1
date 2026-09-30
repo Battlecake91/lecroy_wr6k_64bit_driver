@@ -28,7 +28,9 @@ param(
 
     [string]$ExpectedProbeName,
 
-    [switch]$SkipControlChanges
+    [switch]$SkipControlChanges,
+
+    [switch]$TraceActions
 )
 
 Set-StrictMode -Version Latest
@@ -144,12 +146,111 @@ function Set-And-VerifyNumericControl {
     return $readback
 }
 
+function Initialize-LecwatchTraceBridge {
+    if (-not $TraceActions) {
+        return
+    }
+
+    if (-not ("LecwatchTraceBridge" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class LecwatchTraceBridge
+{
+    private const uint WM_COPYDATA = 0x004A;
+    private static readonly UIntPtr Magic = new UIntPtr(0x4C574154);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct COPYDATASTRUCT
+    {
+        public UIntPtr dwData;
+        public int cbData;
+        public IntPtr lpData;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(
+        IntPtr hWnd,
+        uint Msg,
+        IntPtr wParam,
+        ref COPYDATASTRUCT lParam);
+
+    public static bool Send(string command)
+    {
+        IntPtr hwnd = FindWindow("LecWatchMainWindow", null);
+        if (hwnd == IntPtr.Zero) {
+            return false;
+        }
+
+        IntPtr data = Marshal.StringToHGlobalUni(command);
+        try {
+            COPYDATASTRUCT packet = new COPYDATASTRUCT();
+            packet.dwData = Magic;
+            packet.cbData = checked((command.Length + 1) * 2);
+            packet.lpData = data;
+            return SendMessage(hwnd, WM_COPYDATA, IntPtr.Zero, ref packet) != IntPtr.Zero;
+        }
+        finally {
+            Marshal.FreeHGlobal(data);
+        }
+    }
+}
+"@
+    }
+
+    $hello = "MARKER{0}XStream E2E trace bridge connected" -f [char]9
+    if (-not [LecwatchTraceBridge]::Send($hello)) {
+        throw "TraceActions requested, but no compatible lecwatch window is running. Build/start lecwatch first."
+    }
+
+    Write-Host "  lecwatch trace bridge connected" -ForegroundColor Cyan
+}
+
+function Send-LecwatchTraceCommand {
+    param([Parameter(Mandatory=$true)][string]$Command)
+
+    if (-not $TraceActions) {
+        return
+    }
+
+    if (-not [LecwatchTraceBridge]::Send($Command)) {
+        throw ("lecwatch trace command failed: {0}" -f $Command)
+    }
+}
+
+function Invoke-TracedAction {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][scriptblock]$Body
+    )
+
+    if (-not $TraceActions) {
+        return & $Body
+    }
+
+    Send-LecwatchTraceCommand ("ACTION_START{0}{1}" -f [char]9, $Name)
+    try {
+        return & $Body
+    }
+    finally {
+        if (-not [LecwatchTraceBridge]::Send("ACTION_END")) {
+            Write-Warning ("lecwatch did not accept ACTION_END for '{0}'." -f $Name)
+        }
+    }
+}
+
 $app = $null
 $acq = $null
 $c1 = $null
 $horizontal = $null
 $c1Result = $null
 $connectedProgId = $null
+
+Initialize-LecwatchTraceBridge
 
 try {
     Test-E2E "XStream COM automation connection" {
@@ -200,7 +301,9 @@ try {
     }
 
     Test-E2E "Forced-trigger acquisition completes" {
-        Invoke-Acquire -Acquisition $acq
+        Invoke-TracedAction -Name "Forced-trigger acquisition" -Body {
+            Invoke-Acquire -Acquisition $acq
+        }
     }
 
     Test-E2E "C1 waveform sample count is nonzero" {
@@ -230,13 +333,18 @@ try {
             $original = [double]$c1.VerScale
             try {
                 $candidate = $original * 2.0
-                $readback = Set-And-VerifyNumericControl -Object $c1 -Property "VerScale" -Candidate $candidate
-                Invoke-Acquire -Acquisition $acq
-                Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after vertical-scale change"
+                $readback = Invoke-TracedAction -Name ("C1 VerScale {0:R} -> {1:R}" -f $original, $candidate) -Body {
+                    $value = Set-And-VerifyNumericControl -Object $c1 -Property "VerScale" -Candidate $candidate
+                    Invoke-Acquire -Acquisition $acq
+                    Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after vertical-scale change"
+                    return $value
+                }
                 Write-Host ("  {0:R} -> {1:R} V/div" -f $original, $readback)
             }
             finally {
-                $c1.VerScale = $original
+                Invoke-TracedAction -Name ("C1 VerScale restore -> {0:R}" -f $original) -Body {
+                    $c1.VerScale = $original
+                } | Out-Null
             }
         }
 
@@ -244,13 +352,18 @@ try {
             $original = [double]$horizontal.HorScale
             try {
                 $candidate = $original * 2.0
-                $readback = Set-And-VerifyNumericControl -Object $horizontal -Property "HorScale" -Candidate $candidate
-                Invoke-Acquire -Acquisition $acq
-                Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after timebase change"
+                $readback = Invoke-TracedAction -Name ("Horizontal HorScale {0:R} -> {1:R}" -f $original, $candidate) -Body {
+                    $value = Set-And-VerifyNumericControl -Object $horizontal -Property "HorScale" -Candidate $candidate
+                    Invoke-Acquire -Acquisition $acq
+                    Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after timebase change"
+                    return $value
+                }
                 Write-Host ("  {0:R} -> {1:R} s/div" -f $original, $readback)
             }
             finally {
-                $horizontal.HorScale = $original
+                Invoke-TracedAction -Name ("Horizontal HorScale restore -> {0:R}" -f $original) -Body {
+                    $horizontal.HorScale = $original
+                } | Out-Null
             }
         }
 
@@ -259,15 +372,20 @@ try {
             $candidate = if ($original -ieq "AC1M") { "DC1M" } else { "AC1M" }
 
             try {
-                $c1.Coupling = $candidate
-                $readback = [string]$c1.Coupling
-                Assert-True ($readback -ieq $candidate) ("Coupling readback '{0}' != requested '{1}'" -f $readback, $candidate)
-                Invoke-Acquire -Acquisition $acq
-                Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after coupling change"
+                $readback = Invoke-TracedAction -Name ("C1 Coupling {0} -> {1}" -f $original, $candidate) -Body {
+                    $c1.Coupling = $candidate
+                    $value = [string]$c1.Coupling
+                    Assert-True ($value -ieq $candidate) ("Coupling readback '{0}' != requested '{1}'" -f $value, $candidate)
+                    Invoke-Acquire -Acquisition $acq
+                    Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after coupling change"
+                    return $value
+                }
                 Write-Host ("  {0} -> {1}" -f $original, $readback)
             }
             finally {
-                $c1.Coupling = $original
+                Invoke-TracedAction -Name ("C1 Coupling restore -> {0}" -f $original) -Body {
+                    $c1.Coupling = $original
+                } | Out-Null
             }
         }
 
@@ -276,15 +394,20 @@ try {
             $candidate = if ($original -ieq "Full") { "20MHz" } else { "Full" }
 
             try {
-                $c1.BandwidthLimit = $candidate
-                $readback = [string]$c1.BandwidthLimit
-                Assert-True ($readback -ieq $candidate) ("BandwidthLimit readback '{0}' != requested '{1}'" -f $readback, $candidate)
-                Invoke-Acquire -Acquisition $acq
-                Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after bandwidth change"
+                $readback = Invoke-TracedAction -Name ("C1 BandwidthLimit {0} -> {1}" -f $original, $candidate) -Body {
+                    $c1.BandwidthLimit = $candidate
+                    $value = [string]$c1.BandwidthLimit
+                    Assert-True ($value -ieq $candidate) ("BandwidthLimit readback '{0}' != requested '{1}'" -f $value, $candidate)
+                    Invoke-Acquire -Acquisition $acq
+                    Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after bandwidth change"
+                    return $value
+                }
                 Write-Host ("  {0} -> {1}" -f $original, $readback)
             }
             finally {
-                $c1.BandwidthLimit = $original
+                Invoke-TracedAction -Name ("C1 BandwidthLimit restore -> {0}" -f $original) -Body {
+                    $c1.BandwidthLimit = $original
+                } | Out-Null
             }
         }
     }
@@ -357,6 +480,10 @@ try {
     }
     else {
         Skip-E2E "C1 frequency measurement against expected signal" "no -ExpectedFrequencyHz supplied"
+    }
+
+    if ($TraceActions) {
+        Send-LecwatchTraceCommand ("MARKER{0}XStream E2E action sequence complete" -f [char]9)
     }
 }
 finally {
