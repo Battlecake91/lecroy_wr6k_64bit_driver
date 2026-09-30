@@ -64,6 +64,23 @@ deeply than the prior normal trace:
 These are all already represented by the current x64 compatibility design.
 No new physical-write handler is implied.
 
+### Cross-check against the previously documented trace corpus
+
+A repository/history review plus the available saved trace excerpts found
+**no previously documented runtime occurrence of `0x0022303C` either**.
+The current broad normal-UI and Developer/Service captures are therefore
+consistent with all trace evidence available to the project so far.
+
+Do not confuse this with `CFDC21C4`: several early x64 bring-up traces
+did contain direct `CFDC21C4` register writes (for example BAR0+0x0C
+START programming), but that is a distinct top-level IOCTL and does not
+provide evidence for the original 266-byte `0x0022303C` SetOneRegister
+caller ABI.
+
+This statement is limited to traces currently documented/searchable in
+the project and saved conversation/library evidence; it is not a claim
+about arbitrary unarchived vendor runs that have never been captured.
+
 ### Consequence
 
 A user-visible read-oriented Developer/Service traversal still does not
