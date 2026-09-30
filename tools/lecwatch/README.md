@@ -132,3 +132,18 @@ The failed build produced no `lecwatch.exe`, so the subsequent
 `tools\lecwatch\build\lecwatch.exe` launch failure was expected and is not
 a runtime failure of the monitor. A fresh owner MSVC build after `a668ee3` is
 still required before the GUI can be called build-verified.
+
+
+## Second MSVC build attempt
+
+The owner's follow-up MSVC build on 2026-09-30 passed compilation and then
+failed at link time with 28 unresolved Win32 GUI imports. The unresolved
+symbols were from User32/GDI32, including `GetMessageW`, `CreateWindowExW`,
+`MessageBoxW`, `SetProcessDPIAware` and `GetStockObject`.
+
+Commits `c5bb895` and `979a836` add explicit `user32.lib` and
+`gdi32.lib` linkage both through source pragmas and the build helper's linker
+arguments. This was a build-system omission, not a runtime/driver failure.
+
+A fresh owner MSVC build after `979a836` is still required before the tool is
+build-verified.
