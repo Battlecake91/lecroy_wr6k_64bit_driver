@@ -700,8 +700,7 @@ static void refresh_activity(void)
         }
 
         if (checked(g_hideKnown) &&
-            (confidence == CONF_CONFIRMED || confidence == CONF_FUNCTIONAL) &&
-            stat->Code != 0xCFDC2110) {
+            (confidence == CONF_CONFIRMED || confidence == CONF_FUNCTIONAL)) {
             continue;
         }
 
