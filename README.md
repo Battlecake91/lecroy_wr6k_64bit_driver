@@ -184,6 +184,12 @@ Use an administrative PowerShell on the development/test system. The project use
 
 # Capture XStream activity locally for compatibility analysis
 .\scripts\capture-xstream-trace.ps1
+
+# Build the native live IOCTL monitor
+.\scripts\build-lecwatch.ps1
+
+# Then run it alongside XStream
+.\tools\lecwatch\build\lecwatch.exe
 ```
 
 **Private Dallas backup** with XStream closed and a compatible `lecdiag` build:
@@ -198,7 +204,9 @@ New-Item -ItemType Directory -Force '.\license-backups' | Out-Null
 
 Raw XStream traces may include card identity and license contents because XStream reads the Dallas memory during startup. Store them only in private locations, including `trace-captures/` and `license-backups/` (both ignored by Git). Do not assume older exports are sanitized.
 
-More build details: [Build/test/install](docs/build-test-install.md), [x64 bring-up reference](docs/x64-bringup.md) and [runtime trace documentation](docs/runtime-trace.md).
+The live monitor is source-implemented and uses only the existing private trace-read diagnostic ABI; its first Windows/MSVC build and real-scope live run are still pending. No driver reload is needed merely to build or start the monitor.
+
+More build details: [Build/test/install](docs/build-test-install.md), [x64 bring-up reference](docs/x64-bringup.md), [runtime trace documentation](docs/runtime-trace.md) and [live IOCTL monitor design](docs/live-ioctl-monitor-design.md).
 
 ## Development backlog
 
@@ -213,6 +221,7 @@ Active work covers broader XStream compatibility/regression testing, remaining p
 | [`driver/`](driver/) | Native x64 kernel driver, INF and Visual Studio project. |
 | [`include/`](include/) | Reconstructed legacy interfaces and IOCTL ABI definitions. |
 | [`tools/lecdiag/`](tools/lecdiag/) | Windows diagnostics and read-only Dallas backup. |
+| [`tools/lecwatch/`](tools/lecwatch/) | Native x64 live IOCTL activity monitor with filters, idle baseline, markers/action windows and redacted session export. |
 | [`scripts/`](scripts/) | Build, signing/reload, Ghidra export and private diagnostics. |
 | [`ghidra_scripts/`](ghidra_scripts/) and [`ghidra_exports/selected/`](ghidra_exports/selected/) | Repeatable analysis scripts and selected, derived original-driver function exports. |
 | [`docs/`](docs/) | Detailed hardware, protocol, ABI, runtime and development documentation. |
