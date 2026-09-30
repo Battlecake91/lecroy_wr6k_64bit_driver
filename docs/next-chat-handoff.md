@@ -1,5 +1,29 @@
 # Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
 
+
+## New regression harness added (source-side, not yet runtime-verified)
+
+A unified test entry point now exists at `scripts/test-driver.ps1` with
+`-Mode Dry`, `-Mode Hardware`, and `-Mode All`.
+
+- Dry: builds driver + lecdiag by default, then runs
+  `tests/dry/test-source-contracts.ps1` without opening any device.
+- Dry `-SkipBuild`: fast source-only ABI/contract checks.
+- Hardware: delegates to the established safe 9-check real-PCI ABI suite.
+- All: Dry first, then Hardware.
+- XStream E2E is intentionally deferred to the next layer.
+
+The dry suite freezes build 1002, selected IOCTL numeric values and dispatch
+references, public packed ABI size guards, separation of private debug controls,
+and continued absence of the three hazardous original writers
+(`0x0022303C`, `0x00223088`, `0xCFDC2130`) from the native driver source.
+It is intentionally NOT a fake hardware emulator.
+
+Documentation: [regression test architecture](regression-testing.md).
+The new runner/dry suite have NOT yet been executed on Windows and must not be
+reported as PASS until the owner supplies actual output. The older hardware
+safe-ABI result remains the separately reported 9/9 PASS baseline.
+
 ## Current authoritative state, no additional scope work needed now
 
 The owner's THIRD separate-PC read-only Ghidra
