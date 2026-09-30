@@ -108,6 +108,16 @@ Test-Contract "25 represented driver IOCTL constants keep their numeric values" 
     return $true
 }
 
+Test-Contract "selected native IOCTLs still have dispatch references in Ioctl.c" {
+    foreach ($entry in $represented.GetEnumerator()) {
+        $pattern = [regex]::Escape([string]$entry.Key)
+        if ([regex]::Matches($ioctlText, $pattern).Count -lt 1) {
+            return $false
+        }
+    }
+    return $true
+}
+
 Test-Contract "public ABI keeps the three known hazardous controls documented" {
     (Get-HexDefine $publicText "LECS65_IOCTL_0022303C") -eq 0x0022303C -and
     (Get-HexDefine $publicText "LECS65_IOCTL_WRITE_DALLAS_MEMORY") -eq 0x00223088 -and
