@@ -67,6 +67,33 @@ separation, and continued native absence of hazardous original writers
 has not yet been executed on a Windows WDK machine. The separately owner-reported
 hardware batch remains 9/9 PASS.
 
+**NEWEST ORIGINAL-X86 SERVICE TRACE (2026-09-30):**
+Owner supplied private `legacy_xstream_trace_setregister_2.jsonl`
+after traversing Developer/Service menus and reading many pages.
+Complete parse: 13,076 valid records; 9,338 `nt_ioctl`;
+main acquisition handle 7,141 calls, ALL STATUS_SUCCESS.
+Again there are ZERO top-level 0x0022303C, ZERO CFDC2130,
+ZERO 0x00223088 and ZERO CFDC21C4 calls. This independently
+extends the prior broad normal-UI negative evidence into the
+read-oriented Service/Developer UI. Do NOT implement or force
+hazardous writes to chase 27/27.
+
+Service-specific positive evidence versus prior normal trace:
+only new top-level LeCroy IOCTL is CFDC21C8 (2x, build 1002).
+New CFDC2110 shapes include eight family1/op42 JTAG queries,
+A2 and A1 revision reads (each 2x), and family0/op84
+selector 0x17. 0x00223040 additionally reads indices
+1=RxControl and 2=TxCount; CFDC21C0 reads BAR0 offsets
+0x00,04,08,0C,10,14 twice. All succeed in original x86.
+See docs/runtime-trace.md.
+
+NEXT evidence remains the owner's pending original-XStream
+binary scan for little-endian bytes `3C 30 22 00`.
+If any EXE/DLL matches, statically recover the user-mode
+0x0022303C caller and 266-byte request construction. Do NOT
+ask for an unknown service write action on the only licensed
+scope just to manufacture a trace event.
+
 **LATEST ORIGINAL-X86 RUNTIME EVIDENCE (2026-09-30):**
 Owner supplied private `legacy_xstream_trace_setregister.jsonl`
 after a broad normal-control session: channel toggles, all channels
