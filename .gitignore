@@ -16,6 +16,7 @@ trace-captures/
 # Local build outputs and generated driver packages
 x64/
 tools/lecdiag/build/
+tools/lecwatch/build/
 
 # Visual Studio / package-manager caches
 .vs/
