@@ -47,7 +47,7 @@
 #define ID_BASELINE_STATUS 1016
 
 #define MAX_STATS 96
-#define MAX_EVENTS 5000
+#define MAX_EVENTS 20000
 #define MAX_LOG_ROWS 2000
 #define MAX_BASELINE_HASHES 32
 #define ACTIVITY_HOLD_SECONDS 0.75
@@ -256,7 +256,8 @@ static SEMANTIC_CONFIDENCE decode_nested(
     size_t cch)
 {
     uint32_t length;
-    uint32_t i;
+    unsigned payloadLength;
+    unsigned recordType;
     unsigned family;
     unsigned opcode;
     unsigned arg = 0;
@@ -274,71 +275,151 @@ static SEMANTIC_CONFIDENCE decode_nested(
         length = LECS65_TRACE_PREVIEW_BYTES;
     }
 
-    for (i = 0; i + 5 < length; ++i) {
-        if (entry->InputPreview[i] == 0xFB &&
-            entry->InputPreview[i + 1] == 0xA5) {
-            family = entry->InputPreview[i + 3];
-            opcode = entry->InputPreview[i + 4];
-            arg = entry->InputPreview[i + 5];
-
-            if (family == 2 && opcode == 0x40) {
-                name = L"RESET";
-                confidence = CONF_FUNCTIONAL;
-            } else if (family == 1 && opcode == 0x42) {
-                name = L"JTAG";
-                confidence = CONF_FUNCTIONAL;
-            } else if (family == 0 && opcode == 0x88) {
-                name = L"PENDING_ACK";
-                confidence = CONF_FUNCTIONAL;
-            } else if (family == 1 && opcode == 0x81) {
-                name = L"FW_MESSAGE_81";
-                confidence = CONF_PARTIAL;
-            } else if (family == 1 && opcode == 0x82) {
-                name = L"PROBE_STATE";
-                confidence = CONF_PARTIAL;
-            } else if (family == 0 && opcode == 0x85) {
-                name = L"HOST_STATE_85";
-                confidence = CONF_PARTIAL;
-            } else if (family == 1 && opcode == 0x90) {
-                name = L"FW_MESSAGE_90";
-                confidence = CONF_PARTIAL;
-            } else if (family == 1 && opcode == 0x99) {
-                name = L"FW_MESSAGE_99";
-                confidence = CONF_PARTIAL;
-            } else if (family == 1 && opcode == 0x4A) {
-                name = L"PROBE_METADATA";
-                confidence = CONF_PARTIAL;
-            } else if (family == 0 && opcode == 0x4A) {
-                name = L"PROBE_CONTROL";
-                confidence = CONF_PARTIAL;
-            } else {
-                name = L"UNCLASSIFIED";
-                confidence = CONF_UNKNOWN;
-            }
-
-            if (opcode == 0x42) {
-                StringCchPrintfW(
-                    buffer,
-                    cch,
-                    L"F%u/0x%02X %s mode=%u",
-                    family,
-                    opcode,
-                    name,
-                    arg);
-            } else {
-                StringCchPrintfW(
-                    buffer,
-                    cch,
-                    L"F%u/0x%02X %s",
-                    family,
-                    opcode,
-                    name);
-            }
-            return confidence;
-        }
+    if (length < 8) {
+        StringCchCopyW(buffer, cch, L"CFDC2110 short record");
+        return CONF_UNKNOWN;
     }
 
-    StringCchCopyW(buffer, cch, L"CFDC2110 undecoded");
+    payloadLength =
+        (unsigned)entry->InputPreview[2] |
+        ((unsigned)entry->InputPreview[3] << 8);
+    recordType =
+        (unsigned)entry->InputPreview[4] |
+        ((unsigned)entry->InputPreview[5] << 8);
+
+    /*
+     * CFDC2110 uses a packed record header. Do not scan blindly for FB A5:
+     * type-1/type-2 MAM payloads may contain bytes that look like a command
+     * family/opcode. The record kind at +4 is authoritative.
+     */
+    if (entry->InputPreview[6] == 0xFB &&
+        entry->InputPreview[7] == 0xA5) {
+        if (recordType == 1 || recordType == 2) {
+            unsigned available = length - 8;
+            unsigned bytes = payloadLength < available ? payloadLength : available;
+            unsigned words = bytes / 2;
+
+            StringCchPrintfW(
+                buffer,
+                cch,
+                L"MAM type=%u words=%u",
+                recordType,
+                words);
+            return CONF_FUNCTIONAL;
+        }
+
+        if (recordType != 3 || length < 11) {
+            StringCchPrintfW(
+                buffer,
+                cch,
+                L"A5 record type=%u len=%u",
+                recordType,
+                payloadLength);
+            return CONF_UNKNOWN;
+        }
+
+        family = entry->InputPreview[9];
+        opcode = entry->InputPreview[10];
+        if (length > 11) {
+            arg = entry->InputPreview[11];
+        }
+
+        if (family == 2 && opcode == 0x40) {
+            name = L"RESET";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 1 && opcode == 0x42) {
+            name = L"JTAG_STATUS";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 0 && opcode == 0x42) {
+            name = L"JTAG_WRITE";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 0 && opcode == 0x88) {
+            name = L"PENDING_ACK";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 0 && opcode == 0x90) {
+            name = L"SPI_TRANSFER";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 0 && opcode == 0x92) {
+            name = L"REGISTER_WRITE_92";
+            confidence = CONF_PARTIAL;
+        } else if (family == 0 && opcode == 0xA0) {
+            name = L"PFREG_WRITE";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 2 && opcode == 0x01) {
+            name = L"TIMER_CONTROL";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 2 && opcode == 0x02) {
+            name = L"MTTCTL";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 2 && opcode == 0x05) {
+            name = L"ITMODE_7_3";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 2 && opcode == 0x10) {
+            name = L"LEDCTL";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 1 && (opcode == 0x50 || opcode == 0x51)) {
+            name = L"MTT_TRANSFER";
+            confidence = CONF_FUNCTIONAL;
+        } else if (family == 0 && opcode == 0x85) {
+            name = L"HOST_STATE_85";
+            confidence = CONF_PARTIAL;
+        } else if (family == 1 &&
+                   (opcode == 0x4A || opcode == 0x81 ||
+                    opcode == 0x82 || opcode == 0x90 ||
+                    opcode == 0x91 || opcode == 0x96 ||
+                    opcode == 0x97 || opcode == 0x99)) {
+            name = L"FW_FORWARD";
+            confidence = CONF_PARTIAL;
+        } else if (family == 0 &&
+                   (opcode == 0x4A || opcode == 0x84 ||
+                    opcode == 0x86 || opcode == 0x87 ||
+                    opcode == 0x96 || opcode == 0x97 ||
+                    opcode == 0xA1 || opcode == 0xA2)) {
+            name = L"FW_FORWARD";
+            confidence = CONF_PARTIAL;
+        } else {
+            name = L"UNCLASSIFIED";
+            confidence = CONF_UNKNOWN;
+        }
+
+        if (opcode == 0x42) {
+            StringCchPrintfW(
+                buffer,
+                cch,
+                L"F%u/0x%02X %s mode=%u",
+                family,
+                opcode,
+                name,
+                arg);
+        } else {
+            StringCchPrintfW(
+                buffer,
+                cch,
+                L"F%u/0x%02X %s",
+                family,
+                opcode,
+                name);
+        }
+        return confidence;
+    }
+
+    if (entry->InputPreview[6] == 0xFB &&
+        entry->InputPreview[7] == 0x85) {
+        StringCchPrintfW(
+            buffer,
+            cch,
+            L"PENDING_RESPONSE_FETCH type=%u len=%u",
+            recordType,
+            payloadLength);
+        return CONF_FUNCTIONAL;
+    }
+
+    StringCchPrintfW(
+        buffer,
+        cch,
+        L"CFDC2110 unknown framing type=%u len=%u",
+        recordType,
+        payloadLength);
     return CONF_UNKNOWN;
 }
 
@@ -1040,8 +1121,10 @@ static void save_session(void)
 
     fwprintf(
         f,
-        L"{\"type\":\"lecwatch_session\",\"format_version\":1,"
-        L"\"dropped\":%llu,\"baseline_ready\":%s}\n",
+        L"{\"type\":\"lecwatch_session\",\"format_version\":2,"
+        L"\"qpc_frequency\":%lld,\"dropped\":%llu,"
+        L"\"baseline_ready\":%s}\n",
+        (long long)g_qpcFrequency.QuadPart,
         (unsigned long long)g_dropped,
         g_baselineReady ? L"true" : L"false");
 
@@ -1317,7 +1400,7 @@ static DWORD WINAPI trace_worker(LPVOID context)
             }
         }
 
-        if (WaitForSingleObject(g_stopEvent, 100) != WAIT_TIMEOUT) {
+        if (WaitForSingleObject(g_stopEvent, 10) != WAIT_TIMEOUT) {
             break;
         }
     }
