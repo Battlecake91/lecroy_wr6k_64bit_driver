@@ -100,6 +100,7 @@ typedef struct IOCTL_STAT {
     LONGLONG RateSampleQpc;
     LONGLONG LastNovelQpc;
     DWORD LastStatus;
+    SEMANTIC_CONFIDENCE LastConfidence;
     double CurrentRate;
     double BaselineRate;
     uint64_t BaselineHashes[MAX_BASELINE_HASHES];
@@ -688,8 +689,8 @@ static void refresh_activity(void)
         int row;
         LVITEMW item;
 
-        if (stat->Code == 0xCFDC2110 && stat->LastDetail[0] != L'\0') {
-            confidence = CONF_PARTIAL;
+        if (stat->Count != 0 && stat->Code == 0xCFDC2110) {
+            confidence = stat->LastConfidence;
         }
 
         format_ioctl_name(stat->Code, name, _countof(name));
@@ -847,6 +848,7 @@ static void record_trace(const LECS65_DEBUG_TRACE_ENTRY* entry)
         decode_nested(entry, row.Detail, _countof(row.Detail));
 
     if (stat != NULL) {
+        stat->LastConfidence = row.EffectiveConfidence;
         if (entry->Ioctl == 0xCFDC2110) {
             StringCchCopyW(
                 stat->LastDetail,
