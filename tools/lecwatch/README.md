@@ -53,8 +53,9 @@ kernel trace record is appended after the IOCTL handler completes.
 ### Filters
 
 - **Hide known** hides confirmed/functional controls while retaining
-  partial/unknown controls. `CFDC2110` remains visible because nested command
-  semantics can still be partial or unknown.
+  partial/unknown controls. For `CFDC2110` the nested family/opcode confidence
+  is used, so a known JTAG/ACK form can disappear while a partial or unknown
+  nested command immediately remains visible.
 - **Hide idle baseline** suppresses normal background traffic after an idle
   baseline has been learned.
 - **Errors only** shows failing traffic.
