@@ -24,6 +24,31 @@ register/FPGA top-level writers. It still does not prove that factory,
 calibration, firmware-update, explicit write/edit, or other rare code paths
 never use them.
 
+### Exact UI path identified from owner screenshot
+
+The service trace's indexed register-list reads are now tied to a specific
+original-XStream page:
+
+```text
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters
+```
+
+The owner screenshot shows the GUI list beginning exactly with
+`TxControl, RxControl, TxCount, RxCount, SetIRQ, HWInt, FVER, ERRS, ERRM,
+INTST, IIMCL, ...`, matching the recovered 43-entry kernel register list
+in order. With `TxControl` selected, the page displays address
+`400 H`, a hexadecimal value field, and a visible `Read` button.
+This is direct UI-level corroboration that the page consumes the
+`0x00223040` register-list/read ABI observed in the service trace.
+
+No visible `Write` button is present in the supplied screenshot. Do not
+assume that editing the value field is harmless: if the page has an
+implicit property setter (Enter/focus-loss/script callback), it could be a
+candidate producer for the still-unseen `0x0022303C` SetOneRegister path.
+Until the user-mode page implementation is statically traced, treat the
+value field as read-only and do not test speculative edits on the physical
+scope.
+
 ### Service-specific traffic that *was* observed
 
 Compared byte-for-byte with the previous broad normal-UI trace, this
