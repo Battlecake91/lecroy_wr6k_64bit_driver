@@ -3,7 +3,7 @@
   Unified LeCroy WR6k replacement-driver regression runner.
 .PARAMETER Mode
   Dry      - build plus hardware-independent source/ABI regression checks.
-  Hardware - safe real-PCI ABI checks. XStream must be closed.
+  Hardware - safe real-PCI health/ABI regression checks. XStream must be closed.
   All      - Dry followed by Hardware.
 .PARAMETER SkipBuild
   Skip the driver/lecdiag build in Dry/All mode.
