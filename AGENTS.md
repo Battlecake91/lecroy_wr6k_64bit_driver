@@ -22,13 +22,14 @@ hardware-independent contracts finished **8/8 PASS, 0 failed** with final
 `REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
 development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
-**HARDWARE REGRESSION EXPANDED (2026-09-30, NOT YET RERUN):**
-the hardware layer now has eleven default checks. New passive checks query private
-debug stats (version 1, legacy build 1002) and mapped BAR metadata (version 1,
-three non-zero logical BAR mappings) before the previous nine ABI checks. No new
-MMIO writes, Dallas writes, FPGA programming or nonzero IRQ injection were added.
-Run via `scripts/test-driver.ps1 -Mode Hardware`. Preserve status honestly:
-old suite = owner-reported 9/9 PASS; expanded suite = pending actual 11-check run.
+**HARDWARE REGRESSION VERIFIED (owner, 2026-09-30):**
+`scripts/test-driver.ps1 -Mode Hardware` completed **11/11 PASS, 0 failed** on
+the real WR6k PCI device with XStream closed. Passive baseline: stats v1/build
+1002/unknown IOCTLs 0; logical BAR lengths 0x200, 0x40000, 0x200; PCI 1570:0005
+at BDF 4:1.0, command 0x0006, IRQ line 19 pin 1; START/FVER 0x00000002 matching
+BAR0+0. CFDC2400 zero-mask and malformed-length checks plus CFDC2194 malformed
+output checks all behaved as expected. No hazardous indexed-register, Dallas-write,
+serial-trigger-FPGA or nonzero IRQ-injection path was exercised.
 
 **NEW REGRESSION HARNESS (2026-09-30, SOURCE-SIDE ONLY):**
 `scripts/test-driver.ps1` is now the unified test entry point with
