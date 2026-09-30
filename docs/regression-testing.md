@@ -32,7 +32,10 @@ refactoring:
 - those hazardous controls remain absent from the native driver header and
   Ioctl.c;
 - packed public ABI structs retain their compile-time size guards;
-- private debug IOCTLs remain in their separate private CTL_CODE range.
+- private debug IOCTLs remain in their separate private CTL_CODE range;
+- `lecwatch` remains a read-only observer with exactly one
+  `DeviceIoControl` call site, targeting only `DEBUG_GET_TRACE`, with Dallas
+  redaction retained and no private trace-clear command.
 
 For a fast source-only pass without compiling:
 
@@ -121,7 +124,13 @@ build again completed with 0 warnings and 0 errors, lecdiag was built as x64
     All hardware-independent contracts passed.
     REGRESSION SUITE PASS: Dry
 
-Dry mode is therefore now owner-verified on the Windows development machine.
+Dry mode was therefore owner-verified on the Windows development machine for
+the then-current **8-contract** suite.
+
+The dry suite has since gained one additional `lecwatch` source contract, so
+the current source tree contains **9** dry checks. That new ninth check has not
+yet been rerun by the owner. Keep the historical 8/8 result as valid evidence
+for the earlier suite, but do not silently promote it to 9/9.
 
 The owner executed the expanded Hardware suite on the real WR6k PCI device on
 2026-09-30. All eleven default checks passed:
