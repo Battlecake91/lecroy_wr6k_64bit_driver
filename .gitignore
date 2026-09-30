@@ -11,6 +11,8 @@ ghidra_reverse_engineering_lecroy/**/tmp*.ps
 # All raw startup traces may contain unique ROM IDs and private licensing data.
 # Keep old unredacted captures out of the public repository.
 trace-captures/
+lecwatch_session*.jsonl
+lecwatch_action_summary*.md
 
 
 # Local build outputs and generated driver packages
