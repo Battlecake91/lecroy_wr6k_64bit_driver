@@ -26,6 +26,8 @@ param(
     [ValidateRange(0.01, 100.0)]
     [double]$AmplitudeTolerancePercent = 15.0,
 
+    [string]$ExpectedProbeName,
+
     [switch]$SkipControlChanges
 )
 
@@ -285,6 +287,18 @@ try {
                 $c1.BandwidthLimit = $original
             }
         }
+    }
+
+    if ($PSBoundParameters.ContainsKey("ExpectedProbeName")) {
+        Test-E2E "C1 probe identity" {
+            $probeName = [string]$c1.ProbeName
+            Assert-True (-not [string]::IsNullOrWhiteSpace($probeName)) "C1.ProbeName is empty"
+            Assert-True ($probeName.IndexOf($ExpectedProbeName, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) ("ProbeName '{0}' does not contain expected '{1}'" -f $probeName, $ExpectedProbeName)
+            Write-Host ("  ProbeName={0}" -f $probeName)
+        }
+    }
+    else {
+        Skip-E2E "C1 probe identity" "no -ExpectedProbeName supplied"
     }
 
     if ($PSBoundParameters.ContainsKey("ExpectedAmplitudeVpp")) {
