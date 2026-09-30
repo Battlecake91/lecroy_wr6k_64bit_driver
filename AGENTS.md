@@ -22,6 +22,15 @@ hardware-independent contracts finished **8/8 PASS, 0 failed** with final
 `REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
 development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
+**XSTREAM E2E IMPLEMENTED (2026-09-30, NOT YET RUNTIME-VERIFIED):**
+`tests/xstream/test-xstream-e2e.ps1` is integrated via `test-driver.ps1 -Mode XStream`.
+Current checks: COM activation, C1/Horizontal/result access, forced acquisition,
+waveform Samples/DataArray, reversible VerScale/HorScale/Coupling/BandwidthLimit.
+Optional probe name, amplitude and frequency assertions are supported. `-Mode All`
+now means Dry -> Hardware -> XStream. Do not claim XStream PASS until owner output.
+Need exact legacy XStream Browser paths before adding explicit trigger, two-channel /
+10-GS/s, and AP015 jaw/hotplug assertions.
+
 **HARDWARE REGRESSION VERIFIED (owner, 2026-09-30):**
 `scripts/test-driver.ps1 -Mode Hardware` completed **11/11 PASS, 0 failed** on
 the real WR6k PCI device with XStream closed. Passive baseline: stats v1/build
