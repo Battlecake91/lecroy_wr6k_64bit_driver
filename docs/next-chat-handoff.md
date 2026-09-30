@@ -1,6 +1,16 @@
 # Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
 
 
+
+**FIRST DRY RUN RESULT (owner, 2026-09-30):** unified `-Mode Dry` successfully
+built the driver with **0 warnings / 0 errors** and built x64 `lecdiag`
+(PE machine 0x8664). Source contracts then showed **6/8 PASS**. Both failures were
+harness-only: Windows PowerShell 5.1 parsed CFDC/CFDD hex literals above
+0x7FFFFFFF as signed Int32, causing UInt32 conversion/comparison failures.
+Commit `95be1ba4ebaf229b58d115fca3b5b9e12d0a267b` fixes the suite to compare
+canonical 8-digit uppercase hex strings instead of numeric literals. **Rerun required;
+do not yet claim full Dry PASS.**
+
 ## New regression harness added (source-side, not yet runtime-verified)
 
 A unified test entry point now exists at `scripts/test-driver.ps1` with
