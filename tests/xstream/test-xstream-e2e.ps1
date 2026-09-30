@@ -237,6 +237,9 @@ function Invoke-TracedAction {
         return & $Body
     }
     finally {
+        # Give the 10-ms lecwatch reader enough time to ingest the tail of the
+        # completed driver burst before it computes the action summary.
+        Start-Sleep -Milliseconds 100
         if (-not [LecwatchTraceBridge]::Send("ACTION_END")) {
             Write-Warning ("lecwatch did not accept ACTION_END for '{0}'." -f $Name)
         }
