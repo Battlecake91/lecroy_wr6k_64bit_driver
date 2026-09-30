@@ -1,4 +1,50 @@
-# Active handoff: normal + Developer/Service original traces both exclude hazardous writers (2026-09-30)
+# Active handoff: first real 0x0022303C SetOneRegister call captured; caller ABI fully resolved (2026-09-30)
+
+## Newest decisive evidence: KernelPCIRegisters write
+
+Owner deliberately wrote back the SAME displayed register value through
+`Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters`.
+Private original-x86 trace `legacy_xstream_trace_setregister_3.jsonl`
+contains exactly ONE `0x0022303C` call, first ever seen by this project:
+
+- input 266 bytes / output 0;
+- STATUS_SUCCESS, Information=0;
+- request is all zero except DWORD `+0x101 = 2`,
+  DWORD `+0x106 = 2`;
+- immediately before it, `0x00223040` reads index 2 = `TxCount`,
+  BAR1+0x408, type 4, current value 2.
+
+Therefore original setter semantics are proved:
+`+0x101` = zero-based register-list INDEX,
+`+0x106` = desired DWORD. The 266-byte query record is NOT echoed;
+its physical offset at +0x101 is a different logical structure.
+
+Owner's binary scan found `3C 30 22 00` exactly once in private
+`lecaladdinhwaccesspcisvr.dll` (do not commit vendor binary).
+Local x86 static analysis independently proves:
+- routine image VA `0x10020B7C` zeroes 0x10A bytes;
+- class member +0x310 = `RegisterList` / `m_cvEnumRegisterList`;
+- selected index -> buffer +0x101;
+- class member +0x314 = `PCIRegister` / `m_cvRegPCIRegister`;
+- requested value -> buffer +0x106;
+- then sends IOCTL `0x0022303C`.
+Notification dispatcher calls this routine for PCIRegister change
+notification flag 0x100. That is the exact GUI write path.
+
+The uploaded DLL contains no literal `CFDC2130` and no literal
+`0x00223088`; those are separate unresolved user-mode paths.
+
+**NEXT engineering step:** decide/implement a HARDENED x64
+`0x0022303C` compatibility handler rather than copying the original bug:
+exact 266 bytes, index < active/known native count, resolve index only via
+`g_LecLegacyRegisterList`, reject unknown/out-of-range values, perform
+the mapped DWORD MMIO write, Information=0. Avoid exploratory writes;
+the real same-value MMIO write already proved the path.
+
+See [runtime trace](runtime-trace.md) and
+[original register-list/write ABI](original-register-list-and-write-abi.md).
+
+## Previous trace evidence (still valid, but setter is no longer unseen)
 
 ## Exact Service GUI page identified
 
