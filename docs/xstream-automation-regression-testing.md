@@ -252,27 +252,61 @@ A safer initial workflow is:
 Later, once the driver and tests are mature, the scope can be considered as a
 self-hosted hardware-in-the-loop runner.
 
-## Immediate next experiment
+## Implemented first XStream E2E layer
 
-Do NOT refactor the driver first.
+The repository now contains:
 
-On the current x64 scope, with the already-working driver installed, make a tiny
-read-only XStream automation probe and determine which local access method works:
+    tests/xstream/test-xstream-e2e.ps1
 
-1. direct `LeCroy.XStreamDSO` COM;
-2. direct `LeCroy.XStreamDSO.1` COM;
-3. if necessary, ActiveDSO against `127.0.0.1` plus `VBS?` queries.
+and the unified runner accepts:
 
-The probe should only read:
+    .\scripts\test-driver.ps1 -Mode XStream
+    .\scripts\test-driver.ps1 -Mode All
 
-- `app.Acquisition.C1.VerScale`;
-- `app.Horizontal.HorScale`;
-- `app.Acquisition.C1.Out.Result.Samples`.
+The suite first tries local COM activation through `LeCroy.XStreamDSO`, then
+`LeCroy.XStreamDSO.1`. The current implementation performs the following default
+checks:
 
-Once those work, add an explicit acquisition and waveform array check.
+1. COM automation connection;
+2. Acquisition/C1/Horizontal/result object access;
+3. positive C1 vertical scale and horizontal scale readback;
+4. forced-trigger `Acquisition.Acquire(timeout, 1)`;
+5. non-zero C1 waveform sample count;
+6. non-empty C1 DataArray containing finite numeric values;
+7. C1 vertical-scale change/readback/acquire/restore;
+8. horizontal timebase change/readback/acquire/restore;
+9. C1 coupling change/readback/acquire/restore;
+10. C1 bandwidth-limit change/readback/acquire/restore.
 
-This provides the foundation for automated XStream regression before large driver
-cleanup/refactoring begins.
+The state-changing tests restore the prior values in `finally` blocks. They can be
+disabled with `-SkipXStreamControlChanges`.
+
+Three optional assertions can be enabled from the unified runner:
+
+    .\scripts\test-driver.ps1 -Mode XStream -ExpectedProbeName AP015
+    .\scripts\test-driver.ps1 -Mode XStream -ExpectedAmplitudeVpp 1.0
+    .\scripts\test-driver.ps1 -Mode XStream -ExpectedFrequencyHz 1000
+
+The probe assertion reads the legacy XStream `Acquisition.C1.ProbeName` property.
+Amplitude/frequency assertions temporarily configure P1 for C1 and restore its
+previous View/ParamEngine/Source1 settings afterwards.
+
+The suite is source-side implemented but NOT yet owner-run on the scope. Do not
+claim an XStream E2E PASS until actual output is supplied.
+
+## Remaining paths to capture from the WaveRunner 6000 XStream Browser
+
+Do not guess these legacy model-specific paths. Capture the exact automation paths
+and current values from the actual instrument for:
+
+- trigger source/type/slope/level and trigger mode;
+- channel enable/view controls needed for an explicit two-channel regression;
+- sample-rate/interleaving or acquisition-mode controls needed to assert 10 GS/s;
+- AP015/ProBus jaw/open/closed state or warning state;
+- any explicit probe hotplug-refresh state exposed by this XStream build.
+
+Once these are known they can be added as independent E2E checks without weakening
+the already working generic COM/acquisition layer.
 
 ## References
 
