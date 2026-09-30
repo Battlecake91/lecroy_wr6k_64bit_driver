@@ -1,5 +1,31 @@
 # Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
 
+## Live IOCTL monitor implemented in source; first Windows run pending
+
+A native x64 user-mode monitor is now implemented at `tools/lecwatch/lecwatch.c`.
+It consumes only the existing private `DEBUG_GET_TRACE` ring and therefore
+requires **no kernel/driver change or reload**. Build helper:
+
+```powershell
+.\scripts\build-lecwatch.ps1
+```
+
+Then run `.\tools\lecwatch\build\lecwatch.exe` alongside XStream. Implemented
+features: recent-activity LEDs, per-IOCTL rate/count/status, live log, semantic
+confidence, focused CFDC2110 family/opcode decoding, Hide known, idle-baseline
+suppression with request-shape novelty, errors/text filters, QPC user markers,
+Start/End Action count summaries, double-click bounded payload details, gap
+accounting and annotated JSONL save. Dallas payloads are redacted in details and
+saved sessions. The GUI never sends legacy hardware controls.
+
+**Verification status:** implementation/static review complete; **MSVC build and
+real-scope live connection have not yet been run/reported**. Do not claim a
+`lecwatch` PASS. First useful test is build-only, then launch with XStream and
+verify connection, LEDs/log and one harmless UI action. See
+[tool README](../tools/lecwatch/README.md) and
+[live monitor design](live-ioctl-monitor-design.md).
+
+
 ## Long-term release target
 
 The owner has made WHQL/WHCP certification an explicit end goal of the project.
