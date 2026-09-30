@@ -1,12 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <windowsx.h>
 #include <setupapi.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <wchar.h>
+#include <wctype.h>
 #include <strsafe.h>
 
 #pragma comment(lib, "setupapi.lib")
