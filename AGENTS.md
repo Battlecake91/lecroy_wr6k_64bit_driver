@@ -5842,3 +5842,31 @@ Commits `c5bb89544d1e9c787bc28a3ab717d9b2ab6d6558` and
 `scripts/build-lecwatch.ps1`. This confirms the previous header fix got the
 source through compilation. Runtime verification is still pending; do not claim
 lecwatch build PASS until the next owner build succeeds.
+
+
+## lecwatch live runtime verified
+
+Owner successfully built and ran the native x64 `lecwatch` GUI on the real
+scope. Live observations: `0xCFDC2110` is continuously busy while acquisition
+runs and stops immediately when acquisition stops; changing XStream's **Use
+Auxiliary Output for** setting causes CFDC2110 traffic.
+
+The uploaded first session retained 5,000 events and reported 810 dropped trace
+records. Offline parsing found one large retained acquisition phase
+(seq 262199..266197) with 2,927 CFDC2110 records plus 679 CFDC2138 calls, then
+configuration/status-only CFDC2110 bursts while CFDC2138 is absent, followed by
+a later joint restart at seq 266968. Treat these as retained counts because the
+session has sequence gaps.
+
+The first lecwatch decoder also misclassified CFDC2110 record-type-1 MAM blocks
+as family-0 opcodes because it scanned blindly for FB A5. Commit
+`870021573007fa28ee50e2eb907714b76978b3bf` now parses the packed record
+header first, labels MAM records and known acquisition subcommands, reduces
+polling from 100 ms to 10 ms, expands the user-mode event buffer from 5,000 to
+20,000 and writes QPC frequency in session format v2. These are tool-only
+changes; no kernel driver reload is needed.
+
+The auxiliary-output action has not yet been isolated to a nested opcode because
+that UI change was observed live without a dedicated Start Action/End Action
+window in the saved session. The next correlation run should mark exactly that
+single XStream change.
