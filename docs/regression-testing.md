@@ -110,6 +110,21 @@ build again completed with 0 warnings and 0 errors, lecdiag was built as x64
 
 Dry mode is therefore now owner-verified on the Windows development machine.
 
-The previous hardware suite separately retains its owner-reported 9/9 real-scope
-result. The expanded eleven-check hardware suite is source-side only until the owner
-executes it; do not claim 11/11 yet.
+The owner executed the expanded Hardware suite on the real WR6k PCI device on
+2026-09-30. All eleven default checks passed:
+
+    SAFE HARDWARE REGRESSION: 11/11 passed; 0 failed.
+    All requested safe hardware checks passed.
+    REGRESSION SUITE PASS: Hardware
+
+Observed passive hardware metadata during that run:
+- debug stats version 1, legacy build 1002, unknown IOCTL count 0;
+- logical BAR0 = 0x200 bytes, BAR1 = 0x40000 bytes, BAR2 = 0x200 bytes;
+- PCI vendor/device 1570:0005, BDF 4:1.0;
+- PCI command 0x0006 (memory space and bus master enabled);
+- IRQ line 19, pin 1;
+- START/FVER remained 0x00000002 and matched BAR0+0x000;
+- both valid CFDC2400 zero-mask forms returned success with zero output bytes;
+- malformed CFDC2400 lengths and CFDC2194 output lengths were rejected as expected.
+
+Hardware mode is therefore owner-verified on the physical scope.
