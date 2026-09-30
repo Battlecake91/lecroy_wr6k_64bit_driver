@@ -1,11 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
-#define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <winioctl.h>
 #include <windowsx.h>
 #include <setupapi.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <wctype.h>
