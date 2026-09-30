@@ -111,6 +111,24 @@ milestone at the owner's request.
 See [grouped test result and safety notes](
 docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
 
+## Regression test runner
+
+A unified regression entry point is now available:
+
+```powershell
+.\scripts\test-driver.ps1 -Mode Dry
+.\scripts\test-driver.ps1 -Mode Hardware
+.\scripts\test-driver.ps1 -Mode All
+```
+
+`Dry` builds the driver/diagnostic by default and then runs hardware-independent
+source/ABI contract checks. It does not open a device or touch PCI hardware.
+`Hardware` reuses the established safe real-scope ABI batch with XStream closed.
+Use `-SkipBuild` for a fast source-only dry pass. XStream E2E automation will be
+added as the third layer later. The newly added dry/unified runner is source-side
+only until actually executed on a Windows machine; do not treat its existence as
+a reported PASS. See [regression test architecture](docs/regression-testing.md).
+
 ## Build and diagnostic workflow
 
 Use an administrative PowerShell on the development/test system. The project uses Visual Studio/MSBuild and the Windows Driver Kit. Keep a recoverable image of the working scope OS before installing an experimental driver. See the installation instructions for test-signing prerequisites and exact procedures.
