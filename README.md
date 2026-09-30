@@ -4,6 +4,29 @@ An open reverse-engineering project providing a native Windows x64 replacement f
 
 > **Status (2026-09-30): Experimental, running on a real WaveRunner scope.** XStream starts and acquires live waveforms using the replacement driver. This is an ongoing compatibility project, not a fully validated production driver or an official LeCroy release.
 
+## Project goals
+
+The project is not intended to stop at a test-signed proof of concept. Its long-term
+goal is a maintainable, native Windows x64 replacement driver that preserves the
+original WaveRunner/S65 hardware behavior closely enough for normal XStream use and
+can be distributed through the standard Microsoft driver-signing path.
+
+The intended end state is:
+
+- broad functional compatibility with the original acquisition driver on supported
+  WaveRunner/S65 hardware;
+- repeatable source, ABI, hardware and XStream regression coverage;
+- completion or explicitly documented gating of the remaining legacy interfaces;
+- successful local Windows Hardware Lab Kit (HLK) readiness testing;
+- submission through the Windows Hardware Compatibility Program (WHCP); and
+- a **Microsoft-signed, WHQL/WHCP-certified production driver** that can be installed
+  on supported Windows systems without enabling test-signing mode.
+
+WHQL/WHCP certification is therefore a project goal, not a current claim. Development
+builds remain experimental and test-signed until the required compatibility work, HLK
+validation, EV-backed Hardware Dev Center enrollment and Microsoft submission are
+completed.
+
 ## Current functionality
 
 | Area | Verified or implemented state |
