@@ -84,7 +84,18 @@ the actual acquisition hardware.
 
 ## Current verification status
 
-The files were added source-side on 2026-09-30. The existing hardware suite retains
-its previously owner-reported 9/9 real-scope result. The new unified runner and dry
-suite must not be called runtime-verified until they are actually executed on a
-Windows development machine with the required Visual Studio/WDK toolchain.
+The first owner-run Dry execution on Windows 10 / VS 2022 / WDK successfully built
+the driver and lecdiag: driver build completed with 0 warnings and 0 errors, and
+lecdiag was produced as x64 PE machine 0x8664.
+
+The initial source-contract phase reported 6/8 PASS. Both failures were traced to
+the test harness, not to a driver/ABI mismatch: Windows PowerShell 5.1 treats hex
+literals in the 0x80000000..0xFFFFFFFF range as signed Int32 values. That broke
+numeric comparisons for CFDC/CFDD IOCTLs and the hazardous CFDC2130 check.
+
+Commit 95be1ba4ebaf229b58d115fca3b5b9e12d0a267b changes the dry checks to compare
+canonical eight-digit uppercase hex strings instead of PowerShell numeric literals.
+A rerun is still required before the Dry suite can be called fully PASS.
+
+The existing hardware suite separately retains its previously owner-reported
+9/9 real-scope result.
