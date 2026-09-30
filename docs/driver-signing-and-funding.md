@@ -94,3 +94,33 @@ already exist.
 
 No funding link is currently endorsed by this repository. Add one only after the owner
 has chosen the platform, target amount, and wording.
+
+## WHCP cost model
+
+There is no separate paid Microsoft HLK product required for self-testing. Microsoft
+provides HLK/VHLK downloads, and VHLK includes a 180-day Windows Server evaluation for
+the controller environment. Current Microsoft registration/submission documentation
+does not list a separate per-submission WHCP certification fee; the mandatory external
+cash cost remains the EV code-signing certificate required for Hardware Developer
+Program enrollment.
+
+For this project, self-testing is technically plausible because Microsoft's PCI HLK
+prerequisites require one test computer containing the PCI device, the driver under
+test, the HLK client, and access to an HLK Controller/Studio system. The existing
+WaveRunner PC can potentially serve as the PCI test client, while the controller can be
+hosted separately or via VHLK.
+
+Therefore the practical funding ranges are:
+
+- **Self-run WHCP/HLK:** approximately the EV-certificate cost plus incidental payment
+  costs and any missing test hardware. With the current lower-cost EV examples, a
+  provisional project target around EUR 450-500 remains plausible.
+- **Commercial test lab:** potentially hundreds to several thousand euros depending on
+  driver/device category, operating-system matrix, failed-test investigation and
+  retesting. Lab pricing is vendor-specific and should be quoted rather than treated as
+  a Microsoft fee.
+
+The largest uncertainty is not the Microsoft fee but whether the legacy PCI acquisition
+device and replacement driver can pass all HLK tests selected for its device category
+without changes. The HLK run should therefore be attempted in-house before paying an
+external certification laboratory.
