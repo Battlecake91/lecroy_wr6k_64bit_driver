@@ -4,7 +4,8 @@
 .PARAMETER Mode
   Dry      - build plus hardware-independent source/ABI regression checks.
   Hardware - safe real-PCI health/ABI regression checks. XStream must be closed.
-  All      - Dry followed by Hardware.
+  XStream  - XStream COM end-to-end regression against the installed driver.
+  All      - Dry, Hardware, then XStream. XStream must be closed before start.
 .PARAMETER SkipBuild
   Skip the driver/lecdiag build in Dry/All mode.
 .PARAMETER IncludeErrorStatus
@@ -12,12 +13,21 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet("Dry", "Hardware", "All")]
+    [ValidateSet("Dry", "Hardware", "XStream", "All")]
     [string]$Mode = "Dry",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
     [switch]$SkipBuild,
-    [switch]$IncludeErrorStatus
+    [switch]$IncludeErrorStatus,
+
+    [ValidateRange(1, 60)]
+    [int]$XStreamTimeoutSeconds = 5,
+
+    [double]$ExpectedFrequencyHz,
+
+    [double]$ExpectedAmplitudeVpp,
+
+    [switch]$SkipXStreamControlChanges
 )
 
 Set-StrictMode -Version Latest
@@ -26,6 +36,7 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $drySuite = Join-Path $repo "tests\dry\test-source-contracts.ps1"
 $hardwareSuite = Join-Path $PSScriptRoot "test-safe-ioctl-batch.ps1"
+$xstreamSuite = Join-Path $repo "tests\xstream\test-xstream-e2e.ps1"
 
 function Invoke-Step {
     param(
@@ -64,6 +75,26 @@ if ($Mode -eq "Hardware" -or $Mode -eq "All") {
         else {
             & $hardwareSuite
         }
+    }
+}
+
+if ($Mode -eq "XStream" -or $Mode -eq "All") {
+    Invoke-Step "XStream end-to-end regression" {
+        $args = @{
+            TimeoutSeconds = $XStreamTimeoutSeconds
+        }
+
+        if ($PSBoundParameters.ContainsKey("ExpectedFrequencyHz")) {
+            $args.ExpectedFrequencyHz = $ExpectedFrequencyHz
+        }
+        if ($PSBoundParameters.ContainsKey("ExpectedAmplitudeVpp")) {
+            $args.ExpectedAmplitudeVpp = $ExpectedAmplitudeVpp
+        }
+        if ($SkipXStreamControlChanges) {
+            $args.SkipControlChanges = $true
+        }
+
+        & $xstreamSuite @args
     }
 }
 
