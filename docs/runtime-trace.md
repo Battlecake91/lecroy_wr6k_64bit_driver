@@ -1,4 +1,78 @@
 # Runtime trace capture
+## 2026-09-30 original KernelPCIRegisters write: first real 0x0022303C runtime call
+
+Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.
+The owner selected a register in
+`Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters`
+and deliberately wrote back the **same value** that had just been read.
+This produced the project's first observed runtime invocation of
+`0x0022303C`.
+
+The trace is complete: **6,137 valid JSON records**, including
+**2,589 native IOCTL calls**. Exactly **one** native
+`0x0022303C` call occurs:
+
+- input length: **266 bytes (0x10A)**;
+- output length: 0;
+- NTSTATUS: **STATUS_SUCCESS**;
+- Information: 0;
+- request buffer: all zeros except
+  - DWORD at `+0x101` = **2**;
+  - DWORD at `+0x106` = **2**.
+
+Immediately before the setter, the same UI page performs
+`0x00223040` indexed read of **index 2**, returning the
+`TxCount` record. That record reports BAR1 physical offset
+`0x408`, metadata type 4 and current value **2**.
+The subsequent setter therefore means precisely:
+
+```text
+register-list index 2 (TxCount) <- 0x00000002
+```
+
+This is decisive runtime proof that the original user-mode setter request
+does **not** echo the 266-byte query record. It constructs a new zeroed
+266-byte buffer and repurposes `+0x101` as the zero-based table INDEX,
+while `+0x106` carries the desired DWORD value. Name, BAR byte and
+metadata-type byte remain zero in the captured write request.
+
+Writing the same numeric value is still a real MMIO write, not a passive
+probe. No further exploratory writes are needed from this runtime path.
+
+### Matching user-mode implementation in lecaladdinhwaccesspcisvr.dll
+
+The owner's static scan found the little-endian IOCTL literal
+`3C 30 22 00` exactly once in the installed
+`lecaladdinhwaccesspcisvr.dll`. The proprietary binary is analyzed
+locally/private and is not committed to the repository.
+
+Static x86 disassembly around the unique call site proves the exact request
+construction:
+
+- function at image VA `0x10020B7C` allocates/zeros a
+  `0x10A`-byte stack buffer;
+- member `+0x310` is the CVar named `RegisterList`
+  (`m_cvEnumRegisterList`);
+- its selected integer is stored at buffer `+0x101`;
+- member `+0x314` is the CVar named `PCIRegister`
+  (`m_cvRegPCIRegister`);
+- its requested register value is stored at buffer `+0x106`;
+- the function then calls the generic DeviceIoControl wrapper with
+  IOCTL `0x0022303C`, input size 266 and output size zero.
+
+The CVar notification dispatcher independently confirms the trigger:
+when notification for class-base member `+0x314` (`PCIRegister`)
+contains flag `0x100`, it calls the setter routine at
+`0x10020B7C`.
+
+This exactly explains why editing/submitting the visible
+`KernelPCIRegisters` value field invokes SetOneRegister, while merely
+selecting a register and pressing Read uses `0x00223040`.
+
+The same uploaded DLL contains **no literal `CFDC2130` and no literal
+`0x00223088`**, so those remaining writers belong to a different
+user-mode component/path if they are used at all.
+
 ## 2026-09-30 original-x86 Developer/Service-menu trace: hazardous setters still absent
 
 Private owner capture: `legacy_xstream_trace_setregister_2.jsonl`.
