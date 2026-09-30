@@ -1,5 +1,15 @@
 # Active handoff: third static original analysis complete; two hazardous write IOCTLs remain intentionally absent (2026-09-30)
 
+## Long-term release target
+
+The owner has made WHQL/WHCP certification an explicit end goal of the project.
+The intended final state is a Microsoft-signed production driver that installs on
+supported Windows x64 systems without test-signing mode. Before buying an EV
+certificate, first perform local HLK/VHLK readiness testing on the actual WaveRunner
+PCI hardware and resolve blocking test failures. Attestation/test signing is a
+development step, not the intended final release state.
+
+
 
 
 **FIRST DRY RUN RESULT (owner, 2026-09-30):** unified `-Mode Dry` successfully
