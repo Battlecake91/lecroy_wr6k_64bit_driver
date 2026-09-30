@@ -3582,3 +3582,58 @@ never sends arbitrary legacy controls.
 **Verification status:** source implemented; MSVC build and real-scope live use
 have not yet been reported. See [live monitor design and implementation](live-ioctl-monitor-design.md)
 and [tool README](../tools/lecwatch/README.md).
+
+
+## lecwatch live correlation: acquisition and CFDC2110
+
+The first interactive `lecwatch` session on the real x64 scope was collected
+on 2026-09-30.
+
+The owner observed directly that top-level `0xCFDC2110` becomes continuously
+busy while acquisition is running and stops immediately when acquisition is
+stopped. Changing XStream's **Use Auxiliary Output for** setting also causes a
+distinct burst of `0xCFDC2110` traffic. The saved session did not place an
+action-window marker around the auxiliary-output change, so no exact nested
+subcommand is assigned to that UI setting yet.
+
+The retained JSONL confirms the acquisition correlation. One large continuous
+phase spans retained sequence 262199 through 266197 and contains 2,927
+CFDC2110 records together with 679 retained CFDC2138 acquisition calls. After
+that phase, CFDC2138 disappears and CFDC2110 occurs only in discrete
+configuration/status bursts. A later phase beginning at retained sequence
+266968 resumes both classes together.
+
+These are retained counts, not complete wire totals: the v1 session buffer held
+5,000 events and its header reports 810 dropped kernel-ring records.
+
+The same session exposed an important live-decoder error. CFDC2110 records with
+header type 1 and 42 payload bytes were being blindly scanned for `FB A5` and
+mislabelled as family-0 opcodes 0x00/0x02/0x04. Static analysis already proved
+record types 1 and 2 are MAM programming records. The GUI decoder now parses the
+record header first and labels the observed 42-byte type-1 form as
+`MAM type=1 words=21`.
+
+For the acquisition-heavy phase, the dominant retained CFDC2110 classes after
+correct parsing are:
+
+- record-type-1 MAM programming;
+- family-0 opcode 0x42 JTAG writes;
+- family-0 opcode 0x90 SPI transfers;
+- family-2 opcode 0x01 timer control;
+- family-1 opcode 0x42 JTAG/status;
+- family-2 opcode 0x05 ITMODE control;
+- family-2 opcode 0x02 MTTCTL;
+- family-0 opcode 0x88 pending acknowledgement plus 85FB response fetch;
+- family-1 opcode 0x51 registered-buffer MTT transfer.
+
+This does **not** mean every CFDC2110 call is "the acquisition IOCTL".
+CFDC2110 is a multiplexed control/transport protocol and remains active for
+configuration actions even with DMA acquisition stopped. The stronger result is
+that the continuous acquisition state drives a characteristic high-rate mix of
+CFDC2110 control/programming records alongside CFDC2138 transfers.
+
+To reduce trace loss without touching the kernel driver, `lecwatch` now polls
+the existing 256-record trace ring every 10 ms instead of 100 ms, retains
+20,000 user-mode events and saves the QPC frequency in format-version-2
+sessions. If gaps remain under acquisition, the next step is a sequence-based
+incremental private diagnostic ABI rather than further blind polling changes.
