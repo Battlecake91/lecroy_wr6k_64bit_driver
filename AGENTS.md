@@ -67,6 +67,16 @@ separation, and continued native absence of hazardous original writers
 has not yet been executed on a Windows WDK machine. The separately owner-reported
 hardware batch remains 9/9 PASS.
 
+**KERNELPCIREGISTERS UI IDENTIFIED (2026-09-30):**
+Owner screenshot maps `0x00223040` register-list reads to
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters.
+Visible list order starts TxControl/RxControl/TxCount/RxCount/SetIRQ/HWInt/
+FVER... exactly matching the recovered 43-entry table. TxControl displays
+Adr 400 H, a hex value field and a Read button. No explicit Write button is
+visible and runtime service trace still has zero 0x0022303C. Do NOT ask
+owner to edit/submit that field; it may trigger a hidden setter on
+change/Enter/focus-loss. Prefer static analysis of the page/binary caller.
+
 **NEWEST ORIGINAL-X86 SERVICE TRACE (2026-09-30):**
 Owner supplied private `legacy_xstream_trace_setregister_2.jsonl`
 after traversing Developer/Service menus and reading many pages.
