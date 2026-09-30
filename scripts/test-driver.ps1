@@ -27,6 +27,8 @@ param(
 
     [double]$ExpectedAmplitudeVpp,
 
+    [string]$ExpectedProbeName,
+
     [switch]$SkipXStreamControlChanges
 )
 
@@ -89,6 +91,9 @@ if ($Mode -eq "XStream" -or $Mode -eq "All") {
         }
         if ($PSBoundParameters.ContainsKey("ExpectedAmplitudeVpp")) {
             $args.ExpectedAmplitudeVpp = $ExpectedAmplitudeVpp
+        }
+        if ($PSBoundParameters.ContainsKey("ExpectedProbeName")) {
+            $args.ExpectedProbeName = $ExpectedProbeName
         }
         if ($SkipXStreamControlChanges) {
             $args.SkipControlChanges = $true
