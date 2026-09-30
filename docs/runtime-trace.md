@@ -1,5 +1,93 @@
 # Runtime trace capture
 
+## 2026-09-30 original-x86 broad UI trace: SetOneRegister/serial-FPGA paths absent
+
+Private owner capture: `legacy_xstream_trace_setregister.jsonl`.
+The raw file is **not committed** because the trace also contains
+device-specific Dallas/license traffic and host/device identifiers.
+
+The owner deliberately exercised a broad set of normal XStream controls
+while tracing the original 32-bit driver:
+
+- channels enabled/disabled;
+- all channels set to 20 mV/div;
+- channel coupling changes;
+- channel bandwidth changes;
+- timebase changes;
+- sample-rate changes;
+- four-channel to two-channel / 10 GS/s operation;
+- trigger source CH2 -> CH1;
+- trigger slope positive -> negative;
+- trigger type Edge -> Width;
+- Width condition Less Than -> Out Of Range.
+
+The supplied file contains **199,741 valid JSON records** followed by one
+incomplete final JSON line. The valid records include **184,862
+`nt_ioctl` calls**. The main acquisition/control interface contributes
+**182,588 native IOCTL calls and every one completes with
+`STATUS_SUCCESS`**. Pending/non-success native records in the overall file
+belong to other non-acquisition handles and are not evidence of a LeCroy
+acquisition-driver error.
+
+### Important negative evidence
+
+Across all parsed Win32/native IOCTL records, the following original
+top-level controls occur **zero times**:
+
+- `0x0022303C` SetOneRegister;
+- `0xCFDC2130` serial-trigger FPGA/GPIODAT programming;
+- `0x00223088` Dallas EEPROM write.
+
+Thus this broad normal-operation sequence does **not** use either of the two
+remaining hazardous register/FPGA writers. This does not prove those IOCTLs
+are never used by XStream, but it strongly narrows their likely role away
+from ordinary channel scale/coupling/bandwidth, timebase/sample-rate,
+2-channel/10-GS/s switching, and the exercised trigger source/slope/type/
+width-condition controls.
+
+The same trace also contains **no `0xCFDC21C4` raw register-write IOCTL**;
+normal UI changes are carried through the already-observed command,
+event and acquisition paths rather than this direct register-write surface.
+
+### Fresh original-runtime confirmation of the 43-register list
+
+The trace performs four `0x00223040` register-list calls on the main
+acquisition handle:
+
+1. required-size query -> 4-byte reply;
+2. full-list query -> **11,438 bytes = 43 * 266 = 0x2CAE**;
+3. a second required-size query;
+4. indexed entry query for index 0 -> 266-byte `TxControl` record.
+
+The full 11,438-byte original-driver reply was parsed as 43 consecutive
+`0x10A` records. Comparing only the public ABI metadata
+(name, BAR number, physical register offset and serialized type) gives
+**43/43 exact matches** against the current native
+`g_LecLegacyRegisterList[43]` and the independently recovered
+Ghidra construction order. Runtime register **values** are intentionally
+not copied into this public document.
+
+This is independent runtime confirmation of the complete normal
+full-initialization register-map ordering documented in
+[original register-list and write ABI](
+original-register-list-and-write-abi.md).
+
+### Consequence for the remaining writer work
+
+Do **not** implement `0x0022303C` or `0xCFDC2130` merely to reach
+27/27 top-level source representation. The new runtime evidence says neither
+was needed for this extensive normal oscilloscope-control session. The
+highest-value missing evidence is now the original **user-mode producer**
+of a real `0x0022303C` request (if one exists in normal/service software):
+the setter's incoming DWORD at record `+0x101` is an array index, whereas
+the query record places the physical BAR offset at that same location.
+
+The owner's separate binary scan for the little-endian IOCTL constant
+`3C 30 22 00` is still pending at this checkpoint. If it identifies an
+XStream EXE/DLL, statically trace that caller before considering a guarded
+native writer. No scope-side synthetic write is justified by this capture.
+
+
 The native x64 driver contains a non-invasive IOCTL trace ring intended for
 capturing the exact startup/runtime protocol emitted by the original 32-bit
 XStream software.
