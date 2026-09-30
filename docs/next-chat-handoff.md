@@ -20,6 +20,19 @@ hardware-independent contracts finished **8/8 PASS, 0 failed** with final
 `REGRESSION SUITE PASS: Dry`. Dry mode is now runtime-verified on the Windows
 development machine. The separate real-PCI safe ABI baseline remains 9/9 PASS.
 
+## Hardware regression expanded to eleven checks (source-side pending rerun)
+
+The safe hardware suite now adds two passive diagnostics before the previous nine
+checks: `lecdiag stats` must report stats version 1 / legacy build 1002, and
+`lecdiag bars` must report version 1, count 3, with non-zero logical BAR0/1/2
+mapping lengths. No new hardware writes were added. The previous owner-reported
+hardware baseline remains 9/9 PASS; the expanded suite must not be called 11/11
+until actually run. Execute through the unified entry point:
+
+```powershell
+.\scripts\test-driver.ps1 -Mode Hardware
+```
+
 ## New regression harness added (source-side, not yet runtime-verified)
 
 A unified test entry point now exists at `scripts/test-driver.ps1` with
