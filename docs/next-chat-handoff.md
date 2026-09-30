@@ -1,5 +1,25 @@
 # Active handoff: normal + Developer/Service original traces both exclude hazardous writers (2026-09-30)
 
+## Exact Service GUI page identified
+
+Owner screenshot identifies the register diagnostics page as:
+
+```text
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters
+```
+
+The visible list begins `TxControl, RxControl, TxCount, RxCount, SetIRQ,
+HWInt, FVER, ...` in the same order as the reconstructed 43-entry
+register list. Selecting TxControl shows `Adr: 400 H`, a hex value field
+and a visible `Read` button. This directly links the page to the observed
+`0x00223040` indexed register-read traffic.
+
+There is NO visible Write button in the screenshot and the service trace
+contains zero `0x0022303C`. Treat the value field as potentially
+write-triggering on edit/Enter/focus-loss; do not experimentally modify it
+on the real scope. Next safe step remains static user-mode analysis /
+pending binary constant scan.
+
 ## Newest owner evidence: Developer/Service-menu original-x86 trace
 
 Owner supplied private `legacy_xstream_trace_setregister_2.jsonl`
