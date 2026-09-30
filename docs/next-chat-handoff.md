@@ -2379,3 +2379,46 @@ The auxiliary-output action has not yet been isolated to a nested opcode because
 that UI change was observed live without a dedicated Start Action/End Action
 window in the saved session. The next correlation run should mark exactly that
 single XStream change.
+
+
+## XStream E2E can now drive lecwatch action correlation
+
+The owner explicitly pointed out that the existing XStream E2E automation can
+serve as the actuator while `lecwatch` observes the driver. This is now wired
+up in source.
+
+Current implementation:
+
+- `lecwatch` accepts synchronous `WM_COPYDATA` commands with a private
+  user-mode magic value:
+  - `MARKER<TAB>text`;
+  - `ACTION_START<TAB>label`;
+  - `ACTION_END`.
+- No new debug or legacy IOCTL was added; lecwatch still contains exactly one
+  `DeviceIoControl` call site and only reads `DEBUG_GET_TRACE`.
+- `tests/xstream/test-xstream-e2e.ps1 -TraceActions` marks forced acquisition,
+  C1 VerScale, Horizontal HorScale, C1 Coupling and C1 BandwidthLimit changes,
+  with separate restore windows.
+- `scripts/test-driver.ps1 -Mode XStream -TraceXStreamActions` exposes the
+  mode through the unified runner.
+- E2E waits 100 ms before each ACTION END so the monitor's 10-ms trace reader
+  can ingest the tail of the driver burst before closing the action summary.
+- `tools/lecwatch/summarize-actions.py` converts a saved annotated JSONL
+  session into per-action top-level/nested IOCTL counts and input-variant counts.
+
+Intended next owner run:
+
+```powershell
+git pull --ff-only origin main
+.\scripts\build-lecwatch.ps1
+.\tools\lecwatch\build\lecwatch.exe
+# second PowerShell:
+.\scripts\test-driver.ps1 -Mode XStream -TraceXStreamActions
+```
+
+After the E2E run, save the lecwatch session and run
+`python .\tools\lecwatch\summarize-actions.py <session.jsonl> --markdown <summary.md>`.
+
+This new bridge/action-tracing path is source-implemented but has not yet
+received an owner runtime result. Do not claim the automated marker bridge or
+action summarizer runtime-verified until that run is supplied.
