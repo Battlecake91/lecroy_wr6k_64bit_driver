@@ -37,6 +37,15 @@ Existing private backups consist of two matching 512-byte raw EEPROM images; the
 
 Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-board-topology.md), [ProBus ADC/I2C architecture](docs/probus-detection-i2c-architecture.md), [Dallas backup and write validation](docs/dallas-license-memory-test-plan.md).
 
+## Distribution signing
+
+Development currently relies on test signing. Public Windows x64 distribution without
+test mode requires the Microsoft driver-signing pipeline and a Hardware Dev Center
+identity backed by an EV code-signing certificate; current Microsoft policy also
+distinguishes attestation/test scenarios from WHCP/HLK production certification.
+Current requirements, certificate-cost snapshots and a possible project-funding approach
+are documented in [driver signing and funding](docs/driver-signing-and-funding.md).
+
 ## Known limitations
 
 - The x64 driver is an experimental test build; installation, test signing and hardware changes should be performed on a backed-up reference system.
