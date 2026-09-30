@@ -16,8 +16,10 @@ $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $publicHeader = Join-Path $repo "include\LecS65LegacyIoctl.h"
 $driverHeader = Join-Path $repo "driver\LecS65Drv.h"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
+$lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
+$lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $ioctlSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -26,6 +28,7 @@ foreach ($path in @($publicHeader, $driverHeader, $ioctlSource)) {
 $publicText = Get-Content -LiteralPath $publicHeader -Raw
 $driverText = Get-Content -LiteralPath $driverHeader -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
+$lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -159,6 +162,13 @@ Test-Contract "public packed register ABI size guards are still present" {
 Test-Contract "private debug IOCTL range remains separate from legacy numeric ABI" {
     $driverText -match 'CTL_CODE\(0x8000, 0x800' -and
     $driverText -match 'CTL_CODE\(0x8000, 0x805'
+}
+
+Test-Contract "lecwatch remains read-only and trace-only" {
+    [regex]::Matches($lecwatchText, 'DeviceIoControl\s*\(').Count -eq 1 -and
+    $lecwatchText -match 'LECS65_IOCTL_DEBUG_GET_TRACE' -and
+    $lecwatchText -match 'is_sensitive_ioctl' -and
+    $lecwatchText -notmatch 'LECS65_IOCTL_DEBUG_CLEAR_TRACE'
 }
 
 Write-Host ""
