@@ -27,7 +27,7 @@ if (-not (Test-Path $vcvars)) {
     throw "vcvars64.bat not found: $vcvars"
 }
 
-$cmd = "`"$vcvars`" >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /MT /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS /Fe:`"$out`" lecwatch.c /link /SUBSYSTEM:WINDOWS"
+$cmd = "`"$vcvars`" >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /MT /utf-8 /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS /Fe:`"$out`" lecwatch.c /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib"
 & $env:ComSpec /d /s /c $cmd
 if ($LASTEXITCODE -ne 0) {
     throw "lecwatch build failed with exit code $LASTEXITCODE."
