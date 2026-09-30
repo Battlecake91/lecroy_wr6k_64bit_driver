@@ -54,3 +54,49 @@ Reviewed executable bytes / total original executable bytes * 100
 Track native-port parity and real-scope regression separately; understanding
 a handler does not establish that its entire behaviour is safely implemented
 or tested. Do not present 24/27 = 88.9% as '89% of original source recovered'.
+
+
+## Semantic naming audit of selected decompilations
+
+A 2026-09-30 audit of `ghidra_exports/selected/` found **207 distinct
+Ghidra C function exports** (`<address>_FUN_<address>.c`). This is a
+selected-analysis corpus, not the complete function count of the original
+binary.
+
+Cross-checking those 207 addresses against the repository README, AGENTS and
+all Markdown files under `docs/` gives:
+
+| Naming/context metric | Count | Meaning |
+|---|---:|---|
+| Selected decompiled functions | 207 | C exports currently retained for focused review. |
+| Already referenced in project documentation | 180 | At least some project-specific context exists. A documentation mention alone does **not** imply complete semantic recovery. |
+| Previously absent from all project documentation | 27 | Decompiled code existed, but the address had no project-documentation context. |
+| Of those 27, directly reviewable to a useful structural/functional role | 17 | Examples include queued-IRP cancellation, `CKeTraceControl` / `CKeRegisterList` destruction, transfer-buffer cursor helpers, conditional register-write helpers, cleanup/destruction, flag clearing and append helpers. |
+| Remaining hard semantic-unknown bucket after direct review | **10** | Machine-level behaviour is visible, but a vendor/domain-level name would currently overstate what is known. |
+
+The **10 hard-unknown / domain-ambiguous functions** are currently:
+
+| Original VA | What is known | Why no semantic rename yet |
+|---:|---|---|
+| `0x10E3A` | obtains current process, updates an object at main+0x1078, invokes request/completion helper and increments a global on one result | exact lifecycle/event purpose is unresolved |
+| `0x11AA6` | stores four caller DWORDs at object offsets +0x166..+0x172 | field meanings are unresolved |
+| `0x120FA` | initializes/allocates an array of N records, each exactly 0x10A bytes; called from `CKeRegisterList` construction | likely register-record storage, but exact class/member contract should be confirmed before a vendor-style name |
+| `0x137C4` | performs a hardware quiesce/reset-like sequence, clears/masks MMIO state and changes global gating state | exact lifecycle stage is unresolved |
+| `0x1381E` | performs a hardware start/reinitialize-like sequence including register/state reset and optional follow-up setup | exact lifecycle stage is unresolved |
+| `0x138D4` | saves one global state value, masks a hardware register and synchronizes a callback | exact suspend/stop/error role is unresolved |
+| `0x1551A` | initializes one DWORD value and two one-byte flags in a small helper object | object semantics are unresolved |
+| `0x159BC` | resets a subobject and stores two parameters; called during the large hardware-subobject constructor | subobject purpose is unresolved |
+| `0x16C6A` | stores one DWORD at object offset +0x0C | field meaning is unresolved |
+| `0x17A0A` | stores one DWORD at object offset +4 and returns a value with low byte forced to 1 | object/field semantics are unresolved |
+
+This leaves only **10/207 = 4.8%** of the selected decompilation corpus in
+the strict category “we can see what the instructions do, but cannot yet give
+the function an honest domain-level name.” Conversely, this must **not** be
+reported as “95.2% of the original driver is fully understood”: many of the
+other 197 functions are only partially understood, structurally named, or
+known in one observed call path.
+
+For future cleanup, prefer a separate alias/symbol map with confidence
+(`confirmed`, `functional`, `tentative`) over renaming raw evidence files.
+Raw `FUN_<address>` filenames should remain stable so documentation can always
+trace conclusions back to the original VA.
