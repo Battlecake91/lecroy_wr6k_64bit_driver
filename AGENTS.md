@@ -5,6 +5,19 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**LECWATCH LIVE IOCTL MONITOR IMPLEMENTED (2026-09-30, NOT YET RUNTIME-VERIFIED):**
+Native x64 `tools/lecwatch/lecwatch.c` now reads only the existing private
+`DEBUG_GET_TRACE` ring on a 100-ms worker loop. It provides recent-activity
+indicators, rate/count/status, live log, confidence/CFDC2110 decoding, Hide known,
+5-s idle baseline + request-shape novelty, filters, QPC markers, Start/End Action
+summaries, payload details, sequence-gap accounting and redacted JSONL export.
+Dallas payloads are never displayed/saved. No arbitrary legacy IOCTL/MMIO/FPGA/
+Dallas-write path exists in the GUI. Build with `scripts/build-lecwatch.ps1`;
+no driver reload is required. **Source/static review only so far:** do not claim
+MSVC build or real-scope PASS until owner output is supplied. See
+`tools/lecwatch/README.md` and `docs/live-ioctl-monitor-design.md`.
+
+
 **LONG-TERM RELEASE GOAL (owner decision, 2026-09-30):** this project is explicitly
 intended to end with a **WHQL/WHCP-certified Microsoft-signed Windows x64 production
 driver**, not merely a working test-signed replacement. Treat local HLK readiness as
