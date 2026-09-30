@@ -67,6 +67,34 @@ separation, and continued native absence of hazardous original writers
 has not yet been executed on a Windows WDK machine. The separately owner-reported
 hardware batch remains 9/9 PASS.
 
+**SETONEREGISTER RUNTIME/CALLER ABI RESOLVED (2026-09-30):**
+Owner wrote the SAME displayed value through original-x86
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters.
+Private trace `legacy_xstream_trace_setregister_3.jsonl` now has the
+FIRST observed 0x0022303C call: exact 266-byte input, output 0,
+STATUS_SUCCESS/Information=0; request all zero except
+DWORD +0x101=2 and DWORD +0x106=2. Immediately preceding 0x00223040
+read proves index 2=TxCount, BAR1+0x408, current value=2.
+Thus +0x101 is definitively a zero-based ARRAY INDEX in setter requests,
+not physical offset. The read/query record remains a different layout.
+
+Owner binary scan found literal `3C 30 22 00` exactly once in private
+`lecaladdinhwaccesspcisvr.dll`. Local static disassembly proves
+function image VA 0x10020B7C zeroes 0x10A-byte buffer,
+gets class member +0x310 `RegisterList` / m_cvEnumRegisterList into
+buffer+0x101, gets +0x314 `PCIRegister` / m_cvRegPCIRegister requested
+value into buffer+0x106, and invokes 0x0022303C. CVar notification
+dispatcher calls it specifically for PCIRegister change flag 0x100.
+Do NOT commit the proprietary DLL. It contains no literal CFDC2130 or
+0x00223088.
+
+This closes the user-mode caller/record-construction blocker for
+0x0022303C. A future native implementation should be HARDENED:
+exact 266-byte input; validate index < 43/current known list;
+map ONLY via g_LecLegacyRegisterList; resolve BAR/offset safely;
+Information=0; never reproduce original unchecked array dereference.
+No further exploratory physical writes are needed to prove this path.
+
 **KERNELPCIREGISTERS UI IDENTIFIED (2026-09-30):**
 Owner screenshot maps `0x00223040` register-list reads to
 Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters.
