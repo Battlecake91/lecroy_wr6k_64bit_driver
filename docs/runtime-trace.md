@@ -1,4 +1,48 @@
 # Runtime trace capture
+## 2026-10-01 first real original SetOneRegister runtime call
+
+Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.
+The owner used the original 32-bit XStream
+`Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters` page
+and deliberately wrote the **same value already displayed** for the selected
+register. This produced the project's first observed real runtime
+`0x0022303C` call.
+
+Immediately before the write, XStream queried register index 2 through
+`0x00223040` and received `TxCount` (BAR1, physical offset `0x408`,
+type 4, current value 2). The subsequent successful setter call is:
+
+```text
+IOCTL       0x0022303C
+input       266 bytes
+output      0
+NTSTATUS    0x00000000
+Information 0
+
+request +0x101 DWORD = 2   # register-list index
+request +0x106 DWORD = 2   # requested value
+all other bytes       = 0
+```
+
+This conclusively proves that the setter request is **not** an echoed
+`0x00223040` query record. The query record stores the physical BAR offset
+at `+0x101`; the setter creates a fresh zero-filled 266-byte record and
+stores the zero-based list index at the same location.
+
+The first hit was deliberately induced by writing from
+`KernelPCIRegisters`; prior broad normal-UI and read-only Service traces
+contained no `0x0022303C`.
+
+The owner's binary scan also found the little-endian constant
+`3C 30 22 00` only in
+`lecaladdinhwaccesspcisvr.dll`. Static analysis of that private DLL
+confirms a user-mode function that zeroes 0x10A bytes, gets the selected
+register index and requested register value into `+0x101` and `+0x106`,
+then submits `0x0022303C`. Full sanitized details:
+[kernel PCI register setter user-mode proof](kernel-pci-register-setter-usermode.md).
+
+No vendor DLL or private raw trace is committed.
+
 ## 2026-09-30 original KernelPCIRegisters write: first real 0x0022303C runtime call
 
 Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.
