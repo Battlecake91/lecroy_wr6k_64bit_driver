@@ -1,7 +1,6 @@
 # Live IOCTL monitor design
 
-Status: proposed 2026-09-30. This is a user-mode observability tool design;
-it does not change hardware semantics or add new original IOCTL implementations.
+Status: **implemented in source on 2026-09-30; Windows/MSVC runtime verification pending.** This is a user-mode observability tool; it does not change hardware semantics or add new original IOCTL implementations.
 
 ## Goal
 
@@ -146,3 +145,43 @@ Dallas EEPROM.
 This gives substantially better causal evidence than manually searching a
 large raw JSONL trace after the fact, while retaining the raw sequence and
 timestamps needed for later static analysis.
+
+
+## Implemented v1
+
+The first native implementation now lives at:
+
+- `tools/lecwatch/lecwatch.c`
+- `tools/lecwatch/README.md`
+- `scripts/build-lecwatch.ps1`
+
+Implemented behavior:
+
+- direct SetupAPI opening of the existing LeCroy device interface;
+- worker-thread polling of `LECS65_IOCTL_DEBUG_GET_TRACE` every 100 ms;
+- sequence deduplication and explicit dropped-record accounting;
+- activity table with recent-activity indicator, rate, count, last status and
+  semantic confidence;
+- live event log with QPC-relative timestamps;
+- top-level symbolic names and focused `CFDC2110` family/opcode decoding;
+- `confirmed`, `functional`, `partial` and `unknown` confidence classes;
+- **Hide known**, **Hide idle baseline**, **Errors only**, text filter and
+  paint-only pause;
+- five-second idle learning with per-IOCTL request rate and bounded payload
+  signature sets;
+- novelty highlighting when a post-baseline request shape was not seen during
+  idle learning;
+- free-form QPC user markers;
+- Start Action / End Action windows with per-IOCTL call-count summaries;
+- double-click bounded payload details;
+- annotated UTF-8 JSONL session export;
+- Dallas ROM/read/write payload redaction in details and saved sessions.
+
+The GUI issues **only** the private trace-read diagnostic IOCTL. There are no
+buttons or paths for arbitrary legacy IOCTL execution, MMIO register writes,
+serial-trigger FPGA programming, software-pending injection or Dallas writes.
+
+The source has received a static consistency review, but no MSVC build or
+real-scope execution has yet been reported. Do not mark this tool verified until
+the owner supplies an actual `build-lecwatch.ps1` result and live connection
+test.
