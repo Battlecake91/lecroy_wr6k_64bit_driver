@@ -2335,3 +2335,19 @@ Commit `a668ee368985c0f079a92d1a4f0b4274d0924049` removes the duplicate macro
 and adds `<stdlib.h>` and `<winioctl.h>`. The corrected source has not yet
 received the owner's follow-up MSVC build result. Do not report lecwatch as
 build-verified until that rerun succeeds.
+
+
+## Second lecwatch MSVC build attempt: linker-only failure fixed
+
+The owner's follow-up `build-lecwatch.ps1` run on 2026-09-30 compiled
+`lecwatch.c` successfully but failed at link time with 28 unresolved Win32
+GUI imports. The missing imports were User32/GDI32 functions such as
+`CreateWindowExW`, `GetMessageW`, `MessageBoxW`,
+`SetProcessDPIAware` and `GetStockObject`.
+
+Commits `c5bb89544d1e9c787bc28a3ab717d9b2ab6d6558` and
+`979a836471bceadcbdcea8c7452f7161c9ac70e4` add explicit
+`user32.lib` / `gdi32.lib` linkage in both source pragmas and
+`scripts/build-lecwatch.ps1`. This confirms the previous header fix got the
+source through compilation. Runtime verification is still pending; do not claim
+lecwatch build PASS until the next owner build succeeds.
