@@ -48,9 +48,13 @@ Hardware mode reuses the established scripts/test-safe-ioctl-batch.ps1 suite.
 It requires the actual PCI device and installed replacement driver and requires
 XStream to be closed.
 
-It currently performs the owner-validated low-impact ABI batch: driver build
-identity, PCI identity, START/FVER comparison, CFDC2400 zero-mask boundary behavior
-and CFDC2194 invalid-size checks.
+It currently performs eleven low-impact checks: driver build identity, private
+debug-stats ABI, three mapped logical BARs, PCI identity, START/FVER comparison,
+CFDC2400 zero-mask boundary behavior and CFDC2194 invalid-size checks.
+
+The two newly added checks are read-only diagnostics. They verify debug structure
+version/build metadata and confirm that all three logical BAR resources are mapped
+with non-zero lengths. They do not read arbitrary MMIO register contents.
 
 It does not build/install/reload the driver and it does not perform the known
 hazardous indexed-register, Dallas-write or serial-trigger-FPGA programming paths.
@@ -106,5 +110,6 @@ build again completed with 0 warnings and 0 errors, lecdiag was built as x64
 
 Dry mode is therefore now owner-verified on the Windows development machine.
 
-The existing hardware suite separately retains its previously owner-reported
-9/9 real-scope result.
+The previous hardware suite separately retains its owner-reported 9/9 real-scope
+result. The expanded eleven-check hardware suite is source-side only until the owner
+executes it; do not claim 11/11 yet.
