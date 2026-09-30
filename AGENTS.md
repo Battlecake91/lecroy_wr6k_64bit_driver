@@ -5,6 +5,20 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**NEW REGRESSION HARNESS (2026-09-30, SOURCE-SIDE ONLY):**
+`scripts/test-driver.ps1` is now the unified test entry point with
+`-Mode Dry|Hardware|All`. Dry builds driver+lecdiag by default and then runs
+`tests/dry/test-source-contracts.ps1` without device access; `-SkipBuild`
+performs only the fast source/ABI contracts. Hardware delegates to the existing
+safe 9-check PCI ABI batch. XStream E2E is deliberately the next layer, not yet
+implemented in the runner. The dry contracts freeze build 1002, selected IOCTL
+numeric values/dispatch references, public ABI size guards, debug-control
+separation, and continued native absence of hazardous original writers
+0x0022303C, 0x00223088 and 0xCFDC2130. See
+`docs/regression-testing.md`. **Do not claim the new Dry/All runner passed:** it
+has not yet been executed on a Windows WDK machine. The separately owner-reported
+hardware batch remains 9/9 PASS.
+
 **CURRENT AUTHORITATIVE ORIGINAL-DRIVER ANALYSIS (2026-09-30,
 owner Ghidra commit `00eb49db5efe98042df47ba07a570017cd37419d`):**
 THIRD read-only Ghidra batch has now COMPLETED and
