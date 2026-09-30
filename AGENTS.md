@@ -67,6 +67,36 @@ separation, and continued native absence of hazardous original writers
 has not yet been executed on a Windows WDK machine. The separately owner-reported
 hardware batch remains 9/9 PASS.
 
+**LATEST ORIGINAL-X86 RUNTIME EVIDENCE (2026-09-30):**
+Owner supplied private `legacy_xstream_trace_setregister.jsonl`
+after a broad normal-control session: channel toggles, all channels
+20 mV/div, coupling/bandwidth, timebase/sample rate, 4->2 channels
+at 10 GS/s, trigger CH2->CH1, positive->negative edge,
+Edge->Width, Width Less Than->Out Of Range.
+Parsed 199,741 valid JSON records (one final incomplete line),
+including 184,862 native IOCTL records. Main original acquisition
+interface: **182,588 calls, 100% NTSTATUS success**.
+Critically: **0 occurrences of 0x0022303C, 0 occurrences of
+CFDC2130, 0 Dallas WRITE 0x00223088, 0 CFDC21C4**.
+Therefore the two missing dangerous write IOCTLs are not part of
+the exercised normal oscilloscope control path. Do NOT port them
+solely for coverage.
+
+The same private trace contains original `0x00223040` full list
+11,438 bytes = 43 x 266; all 43 public metadata rows
+(name/BAR/offset/type) match native
+`g_LecLegacyRegisterList[43]` and static reconstruction 43/43.
+Do not commit raw trace or Dallas/license bytes.
+See `docs/runtime-trace.md` and
+`docs/original-register-list-and-write-abi.md`.
+
+Owner is currently running a binary scan of original XStream
+EXE/DLL files for bytes `3C 30 22 00` (little-endian
+0x0022303C). NEXT: when scan output arrives, inspect ONLY matching
+EXE/DLL binaries and recover user-mode setter-record construction.
+No more scope writing, no XStream regression, and no arbitrary
+Ghidra batch is required before that evidence.
+
 **CURRENT AUTHORITATIVE ORIGINAL-DRIVER ANALYSIS (2026-09-30,
 owner Ghidra commit `00eb49db5efe98042df47ba07a570017cd37419d`):**
 THIRD read-only Ghidra batch has now COMPLETED and
