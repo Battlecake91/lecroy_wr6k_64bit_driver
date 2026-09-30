@@ -191,6 +191,41 @@ during extensive read-only traversal. Do not edit/submit the value field
 until the page implementation or a binary constant/call site proves how
 writes are initiated and how record+0x101 is populated.
 
+## Runtime and user-mode caller now resolve SetOneRegister completely
+
+The earlier uncertainty about the original user-mode setter convention is
+now resolved by a real original-x86 call plus static analysis of the unique
+caller in the installed `lecaladdinhwaccesspcisvr.dll`.
+
+Owner trace `legacy_xstream_trace_setregister_3.jsonl` contains exactly one
+successful `0x0022303C` request after writing the unchanged value through
+`KernelPCIRegisters`. The immediately preceding indexed query selects
+**index 2 = TxCount**, whose current value is 2. The setter input is exactly
+266 bytes and is zero-filled except:
+
+```text
+request +0x101 : DWORD 2   // zero-based register-list INDEX
+request +0x106 : DWORD 2   // desired register value
+```
+
+All name bytes, BAR byte and metadata type are zero. Thus the peculiar ABI
+is intentional at the user-mode boundary: the READ record's physical-offset
+field and the WRITE request's array-index field occupy the same byte
+position but are different logical structures.
+
+Static analysis of the sole `0x0022303C` literal in
+`lecaladdinhwaccesspcisvr.dll` confirms this construction. The setter
+routine at image VA `0x10020B7C` zeroes 0x10A bytes, gets the selected
+`RegisterList` CVar (class member +0x310) into +0x101, gets the requested
+`PCIRegister` CVar value (class member +0x314) into +0x106, then sends
+`0x0022303C`. Its notification dispatcher calls this routine specifically
+for `PCIRegister` change notification flag 0x100.
+
+The previous "exact original user-mode convention not recovered" blocker is
+therefore CLOSED. Any native x64 implementation should still harden the
+original by validating `index < activeKnownRegisterCount` and mapping the
+index only to the known native register table before any MMIO write.
+
 ## Critical ABI distinction: register OFFSET is not register INDEX
 
 This is especially important for the missing
