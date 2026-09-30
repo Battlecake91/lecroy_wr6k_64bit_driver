@@ -150,3 +150,33 @@ Observed passive hardware metadata during that run:
 - malformed CFDC2400 lengths and CFDC2194 output lengths were rejected as expected.
 
 Hardware mode is therefore owner-verified on the physical scope.
+
+
+### lecwatch action-correlation mode
+
+The XStream layer now has an optional observability mode:
+
+```powershell
+.\scripts\test-driver.ps1 -Mode XStream -TraceXStreamActions
+```
+
+This requires the current native `lecwatch.exe` to already be running.
+The regression process sends synchronous `WM_COPYDATA` messages to
+`LecWatchMainWindow`; lecwatch records the markers with its own QPC and keeps
+using its existing read-only `DEBUG_GET_TRACE` path.
+
+Current automatically delimited actions are forced acquisition and reversible
+C1 vertical scale, horizontal scale, coupling and bandwidth-limit changes,
+including separate restore windows. A 100-ms post-action settle interval lets
+the 10-ms monitor reader consume the end of each driver burst before the action
+summary is closed.
+
+Saved sessions can be reduced with:
+
+```powershell
+python .\tools\lecwatch\summarize-actions.py <session.jsonl> --markdown <summary.md>
+```
+
+This is an analysis mode, not a new hardware test primitive: it drives only the
+same XStream COM actions already present in the E2E regression and adds no
+kernel-control capability to lecwatch.
