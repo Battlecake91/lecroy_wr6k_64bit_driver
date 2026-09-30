@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Batch only low-impact LeCroy WR6k native-x64 ABI boundary checks.
+  Batch only low-impact LeCroy WR6k native-x64 hardware/ABI regression checks.
 .DESCRIPTION
   XStream must be closed. Uses lecdiag built for the currently installed
   replacement driver. DOES NOT build, sign, install, write Dallas memory,
@@ -111,13 +111,22 @@ function Invoke-LecdiagCheck {
     }
 }
 
-Write-Host "LeCroy WR6k x64 safe IOCTL batch (XStream closed)" -ForegroundColor Cyan
+Write-Host "LeCroy WR6k x64 safe hardware regression (XStream closed)" -ForegroundColor Cyan
 Write-Host "No nonzero IRQ injection, Dallas writes, FPGA writes or driver reload."
 Write-Host "CFDC2400 zero mask still invokes existing pending DPC processing."
 
 Invoke-LecdiagCheck -Name "Legacy driver-build ABI" `
     -Command @("build") -ExpectedExit 0 `
     -ExpectedPattern 'driver build: 1002 \(returned=4\)'
+
+
+Invoke-LecdiagCheck -Name "Private debug stats ABI" `
+    -Command @("stats") -ExpectedExit 0 `
+    -ExpectedPattern '(?s)stats version:\s*1.*legacy build:\s*1002'
+
+Invoke-LecdiagCheck -Name "Three logical BAR mappings present" `
+    -Command @("bars") -ExpectedExit 0 `
+    -ExpectedPattern '(?s)bars version:\s*1, count:\s*3.*logical BAR0:.*length=0x[0-9A-Fa-f]*[1-9A-Fa-f][0-9A-Fa-f]*.*logical BAR1:.*length=0x[0-9A-Fa-f]*[1-9A-Fa-f][0-9A-Fa-f]*.*logical BAR2:.*length=0x[0-9A-Fa-f]*[1-9A-Fa-f][0-9A-Fa-f]*'
 
 Invoke-LecdiagCheck -Name "Passive PCI identity" `
     -Command @("pci") -ExpectedExit 0 `
@@ -172,12 +181,12 @@ if ($IncludeErrorStatus) {
 }
 
 Write-Host ""
-Write-Host ("SAFE ABI BATCH: {0}/{1} passed; {2} failed." -f
+Write-Host ("SAFE HARDWARE REGRESSION: {0}/{1} passed; {2} failed." -f
     $script:PassedCount, $script:CheckCount, $script:FailedCount)
 
 if ($script:FailedCount -ne 0) {
-    throw ("Safe ABI batch FAILED: {0} check(s). Do not promote this to a validated baseline." -f
+    throw ("Safe hardware regression FAILED: {0} check(s). Do not promote this to a validated baseline." -f
         $script:FailedCount)
 }
 
-Write-Host "All requested safe ABI checks passed." -ForegroundColor Green
+Write-Host "All requested safe hardware checks passed." -ForegroundColor Green
