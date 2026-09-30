@@ -5,6 +5,15 @@ Every agent/chat working on this project should read it first and keep it curren
 
 **Current new-chat starting point:** [`docs/next-chat-handoff.md`](docs/next-chat-handoff.md).
 
+**FIRST DRY RUN RESULT (owner, 2026-09-30):** unified `-Mode Dry` successfully
+built the driver with **0 warnings / 0 errors** and built x64 `lecdiag`
+(PE machine 0x8664). Source contracts then showed **6/8 PASS**. Both failures were
+harness-only: Windows PowerShell 5.1 parsed CFDC/CFDD hex literals above
+0x7FFFFFFF as signed Int32, causing UInt32 conversion/comparison failures.
+Commit `95be1ba4ebaf229b58d115fca3b5b9e12d0a267b` fixes the suite to compare
+canonical 8-digit uppercase hex strings instead of numeric literals. **Rerun required;
+do not yet claim full Dry PASS.**
+
 **NEW REGRESSION HARNESS (2026-09-30, SOURCE-SIDE ONLY):**
 `scripts/test-driver.ps1` is now the unified test entry point with
 `-Mode Dry|Hardware|All`. Dry builds driver+lecdiag by default and then runs
