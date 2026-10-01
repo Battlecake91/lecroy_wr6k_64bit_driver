@@ -14,6 +14,9 @@ param(
     [ValidateRange(1, 60)]
     [int]$TimeoutSeconds = 5,
 
+    [ValidateRange(10, 600)]
+    [int]$ReadyTimeoutSeconds = 180,
+
     [ValidateRange(0.000001, 1.0e12)]
     [double]$ExpectedFrequencyHz,
 
@@ -56,6 +59,25 @@ function Test-E2E {
     catch {
         $script:Failed++
         Write-Host ("[FAIL] {0}: {1}" -f $Name, $_.Exception.Message) -ForegroundColor Red
+    }
+}
+
+function Test-E2ERequired {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][scriptblock]$Body
+    )
+
+    $script:Checks++
+    try {
+        & $Body
+        $script:Passed++
+        Write-Host ("[PASS] " + $Name) -ForegroundColor Green
+    }
+    catch {
+        $script:Failed++
+        Write-Host ("[FAIL] {0}: {1}" -f $Name, $_.Exception.Message) -ForegroundColor Red
+        throw
     }
 }
 
@@ -144,6 +166,88 @@ function Set-And-VerifyNumericControl {
     }
 
     return $readback
+}
+
+function Wait-XStreamAutomationReady {
+    param(
+        [Parameter(Mandatory=$true)]$Application
+    )
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $attempt = 0
+    $lastError = "automation model not queried yet"
+
+    Write-Host ("  waiting up to {0}s for XStream hardware/automation initialization..." -f $ReadyTimeoutSeconds) -ForegroundColor Cyan
+
+    while ($stopwatch.Elapsed.TotalSeconds -lt $ReadyTimeoutSeconds) {
+        $attempt++
+
+        try {
+            $candidateAcq = $Application.Acquisition
+            if ($null -eq $candidateAcq) {
+                throw "Acquisition is null"
+            }
+
+            $candidateC1 = $candidateAcq.C1
+            if ($null -eq $candidateC1) {
+                throw "Acquisition.C1 is null"
+            }
+
+            $candidateHorizontal = $candidateAcq.Horizontal
+            if ($null -eq $candidateHorizontal) {
+                throw "Acquisition.Horizontal is null"
+            }
+
+            $candidateResult = $candidateC1.Out.Result
+            if ($null -eq $candidateResult) {
+                throw "Acquisition.C1.Out.Result is null"
+            }
+
+            $verScale = [double]$candidateC1.VerScale
+            $horScale = [double]$candidateHorizontal.HorScale
+            if ($verScale -le 0) {
+                throw ("C1.VerScale is not ready ({0:R})" -f $verScale)
+            }
+            if ($horScale -le 0) {
+                throw ("Horizontal.HorScale is not ready ({0:R})" -f $horScale)
+            }
+
+            $script:acq = $candidateAcq
+            $script:c1 = $candidateC1
+            $script:horizontal = $candidateHorizontal
+            $script:c1Result = $candidateResult
+
+            Write-Host (
+                "  XStream ready after {0:N1}s: VerScale={1:R} V/div, HorScale={2:R} s/div" -f
+                $stopwatch.Elapsed.TotalSeconds, $verScale, $horScale
+            ) -ForegroundColor Green
+
+            if ($TraceActions) {
+                Send-LecwatchTraceCommand (
+                    "MARKER{0}XStream automation ready after {1:N1}s" -f
+                    [char]9, $stopwatch.Elapsed.TotalSeconds
+                )
+            }
+            return
+        }
+        catch {
+            $lastError = $_.Exception.Message
+        }
+
+        if (($attempt % 5) -eq 0) {
+            Write-Host (
+                "  still waiting ({0:N0}s): {1}" -f
+                $stopwatch.Elapsed.TotalSeconds, $lastError
+            ) -ForegroundColor DarkGray
+        }
+
+        Start-Sleep -Milliseconds 1000
+    }
+
+    throw (
+        "XStream automation model did not become ready within {0}s. Last state: {1}" -f
+        $ReadyTimeoutSeconds, $lastError
+    )
 }
 
 function Initialize-LecwatchTraceBridge {
@@ -281,16 +385,8 @@ try {
         throw "XStream connection failed; remaining E2E tests cannot run."
     }
 
-    Test-E2E "Acquire C1 and Horizontal automation objects" {
-        $script:acq = $app.Acquisition
-        $script:c1 = $acq.C1
-        $script:horizontal = $acq.Horizontal
-        $script:c1Result = $c1.Out.Result
-
-        Assert-True ($null -ne $acq) "Acquisition object missing"
-        Assert-True ($null -ne $c1) "C1 object missing"
-        Assert-True ($null -ne $horizontal) "Acquisition.Horizontal object missing"
-        Assert-True ($null -ne $c1Result) "C1.Out.Result missing"
+    Test-E2ERequired "Wait for XStream automation readiness" {
+        Wait-XStreamAutomationReady -Application $app
     }
 
     Test-E2E "Read C1 vertical scale and horizontal scale" {
