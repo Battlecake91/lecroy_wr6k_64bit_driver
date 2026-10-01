@@ -141,9 +141,14 @@ Keep the implementation chat alive as long as practical and protect its context 
   4. safety constraints and things that must not be changed;
   5. the exact result format needed for implementation.
 - A separate analysis chat should solve only that task and return a compact result: findings, evidence, affected symbols/files, uncertainties, and recommended implementation implications.
-- The implementation chat consumes the result and decides how to change the repository. Analysis chats should normally remain read-only unless explicitly instructed otherwise.
+- Analysis chats are read-only by default.
+- If a question can only be resolved efficiently by changing or instrumenting code, an analysis chat may use its own clearly named temporary analysis branch.
+- Code on an analysis branch is experimental evidence, not the production implementation. It may contain instrumentation, tests, proof-of-concept patches, or alternative implementations needed to validate a hypothesis.
+- Analysis chats must not merge their experimental branch into `main` or treat it as automatically merge-ready.
+- The active implementation chat receives the compact findings plus, when useful, the analysis branch name and relevant commit SHAs. It decides what code should be reused and performs the final production integration.
+- An analysis result involving experimental code should state what the experiment proved, which files/symbols were changed, what may be reusable, what remains uncertain, and why the branch should not be merged blindly.
 - Do not duplicate the full analysis transcript into the implementation chat or repository. Transfer conclusions and the minimum supporting evidence.
-- Multiple analysis chats may work in parallel on independent questions. Avoid multiple chats editing the same implementation area concurrently.
+- Multiple analysis chats may work in parallel on independent questions. Avoid multiple chats editing the same implementation area concurrently except on explicitly isolated analysis branches.
 
 Before modifying a subsystem, read its canonical subsystem documentation if one exists. Prefer one document per subsystem or functional domain, not one document per individual C function.
 
