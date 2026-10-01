@@ -18,6 +18,25 @@ MSVC build or real-scope PASS until owner output is supplied. See
 `tools/lecwatch/README.md` and `docs/live-ioctl-monitor-design.md`.
 
 
+
+
+**NATIVE SETONEREGISTER IMPLEMENTED IN SOURCE (2026-10-01, NOT YET WINDOWS-BUILT OR HARDWARE-VERIFIED):**
+The recovered original XStream producer and runtime ABI are now reflected by a
+hardened x64 handler for legacy IOCTL `0x0022303C`.
+`driver/LecS65Drv.h` defines `LECS65_IOCTL_SET_ONE_REGISTER`; `driver/Ioctl.c`
+accepts exactly one 266-byte METHOD_BUFFERED input and zero output, reads the
+zero-based register-table index from DWORD `+0x101` and value from DWORD
+`+0x106`, rejects `index >= 43`, resolves only through
+`g_LecLegacyRegisterList[43]`, then writes the validated BAR/offset. Existing
+native shadows are kept coherent for INTEN, ERRM and SPICTL. The original x86
+unchecked pointer-table dereference is deliberately NOT reproduced.
+Dry contracts now expect 26/27 original top-level IOCTLs represented in x64
+source (one of those remains deliberately gated); only Dallas WRITE
+`0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain absent.
+No Windows WDK build, driver reload or scope write has been performed for this
+new source yet. First eventual live validation must read a known register and
+write exactly that freshly read value back; do not use a hard-coded value.
+
 **LONG-TERM RELEASE GOAL (owner decision, 2026-09-30):** this project is explicitly
 intended to end with a **WHQL/WHCP-certified Microsoft-signed Windows x64 production
 driver**, not merely a working test-signed replacement. Treat local HLK readiness as
