@@ -78,6 +78,7 @@ $represented = [ordered]@{
     "LECS65_IOCTL_SET_FLAG_BYTE" = "00222C04"
     "LECS65_IOCTL_SET_TRACE_CONTROL" = "00223000"
     "LECS65_IOCTL_QUERY_BUFFER_A" = "00223004"
+    "LECS65_IOCTL_SET_ONE_REGISTER" = "0022303C"
     "LECS65_IOCTL_QUERY_BUFFER_B" = "00223040"
     "LECS65_IOCTL_READ_START_REGISTER" = "00223044"
     "LECS65_IOCTL_GET_DALLAS_ID" = "00223080"
@@ -105,7 +106,7 @@ Test-Contract "legacy driver build remains 1002" {
     $driverText -match 'LECS65_LEGACY_DRIVER_BUILD\s+.*?1002'
 }
 
-Test-Contract "25 represented driver IOCTL constants keep their numeric values" {
+Test-Contract "26 represented driver IOCTL constants keep their numeric values" {
     foreach ($entry in $represented.GetEnumerator()) {
         $actual = Get-HexDefine -Text $driverText -Name $entry.Key
         if ($null -eq $actual -or $actual -ne [string]$entry.Value) {
@@ -131,16 +132,25 @@ Test-Contract "public ABI keeps the three known hazardous controls documented" {
     (Get-HexDefine $publicText "LECS65_IOCTL_PROG_SERTRIG_FPGA") -eq "CFDC2130"
 }
 
-Test-Contract "hazardous controls remain intentionally absent from native driver header" {
-    $driverText -notmatch 'LECS65_IOCTL_0022303C|0x0022303C' -and
+Test-Contract "remaining hazardous controls stay absent from native driver header" {
     $driverText -notmatch 'LECS65_IOCTL_WRITE_DALLAS_MEMORY|0x00223088' -and
     $driverText -notmatch 'LECS65_IOCTL_PROG_SERTRIG_FPGA|0xCFDC2130'
 }
 
-Test-Contract "hazardous controls remain absent from Ioctl.c dispatch/source" {
-    $ioctlText -notmatch 'LECS65_IOCTL_0022303C|0x0022303C' -and
+Test-Contract "remaining hazardous controls stay absent from Ioctl.c dispatch/source" {
     $ioctlText -notmatch 'LECS65_IOCTL_WRITE_DALLAS_MEMORY|0x00223088' -and
     $ioctlText -notmatch 'LECS65_IOCTL_PROG_SERTRIG_FPGA|0xCFDC2130'
+}
+
+Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" {
+    $driverText -match 'LECS65_IOCTL_SET_ONE_REGISTER\s+.*?0x0022303C' -and
+    $ioctlText -match 'case\s+LECS65_IOCTL_SET_ONE_REGISTER' -and
+    $ioctlText -match 'InputLength\s*!=\s*LECS65_LEGACY_REGISTER_ENTRY_BYTES' -and
+    $ioctlText -match 'OutputLength\s*!=\s*0' -and
+    $ioctlText -match 'index\s*>?=\s*LECS65_LEGACY_REGISTER_COUNT' -and
+    $ioctlText -match 'entry\s*=\s*&g_LecLegacyRegisterList\[index\]' -and
+    $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x101\)' -and
+    $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x106\)'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
