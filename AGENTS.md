@@ -95,6 +95,35 @@ map ONLY via g_LecLegacyRegisterList; resolve BAR/offset safely;
 Information=0; never reproduce original unchecked array dereference.
 No further exploratory physical writes are needed to prove this path. See `docs/kernel-pci-register-setter-usermode.md` for the sanitized DLL/trace proof.
 
+**DECISIVE SETONEREGISTER RUNTIME CAPTURE (2026-10-01):**
+Owner deliberately wrote the SAME displayed value on original x86
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters.
+Private `legacy_xstream_trace_setregister_3.jsonl` contains exactly one
+successful `0x0022303C` call (seq 6059), input=266, output=0,
+Information=0. Immediately before, `0x00223040` read index 2
+`TxCount` with value 2. Real setter payload is zero-filled except
+DWORD +0x101 = 2 (TABLE INDEX) and DWORD +0x106 = 2 (VALUE).
+This conclusively proves user mode does NOT echo query metadata:
+the query record uses PHYSICAL OFFSET at +0x101, while SET uses INDEX.
+Native port may now emulate valid semantics, but MUST add bounds/
+known-register validation rather than original unchecked pointer access.
+
+Owner's recursive binary scan found the literal IOCTL only in private
+`C:\Program Files\LeCroy\XStream\lecaladdinhwaccesspcisvr.dll`
+at file offset 0x2001C, size 336472. Supplied private DLL:
+PE32 x86; image base 0x10000000; SHA256
+4BDFCBE57FB76F40CA5D77F729E1A6662AA3B5B4E3DD2E12A7F13F84ECFC4F86.
+Local disassembly: `push 0x0022303C` at VA 0x10020C1B;
+next call 0x10020C21 -> 0x1001D8B8. Useful artifacts:
+AladdinHWAccessPCI.cpp, m_cvEnumRegisterList, m_cvRegPCIRegister,
+CCvarRegister. NEVER commit vendor DLL.
+
+NEXT: reverse that DLL function/callers, map to KernelPCIRegisters
+CCvar setter, identify 0x1001D8B8 DeviceIoControl wrapper, then design
+hardened native 0x0022303C. Do not use arbitrary live write values.
+If eventual x64 hardware validation is needed, mirror proven same-value
+write after reading current value.
+
 **KERNELPCIREGISTERS UI IDENTIFIED (2026-09-30):**
 Owner screenshot maps `0x00223040` register-list reads to
 Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters.
