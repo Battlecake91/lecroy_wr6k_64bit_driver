@@ -1157,6 +1157,94 @@ LecCommitLegacyInterruptMask(
 
 static
 NTSTATUS
+LecSetLegacyRegister(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_reads_bytes_(InputLength) const UCHAR* Buffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength
+    )
+{
+    const LECS65_LEGACY_REGISTER_LIST_ENTRY* entry;
+    volatile ULONG* reg;
+    ULONG index;
+    ULONG value;
+    NTSTATUS status;
+
+    /*
+     * Original x86 SetOneRegister (0x0022303C) accepts one packed
+     * 0x10A-byte request. Runtime capture and the matching XStream DLL
+     * prove that +0x101 is a zero-based register-list index for SET
+     * requests, while +0x106 is the DWORD value. This intentionally
+     * differs from the 0x00223040 query record, where +0x101 contains
+     * the physical BAR offset.
+     *
+     * The original kernel dereferences pointerTable[index] without an
+     * evident bounds check. Do not reproduce that bug here.
+     */
+    if (Buffer == NULL ||
+        InputLength != LECS65_LEGACY_REGISTER_ENTRY_BYTES ||
+        OutputLength != 0) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    index = LecReadU32(Buffer + 0x101);
+    value = LecReadU32(Buffer + 0x106);
+
+    if (index >= LECS65_LEGACY_REGISTER_COUNT) {
+        LecTrace(
+            "legacy 0x0022303C rejected out-of-range index=%lu value=0x%08lX\n",
+            index,
+            value);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    entry = &g_LecLegacyRegisterList[index];
+
+    /*
+     * Keep the native driver's existing software state coherent for the
+     * registers that already have explicit shadows. Other entries have no
+     * independent native shadow and are written directly after normal BAR
+     * validation.
+     */
+    if (entry->Bar == 0 && entry->Offset == 0x084) {
+        status = LecCommitLegacyInterruptMask(DevExt, value);
+    }
+    else {
+        status = LecResolveRegister(
+            DevExt,
+            entry->Bar,
+            entry->Offset,
+            &reg);
+
+        if (NT_SUCCESS(status)) {
+            if (entry->Bar == 0 && entry->Offset == 0x008) {
+                InterlockedExchange(
+                    &DevExt->LegacyErrmShadow,
+                    (LONG)value);
+            }
+            else if (entry->Bar == 1 && entry->Offset == 0x0A0) {
+                DevExt->LegacySpiControlShadow = value;
+                DevExt->LegacySpiInitialized = TRUE;
+            }
+
+            WRITE_REGISTER_ULONG(reg, value);
+        }
+    }
+
+    LecTrace(
+        "legacy 0x0022303C set index=%lu name=%s BAR%u+0x%03lX value=0x%08lX -> 0x%08X\n",
+        index,
+        entry->Name,
+        entry->Bar,
+        entry->Offset,
+        value,
+        status);
+
+    return status;
+}
+
+static
+NTSTATUS
 LecResetLegacyInterruptState(
     _In_ PLECS65_DEVICE_EXTENSION DevExt
     )
@@ -4060,6 +4148,15 @@ LecS65DeviceControl(
             status = STATUS_INVALID_BUFFER_SIZE;
             information = 0;
         }
+        break;
+
+    case LECS65_IOCTL_SET_ONE_REGISTER:
+        status = LecSetLegacyRegister(
+            devExt,
+            (const UCHAR*)systemBuffer,
+            inputLength,
+            outputLength);
+        information = 0;
         break;
 
     case LECS65_IOCTL_QUERY_BUFFER_B:
