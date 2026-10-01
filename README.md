@@ -1,233 +1,131 @@
 # LeCroy WR6k native 64-bit acquisition driver
 
-An open reverse-engineering project providing a native Windows x64 replacement for the legacy 32-bit LeCroy `LecS65AcqDrv.sys` (S65 / WaveRunner 6000 acquisition hardware). The goal is to run the original XStream user-mode software on 64-bit Windows while preserving its device interfaces, IOCTL ABI and hardware behavior.
+An independent open reverse-engineering project providing a native Windows x64 replacement for the legacy 32-bit LeCroy `LecS65AcqDrv.sys` used by WaveRunner 6000 / S65 acquisition hardware.
 
-> **Status (2026-09-30): Experimental, running on a real WaveRunner scope.** XStream starts and acquires live waveforms using the replacement driver. This is an ongoing compatibility project, not a fully validated production driver or an official LeCroy release.
+The goal is to run the original XStream software on 64-bit Windows while preserving the required device interfaces, driver ABI and hardware behavior.
 
-## Project goals
+> ⚠️ **Experimental project:** the replacement driver works on real WaveRunner hardware, but it is not yet a production-certified driver and is not an official Teledyne LeCroy release.
 
-The project is not intended to stop at a test-signed proof of concept. Its long-term
-goal is a maintainable, native Windows x64 replacement driver that preserves the
-original WaveRunner/S65 hardware behavior closely enough for normal XStream use and
-can be distributed through the standard Microsoft driver-signing path.
+## 🎯 Project goal
 
-The intended end state is:
-
-- broad functional compatibility with the original acquisition driver on supported
-  WaveRunner/S65 hardware;
-- repeatable source, ABI, hardware and XStream regression coverage;
-- completion or explicitly documented gating of the remaining legacy interfaces;
-- successful local Windows Hardware Lab Kit (HLK) readiness testing;
-- submission through the Windows Hardware Compatibility Program (WHCP); and
-- a **Microsoft-signed, WHQL/WHCP-certified production driver** that can be installed
-  on supported Windows systems without enabling test-signing mode.
-
-WHQL/WHCP certification is therefore a project goal, not a current claim. Development
-builds remain experimental and test-signed until the required compatibility work, HLK
-validation, EV-backed Hardware Dev Center enrollment and Microsoft submission are
-completed.
-
-## Current functionality
-
-| Area | Verified or implemented state |
+| Goal | State |
 | --- | --- |
-| PCI and Windows interfaces | Native x64 WDM/PnP binding for `PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00`, mapped BARs, recovered legacy interface GUIDs and common register/IOCTL access. |
-| XStream acquisition | Real waveform display and recurring acquisitions on scope hardware. The user has tested timebase, vertical scale, coupling, bandwidth, trigger changes and 2-channel / 10-GS/s operation. Following the `0x00223044` register-query change, the owner reported no observed regression in the exercised XStream/AP015 baseline. |
-| DMA and interrupts | Working, hardware-tested acquisition/transfer paths for the observed command forms, with locked buffers, chained legacy descriptors, completion events and recovered ISR/DPC acknowledgement. Unsupported transfer forms remain gated. |
-| ProBus / AP015 | Probe identification and physical unplug/replug work. XStream detects the AP015 jaw state and displays the unlocked-jaw warning. The host response serializer and pending-command notification path are hardware-tested. |
-| PCI Dallas DS2433 | ROM-ID read with CRC8 verification, 512-byte EEPROM read and private double-verified binary backup work on real hardware. Physical EEPROM writing is not implemented in the x64 driver. |
-| Diagnostics | `lecdiag` provides PCI/register diagnostics, Dallas operations and IOCTL trace capture. The legacy four-byte START/FVER query (`0x00223044`) passed an independent read comparison against BAR0+0x000 on real scope hardware (both `0x00000002`). Newly rebuilt trace exports redact direct Dallas ROM/read responses and write-request data; older raw traces remain sensitive. |
+| Native Windows x64 acquisition driver | ✅ Working |
+| Original XStream compatibility | 🟢 Substantially working |
+| Repeatable software and hardware regression tests | 🟢 Available |
+| Remaining legacy interface coverage | 🟡 In progress |
+| Local HLK readiness | 🔴 Pending |
+| WHQL / WHCP production certification | 🔴 Long-term goal |
+| Installation without test-signing mode | 🔴 Requires final Microsoft-signed release |
 
-These statements describe the tested hardware and observed XStream paths, not universal compatibility with every WR6k configuration, probe or service function. The original 27 top-level DeviceControl values have been identified; this does not mean every original control or nested command is implemented.
+The intended end state is a maintainable, Microsoft-signed x64 production driver that can be installed on supported systems without enabling Windows test-signing mode.
 
-## Hardware and protocol boundaries
+## 📊 Current status
 
-The scope contains distinct acquisition/front-panel hardware and a PCI interface board. The PCI board includes a Spartan-IIE (`U3 XC2S200E`), a local DS2433 (`U11`, connected to the FPGA through `ID_DATA`) and a separate `XC18V02` FPGA configuration PROM. Its differential connections to the acquisition board use separate 40-pin RX/TX headers.
+| Area | Status | Summary |
+| --- | --- | --- |
+| PCI / PnP driver binding | ✅ Verified | Native x64 driver binds to the supported LeCroy PCI device and exposes the recovered interfaces. |
+| XStream acquisition | ✅ Verified | Real waveform acquisition works on WaveRunner hardware. |
+| Normal scope controls | ✅ Verified | Timebase, vertical scale, coupling, bandwidth, trigger changes and tested multi-channel operation work. |
+| DMA / interrupt path | ✅ Verified | The observed acquisition and transfer paths operate on real hardware. |
+| ProBus / AP015 | 🟢 Working baseline | Probe identification, reconnect behavior and tested jaw-state handling work. |
+| Legacy register ABI | 🟢 Mostly understood | The 43-entry register list and query/set ABI are documented and represented in the native implementation. |
+| Diagnostics | 🟢 Available | `lecdiag`, regression scripts and runtime tracing support compatibility work. |
+| Live IOCTL monitor | 🟡 Implemented | Native monitor source exists; final runtime validation is still pending. |
+| Dallas EEPROM read | ✅ Verified | ROM identification and EEPROM backup work on real hardware. |
+| Dallas EEPROM write | ⛔ Deferred | Intentionally not enabled on the licensed production device. |
+| Serial FPGA/GPIO writer | ⛔ Deferred | Not implemented until its ownership and sequencing are sufficiently understood. |
+| Production signing | 🔴 Pending | HLK / WHQL / WHCP work remains. |
 
-All **five physical front ProBus sockets use I2C for probe communication**. A probe is initially classified by an analog identification value; the front-panel/probe EEPROM is subsequently identified over I2C, and probe control also uses I2C. A separate internal SPI path exists for board-level functions and must not be mistaken for probe-side SPI.
+Detailed implementation and verification state is maintained in the project documentation rather than duplicated here.
 
-The **PCI-card DS2433 is independent of the front ProBus I2C EEPROM**. According to the hardware information supplied for this project, its writable 512-byte 1-Wire memory holds XStream license data.
+## 🚧 Current priorities
 
-### Dallas identity and licensing
+| Priority | Work |
+| --- | --- |
+| 🧹 Repository cleanup | Simplify documentation, remove duplicated historical state and keep current project information easy to navigate. |
+| 🧪 Regression coverage | Continue consolidating safe Dry, Hardware and XStream validation. |
+| 🔌 Compatibility | Close remaining proven XStream / legacy ABI gaps where safe and relevant. |
+| 🛡️ Hardware safety | Keep hazardous Dallas and FPGA/GPIO write paths gated until independently verifiable. |
+| 🧾 Release readiness | Prepare the project for HLK testing and eventual WHQL / WHCP certification. |
 
-- The DS2433 has a factory-programmed eight-byte ROM ID (family `0x23`, six serial bytes, CRC8) and a **separate** writable 512-byte EEPROM (16 pages of 32 bytes).
-- The principal six-hex-digit component of the observed scope ID matches ROM serial bytes 1–3 interpreted as a little-endian 24-bit value. The displayed two-digit suffix has not yet been decoded.
-- Transferring an EEPROM image to a replacement DS2433 does **not** transfer the original factory ROM identity. Whether every XStream license is bound to that identity remains unverified.
-- The replacement driver implements `GET_DALLAS_ID` (`0x00223080`) and `READ_DALLAS_MEMORY` (`0x00223084`). **`WRITE_DALLAS_MEMORY` (`0x00223088`) is still missing** and currently returns `STATUS_INVALID_DEVICE_REQUEST` when XStream attempts to modify a license.
-- The original x86 write behavior has been recovered from Ghidra: up to 32-byte scratchpad writes, scratchpad read/compare, copy authorization, a 100 ms post-copy wait and full-memory readback/retry. This is source analysis, **not** a tested x64 hardware write/restore implementation.
+Open implementation work is tracked in [`docs/TODO.md`](docs/TODO.md).
 
-Existing private backups consist of two matching 512-byte raw EEPROM images; the original full eight-byte ROM ID has also been saved separately. New recovery tooling should associate both values in one private, integrity-checked backup container. Never put real license images, ROM IDs or raw startup traces in the public repository.
+## 🧪 Test layers
 
-Further detail: [PCI and acquisition-board topology](docs/pci-card-acquisition-board-topology.md), [ProBus ADC/I2C architecture](docs/probus-detection-i2c-architecture.md), [Dallas backup and write validation](docs/dallas-license-memory-test-plan.md).
+| Layer | Purpose | Current state |
+| --- | --- | --- |
+| Dry | Build and hardware-independent source / ABI contracts | ✅ Available |
+| Hardware | Low-impact validation on the real PCI device | ✅ Verified baseline |
+| XStream | End-to-end validation through the original application | 🟡 Expanding |
+| HLK | Microsoft production-driver qualification | 🔴 Pending |
 
-## Distribution signing
-
-Development currently relies on test signing. Public Windows x64 distribution without
-test mode requires the Microsoft driver-signing pipeline and a Hardware Dev Center
-identity backed by an EV code-signing certificate; current Microsoft policy also
-distinguishes attestation/test scenarios from WHCP/HLK production certification.
-Current requirements, certificate-cost snapshots and a possible project-funding approach
-are documented in [driver signing and funding](docs/driver-signing-and-funding.md).
-
-## Known limitations
-
-- The x64 driver is an experimental test build; installation, test signing and hardware changes should be performed on a backed-up reference system.
-- The Dallas EEPROM is **read-only through the current replacement driver**. The physical write/restore path needs implementation and independent validation on a disposable chip before use with a working licensed card.
-- Compatibility is established for the observed XStream transfer forms. The WOW64-sensitive `0xCFDD219F` path, unobserved multi-channel/transfer variants and some legacy service/diagnostic operations remain gated or incomplete.
-- Original `CFDC2194` error-status provenance is recovered from the legacy ISR. A matching 29-byte read-and-clear path plus corrected paired `CFDC2190` error-mask programming has been **built, test-signed, installed and positively queried on the real x64 scope** (2026-09-30, owner-provided build/install log: 0 warnings/0 errors, PnP restart success, idle `lecdiag error-status` `0x00000000`, 29-byte-format PASS). After installation, the owner completed the requested practical XStream waveform/control/two-channel/AP015 regression and reported **no observable malfunction**. This establishes the latest owner-confirmed working practical baseline, although real nonzero error-IRQ accumulation and persistent-error status bit 31 remain unexercised. See [error status investigation](docs/cfdc2194-status-latch-investigation.md).
-- `CFDC2400` is source-implemented and has now **passed its owner-reported real-PCI zero-mask positive ABI test** (2026-09-30): `lecdiag raw-ioctl 0xCFDC2400 00000000 0` succeeded on the actual scope, `input=4 output-capacity=0 returned=0`, empty output. The separate full build/sign/install transcript was not supplied with this particular test; post-change XStream/AP015 regression and nonzero software-pending behavior remain unverified. New Ghidra vtable evidence proves original handler ORs an exact 4-byte input into software pending interrupts and then directly invokes the DPC dispatcher via derived hardware-subobject slot `0x1C62C+0x24 -> 0x114F2 -> 0x11390`. The x64 port atomically adds the mask to its existing per-device pending field and synchronously invokes the existing DPC core at the required IRQL. Do not inject nonzero pending-mask values as an exploratory test on the only working scope. With the staged CFDC2400 work and the 2026-10-01 hardened SetOneRegister source implementation, 26/27 top-level original dispatch values now have native cases (one of those is still gated), and two remain absent: Dallas WRITE 0x00223088 and serial FPGA/GPIO writer CFDC2130. The prior `CFDC2194` patch remains the last owner-confirmed practical XStream baseline pending a new CFDC2400 XStream regression. See [CFDC2400 investigation](docs/cfdc2400-software-pending-investigation.md).
-- Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
-- XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
-
-### Original register-list ABI independently reconstructed (2026-09-30)
-
-Three separate read-only Ghidra batches now establish the
-original `CKeRegisterList` as two dynamically allocated,
-parallel arrays: one of 32-bit register-wrapper pointers
-and one of **266-byte metadata records**. The original
-full initialization inserts 6 transport, 15 common and
-22 START-conditional entries, for **43 zero-based indices**.
-This independently confirms the ordering already used
-by native `g_LecLegacyRegisterList[43]`; it does not
-increase IOCTL coverage or imply an additional hardware
-regression test.
-
-One important original ABI trap: querying a 266-byte
-register record serializes the PHYSICAL BAR OFFSET at
-record byte `0x101`, but original setter `0x0022303C` treats an INCOMING
-DWORD at `0x101` as the register ARRAY INDEX,
-then directly writes the selected MMIO register
-without a visible index range guard. The x64 source now implements this valid ABI
-with an explicit `< 43` bound and known-table-only resolution; it does not
-reproduce the original unchecked pointer access. This source change has not yet
-been Windows-built or hardware-verified.
-
-The remaining serial-FPGA writer `CFDC2130`
-writes BAR1 GPIODAT bits 15:13 per stream byte,
-sharing its full DWORD with bit-16 clearing invoked
-by ordinary transfer handlers. CFDC2130 remains deliberately unported pending proof of GPIO ownership and safe serialization. The other missing
-case is licensed Dallas WRITE, deferred to
-disposable hardware. Full 43-register mapping,
-field layout and exact original evidence:
-[original register list and writer ABI](
-docs/original-register-list-and-write-abi.md).
-
-### Automated regression layers (2026-09-30)
-
-The unified runner now exposes `Dry`, `Hardware`, `XStream` and `All` modes.
-Dry is owner-verified 8/8 and Hardware is owner-verified 11/11. The new XStream
-COM E2E layer is implemented but not yet runtime-verified. It covers acquisition,
-waveform retrieval, reversible vertical/timebase/coupling/bandwidth controls and
-optional AP015 probe-name plus signal measurement assertions. See
-[regression testing](docs/regression-testing.md) and
-[XStream automation regression](docs/xstream-automation-regression-testing.md).
-
-### Grouped low-impact ABI checks (2026-09-30)
-
-For owners who want to batch compatibility validation before a
-time-consuming full XStream waveform/AP015 regression, the
-source-controlled `scripts/test-safe-ioctl-batch.ps1`
-provides **nine** focused, low-impact ABI checks against
-the installed native driver with XStream closed. These
-cover legacy build/PCI identity, passive START/FVER
-comparison, `CFDC2400` four-byte zero-mask/output
-bounds and invalid buffer-size rejection, plus
-`CFDC2194` wrong output-size rejection before the
-latch-consuming path. The script does not install
-drivers, write Dallas EEPROM, program the serial-trigger
-FPGA or inject nonzero software pending bits.
-Zero-mask `CFDC2400` still invokes the existing DPC
-dispatcher by original design. **Owner-reported real-scope
-batch result (2026-09-30): `9/9 passed; 0 failed`.**
-The initial batch script also displayed an irrelevant
-Windows PowerShell 5.1 `NativeCommandError` while capturing
-stderr from an *expected negative* IOCTL request.
-The harness is now corrected to collect stdout/stderr
-separately via `Start-Process`; the corrected harness
-has not separately been rerun. No driver change was made.
-The complete post-CFDC2400 XStream/AP015 practical
-regression is deliberately deferred to one combined
-milestone at the owner's request.
-See [grouped test result and safety notes](
-docs/safe-abi-batch-and-missing-ioctls-2026-09-30.md).
-
-## Regression test runner
-
-A unified regression entry point is now available:
+Unified regression entry point:
 
 ```powershell
 .\scripts\test-driver.ps1 -Mode Dry
 .\scripts\test-driver.ps1 -Mode Hardware
+.\scripts\test-driver.ps1 -Mode XStream
 .\scripts\test-driver.ps1 -Mode All
 ```
 
-`Dry` builds the driver/diagnostic by default and then runs hardware-independent
-source/ABI contract checks. It does not open a device or touch PCI hardware.
-`Hardware` reuses the established safe real-scope ABI batch with XStream closed.
-Use `-SkipBuild` for a fast source-only dry pass. XStream E2E automation will be
-added as the third layer later. The newly added dry/unified runner is source-side
-only until actually executed on a Windows machine; do not treat its existence as
-a reported PASS. See [regression test architecture](docs/regression-testing.md).
+See [regression testing](docs/regression-testing.md) for test scope and safety notes.
 
-## Build and diagnostic workflow
+## 🛠️ Build
 
-Use an administrative PowerShell on the development/test system. The project uses Visual Studio/MSBuild and the Windows Driver Kit. Keep a recoverable image of the working scope OS before installing an experimental driver. See the installation instructions for test-signing prerequisites and exact procedures.
+The project targets Windows x64 and uses Visual Studio / MSBuild with the Windows Driver Kit.
 
 ```powershell
-# Build the x64 driver and diagnostic executable
+# Build driver and diagnostic utility
 .\scripts\build-driver.ps1 -BuildLecdiag
 
-# On the configured scope test machine: build, test-sign, reload and check
+# Build, test-sign and reload on the configured development scope
 .\scripts\build-sign-load-driver.ps1
-
-# Capture XStream activity locally for compatibility analysis
-.\scripts\capture-xstream-trace.ps1
-
-# Build the native live IOCTL monitor
-.\scripts\build-lecwatch.ps1
-
-# Then run it alongside XStream
-.\tools\lecwatch\build\lecwatch.exe
 ```
 
-**Private Dallas backup** with XStream closed and a compatible `lecdiag` build:
+Installation and setup details are documented in [build, test and install](docs/build-test-install.md).
 
-```powershell
-New-Item -ItemType Directory -Force '.\license-backups' | Out-Null
-.\tools\lecdiag\build\lecdiag.exe dallas-id
-.\tools\lecdiag\build\lecdiag.exe dallas-backup '.\license-backups\card-backup.bin'
-```
-
-`dallas-backup` checks the ROM ID before/after, reads the entire 512-byte image twice, refuses to overwrite an existing file and verifies the saved bytes. The separate `dallas-id` output must also be kept private. For redacted local page statistics and before/after offset comparisons use [`scripts/inspect-dallas-image.ps1`](scripts/inspect-dallas-image.ps1). **No command in this example writes the physical EEPROM.**
-
-Raw XStream traces may include card identity and license contents because XStream reads the Dallas memory during startup. Store them only in private locations, including `trace-captures/` and `license-backups/` (both ignored by Git). Do not assume older exports are sanitized.
-
-The live monitor is source-implemented and uses only the existing private trace-read diagnostic ABI; its first Windows/MSVC build and real-scope live run are still pending. No driver reload is needed merely to build or start the monitor.
-
-More build details: [Build/test/install](docs/build-test-install.md), [x64 bring-up reference](docs/x64-bringup.md), [runtime trace documentation](docs/runtime-trace.md) and [live IOCTL monitor design](docs/live-ioctl-monitor-design.md).
-
-## Development backlog
-
-Active work covers broader XStream compatibility/regression testing, remaining proven ABI variants, and a source-accurate Dallas write/restore path with disposable-device verification. Planned maintenance tooling includes a private backup container and an optional Dallas manager / Device Manager property page.
-
-**Virtual Dallas ROM/EEPROM emulation for a dead or replaced chip, and any physical chip-isolation test, are explicitly deferred.** Neither virtual emulation nor a hardware recovery GUI is implemented. See the maintained [TODO](docs/TODO.md) and [Dallas recovery design](docs/dallas-device-manager-recovery-design.md).
-
-## Repository guide
+## 🧩 Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| [`driver/`](driver/) | Native x64 kernel driver, INF and Visual Studio project. |
-| [`include/`](include/) | Reconstructed legacy interfaces and IOCTL ABI definitions. |
-| [`tools/lecdiag/`](tools/lecdiag/) | Windows diagnostics and read-only Dallas backup. |
-| [`tools/lecwatch/`](tools/lecwatch/) | Native x64 live IOCTL activity monitor with filters, idle baseline, markers/action windows and redacted session export. |
-| [`scripts/`](scripts/) | Build, signing/reload, Ghidra export and private diagnostics. |
-| [`ghidra_scripts/`](ghidra_scripts/) and [`ghidra_exports/selected/`](ghidra_exports/selected/) | Repeatable analysis scripts and selected, derived original-driver function exports. |
-| [`docs/`](docs/) | Detailed hardware, protocol, ABI, runtime and development documentation. |
+| [`driver/`](driver/) | Native Windows x64 kernel driver and INF |
+| [`include/`](include/) | Reconstructed interfaces and ABI definitions |
+| [`tools/lecdiag/`](tools/lecdiag/) | Diagnostic and compatibility utility |
+| [`tools/lecwatch/`](tools/lecwatch/) | Live IOCTL activity monitor |
+| [`scripts/`](scripts/) | Build, test and analysis helpers |
+| [`ghidra_scripts/`](ghidra_scripts/) | Repeatable reverse-engineering scripts |
+| [`docs/`](docs/) | Detailed architecture, ABI, hardware and testing documentation |
 
-Recommended technical starting points: [IOCTL map](docs/ioctl-map.md), [hardware register map](docs/hardware-register-map.md), [ABI analysis](docs/abi-analysis.md), [device interfaces](docs/device-interfaces.md) and [runtime results](docs/runtime-trace.md). Contributors should also read [`AGENTS.md`](AGENTS.md) and the [current engineering handoff](docs/next-chat-handoff.md). The handoff and specialized documents retain investigation history; this README deliberately describes only the current consolidated state.
+## 📚 Documentation
 
-## Proprietary reference and data handling
+Detailed technical explanations live outside this README.
 
-The reference binary analyzed for this project is `LecS65AcqDrv.sys` (size **64,384 bytes**; SHA-256 `5f53de1dea6a58f201290e79a60fab587c039423322faa884bf4c15f0fd89087`). The proprietary original driver and supplied vendor schematics are not redistributed here. The public documentation contains derived analysis only.
+| Topic | Documentation |
+| --- | --- |
+| IOCTL compatibility | [IOCTL map](docs/ioctl-map.md) |
+| Register ABI | [Original register list and write ABI](docs/original-register-list-and-write-abi.md) |
+| Hardware registers | [Hardware register map](docs/hardware-register-map.md) |
+| Device interfaces | [Device interfaces](docs/device-interfaces.md) |
+| Regression strategy | [Regression testing](docs/regression-testing.md) |
+| XStream automation | [XStream regression testing](docs/xstream-automation-regression-testing.md) |
+| ProBus architecture | [ProBus detection and I2C architecture](docs/probus-detection-i2c-architecture.md) |
+| PCI / acquisition-board topology | [Hardware topology](docs/pci-card-acquisition-board-topology.md) |
+| Dallas safety and recovery | [Dallas test plan](docs/dallas-license-memory-test-plan.md) |
+| Driver signing | [Signing and funding](docs/driver-signing-and-funding.md) |
+| Open work | [TODO](docs/TODO.md) |
 
-The project is independent, community-driven work and is not affiliated with or endorsed by Teledyne LeCroy.
+## ⚠️ Important limitations
+
+- This remains an experimental reverse-engineered driver.
+- Compatibility is based on the hardware and XStream paths tested so far, not every possible WR6k configuration.
+- Dallas EEPROM writing is deliberately disabled until it can be validated safely on disposable or recoverable hardware.
+- The serial FPGA/GPIO write path remains intentionally unported.
+- Development builds currently rely on test signing.
+- Private traces, Dallas contents, license data and proprietary vendor binaries are not part of this public repository.
+
+## 📄 Project scope
+
+The proprietary reference driver and vendor documentation are not redistributed. This repository contains independently written replacement code, tooling and derived technical documentation.
+
+This project is community-driven and is not affiliated with or endorsed by Teledyne LeCroy.
