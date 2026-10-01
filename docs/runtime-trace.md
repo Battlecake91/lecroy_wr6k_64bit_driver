@@ -1,4 +1,81 @@
 # Runtime trace capture
+## 2026-10-01 decisive original-x86 SetOneRegister runtime capture
+
+Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.
+The owner used the original Service page
+
+```text
+Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters
+```
+
+and deliberately wrote the **same value already displayed** for a register.
+This produced the first runtime-observed `0x0022303C` call in the project.
+
+Exactly one native call is present:
+
+```text
+seq       6059
+ioctl     0x0022303C
+input     266 bytes
+output    0 bytes
+status    STATUS_SUCCESS
+info      0
+```
+
+Immediately before it, the same thread/handle queried register index 2
+through `0x00223040` and received the `TxCount` record with current
+value `2`. The subsequent 266-byte SetOneRegister payload is sparse:
+
+```text
++0x000..+0x100   all zero
++0x101 DWORD     2          # register-list INDEX
++0x105 BYTE      0
++0x106 DWORD     2          # value written
+```
+
+This is decisive runtime proof that the setter's incoming DWORD at
+record+`0x101` is the **zero-based register-list index**, not the physical
+BAR offset used by the read/query record at the same byte position.
+It also proves that the original user-mode writer does NOT echo the complete
+query metadata record: name/BAR/type are zeroed and only index/value matter
+to the kernel path.
+
+The capture therefore closes the main ABI ambiguity around
+`0x0022303C`. The original kernel still lacks a visible index bounds check;
+a native x64 implementation should preserve successful valid-index behavior
+while adding explicit `index < 43` / known-register validation rather than
+reproducing unsafe out-of-bounds pointer-table access.
+
+### Matching original user-mode binary located
+
+A filesystem scan for little-endian `3C 30 22 00` found exactly the
+expected XStream hardware-access DLL:
+
+```text
+C:\Program Files\LeCroy\XStream\lecaladdinhwaccesspcisvr.dll
+file offset 0x0002001C
+size        336472 bytes
+```
+
+The owner supplied that binary privately; it must NOT be committed to the
+public repository. Local inspection records:
+
+- PE32/x86, machine `0x14C`;
+- image base `0x10000000`;
+- SHA-256
+  `4BDFCBE57FB76F40CA5D77F729E1A6662AA3B5B4E3DD2E12A7F13F84ECFC4F86`;
+- file offset `0x2001C` is the immediate constant in
+  `push 0x0022303C` at VA `0x10020C1B`;
+- the call immediately following the IOCTL argument setup is
+  `0x10020C21 -> 0x1001D8B8`.
+
+The same DLL contains user-mode register machinery/source artifacts such as
+`AladdinHWAccessPCI.cpp`, `m_cvEnumRegisterList`,
+`m_cvRegPCIRegister`, and `CCvarRegister` methods. The next static task
+is to recover the containing function around `0x10020C1B`, map its local
+266-byte buffer construction to the KernelPCIRegisters GUI/cvar setter, and
+name the wrapper at `0x1001D8B8`.
+
 ## 2026-10-01 first real original SetOneRegister runtime call
 
 Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.
