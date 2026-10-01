@@ -101,6 +101,13 @@ function Get-XStreamObject {
     $errors = @()
 
     try {
+        return $Parent.Item($Name)
+    }
+    catch {
+        $errors += ("Item('{0}'): {1}" -f $Name, $_.Exception.Message)
+    }
+
+    try {
         return $Parent.Objects.Item($Name)
     }
     catch {
