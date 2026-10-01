@@ -1,3 +1,106 @@
+# Active handoff: SetOneRegister runtime ABI proven; matching XStream DLL located (2026-10-01)
+
+## Decisive newest evidence
+
+Owner supplied:
+- private original-x86 trace `legacy_xstream_trace_setregister_3.jsonl`;
+- original vendor `lecaladdinhwaccesspcisvr.dll` (private, DO NOT commit);
+- binary scan result showing the only `3C 30 22 00` hit in that DLL.
+
+The owner used:
+`Service -> Development -> AladdinAcqBoard -> KernelPCIRegisters`
+and wrote the SAME value already displayed. This produced the FIRST
+runtime-observed `0x0022303C` call in the project.
+
+Exact trace result:
+- seq 6059;
+- `0x0022303C`;
+- input 266 bytes, output 0;
+- NTSTATUS SUCCESS, Information 0;
+- exactly ONE occurrence in this trace.
+
+Immediately beforehand, `0x00223040` read index 2 =
+`TxCount`, whose current value was 2. The setter payload is
+all zero except:
+- DWORD at +0x101 = `2` -> zero-based register-list INDEX;
+- DWORD at +0x106 = `2` -> value written;
+- name bytes, BAR byte and type byte are zero.
+
+This conclusively resolves the old query-vs-set ambiguity:
+query records serialize PHYSICAL BAR OFFSET at +0x101,
+whereas real user-mode SetOneRegister writes the TABLE INDEX
+there. The UI constructs a sparse setter record rather than echoing
+the complete query record. Existing original kernel
+`FUN_0001259A` then does unchecked pointerTable[index] and
+`FUN_000107FE` physical MMIO. Native x64 should emulate valid
+behavior with explicit bounds/known-register validation, NOT copy the
+unsafe out-of-range semantics.
+
+## Matching user-mode producer binary
+
+Owner's recursive scan of `C:\Program Files\LeCroy\XStream`
+for little-endian `3C 30 22 00` returned exactly:
+
+```text
+C:\Program Files\LeCroy\XStream\lecaladdinhwaccesspcisvr.dll
+Offset 0x0002001C
+Size   336472
+```
+
+Private supplied DLL local facts:
+- PE32/x86, machine 0x14C;
+- image base 0x10000000;
+- SHA256 `4BDFCBE57FB76F40CA5D77F729E1A6662AA3B5B4E3DD2E12A7F13F84ECFC4F86`;
+- file offset 0x2001C maps to the immediate bytes of
+  `push 0x0022303C` at VA `0x10020C1B`;
+- immediately following call: `0x10020C21 -> 0x1001D8B8`;
+- useful strings/symbol artifacts include
+  `AladdinHWAccessPCI.cpp`, `m_cvEnumRegisterList`,
+  `m_cvRegPCIRegister`, and many `CCvarRegister` methods.
+
+Do NOT add the vendor DLL to the public repo.
+
+## Best next-chat task
+
+1. Statically reverse the DLL function containing VA `0x10020C1B`.
+2. Identify its function boundaries/callers and map it to the
+   KernelPCIRegisters value setter / `CCvarRegister`.
+3. Recover how the local 266-byte sparse request is created, including
+   where register index and value enter the function.
+4. Identify/name wrapper `0x1001D8B8` and verify it is the generic
+   DeviceIoControl path.
+5. Then design native x64 `0x0022303C` support with:
+   - exact 266-byte input;
+   - device-ready gate matching original;
+   - explicit index < 43 validation;
+   - known register-pointer mapping only;
+   - no generic pointer arithmetic outside table;
+   - valid request returns Information=0.
+6. Do NOT fabricate arbitrary register values. If a live x64 validation
+   is eventually justified, first mirror the proven original pattern:
+   read a known register's current value, then write THE SAME value,
+   with XStream/service context controlled. Batch code/test work before
+   the next full XStream/AP015 regression per owner preference.
+
+## Existing baseline still valid
+
+- current native original top-level representation before implementing
+  this writer: 24/27, one gated;
+- missing: `0x0022303C`, `0x00223088` Dallas WRITE,
+  `0xCFDC2130` serial FPGA/GPIO writer;
+- real hardware regression: 11/11 PASS;
+- prior grouped safe ABI: 9/9 PASS;
+- XStream E2E harness exists but its newest automated runtime status
+  should be checked from current docs before claiming PASS;
+- no arbitrary Dallas write, nonzero synthetic IRQ injection, or FPGA
+  programming on sole licensed scope.
+
+Detailed docs:
+- [runtime trace](runtime-trace.md)
+- [original register-list/write ABI](original-register-list-and-write-abi.md)
+
+## Previous handoff content follows
+
 # Active handoff: first real 0x0022303C SetOneRegister call captured; caller ABI fully resolved (2026-09-30)
 
 ## Newest decisive evidence: KernelPCIRegisters write
