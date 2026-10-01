@@ -5976,3 +5976,38 @@ readiness gate:
 
 The corrected readiness path has not yet received the owner's follow-up runtime
 result.
+
+
+## XStream PowerShell COM requires collection-based hierarchy access
+
+Follow-up owner runtime evidence on 2026-10-01 showed that waiting longer did
+not make the direct PowerShell expression `$app.Acquisition` appear. The COM
+server itself connects successfully, but PowerShell reports that the
+`Acquisition` property does not exist on the root RCW.
+
+This matches Teledyne LeCroy's COM-client guidance: the Browser/VBScript path
+`app.Acquisition.C1.VerScale` is a convenient automation alias, while
+hierarchical COM clients should traverse the object collections, e.g.
+`app.Objects.Item("Acquisition")`, then
+`acq.Objects.Item("C1")`, and access CVARs through
+`c1.Item("VerScale").Value`. Some older LeCroy examples use singular
+`Object.Item`, so the PowerShell helper now tries both plural and singular
+collection names.
+
+Commits `557c2ff` and `70f8897` convert the XStream E2E suite accordingly:
+
+- root and nested folders use `Objects.Item(name)` with
+  `Object.Item(name)` fallback;
+- C1/Horizontal controls use `Item(name).Value`;
+- VerScale, HorScale, Coupling, BandwidthLimit and ProbeName no longer rely on
+  PowerShell exposing VBScript convenience aliases;
+- optional Measure/P1 amplitude and frequency setup uses the same collection
+  traversal;
+- waveform results still use the documented `Out.Result` interface, with an
+  object-collection fallback for `Out`.
+
+The readiness loop remains useful, but it now waits on the real collection
+hierarchy rather than repeatedly probing the unsupported direct alias.
+
+This corrected collection-based PowerShell path has not yet received the
+owner's runtime result.
