@@ -27,10 +27,9 @@ refactoring:
 - legacy build ABI remains 1002;
 - the currently represented native legacy IOCTL constants retain their numeric
   values;
-- the public reconstructed ABI still documents the three hazardous original
-  controls that are intentionally not implemented;
-- those hazardous controls remain absent from the native driver header and
-  Ioctl.c;
+- the public reconstructed ABI still documents the three recovered hardware-write controls;
+- the now-implemented SetOneRegister path remains hardened to an exact 266-byte request, zero output, index `< 43`, and known-table-only resolution;
+- Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain absent from the native driver header and Ioctl.c;
 - packed public ABI structs retain their compile-time size guards;
 - private debug IOCTLs remain in their separate private CTL_CODE range;
 - `lecwatch` remains a read-only observer with exactly one
@@ -59,8 +58,7 @@ The two newly added checks are read-only diagnostics. They verify debug structur
 version/build metadata and confirm that all three logical BAR resources are mapped
 with non-zero lengths. They do not read arbitrary MMIO register contents.
 
-It does not build/install/reload the driver and it does not perform the known
-hazardous indexed-register, Dallas-write or serial-trigger-FPGA programming paths.
+It does not build/install/reload the driver and it does not perform SetOneRegister, Dallas-write or serial-trigger-FPGA programming paths. SetOneRegister is now represented in source, but remains excluded from the default hardware regression until a deliberate same-value validation is performed.
 
 The optional consuming error-status read remains explicit:
 
@@ -127,10 +125,7 @@ build again completed with 0 warnings and 0 errors, lecdiag was built as x64
 Dry mode was therefore owner-verified on the Windows development machine for
 the then-current **8-contract** suite.
 
-The dry suite has since gained one additional `lecwatch` source contract, so
-the current source tree contains **9** dry checks. That new ninth check has not
-yet been rerun by the owner. Keep the historical 8/8 result as valid evidence
-for the earlier suite, but do not silently promote it to 9/9.
+The dry suite later gained the `lecwatch` source contract and now also contains a hardened SetOneRegister source contract, so the current source tree contains **10** dry checks. These newer checks have not yet been rerun by the owner. Keep the historical 8/8 result as valid evidence for the earlier suite, but do not silently promote it to 10/10.
 
 The owner executed the expanded Hardware suite on the real WR6k PCI device on
 2026-09-30. All eleven default checks passed:
