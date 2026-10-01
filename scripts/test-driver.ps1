@@ -23,6 +23,9 @@ param(
     [ValidateRange(1, 60)]
     [int]$XStreamTimeoutSeconds = 5,
 
+    [ValidateRange(10, 600)]
+    [int]$XStreamReadyTimeoutSeconds = 180,
+
     [double]$ExpectedFrequencyHz,
 
     [double]$ExpectedAmplitudeVpp,
@@ -86,6 +89,7 @@ if ($Mode -eq "XStream" -or $Mode -eq "All") {
     Invoke-Step "XStream end-to-end regression" {
         $args = @{
             TimeoutSeconds = $XStreamTimeoutSeconds
+            ReadyTimeoutSeconds = $XStreamReadyTimeoutSeconds
         }
 
         if ($PSBoundParameters.ContainsKey("ExpectedFrequencyHz")) {
