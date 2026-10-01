@@ -33,3 +33,5 @@ packages/
 # Private PCI-card DS2433 backups may contain XStream license keys.
 license-backups/
 *.ds2433.bin
+
+xstream-automation-dump*.txt
