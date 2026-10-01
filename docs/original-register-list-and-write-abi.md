@@ -194,6 +194,37 @@ A hardened x64 port can therefore validate a real index against the known
 43-entry table instead of guessing. The remaining design question is
 write authorization/policy, not request-layout recovery.
 
+## Runtime setter ABI now proven
+
+The remaining user-mode ambiguity was closed by the owner's
+`legacy_xstream_trace_setregister_3.jsonl` capture from the original
+32-bit system. On the KernelPCIRegisters page, the owner wrote the same
+displayed value for `TxCount`.
+
+The original software first queried index 2 through `0x00223040`,
+receiving `TxCount` with current value 2, then sent one successful
+`0x0022303C` request whose 266-byte input is all zero except:
+
+```text
+DWORD +0x101 = 2   # table index
+DWORD +0x106 = 2   # new value
+```
+
+Thus the original user-mode setter explicitly overwrites the query record
+semantics at `+0x101`: for SET it is a table index. The query record's
+name, BAR byte and type byte are not required by the kernel setter and were
+zero in this real request.
+
+This confirms that a compatible x64 implementation can use the recovered
+43-entry table with a hardened bounds check. It should not reproduce the
+original unbounded pointer dereference.
+
+The only scanned XStream binary containing the literal IOCTL is the
+owner-supplied private `lecaladdinhwaccesspcisvr.dll` at file offset
+`0x2001C`; local disassembly shows `push 0x0022303C` at VA
+`0x10020C1B` followed by a call to `0x1001D8B8`.
+Do not commit the vendor DLL.
+
 ## Original XStream GUI page now identified
 
 Owner screenshot evidence maps the recovered register-list ABI to the
