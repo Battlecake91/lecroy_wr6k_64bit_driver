@@ -537,7 +537,7 @@ try {
             try {
                 $readback = Invoke-TracedAction -Name ("C1 Coupling {0} -> {1}" -f $original, $candidate) -Body {
                     Set-XStreamControlValue -Object $c1 -Name "Coupling" -Value $candidate
-                    $value = [string]$c1.Coupling
+                    $value = [string](Get-XStreamControlValue -Object $c1 -Name "Coupling")
                     Assert-True ($value -ieq $candidate) ("Coupling readback '{0}' != requested '{1}'" -f $value, $candidate)
                     Invoke-Acquire -Acquisition $acq
                     Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after coupling change"
@@ -559,7 +559,7 @@ try {
             try {
                 $readback = Invoke-TracedAction -Name ("C1 BandwidthLimit {0} -> {1}" -f $original, $candidate) -Body {
                     Set-XStreamControlValue -Object $c1 -Name "BandwidthLimit" -Value $candidate
-                    $value = [string]$c1.BandwidthLimit
+                    $value = [string](Get-XStreamControlValue -Object $c1 -Name "BandwidthLimit")
                     Assert-True ($value -ieq $candidate) ("BandwidthLimit readback '{0}' != requested '{1}'" -f $value, $candidate)
                     Invoke-Acquire -Acquisition $acq
                     Assert-True ([int64]$c1Result.Samples -gt 0) "Waveform invalid after bandwidth change"
@@ -620,10 +620,12 @@ try {
 
     if ($PSBoundParameters.ContainsKey("ExpectedFrequencyHz")) {
         Test-E2E "C1 frequency measurement against expected signal" {
-            $p1 = $app.Measure.P1
-            $oldView = $p1.View
-            $oldEngine = [string]$p1.ParamEngine
-            $oldSource = [string]$p1.Source1
+            $measure = Get-XStreamObject -Parent $app -Name "Measure"
+            $p1 = Get-XStreamObject -Parent $measure -Name "P1"
+            $p1Result = Get-XStreamResult -Object $p1
+            $oldView = Get-XStreamControlValue -Object $p1 -Name "View"
+            $oldEngine = [string](Get-XStreamControlValue -Object $p1 -Name "ParamEngine")
+            $oldSource = [string](Get-XStreamControlValue -Object $p1 -Name "Source1")
 
             try {
                 Set-XStreamControlValue -Object $p1 -Name "View" -Value $true
