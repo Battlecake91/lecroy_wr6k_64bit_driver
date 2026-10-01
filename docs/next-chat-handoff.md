@@ -1,3 +1,38 @@
+# Active handoff: hardened native SetOneRegister staged in source (2026-10-01)
+
+## Newest source milestone
+
+Legacy `0x0022303C` SetOneRegister is now implemented in the x64 source from
+the already-proven original runtime + private XStream DLL ABI.
+
+Current source behavior:
+- `LECS65_IOCTL_SET_ONE_REGISTER = 0x0022303C`;
+- METHOD_BUFFERED request must be exactly 266 bytes and output length must be 0;
+- DWORD `+0x101` is parsed as the zero-based register-list INDEX;
+- DWORD `+0x106` is parsed as the requested value;
+- index must be `< 43`;
+- the target is resolved only through `g_LecLegacyRegisterList[43]` and normal
+  BAR/offset validation;
+- INTEN, ERRM and SPICTL native software shadows are updated consistently;
+- success returns `Information = 0`;
+- the original x86 unchecked `pointerTable[index]` behavior is intentionally
+  not reproduced.
+
+Source-side top-level coverage is now **25/27 functionally represented plus one
+deliberately gated = 26/27 native cases**. The only original top-level values
+still absent are Dallas WRITE `0x00223088` and serial FPGA/GPIO writer
+`0xCFDC2130`.
+
+Verification status: **source only**. No Windows build/sign/load, real-scope
+SetOneRegister call or post-change XStream regression has been performed yet.
+First eventual hardware validation must use the proven no-state-change pattern:
+query a known register, capture its current value, then write exactly that value
+back. Never hard-code the historical TxCount value 2.
+
+The private vendor DLL remains private and must not be committed.
+
+## Previous handoff follows
+
 # Active handoff: SetOneRegister runtime ABI proven; matching XStream DLL located (2026-10-01)
 
 ## Decisive newest evidence
