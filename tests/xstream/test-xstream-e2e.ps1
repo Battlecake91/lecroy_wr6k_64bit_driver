@@ -92,6 +92,70 @@ function Skip-E2E {
     Write-Host ("[SKIP] {0}: {1}" -f $Name, $Reason) -ForegroundColor Yellow
 }
 
+function Get-XStreamObject {
+    param(
+        [Parameter(Mandatory=$true)]$Parent,
+        [Parameter(Mandatory=$true)][string]$Name
+    )
+
+    $errors = @()
+
+    try {
+        return $Parent.Objects.Item($Name)
+    }
+    catch {
+        $errors += ("Objects.Item('{0}'): {1}" -f $Name, $_.Exception.Message)
+    }
+
+    try {
+        return $Parent.Object.Item($Name)
+    }
+    catch {
+        $errors += ("Object.Item('{0}'): {1}" -f $Name, $_.Exception.Message)
+    }
+
+    throw ("Could not resolve XStream child object '{0}'. {1}" -f $Name, ($errors -join " | "))
+}
+
+function Get-XStreamControlValue {
+    param(
+        [Parameter(Mandatory=$true)]$Object,
+        [Parameter(Mandatory=$true)][string]$Name
+    )
+
+    $control = $Object.Item($Name)
+    if ($null -eq $control) {
+        throw ("XStream control '{0}' returned null." -f $Name)
+    }
+    return $control.Value
+}
+
+function Set-XStreamControlValue {
+    param(
+        [Parameter(Mandatory=$true)]$Object,
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)]$Value
+    )
+
+    $control = $Object.Item($Name)
+    if ($null -eq $control) {
+        throw ("XStream control '{0}' returned null." -f $Name)
+    }
+    $control.Value = $Value
+}
+
+function Get-XStreamResult {
+    param([Parameter(Mandatory=$true)]$Object)
+
+    try {
+        return $Object.Out.Result
+    }
+    catch {
+        $out = Get-XStreamObject -Parent $Object -Name "Out"
+        return $out.Result
+    }
+}
+
 function Assert-True {
     param([bool]$Condition, [string]$Message)
     if (-not $Condition) {
@@ -157,8 +221,8 @@ function Set-And-VerifyNumericControl {
         [Parameter(Mandatory=$true)][double]$Candidate
     )
 
-    $Object.$Property = $Candidate
-    $readback = [double]$Object.$Property
+    Set-XStreamControlValue -Object $Object -Name $Property -Value $Candidate
+    $readback = [double](Get-XStreamControlValue -Object $Object -Name $Property)
     $relative = [Math]::Abs($readback - $Candidate) / [Math]::Max([Math]::Abs($Candidate), 1.0e-30)
 
     if ($relative -gt 0.35) {
@@ -183,28 +247,28 @@ function Wait-XStreamAutomationReady {
         $attempt++
 
         try {
-            $candidateAcq = $Application.Acquisition
+            $candidateAcq = Get-XStreamObject -Parent $Application -Name "Acquisition"
             if ($null -eq $candidateAcq) {
-                throw "Acquisition is null"
+                throw "Acquisition object is null"
             }
 
-            $candidateC1 = $candidateAcq.C1
+            $candidateC1 = Get-XStreamObject -Parent $candidateAcq -Name "C1"
             if ($null -eq $candidateC1) {
-                throw "Acquisition.C1 is null"
+                throw "Acquisition/C1 object is null"
             }
 
-            $candidateHorizontal = $candidateAcq.Horizontal
+            $candidateHorizontal = Get-XStreamObject -Parent $candidateAcq -Name "Horizontal"
             if ($null -eq $candidateHorizontal) {
-                throw "Acquisition.Horizontal is null"
+                throw "Acquisition/Horizontal object is null"
             }
 
-            $candidateResult = $candidateC1.Out.Result
+            $candidateResult = Get-XStreamResult -Object $candidateC1
             if ($null -eq $candidateResult) {
-                throw "Acquisition.C1.Out.Result is null"
+                throw "Acquisition/C1/Out/Result is null"
             }
 
-            $verScale = [double]$candidateC1.VerScale
-            $horScale = [double]$candidateHorizontal.HorScale
+            $verScale = [double](Get-XStreamControlValue -Object $candidateC1 -Name "VerScale")
+            $horScale = [double](Get-XStreamControlValue -Object $candidateHorizontal -Name "HorScale")
             if ($verScale -le 0) {
                 throw ("C1.VerScale is not ready ({0:R})" -f $verScale)
             }
@@ -390,8 +454,8 @@ try {
     }
 
     Test-E2E "Read C1 vertical scale and horizontal scale" {
-        $verScale = [double]$c1.VerScale
-        $horScale = [double]$horizontal.HorScale
+        $verScale = [double](Get-XStreamControlValue -Object $c1 -Name "VerScale")
+        $horScale = [double](Get-XStreamControlValue -Object $horizontal -Name "HorScale")
 
         Assert-True ($verScale -gt 0) "C1.VerScale is not positive"
         Assert-True ($horScale -gt 0) "Horizontal.HorScale is not positive"
@@ -429,7 +493,7 @@ try {
     }
     else {
         Test-E2E "C1 vertical-scale roundtrip" {
-            $original = [double]$c1.VerScale
+            $original = [double](Get-XStreamControlValue -Object $c1 -Name "VerScale")
             try {
                 $candidate = $original * 2.0
                 $readback = Invoke-TracedAction -Name ("C1 VerScale {0:R} -> {1:R}" -f $original, $candidate) -Body {
@@ -442,13 +506,13 @@ try {
             }
             finally {
                 Invoke-TracedAction -Name ("C1 VerScale restore -> {0:R}" -f $original) -Body {
-                    $c1.VerScale = $original
+                    Set-XStreamControlValue -Object $c1 -Name "VerScale" -Value $original
                 } | Out-Null
             }
         }
 
         Test-E2E "Horizontal timebase roundtrip" {
-            $original = [double]$horizontal.HorScale
+            $original = [double](Get-XStreamControlValue -Object $horizontal -Name "HorScale")
             try {
                 $candidate = $original * 2.0
                 $readback = Invoke-TracedAction -Name ("Horizontal HorScale {0:R} -> {1:R}" -f $original, $candidate) -Body {
@@ -461,18 +525,18 @@ try {
             }
             finally {
                 Invoke-TracedAction -Name ("Horizontal HorScale restore -> {0:R}" -f $original) -Body {
-                    $horizontal.HorScale = $original
+                    Set-XStreamControlValue -Object $horizontal -Name "HorScale" -Value $original
                 } | Out-Null
             }
         }
 
         Test-E2E "C1 coupling roundtrip" {
-            $original = [string]$c1.Coupling
+            $original = [string](Get-XStreamControlValue -Object $c1 -Name "Coupling")
             $candidate = if ($original -ieq "AC1M") { "DC1M" } else { "AC1M" }
 
             try {
                 $readback = Invoke-TracedAction -Name ("C1 Coupling {0} -> {1}" -f $original, $candidate) -Body {
-                    $c1.Coupling = $candidate
+                    Set-XStreamControlValue -Object $c1 -Name "Coupling" -Value $candidate
                     $value = [string]$c1.Coupling
                     Assert-True ($value -ieq $candidate) ("Coupling readback '{0}' != requested '{1}'" -f $value, $candidate)
                     Invoke-Acquire -Acquisition $acq
@@ -483,18 +547,18 @@ try {
             }
             finally {
                 Invoke-TracedAction -Name ("C1 Coupling restore -> {0}" -f $original) -Body {
-                    $c1.Coupling = $original
+                    Set-XStreamControlValue -Object $c1 -Name "Coupling" -Value $original
                 } | Out-Null
             }
         }
 
         Test-E2E "C1 bandwidth-limit roundtrip" {
-            $original = [string]$c1.BandwidthLimit
+            $original = [string](Get-XStreamControlValue -Object $c1 -Name "BandwidthLimit")
             $candidate = if ($original -ieq "Full") { "20MHz" } else { "Full" }
 
             try {
                 $readback = Invoke-TracedAction -Name ("C1 BandwidthLimit {0} -> {1}" -f $original, $candidate) -Body {
-                    $c1.BandwidthLimit = $candidate
+                    Set-XStreamControlValue -Object $c1 -Name "BandwidthLimit" -Value $candidate
                     $value = [string]$c1.BandwidthLimit
                     Assert-True ($value -ieq $candidate) ("BandwidthLimit readback '{0}' != requested '{1}'" -f $value, $candidate)
                     Invoke-Acquire -Acquisition $acq
@@ -505,7 +569,7 @@ try {
             }
             finally {
                 Invoke-TracedAction -Name ("C1 BandwidthLimit restore -> {0}" -f $original) -Body {
-                    $c1.BandwidthLimit = $original
+                    Set-XStreamControlValue -Object $c1 -Name "BandwidthLimit" -Value $original
                 } | Out-Null
             }
         }
@@ -513,7 +577,7 @@ try {
 
     if ($PSBoundParameters.ContainsKey("ExpectedProbeName")) {
         Test-E2E "C1 probe identity" {
-            $probeName = [string]$c1.ProbeName
+            $probeName = [string](Get-XStreamControlValue -Object $c1 -Name "ProbeName")
             Assert-True (-not [string]::IsNullOrWhiteSpace($probeName)) "C1.ProbeName is empty"
             Assert-True ($probeName.IndexOf($ExpectedProbeName, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) ("ProbeName '{0}' does not contain expected '{1}'" -f $probeName, $ExpectedProbeName)
             Write-Host ("  ProbeName={0}" -f $probeName)
@@ -525,26 +589,28 @@ try {
 
     if ($PSBoundParameters.ContainsKey("ExpectedAmplitudeVpp")) {
         Test-E2E "C1 amplitude measurement against expected signal" {
-            $p1 = $app.Measure.P1
-            $oldView = $p1.View
-            $oldEngine = [string]$p1.ParamEngine
-            $oldSource = [string]$p1.Source1
+            $measure = Get-XStreamObject -Parent $app -Name "Measure"
+            $p1 = Get-XStreamObject -Parent $measure -Name "P1"
+            $p1Result = Get-XStreamResult -Object $p1
+            $oldView = Get-XStreamControlValue -Object $p1 -Name "View"
+            $oldEngine = [string](Get-XStreamControlValue -Object $p1 -Name "ParamEngine")
+            $oldSource = [string](Get-XStreamControlValue -Object $p1 -Name "Source1")
 
             try {
-                $p1.View = $true
-                $p1.ParamEngine = "AMPL"
-                $p1.Source1 = "C1"
+                Set-XStreamControlValue -Object $p1 -Name "View" -Value $true
+                Set-XStreamControlValue -Object $p1 -Name "ParamEngine" -Value "AMPL"
+                Set-XStreamControlValue -Object $p1 -Name "Source1" -Value "C1"
                 Invoke-Acquire -Acquisition $acq
 
-                $value = [double]$p1.Out.Result.Value
+                $value = [double]$p1Result.Value
                 Assert-True (-not [double]::IsNaN($value) -and -not [double]::IsInfinity($value)) "Amplitude result is invalid"
                 Assert-Near -Actual $value -Expected $ExpectedAmplitudeVpp -RelativeTolerance ($AmplitudeTolerancePercent / 100.0) -Label "Amplitude"
                 Write-Host ("  amplitude={0:R} V" -f $value)
             }
             finally {
-                $p1.ParamEngine = $oldEngine
-                $p1.Source1 = $oldSource
-                $p1.View = $oldView
+                Set-XStreamControlValue -Object $p1 -Name "ParamEngine" -Value $oldEngine
+                Set-XStreamControlValue -Object $p1 -Name "Source1" -Value $oldSource
+                Set-XStreamControlValue -Object $p1 -Name "View" -Value $oldView
             }
         }
     }
@@ -560,20 +626,20 @@ try {
             $oldSource = [string]$p1.Source1
 
             try {
-                $p1.View = $true
-                $p1.ParamEngine = "FREQ"
-                $p1.Source1 = "C1"
+                Set-XStreamControlValue -Object $p1 -Name "View" -Value $true
+                Set-XStreamControlValue -Object $p1 -Name "ParamEngine" -Value "FREQ"
+                Set-XStreamControlValue -Object $p1 -Name "Source1" -Value "C1"
                 Invoke-Acquire -Acquisition $acq
 
-                $value = [double]$p1.Out.Result.Value
+                $value = [double]$p1Result.Value
                 Assert-True (-not [double]::IsNaN($value) -and -not [double]::IsInfinity($value)) "Frequency result is invalid"
                 Assert-Near -Actual $value -Expected $ExpectedFrequencyHz -RelativeTolerance ($FrequencyTolerancePercent / 100.0) -Label "Frequency"
                 Write-Host ("  frequency={0:R} Hz" -f $value)
             }
             finally {
-                $p1.ParamEngine = $oldEngine
-                $p1.Source1 = $oldSource
-                $p1.View = $oldView
+                Set-XStreamControlValue -Object $p1 -Name "ParamEngine" -Value $oldEngine
+                Set-XStreamControlValue -Object $p1 -Name "Source1" -Value $oldSource
+                Set-XStreamControlValue -Object $p1 -Name "View" -Value $oldView
             }
         }
     }
