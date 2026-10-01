@@ -75,7 +75,7 @@ are documented in [driver signing and funding](docs/driver-signing-and-funding.m
 - The Dallas EEPROM is **read-only through the current replacement driver**. The physical write/restore path needs implementation and independent validation on a disposable chip before use with a working licensed card.
 - Compatibility is established for the observed XStream transfer forms. The WOW64-sensitive `0xCFDD219F` path, unobserved multi-channel/transfer variants and some legacy service/diagnostic operations remain gated or incomplete.
 - Original `CFDC2194` error-status provenance is recovered from the legacy ISR. A matching 29-byte read-and-clear path plus corrected paired `CFDC2190` error-mask programming has been **built, test-signed, installed and positively queried on the real x64 scope** (2026-09-30, owner-provided build/install log: 0 warnings/0 errors, PnP restart success, idle `lecdiag error-status` `0x00000000`, 29-byte-format PASS). After installation, the owner completed the requested practical XStream waveform/control/two-channel/AP015 regression and reported **no observable malfunction**. This establishes the latest owner-confirmed working practical baseline, although real nonzero error-IRQ accumulation and persistent-error status bit 31 remain unexercised. See [error status investigation](docs/cfdc2194-status-latch-investigation.md).
-- `CFDC2400` is source-implemented and has now **passed its owner-reported real-PCI zero-mask positive ABI test** (2026-09-30): `lecdiag raw-ioctl 0xCFDC2400 00000000 0` succeeded on the actual scope, `input=4 output-capacity=0 returned=0`, empty output. The separate full build/sign/install transcript was not supplied with this particular test; post-change XStream/AP015 regression and nonzero software-pending behavior remain unverified. New Ghidra vtable evidence proves original handler ORs an exact 4-byte input into software pending interrupts and then directly invokes the DPC dispatcher via derived hardware-subobject slot `0x1C62C+0x24 -> 0x114F2 -> 0x11390`. The x64 port atomically adds the mask to its existing per-device pending field and synchronously invokes the existing DPC core at the required IRQL. Do not inject nonzero pending-mask values as an exploratory test on the only working scope. With this staged addition, 24/27 top-level original dispatch values have native cases (one of those is still gated), and three remain absent. The prior `CFDC2194` patch remains the last owner-confirmed practical XStream baseline pending a new CFDC2400 XStream regression. See [CFDC2400 investigation](docs/cfdc2400-software-pending-investigation.md).
+- `CFDC2400` is source-implemented and has now **passed its owner-reported real-PCI zero-mask positive ABI test** (2026-09-30): `lecdiag raw-ioctl 0xCFDC2400 00000000 0` succeeded on the actual scope, `input=4 output-capacity=0 returned=0`, empty output. The separate full build/sign/install transcript was not supplied with this particular test; post-change XStream/AP015 regression and nonzero software-pending behavior remain unverified. New Ghidra vtable evidence proves original handler ORs an exact 4-byte input into software pending interrupts and then directly invokes the DPC dispatcher via derived hardware-subobject slot `0x1C62C+0x24 -> 0x114F2 -> 0x11390`. The x64 port atomically adds the mask to its existing per-device pending field and synchronously invokes the existing DPC core at the required IRQL. Do not inject nonzero pending-mask values as an exploratory test on the only working scope. With the staged CFDC2400 work and the 2026-10-01 hardened SetOneRegister source implementation, 26/27 top-level original dispatch values now have native cases (one of those is still gated), and two remain absent: Dallas WRITE 0x00223088 and serial FPGA/GPIO writer CFDC2130. The prior `CFDC2194` patch remains the last owner-confirmed practical XStream baseline pending a new CFDC2400 XStream regression. See [CFDC2400 investigation](docs/cfdc2400-software-pending-investigation.md).
 - Some AP015 calibration/control response details remain to be independently characterized. Normal identification, connector hotplug and the unlocked-jaw indication are operational.
 - XStream's Developer **Run Link Tests** page rejects the S65/WaveRunner family in its own user-mode DLL before issuing a link-test IOCTL. That vendor diagnostic limitation is not a kernel-driver regression.
 
@@ -94,20 +94,18 @@ regression test.
 
 One important original ABI trap: querying a 266-byte
 register record serializes the PHYSICAL BAR OFFSET at
-record byte `0x101`, but the still-unimplemented
-original setter `0x0022303C` treats an INCOMING
+record byte `0x101`, but original setter `0x0022303C` treats an INCOMING
 DWORD at `0x101` as the register ARRAY INDEX,
 then directly writes the selected MMIO register
-without a visible index range guard. These two
-concepts must not be conflated or a query record
-echoed into the setter unchecked.
+without a visible index range guard. The x64 source now implements this valid ABI
+with an explicit `< 43` bound and known-table-only resolution; it does not
+reproduce the original unchecked pointer access. This source change has not yet
+been Windows-built or hardware-verified.
 
-The other missing serial-FPGA writer `CFDC2130`
+The remaining serial-FPGA writer `CFDC2130`
 writes BAR1 GPIODAT bits 15:13 per stream byte,
 sharing its full DWORD with bit-16 clearing invoked
-by ordinary transfer handlers. Both remain
-deliberately unported pending proof of safe caller
-semantics and GPIO ownership. The third missing
+by ordinary transfer handlers. CFDC2130 remains deliberately unported pending proof of GPIO ownership and safe serialization. The other missing
 case is licensed Dallas WRITE, deferred to
 disposable hardware. Full 43-register mapping,
 field layout and exact original evidence:
