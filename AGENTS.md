@@ -127,7 +127,27 @@ Treat this file as a bounded current-state document.
 - Before adding a fact, ask: does every future workstream need this without opening another document? If not, put it in the relevant canonical document and link it if necessary.
 - When a current value changes, replace it. Do not append the previous value.
 
-## 9. Repository access and context rules
+## 9. Chat workflow and context ownership
+
+Keep the implementation chat alive as long as practical and protect its context from analysis-heavy work.
+
+- The active implementation chat is the single writer for the current coding workstream.
+- Its primary responsibilities are implementation, integration, documentation updates, test interpretation, and maintaining continuity of its own changes.
+- It should avoid performing deep reverse engineering, broad trace analysis, large binary inspection, or exploratory research when that work can be delegated to a separate analysis chat.
+- When analysis is needed, the implementation chat should formulate a narrow task describing:
+  1. what must be determined;
+  2. why the answer is needed;
+  3. relevant files, symbols, traces, or binaries;
+  4. safety constraints and things that must not be changed;
+  5. the exact result format needed for implementation.
+- A separate analysis chat should solve only that task and return a compact result: findings, evidence, affected symbols/files, uncertainties, and recommended implementation implications.
+- The implementation chat consumes the result and decides how to change the repository. Analysis chats should normally remain read-only unless explicitly instructed otherwise.
+- Do not duplicate the full analysis transcript into the implementation chat or repository. Transfer conclusions and the minimum supporting evidence.
+- Multiple analysis chats may work in parallel on independent questions. Avoid multiple chats editing the same implementation area concurrently.
+
+Before modifying a subsystem, read its canonical subsystem documentation if one exists. Prefer one document per subsystem or functional domain, not one document per individual C function.
+
+## 10. Repository access and context rules
 
 Minimize context use without sacrificing correctness.
 
@@ -147,7 +167,7 @@ For repository inspection:
 
 Repository structure should be improved for software/documentation clarity, not artificially fragmented solely to reduce LLM context.
 
-## 10. Reference documents
+## 11. Reference documents
 
 These are reference material, not mandatory startup reading.
 
