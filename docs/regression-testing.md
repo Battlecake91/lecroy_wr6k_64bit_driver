@@ -249,3 +249,36 @@ hierarchy rather than repeatedly probing the unsupported direct alias.
 
 This corrected collection-based PowerShell path has not yet received the
 owner's runtime result.
+
+
+## Read-only XStream COM object scanner
+
+The owner asked for direct discovery of what the old WaveRunner/XStream COM
+server actually exposes instead of continuing to guess the hierarchy from
+newer examples.
+
+A read-only scanner now exists at:
+
+```powershell
+.\tests\xstream\dump-xstream-automation.ps1
+```
+
+It connects to `LeCroy.XStreamDSO` / `.1`, prints `Get-Member -Force`
+metadata for the root and discovered objects, inspects `Object` / `Objects`
+collections, tries collection Count/numeric/foreach enumeration, and probes
+known object names using `Item(name)`. It does not set CVARs, invoke actions,
+perform acquisitions or issue driver IOCTLs.
+
+Default output:
+
+```text
+xstream-automation-dump.txt
+```
+
+The file is ignored by Git because it is machine/runtime-specific.
+
+The same evidence also justified adding direct `Parent.Item(name)` as the
+first child-resolution path in the E2E helper before trying
+`Parent.Objects.Item(name)` or `Parent.Object.Item(name)`.
+The scanner has not yet been owner-run; do not claim its observed hierarchy
+until the resulting dump is supplied.
