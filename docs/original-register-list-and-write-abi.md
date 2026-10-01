@@ -283,6 +283,28 @@ therefore CLOSED. Any native x64 implementation should still harden the
 original by validating `index < activeKnownRegisterCount` and mapping the
 index only to the known native register table before any MMIO write.
 
+## Native x64 implementation status (2026-10-01)
+
+The compatibility decision has now been turned into source code. Native
+`0x0022303C` support is staged with the following hardened behavior:
+
+- exact 266-byte METHOD_BUFFERED input and zero output;
+- DWORD `+0x101` is parsed only as the zero-based register-list index;
+- DWORD `+0x106` is the requested value;
+- indices `>= 43` are rejected with `STATUS_INVALID_PARAMETER`;
+- the target descriptor comes only from `g_LecLegacyRegisterList[index]`;
+- normal BAR presence/alignment/range validation is applied before MMIO;
+- INTEN is routed through the existing interrupt-mask helper;
+- existing ERRM and SPICTL native shadows are synchronized before their MMIO
+  write;
+- successful completion returns `Information = 0`.
+
+This deliberately does not reproduce the original x86 unchecked
+`pointerTable[index]` access. The source has not yet been Windows-built,
+installed or validated on the physical scope. The first eventual live check
+must read the current value of a known register and write exactly that freshly
+read value back.
+
 ## Critical ABI distinction: register OFFSET is not register INDEX
 
 This is especially important for the missing
