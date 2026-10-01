@@ -180,3 +180,37 @@ python .\tools\lecwatch\summarize-actions.py <session.jsonl> --markdown <summary
 This is an analysis mode, not a new hardware test primitive: it drives only the
 same XStream COM actions already present in the E2E regression and adds no
 kernel-control capability to lecwatch.
+
+
+## First XStream E2E runtime attempt exposed startup-readiness race
+
+Owner run on 2026-10-01 with `-Mode XStream -TraceXStreamActions` proved COM
+activation itself works: **XStream COM automation connection PASS**. The script
+then immediately queried `app.Acquisition` while the scope/XStream hardware
+initialization was still in progress. At that instant the COM dispatch object
+did not yet expose `Acquisition`, causing one real startup-timing failure and
+eight meaningless dependent follow-on failures (`VerScale`, `HorScale`,
+`Acquire`, `Samples`, `DataArray`, `Coupling`, `BandwidthLimit`).
+
+This is not evidence that those XStream functions or driver paths are broken.
+The owner explicitly confirmed the scope was not yet ready.
+
+Commits `2e7582e` and `7c36d37` replace the immediate access with an actual
+readiness gate:
+
+- default readiness timeout: 180 seconds;
+- configurable range: 10..600 seconds via
+  `-XStreamReadyTimeoutSeconds` on `scripts/test-driver.ps1`;
+- poll once per second;
+- require `Acquisition`, `C1`, `Horizontal`, `C1.Out.Result`,
+  positive `VerScale` and positive `HorScale`;
+- print the most recent not-ready reason every five attempts;
+- only after the complete automation chain is usable do dependent E2E actions
+  begin;
+- if readiness really times out, the required readiness check terminates the
+  dependent run instead of generating a cascade of false failures;
+- when action tracing is enabled, readiness itself is timestamped into
+  `lecwatch`.
+
+The corrected readiness path has not yet received the owner's follow-up runtime
+result.
