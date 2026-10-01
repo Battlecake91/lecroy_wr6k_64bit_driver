@@ -1,5 +1,23 @@
 # IOCTL map
 
+
+
+## 2026-10-01 native SetOneRegister update
+
+Legacy `0x0022303C` now has a hardened native x64 source case. The handler
+accepts exactly one 266-byte METHOD_BUFFERED input and zero output, interprets
+DWORD `+0x101` as the zero-based register-list index and DWORD `+0x106` as
+the requested value, rejects indices outside the known 43-entry table, resolves
+the target only through `g_LecLegacyRegisterList`, and preserves
+`Information = 0`. Existing x64 shadows for INTEN, ERRM and SPICTL are kept
+coherent. The original x86 unchecked pointer-table access is not reproduced.
+
+Current top-level source coverage is therefore **26/27 native cases**, including
+one deliberately gated `CFDD219F`; only `0x00223088` Dallas WRITE and
+`0xCFDC2130` serial FPGA/GPIO programming remain absent. This is a
+**source-only** milestone: no Windows WDK build/sign/load or real-scope
+SetOneRegister validation has yet been performed.
+
 This table is reconstructed from the comparison tree inside `CLecS65AcqDrvDevice::DeviceControl()`.
 
 All values below are **confirmed as dispatch values** in the analysed binary.
@@ -66,7 +84,6 @@ XStream regression baseline.
 
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
-| `0x0022303C` | Exact 0x10A (266)-byte SetOneRegister record. **Now runtime-observed and user-mode caller resolved:** `KernelPCIRegisters` zeroes the entire request, stores selected zero-based register-list INDEX at `+0x101` and requested DWORD at `+0x106`, then sends the IOCTL. Owner capture wrote unchanged TxCount: index 2/value 2, STATUS_SUCCESS. Original kernel `FUN_0001259A` dereferences that index without local bounds checking and physically writes via `FUN_000107FE`. Query records remain different: `0x00223040` serializes physical BAR OFFSET at `+0x101`. | Caller ABI blocker CLOSED. If ported, harden with exact-length + index `< 43` + known-table resolution; never interpret queried physical offsets as setter indices. Full proof: [original list/write ABI](original-register-list-and-write-abi.md), [runtime trace](runtime-trace.md). |
 | `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
 | `0xCFDC2130` | Non-null, nonempty input; `FUN_00011CFF` reads BAR1 GPIODAT (+0xC4), replaces only bits 15:13 (`0xE000`) with bits 7:5 of each input byte shifted <<8, then writes physical register **once per byte**. | Preserve stream sequence/timing and other GPIO ownership; no fabricated programming on working board. |
 
