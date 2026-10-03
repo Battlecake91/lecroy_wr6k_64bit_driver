@@ -2317,7 +2317,7 @@ For each acquisition channel, `0x17D20 -> 0x17C16` emits:
 
 | Index | 16-bit MAMDAT value | Host-side meaning |
 |---:|---:|---|
-| 0 | `0x0E00 | channel_byte` | per-channel command/header |
+| 0 | `0xE000 | channel_byte` | per-channel command/header |
 | 1 | `config_dword & 0xFFFF` | configuration low half |
 | 2 | `config_dword >> 16` | configuration high half |
 | 3 | `channel_span & 0xFFFF` | per-channel span/count low half |
@@ -2328,7 +2328,7 @@ derived directly from a byte length, but the driver does not expose whether
 the FPGA names this field as bytes, samples, or another acquisition unit. The
 temporary `0xA5FB` WORD adjacent to the index-0 value is stack-packing residue
 from the source structure; instruction-level analysis confirms that `0x17C16`
-consumes only the upper WORD (`0x0E00 | channel_byte`) of that first DWORD.
+consumes only the upper WORD (`0xE000 | channel_byte`) of that first DWORD.
 
 ### MAMSEQ channel entries
 
@@ -3355,7 +3355,7 @@ second byte of the pair as a six-bit channel ID.
 For the staged one-channel path:
 
 ```text
-MAMDAT[0] = 0x0E00 | channel
+MAMDAT[0] = 0xE000 | channel
 MAMDAT[1] = config low 16
 MAMDAT[2] = config high 16
 MAMDAT[3] = min(requested_bytes,0x400) low 16
