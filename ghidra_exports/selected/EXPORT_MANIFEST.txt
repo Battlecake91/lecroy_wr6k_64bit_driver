@@ -1,50 +1,37 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 3dcd82af705092cd875e3e2d6604611198b41081
+Source commit: 81ab5e0cad6a289d834692799c5ebf510f8fb267
 Program: LecS65AcqDrv.sys
 
 Targets:
+  13c84
+  asm:13c84
+  17b72
+  asm:17b72
+  xref:17b72
+  17ddc
+  asm:17ddc
+  17d20
+  asm:17d20
   17ee0
   asm:17ee0
-  xref:17ee0
-  17cdc
-  asm:17cdc
-  xref:17cdc
-  179e2
-  asm:179e2
-  xref:179e2
-  17c16
-  asm:17c16
-  xref:17c16
-  17eac
-  asm:17eac
-  xref:17eac
-  17dac
-  asm:17dac
-  xref:17dac
-  13f3c
-  asm:13f3c
-  xref:13f3c
-  1326e
-  asm:1326e
-  xref:1326e
-  17ba6
-  asm:17ba6
-  xref:17ba6
-  17bc8
-  asm:17bc8
-  xref:17bc8
-  17f4e
-  asm:17f4e
-  xref:17f4e
-  field:1086
-  field:108a
-  field:108e
-  field:1092
-  field:1096
-  field:109a
-  field:109e
-  14847
-  asm:14847
+  12d6a
+  asm:12d6a
+  17478
+  asm:17478
+  171de
+  asm:171de
+  18168
+  asm:18168
+  17b00
+  asm:17b00
+  12184
+  asm:12184
+  17e58
+  asm:17e58
+  xref:17e58
+  120dc
+  asm:120dc
+  xref:120dc
 
 Exported files:
   00010380_FUN_00010380.c
@@ -561,12 +548,16 @@ Exported files:
   asm_asm_1785b.txt
   asm_asm_179e2.txt
   asm_asm_17a98.txt
+  asm_asm_17b00.txt
+  asm_asm_17b72.txt
   asm_asm_17ba6.txt
   asm_asm_17bc8.txt
   asm_asm_17c16.txt
   asm_asm_17cdc.txt
   asm_asm_17d20.txt
   asm_asm_17dac.txt
+  asm_asm_17ddc.txt
+  asm_asm_17e58.txt
   asm_asm_17eac.txt
   asm_asm_17ee0.txt
   asm_asm_17f4e.txt
@@ -746,11 +737,13 @@ Exported files:
   xref_xref_176e6.txt
   xref_xref_1785b.txt
   xref_xref_179e2.txt
+  xref_xref_17b72.txt
   xref_xref_17ba6.txt
   xref_xref_17bc8.txt
   xref_xref_17c16.txt
   xref_xref_17cdc.txt
   xref_xref_17dac.txt
+  xref_xref_17e58.txt
   xref_xref_17eac.txt
   xref_xref_17ee0.txt
   xref_xref_17f4e.txt
