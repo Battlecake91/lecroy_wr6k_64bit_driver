@@ -1,0 +1,5 @@
+FUNCTION 0001c1e4 __global_unwind2
+INCOMING
+0001c16e <no-function>
+OUTGOING_FUNCTIONS
+0001c2a4 RtlUnwind
