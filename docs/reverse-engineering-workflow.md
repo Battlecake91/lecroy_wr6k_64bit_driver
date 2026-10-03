@@ -252,6 +252,35 @@ offset 0 and a cached/shadow value at descriptor offset +0x24. The family-2
 ITMODE cases update that shadow and issue the corresponding
 `WRITE_REGISTER_ULONG`.
 
+Additional family-2 dispatch semantics from the same static analysis:
+
+```text
+opcode 0x00 -> arm/start the internal timer object from payload, wait for it,
+               then fall through to the opcode-0x04 INTST pulse operation
+opcode 0x01 -> arm/re-arm the internal timer using the payload delay while
+               preserving/recomputing remaining time across an active timer
+opcode 0x02 -> write INTST = payload[0] (0 or 1)
+opcode 0x03 -> send the packet through the common TX transport with mode/value
+               0x19 and change the subsequent response timeout state to 10
+opcode 0x04 -> temporarily mask the corresponding software interrupt-state bit,
+               pulse INTST high/low N times, then restore the bit if needed
+opcode 0x05 -> ITMODE 7 -> 3 sequence
+opcode 0x06 -> returns status 0x10 (not implemented/supported by this path)
+opcode 0x07 -> returns status 0x10 (not implemented/supported by this path)
+opcode 0x08 -> returns status 0x10 (not implemented/supported by this path)
+opcode 0x09 -> ITMODE = 3
+opcode 0x0A -> ITMODE = 2
+opcode 0x10 -> LEDCTL two-bit write
+opcode 0x40 -> re-run the original board interrupt/error-state service and
+               reset/acknowledgement helpers, then return success
+```
+
+The timer object at CFDC2110 field `+0x186` is allocated by `FUN_000158EE`
+and initialized through `KeInitializeTimerEx`. Opcodes 0x00 and 0x01 use its
+timer/event methods; fields `+0x18A/+0x18E` store the last system-time sample
+and `+0x192` stores the tracked delay/remaining-time value. This establishes
+timer/state-machine behavior, but not a higher-level acquisition-domain name.
+
 These findings recover the common CFDC2110 physical request/response transport,
 JTAG path and several family-2 board-control operations, but they do not by
 themselves assign complete domain-level meanings to every family/opcode
