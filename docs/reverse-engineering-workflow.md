@@ -358,6 +358,29 @@ transfer, calls `FUN_00012D6A`, and reports `Information = 4`.
 `FUN_00012D6A` stores the requested byte count into that output DWORD after
 the acquisition path.
 
+The per-channel MAM programming helper `FUN_00017C16` is now decoded exactly.
+For each channel it writes five indexed values through the MAMDAT register
+wrapper and then launches the programming sequence with `MAMPGO = 0x105`:
+
+```text
+MAMDAT slot 0 = 0xE000 | channel_id
+MAMDAT slot 1 = config & 0xFFFF
+MAMDAT slot 2 = (config >> 16) & 0xFFFF
+MAMDAT slot 3 = per_channel_bytes & 0xFFFF
+MAMDAT slot 4 = (per_channel_bytes >> 16) & 0xFFFF
+MAMPGO         = 0x105
+```
+
+The indexed MAMDAT helper `FUN_000179E2` uses bits 16..23 of the write value
+as the cache/index selector and the low 16 bits as the actual slot payload;
+it suppresses redundant hardware writes when the cached 16-bit value for that
+slot already matches. This corrects an earlier documentation error that listed
+slot 0 as `0x0E00 | channel`; the original x86 instructions unambiguously
+construct `0xE000 | channel`.
+
+The per-channel size supplied to this helper is derived from
+`requested_bytes / channel_count`.
+
 These findings explain how the original driver accepts multi-entry CFDC2138
 requests, but they do **not** justify enabling arbitrary multi-channel forms in
 the x64 replacement. Only the one-channel form has runtime evidence on the
