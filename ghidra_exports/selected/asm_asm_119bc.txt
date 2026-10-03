@@ -1,0 +1,29 @@
+FUNCTION_ASM 000119bc FUN_000119bc
+000119bc  MOV EAX,ECX
+000119be  MOV ECX,dword ptr [ESP + 0x4]
+    -> Stack[0x4]
+000119c2  MOV EDX,dword ptr [ECX]
+000119c4  MOV dword ptr [EAX],EDX
+000119c6  MOV EDX,dword ptr [ECX + 0x24]
+000119c9  MOV dword ptr [EAX + 0x24],EDX
+000119cc  MOV DL,byte ptr [ECX + 0x20]
+000119cf  MOV byte ptr [EAX + 0x20],DL
+000119d2  MOV EDX,dword ptr [ECX + 0x1c]
+000119d5  PUSH EBX
+000119d6  MOV dword ptr [EAX + 0x1c],EDX
+000119d9  MOV EBX,dword ptr [ECX + 0x10]
+000119dc  MOV EDX,dword ptr [ECX + 0x1c]
+000119df  PUSH ESI
+000119e0  MOV ESI,dword ptr [ECX + 0x18]
+000119e3  PUSH EDI
+000119e4  MOV EDI,dword ptr [ECX + 0x14]
+000119e7  MOV ECX,dword ptr [ECX + 0xc]
+000119ea  MOV dword ptr [EAX + 0x14],EDI
+000119ed  POP EDI
+000119ee  MOV dword ptr [EAX + 0x18],ESI
+000119f1  POP ESI
+000119f2  MOV dword ptr [EAX + 0x10],EBX
+000119f5  MOV dword ptr [EAX + 0xc],ECX
+000119f8  MOV dword ptr [EAX + 0x1c],EDX
+000119fb  POP EBX
+000119fc  RET 0x4

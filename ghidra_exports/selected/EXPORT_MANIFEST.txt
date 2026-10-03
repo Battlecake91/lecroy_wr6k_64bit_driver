@@ -1,46 +1,41 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 7975800e109797142141a147889c1d4f247ae437
+Source commit: 0c4c736644ca6fa63831a117ddd2efc1efa92068
 Program: LecS65AcqDrv.sys
 
 Targets:
-  15acc
-  asm:15acc
-  15c7e
-  asm:15c7e
-  15802
-  asm:15802
-  15848
-  asm:15848
-  1586e
-  asm:1586e
-  158ee
-  asm:158ee
-  xref:158ee
   14212
   asm:14212
-  166a8
-  asm:166a8
-  1634e
-  asm:1634e
-  1621a
-  asm:1621a
-  163b2
-  asm:163b2
-  16414
-  asm:16414
-  16490
-  asm:16490
-  164b8
-  asm:164b8
+  xref:14212
+  14847
+  asm:14847
+  xref:14847
+  159e2
+  asm:159e2
+  xref:159e2
+  159bc
+  asm:159bc
+  xref:159bc
+  119bc
+  asm:119bc
+  xref:119bc
+  13fa6
+  asm:13fa6
+  xref:13fa6
+  11ad2
+  asm:11ad2
+  xref:11ad2
   field:15e
   field:162
-  field:166
-  field:16a
-  field:16e
-  field:172
-  xref:16414
-  xref:163b2
-  xref:164b8
+  166a8
+  asm:166a8
+  164b8
+  asm:164b8
+  field:c
+  field:24
+  field:104a
+  field:104e
+  field:1052
+  field:1056
 
 Exported files:
   00010380_FUN_00010380.c
@@ -465,6 +460,8 @@ Exported files:
   asm_asm_10e3a.txt
   asm_asm_10f30.txt
   asm_asm_115c4.txt
+  asm_asm_119bc.txt
+  asm_asm_11ad2.txt
   asm_asm_11b48.txt
   asm_asm_11bdc.txt
   asm_asm_11c36.txt
@@ -561,6 +558,10 @@ Exported files:
   field_0x101e.refs.txt
   field_0x1022.refs.txt
   field_0x1026.refs.txt
+  field_0x104a.refs.txt
+  field_0x104e.refs.txt
+  field_0x1052.refs.txt
+  field_0x1056.refs.txt
   field_0x1086.refs.txt
   field_0x1160.refs.txt
   field_0x1167.refs.txt
@@ -588,6 +589,7 @@ Exported files:
   field_0x16e.refs.txt
   field_0x172.refs.txt
   field_0x182.refs.txt
+  field_0x24.refs.txt
   field_0x25.refs.txt
   field_0x29.refs.txt
   field_0x2d.refs.txt
@@ -598,6 +600,7 @@ Exported files:
   field_0x3a6.refs.txt
   field_0x60.refs.txt
   field_0x88.refs.txt
+  field_0xc.refs.txt
   field_0xd00.refs.txt
   field_0xd28.refs.txt
   field_0xd50.refs.txt
@@ -646,6 +649,8 @@ Exported files:
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
   xref_xref_107fe.txt
+  xref_xref_119bc.txt
+  xref_xref_11ad2.txt
   xref_xref_11cff.txt
   xref_xref_11f54.txt
   xref_xref_120dc.txt
@@ -661,11 +666,13 @@ Exported files:
   xref_xref_13434.txt
   xref_xref_134ae.txt
   xref_xref_13fa6.txt
+  xref_xref_14212.txt
   xref_xref_14847.txt
   xref_xref_15802.txt
   xref_xref_15848.txt
   xref_xref_1586e.txt
   xref_xref_158ee.txt
+  xref_xref_159bc.txt
   xref_xref_159e2.txt
   xref_xref_15a26.txt
   xref_xref_160a8.txt
