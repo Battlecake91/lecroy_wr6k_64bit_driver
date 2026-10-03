@@ -287,6 +287,86 @@ themselves assign complete domain-level meanings to every family/opcode
 payload. Continue opcode-specific analysis only where native x64 compatibility
 or an observed runtime difference requires it.
 
+## CFDC2138 variable buffered-transfer ABI
+
+Focused static analysis of original `FUN_000141DC -> FUN_00013C84` on
+2026-10-03 resolves the previously unobserved variable-length buffered
+`0xCFDC2138` request parser.
+
+The original METHOD_BUFFERED request layout is:
+
+```text
+DWORD transfer_token
+BYTE  channel_count
+
+repeat channel_count times:
+    BYTE ignored_pair_byte
+    BYTE channel_id
+
+DWORD config
+DWORD requested_bytes
+```
+
+The total input size implied by this structure is therefore:
+
+```text
+13 + 2 * channel_count bytes
+```
+
+The one-channel runtime form observed previously is the 15-byte special case.
+
+Important parser behavior:
+
+- `channel_count` is stored as an unsigned byte, so the packet syntax can
+  represent at most 255 list entries.
+- The first byte of each two-byte channel pair is skipped by the original
+  parser and is not validated by `FUN_00013C84`.
+- The second byte is the actual channel value passed to the transfer-list
+  builder.
+- Hardware sequence encoding masks the channel value to six bits
+  (`channel_id & 0x3F`).
+- The final channel-list entry is marked separately through the boolean
+  "last entry" argument to `FUN_00017EE0`.
+- The list containers are dynamically allocated/resized; there is no smaller
+  fixed C-array limit in this parser path.
+- A zero-channel request does not produce a useful transfer-list object and
+  must not be treated as an enabled native form merely because the field is a
+  byte.
+
+After the channel list, `FUN_00013C84` stores one global `config` DWORD and
+one global `requested_bytes` DWORD. These are not repeated per channel.
+
+The parser then enforces transfer-size constraints before invoking the common
+acquisition orchestrator:
+
+- `requested_bytes <= 0x00FFFFFF`;
+- `requested_bytes % channel_count == 0`;
+- for larger aggregate transfers, the original also requires the
+  count/size product to satisfy the 0x400-byte block alignment path;
+- the resolved registered transfer entry must exist and its stored data-byte
+  size must equal `requested_bytes`.
+
+The transfer-list helper `FUN_00017EE0` builds per-channel hardware sequence
+entries containing the low six channel bits, an internal list index and the
+last-entry flag. `FUN_00017D20` subsequently programs one acquisition setup
+entry per parsed channel, derives the per-channel block portion from
+`requested_bytes / channel_count`, then emits the sequence list before the
+common launch/wait path.
+
+`FUN_00013C84` zeroes the caller's four-byte output before starting the
+transfer, calls `FUN_00012D6A`, and reports `Information = 4`.
+`FUN_00012D6A` stores the requested byte count into that output DWORD after
+the acquisition path.
+
+These findings explain how the original driver accepts multi-entry CFDC2138
+requests, but they do **not** justify enabling arbitrary multi-channel forms in
+the x64 replacement. Only the one-channel form has runtime evidence on the
+working scope. A native multi-channel implementation should validate the exact
+derived input size, reject channel values outside the intended hardware range
+rather than silently reproducing the original six-bit truncation, and require
+an independently registered transfer object of the matching byte size before
+touching acquisition hardware.
+
 ## User-mode analysis
 
 After the kernel handlers are understood, inspect
