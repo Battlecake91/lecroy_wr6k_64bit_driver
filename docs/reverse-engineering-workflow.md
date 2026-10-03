@@ -434,6 +434,35 @@ rather than silently reproducing the original six-bit truncation, and require
 an independently registered transfer object of the matching byte size before
 touching acquisition hardware.
 
+## Full legacy-function inventory status
+
+A complete Ghidra function census was exported on 2026-10-03 using the
+`inventory` target. Ghidra currently recognizes 420 functions in the legacy
+binary. Using `0x182D0 (__alldiv)` as the practical transition into the
+compiler/runtime-heavy tail, 270 functions lie in the primary driver/code
+region. Of those, 203 already have selected decompiled-C exports and 67 do not.
+
+The 67 missing selected exports are **not** equivalent to 67 unknown driver
+features. Many are small allocation, object, thunk or framework helpers.
+However, several are still worth explicit review because they correspond to
+known ABI paths or sit immediately beside acquisition/interrupt helpers. In
+particular, the remaining high-value selected-export candidates include:
+
+```text
+0x1272A  generic register write handler
+0x12832  driver-build query handler
+0x130EA  Dallas ID handler
+0x131B5  Dallas memory-read handler
+0x13954  generic register-read handler
+0x17184  acquisition/transfer helper
+0x174C8  acquisition/transfer helper
+```
+
+The early `0x103xx..0x11Bxx` missing functions should be triaged by call graph
+before bulk export; many have wrapper/framework characteristics. The inventory
+exists specifically to avoid dumping all 420 functions as pseudocode and
+polluting the repository with compiler/DriverWorks support code.
+
 ## User-mode analysis
 
 After the kernel handlers are understood, inspect
