@@ -381,6 +381,42 @@ construct `0xE000 | channel`.
 The per-channel size supplied to this helper is derived from
 `requested_bytes / channel_count`.
 
+The remaining MAM register wiring and sequence encoding are also recovered.
+`FUN_00014847` constructs the acquisition MAM helper with these BAR1 register
+wrappers:
+
+```text
+BAR1 +0x40  MAMDAT
+BAR1 +0x44  MAMPGO
+BAR1 +0x60  MAMSEQ
+BAR1 +0x64  MAMRGO
+```
+
+`FUN_00017EE0` builds one MAMSEQ DWORD for each parsed channel:
+
+```text
+bits 24:16  zero-based sequence index
+bit  6      final-entry flag
+bits 5:0    channel_id
+```
+
+The sequence index originates from a 9-bit source value, but the CFDC2138
+packet's one-byte `channel_count` limits the buffered parser to at most 255
+entries and therefore to sequence indices 0..254. No additional smaller
+hardware limit is exposed by this path. `FUN_00017CDC` writes the generated
+MAMSEQ values in order through BAR1+0x60.
+
+For the buffered multi-channel acquisition path, the complete hardware setup is
+therefore mechanically derived from the request:
+
+1. parse `channel_count` channel pairs;
+2. program five MAMDAT slots per channel and issue `MAMPGO=0x105`;
+3. emit one MAMSEQ entry per channel, marking only the final entry;
+4. program the registered transfer/DMA state;
+5. launch through MAMRGO and wait on the selected transfer-entry event.
+
+No additional hidden per-channel config or size record was found.
+
 These findings explain how the original driver accepts multi-entry CFDC2138
 requests, but they do **not** justify enabling arbitrary multi-channel forms in
 the x64 replacement. Only the one-channel form has runtime evidence on the
