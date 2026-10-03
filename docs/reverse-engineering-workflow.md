@@ -95,6 +95,108 @@ family 2  opcode 0x05
 family 2  opcode 0x02
 ```
 
+### Recovered CFDC2110 packet and transport semantics
+
+Static Ghidra analysis on 2026-10-03 established the following original-driver
+packet layout for the A5FB command path:
+
+```text
++0x08  packet type, expected 0x40
++0x09  family
++0x0A  opcode
++0x0B  family/opcode-specific payload
+```
+
+The A5FB family dispatch is:
+
+```text
+family 0 -> FUN_00016A66
+family 1 -> FUN_000165A6
+family 2 -> FUN_000166A8
+```
+
+Known high-priority runtime commands now map as follows:
+
+```text
+family 1 / opcode 0x81 -> FUN_00015DB8 -> FUN_000176E6
+family 0 / opcode 0x84 -> FUN_00016168 -> FUN_000176E6
+family 0 / opcode 0x4A -> FUN_00016168 -> FUN_000176E6
+family 1 / opcode 0x4A -> FUN_00015DB8 -> FUN_000176E6
+
+family 0 / opcode 0x92 -> FUN_0001600E -> WRITE_REGISTER_ULONG
+family 1 / opcode 0x92 -> FUN_00015DEA -> READ_REGISTER_ULONG
+
+family 0 / opcode 0x42 -> FUN_00015ACC
+family 1 / opcode 0x42 -> FUN_00015C7E
+
+family 2 / opcode 0x02 -> FUN_000163B2
+family 2 / opcode 0x05 -> direct transport-register write sequence in FUN_000166A8
+```
+
+The original transport-register group constructed by `FUN_0001785B` is:
+
+```text
+BAR-backed base + 0x100  SetIRQ
+BAR-backed base + 0x400  TxControl
+BAR-backed base + 0x404  RxControl
+BAR-backed base + 0x408  TxCount
+BAR-backed base + 0x40C  RxCount
+BAR-backed base + 0x410  HWInt
+BAR-backed base + 0x420  TX data window
+BAR-backed base + 0x600  RX data window
+```
+
+`FUN_000176E6` is the transmit path. It rejects odd byte lengths, converts
+the byte length to 16-bit words, splits larger requests into chunks of at most
+0x78 words, writes each 16-bit word through `WRITE_REGISTER_BUFFER_ULONG`
+into successive DWORD-spaced addresses starting at offset 0x420, writes the
+chunk word count through the TxCount register helper, and writes TxControl to
+start/continue the transfer. Transfers larger than one chunk use the 0x4000
+control bit; the transmitted control word is then marked with 0x8000 before
+the TxControl write.
+
+`FUN_00017560` polls TxControl and reports ready only when the high-byte sign
+bit is clear and the low byte is zero. `FUN_000176E6` polls this state before
+and between chunks and uses a bounded delay loop before failing the transfer.
+
+The request/response helper `FUN_0001619A`:
+
+1. resets the transport event;
+2. enables the receive/interrupt state via `FUN_000160A8`;
+3. transmits the request via `FUN_000176E6`;
+4. waits for the transport event with the configured timeout;
+5. receives the response through `FUN_00017578`.
+
+`FUN_000160A8` toggles global state bit 0x8 in `DAT_0001CE18` and
+synchronizes callback `FUN_00012EAE` through the existing hardware object.
+
+`FUN_00017578` is the receive path. It reads RxControl, requires a nonzero
+chunk count no greater than 0x78 words, validates that the resulting
+two-bytes-per-word payload fits the caller buffer, and reads successive
+16-bit values from DWORD-spaced addresses starting at offset 0x600 through
+`READ_REGISTER_BUFFER_ULONG`. After each block it resets the event and
+acknowledges/clears the consumed RxControl state. If the continuation bit is
+set, it waits for another event and repeats until the complete response is
+received or the wait times out.
+
+The family-0 opcode-0x92 direct register-write payload is:
+
+```text
+byte  +0  region selector 0, 1 or 2
+word  +1  register offset
+dword +3  value
+```
+
+The original implementation resolves the selected mapped base and executes
+`WRITE_REGISTER_ULONG(base + offset, value)`. Family 1 opcode 0x92 is the
+corresponding direct read path using the same region/offset selector and
+returns the DWORD value through the normal response-buffer staging path.
+
+These findings recover the common CFDC2110 physical request/response transport,
+but they do not by themselves assign complete domain-level meanings to every
+family/opcode payload. Continue opcode-specific analysis only where native x64
+compatibility or an observed runtime difference requires it.
+
 ## User-mode analysis
 
 After the kernel handlers are understood, inspect
