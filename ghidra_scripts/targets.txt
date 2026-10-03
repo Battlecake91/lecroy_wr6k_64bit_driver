@@ -1,53 +1,55 @@
-# CFDC2110 fifth pass:
-# resolve family-2 special register objects and refine JTAG semantics
+# CFDC2110 sixth pass:
+# close remaining family-2 opcode semantics
 
-# Main hardware-object setup / wiring
-14212
-asm:14212
-xref:14212
-
-14847
-asm:14847
-xref:14847
-
-159e2
-asm:159e2
-xref:159e2
-
-159bc
-asm:159bc
-xref:159bc
-
-# Register-object helper / copy wiring
-119bc
-asm:119bc
-xref:119bc
-
-13fa6
-asm:13fa6
-xref:13fa6
-
-11ad2
-asm:11ad2
-xref:11ad2
-
-# Family-2 special register pointers
-field:15e
-field:162
-
-# Family-2 opcodes using them
 166a8
 asm:166a8
 
-164b8
-asm:164b8
+# opcode 0 / 1 timing-event helpers
+1634e
+asm:1634e
+xref:1634e
 
-# Look for register descriptors likely wired into those fields
-field:c
-field:24
+1621a
+asm:1621a
+xref:1621a
 
-# JTAG register descriptors for comparison
-field:104a
-field:104e
-field:1052
-field:1056
+# opcode 3 transport/send path
+16168
+asm:16168
+
+# opcode 4 INTST pulse path
+16414
+asm:16414
+xref:16414
+
+16074
+asm:16074
+xref:16074
+
+# opcode 0x40 reset/reinit path
+16490
+asm:16490
+xref:16490
+
+1260e
+asm:1260e
+xref:1260e
+
+126ee
+asm:126ee
+xref:126ee
+
+# state bits involved in opcode 4 / interrupt handling
+xref:1ce14
+xref:1ce18
+
+# event/timer object used by opcodes 0/1/2
+157c4
+asm:157c4
+xref:157c4
+
+field:186
+field:18a
+field:18e
+field:192
+field:196
