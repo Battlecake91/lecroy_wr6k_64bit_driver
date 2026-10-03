@@ -447,6 +447,8 @@ compact call references for every function currently recognized by Ghidra.
 Raw assembly remains a second-pass tool for functions whose decompilation is
 ambiguous, bit-sensitive, or dependent on calling-convention details.
 
+The current subsystem-level architecture is maintained in [legacy driver architecture](legacy-driver-architecture.md).
+
 The reconstruction therefore has two deliverables:
 
 1. recover LeCroy-specific hardware, ABI, acquisition and firmware behavior;
