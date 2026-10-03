@@ -576,7 +576,23 @@ The major architectural subsystems are now identified:
 - trace infrastructure;
 - DriverWorks support classes.
 
-Remaining work is primarily **semantic classification at individual-function
-granularity** and targeted assembly verification where Ghidra's decompiler is
-ambiguous. The repository pseudocode snapshot means this can proceed without
-another bulk Ghidra export.
+Function-level semantic classification is now complete for the current Ghidra
+inventory: all 420 recognized functions have concrete roles in
+[legacy-driver-function-map.md](legacy-driver-function-map.md). The current
+quality state is 418 functions classified directly from stable pseudocode/call
+evidence and two functions marked for raw-assembly audit because Ghidra emitted
+control-flow warnings (`FUN_00011894` and `FUN_00019BB8`).
+
+The remaining static-reconstruction work is therefore no longer broad function
+discovery. It is a quality/audit phase:
+
+- verify the two warning-bearing functions against raw x86 assembly;
+- reconstruct the central DriverWorks/LeCroy vtables and their small
+  this-adjusting thunks;
+- verify SEH-sensitive transfer helpers against raw instructions where the
+  decompiler emitted synthetic exception-frame code;
+- refine higher-level class/method names when the vtable layout provides
+  stronger evidence.
+
+The complete pseudocode snapshot remains the baseline, so no further bulk
+function export is required.
