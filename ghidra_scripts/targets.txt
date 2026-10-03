@@ -1,43 +1,29 @@
-# CFDC2110 second-pass: common transfer helper and hardware object mappings
+# CFDC2110 third-pass: TX readiness and RX response path
 
-176e6
-asm:176e6
-xref:176e6
+17560
+asm:17560
+xref:17560
 
-# Helpers behind family 0/1 opcode 0x42
-15802
-asm:15802
-xref:15802
+17578
+asm:17578
+xref:17578
 
-15848
-asm:15848
-xref:15848
+160a8
+asm:160a8
+xref:160a8
 
-1586e
-asm:1586e
-xref:1586e
+1619a
+asm:1619a
+xref:1619a
 
-# Response/result staging used by family 1
-15a26
-asm:15a26
-xref:15a26
+# Transport register group context
+1785b
+asm:1785b
 
-# Hardware-object constructor / setup context
-15db8
-asm:15db8
-
-16168
-asm:16168
-
-1600e
-asm:1600e
-
-163b2
-asm:163b2
-
-# Object fields used by the relevant opcode handlers
-field:15
-field:25
-field:29
-field:2d
-field:15e
+# IRQ/event relation around the transport object
+field:100
+field:10
+field:38
+field:60
+field:88
+field:d8
