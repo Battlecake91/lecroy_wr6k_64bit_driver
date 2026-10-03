@@ -1,53 +1,53 @@
-# CFDC2110 fourth pass:
-# exact JTAG payload semantics and family-2 special hardware actions
+# CFDC2110 fifth pass:
+# resolve family-2 special register objects and refine JTAG semantics
 
-# JTAG handlers
-15acc
-asm:15acc
-15c7e
-asm:15c7e
-
-# JTAG low-level object and setup
-15802
-asm:15802
-15848
-asm:15848
-1586e
-asm:1586e
-158ee
-asm:158ee
-xref:158ee
-
-# Board setup that creates JTAGNUM/JTAGDAT/JTAGDIN
+# Main hardware-object setup / wiring
 14212
 asm:14212
+xref:14212
 
-# Family 2 handlers around opcodes 0x00..0x10
+14847
+asm:14847
+xref:14847
+
+159e2
+asm:159e2
+xref:159e2
+
+159bc
+asm:159bc
+xref:159bc
+
+# Register-object helper / copy wiring
+119bc
+asm:119bc
+xref:119bc
+
+13fa6
+asm:13fa6
+xref:13fa6
+
+11ad2
+asm:11ad2
+xref:11ad2
+
+# Family-2 special register pointers
+field:15e
+field:162
+
+# Family-2 opcodes using them
 166a8
 asm:166a8
 
-1634e
-asm:1634e
-1621a
-asm:1621a
-163b2
-asm:163b2
-16414
-asm:16414
-16490
-asm:16490
 164b8
 asm:164b8
 
-# Locate the mysterious family-2 direct register pointer
-field:15e
-field:162
-field:166
-field:16a
-field:16e
-field:172
+# Look for register descriptors likely wired into those fields
+field:c
+field:24
 
-# Find writes/owners of the hardware region used by family 2
-xref:16414
-xref:163b2
-xref:164b8
+# JTAG register descriptors for comparison
+field:104a
+field:104e
+field:1052
+field:1056
