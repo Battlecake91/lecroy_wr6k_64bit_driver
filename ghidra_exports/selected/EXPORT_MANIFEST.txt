@@ -1,41 +1,43 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 0c4c736644ca6fa63831a117ddd2efc1efa92068
+Source commit: b05d2ac144f4cee499493acc1a9c786757a8d40d
 Program: LecS65AcqDrv.sys
 
 Targets:
-  14212
-  asm:14212
-  xref:14212
-  14847
-  asm:14847
-  xref:14847
-  159e2
-  asm:159e2
-  xref:159e2
-  159bc
-  asm:159bc
-  xref:159bc
-  119bc
-  asm:119bc
-  xref:119bc
-  13fa6
-  asm:13fa6
-  xref:13fa6
-  11ad2
-  asm:11ad2
-  xref:11ad2
-  field:15e
-  field:162
   166a8
   asm:166a8
-  164b8
-  asm:164b8
-  field:c
-  field:24
-  field:104a
-  field:104e
-  field:1052
-  field:1056
+  1634e
+  asm:1634e
+  xref:1634e
+  1621a
+  asm:1621a
+  xref:1621a
+  16168
+  asm:16168
+  16414
+  asm:16414
+  xref:16414
+  16074
+  asm:16074
+  xref:16074
+  16490
+  asm:16490
+  xref:16490
+  1260e
+  asm:1260e
+  xref:1260e
+  126ee
+  asm:126ee
+  xref:126ee
+  xref:1ce14
+  xref:1ce18
+  157c4
+  asm:157c4
+  xref:157c4
+  field:186
+  field:18a
+  field:18e
+  field:192
+  field:196
 
 Exported files:
   00010380_FUN_00010380.c
@@ -477,6 +479,8 @@ Exported files:
   asm_asm_122e2.txt
   asm_asm_1232a.txt
   asm_asm_1259a.txt
+  asm_asm_1260e.txt
+  asm_asm_126ee.txt
   asm_asm_12bae.txt
   asm_asm_12cac.txt
   asm_asm_12d24.txt
@@ -501,6 +505,7 @@ Exported files:
   asm_asm_14212.txt
   asm_asm_14847.txt
   asm_asm_155d0.txt
+  asm_asm_157c4.txt
   asm_asm_15802.txt
   asm_asm_15848.txt
   asm_asm_1586e.txt
@@ -514,6 +519,7 @@ Exported files:
   asm_asm_15c7e.txt
   asm_asm_15db8.txt
   asm_asm_1600e.txt
+  asm_asm_16074.txt
   asm_asm_160a8.txt
   asm_asm_160dc.txt
   asm_asm_16168.txt
@@ -589,6 +595,11 @@ Exported files:
   field_0x16e.refs.txt
   field_0x172.refs.txt
   field_0x182.refs.txt
+  field_0x186.refs.txt
+  field_0x18a.refs.txt
+  field_0x18e.refs.txt
+  field_0x192.refs.txt
+  field_0x196.refs.txt
   field_0x24.refs.txt
   field_0x25.refs.txt
   field_0x29.refs.txt
@@ -658,6 +669,8 @@ Exported files:
   xref_xref_12184.txt
   xref_xref_121fa.txt
   xref_xref_1259a.txt
+  xref_xref_1260e.txt
+  xref_xref_126ee.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
   xref_xref_12ec2.txt
@@ -668,6 +681,7 @@ Exported files:
   xref_xref_13fa6.txt
   xref_xref_14212.txt
   xref_xref_14847.txt
+  xref_xref_157c4.txt
   xref_xref_15802.txt
   xref_xref_15848.txt
   xref_xref_1586e.txt
@@ -675,10 +689,14 @@ Exported files:
   xref_xref_159bc.txt
   xref_xref_159e2.txt
   xref_xref_15a26.txt
+  xref_xref_16074.txt
   xref_xref_160a8.txt
   xref_xref_1619a.txt
+  xref_xref_1621a.txt
+  xref_xref_1634e.txt
   xref_xref_163b2.txt
   xref_xref_16414.txt
+  xref_xref_16490.txt
   xref_xref_164b8.txt
   xref_xref_16594.txt
   xref_xref_169b4.txt
@@ -692,5 +710,7 @@ Exported files:
   xref_xref_1c8bc.txt
   xref_xref_1cd08.txt
   xref_xref_1ce10.txt
+  xref_xref_1ce14.txt
+  xref_xref_1ce18.txt
   xref_xref_1ce1c.txt
   xref_xref_1ce20.txt
