@@ -1,12 +1,43 @@
-# CFDC2110 / A5FB first-pass reconstruction
-16bba
-asm:16bba
-xref:16bba
+# CFDC2110 second-pass: common transfer helper and hardware object mappings
 
-169b4
-asm:169b4
-xref:169b4
+176e6
+asm:176e6
+xref:176e6
 
-16594
-asm:16594
-xref:16594
+# Helpers behind family 0/1 opcode 0x42
+15802
+asm:15802
+xref:15802
+
+15848
+asm:15848
+xref:15848
+
+1586e
+asm:1586e
+xref:1586e
+
+# Response/result staging used by family 1
+15a26
+asm:15a26
+xref:15a26
+
+# Hardware-object constructor / setup context
+15db8
+asm:15db8
+
+16168
+asm:16168
+
+1600e
+asm:1600e
+
+163b2
+asm:163b2
+
+# Object fields used by the relevant opcode handlers
+field:15
+field:25
+field:29
+field:2d
+field:15e
