@@ -1,0 +1,155 @@
+FUNCTION_ASM 00017578 FUN_00017578
+00017578  PUSH EBP
+00017579  MOV EBP,ESP
+0001757b  SUB ESP,0x18
+0001757e  TEST byte ptr [EBP + 0xc],0x1
+    -> Stack[0x8]
+00017582  PUSH EDI
+00017583  MOV EDI,ECX
+00017585  JZ 0x00017591
+    -> 00017591
+00017587  MOV EAX,0xc000000d
+0001758c  JMP 0x00017698
+    -> 00017698
+00017591  MOV EAX,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+00017594  AND dword ptr [EAX],0x0
+00017597  MOV EAX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+0001759a  AND dword ptr [EBP + -0x8],0x0
+    -> Stack[-0xc]
+0001759e  PUSH EBX
+0001759f  PUSH ESI
+000175a0  MOV dword ptr [EBP + 0x8],EAX
+    -> Stack[0x4]
+000175a3  LEA ESI,[EDI + 0x38]
+000175a6  PUSH dword ptr [ESI]
+000175a8  CALL dword ptr [0x0001c338]
+    -> 0001c338
+    -> EXTERNAL:0000000a READ_REGISTER_ULONG
+000175ae  MOV EBX,EAX
+000175b0  TEST BH,BH
+000175b2  JNS 0x0001764f
+    -> 0001764f
+000175b8  AND EAX,0xff
+000175bd  JBE 0x0001764f
+    -> 0001764f
+000175c3  CMP EAX,0x78
+000175c6  JBE 0x000175d1
+    -> 000175d1
+000175c8  MOV dword ptr [EBP + -0x8],0xc000000d
+    -> Stack[-0xc]
+000175cf  JMP 0x00017629
+    -> 00017629
+000175d1  MOV ECX,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+000175d4  MOV ESI,dword ptr [ECX]
+000175d6  LEA EDX,[EAX + EAX*0x1]
+000175d9  ADD ESI,EDX
+000175db  CMP ESI,dword ptr [EBP + 0xc]
+    -> Stack[0x8]
+000175de  MOV dword ptr [EBP + -0x10],EDX
+    -> Stack[-0x14]
+000175e1  JA 0x000175c8
+    -> 000175c8
+000175e3  TEST EAX,EAX
+000175e5  JBE 0x00017627
+    -> 00017627
+000175e7  MOV ESI,0x600
+000175ec  MOV dword ptr [EBP + -0xc],EAX
+    -> Stack[-0x10]
+000175ef  AND dword ptr [EBP + -0x4],0x0
+    -> Stack[-0x8]
+000175f3  PUSH 0x1
+000175f5  LEA EAX,[EBP + -0x4]
+    -> Stack[-0x8]
+000175f8  PUSH EAX
+000175f9  MOV EAX,dword ptr [EDI + 0x100]
+000175ff  MOV EAX,dword ptr [EAX + 0x10]
+00017602  ADD EAX,ESI
+00017604  PUSH EAX
+00017605  CALL dword ptr [0x0001c384]
+    -> 0001c384
+    -> EXTERNAL:0000001d READ_REGISTER_BUFFER_ULONG
+0001760b  MOV ECX,dword ptr [EBP + 0x8]
+    -> Stack[0x4]
+0001760e  MOV AX,word ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00017612  ADD dword ptr [EBP + 0x8],0x2
+    -> Stack[0x4]
+00017616  ADD ESI,0x4
+00017619  DEC dword ptr [EBP + -0xc]
+    -> Stack[-0x10]
+0001761c  MOV word ptr [ECX],AX
+0001761f  JNZ 0x000175ef
+    -> 000175ef
+00017621  MOV EDX,dword ptr [EBP + -0x10]
+    -> Stack[-0x14]
+00017624  MOV ECX,dword ptr [EBP + 0x10]
+    -> Stack[0xc]
+00017627  ADD dword ptr [ECX],EDX
+00017629  PUSH EDI
+0001762a  CALL dword ptr [0x0001c35c]
+    -> 0001c35c
+    -> EXTERNAL:00000013 KeResetEvent
+00017630  AND EBX,0xffff7fff
+00017636  MOV dword ptr [EBP + -0x4],EBX
+    -> Stack[-0x8]
+00017639  AND byte ptr [EBP + -0x4],0x0
+    -> Stack[-0x8]
+0001763d  MOVZX EAX,word ptr [EBP + -0x4]
+    -> Stack[-0x8]
+00017641  LEA ESI,[EDI + 0x38]
+00017644  PUSH EAX
+00017645  MOV ECX,ESI
+00017647  CALL 0x000107fe
+    -> 000107fe FUN_000107fe
+0001764c  MOV EBX,dword ptr [EBP + -0x4]
+    -> Stack[-0x8]
+0001764f  SHR EBX,0xe
+00017652  MOV dword ptr [EBP + -0x4],EBX
+    -> Stack[-0x8]
+00017655  AND dword ptr [EBP + -0x4],0x1
+    -> Stack[-0x8]
+00017659  JZ 0x00017689
+    -> 00017689
+0001765b  PUSH 0xfd050f80
+00017660  CALL dword ptr [0x0001c388]
+    -> 0001c388
+    -> EXTERNAL:0000001e RtlConvertLongToLargeInteger
+00017666  MOV dword ptr [EBP + -0x18],EAX
+    -> Stack[-0x1c]
+00017669  LEA EAX,[EBP + -0x18]
+    -> Stack[-0x1c]
+0001766c  PUSH EAX
+0001766d  XOR EBX,EBX
+0001766f  PUSH EBX
+00017670  PUSH EBX
+00017671  PUSH EBX
+00017672  PUSH EDI
+00017673  MOV dword ptr [EBP + -0x14],EDX
+    -> Stack[-0x18]
+00017676  CALL dword ptr [0x0001c318]
+    -> 0001c318
+    -> EXTERNAL:00000002 KeWaitForSingleObject
+0001767c  CMP EAX,EBX
+0001767e  JZ 0x00017689
+    -> 00017689
+00017680  MOV ECX,0x102
+00017685  CMP EAX,ECX
+00017687  JZ 0x0001769d
+    -> 0001769d
+00017689  CMP dword ptr [EBP + -0x4],0x1
+    -> Stack[-0x8]
+0001768d  JZ 0x000175a6
+    -> 000175a6
+00017693  MOV EAX,dword ptr [EBP + -0x8]
+    -> Stack[-0xc]
+00017696  POP ESI
+00017697  POP EBX
+00017698  POP EDI
+00017699  LEAVE
+0001769a  RET 0xc
+0001769d  MOV EAX,ECX
+0001769f  JMP 0x00017696
+    -> 00017696

@@ -1,36 +1,28 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: b58e6b90b1d521b760edd94846e5171dd73ee722
+Source commit: 8dceb853a6ee1be3d0b7f89fe5eaf48b3025a81e
 Program: LecS65AcqDrv.sys
 
 Targets:
-  176e6
-  asm:176e6
-  xref:176e6
-  15802
-  asm:15802
-  xref:15802
-  15848
-  asm:15848
-  xref:15848
-  1586e
-  asm:1586e
-  xref:1586e
-  15a26
-  asm:15a26
-  xref:15a26
-  15db8
-  asm:15db8
-  16168
-  asm:16168
-  1600e
-  asm:1600e
-  163b2
-  asm:163b2
-  field:15
-  field:25
-  field:29
-  field:2d
-  field:15e
+  17560
+  asm:17560
+  xref:17560
+  17578
+  asm:17578
+  xref:17578
+  160a8
+  asm:160a8
+  xref:160a8
+  1619a
+  asm:1619a
+  xref:1619a
+  1785b
+  asm:1785b
+  field:100
+  field:10
+  field:38
+  field:60
+  field:88
+  field:d8
 
 Exported files:
   00010380_FUN_00010380.c
@@ -375,6 +367,8 @@ Exported files:
   000174a8_FUN_000174a8.refs.txt
   000174f2_FUN_000174f2.c
   000174f2_FUN_000174f2.refs.txt
+  00017560_FUN_00017560.c
+  00017560_FUN_00017560.refs.txt
   00017578_FUN_00017578.c
   00017578_FUN_00017578.refs.txt
   000176a2_FUN_000176a2.c
@@ -503,8 +497,10 @@ Exported files:
   asm_asm_15c7e.txt
   asm_asm_15db8.txt
   asm_asm_1600e.txt
+  asm_asm_160a8.txt
   asm_asm_160dc.txt
   asm_asm_16168.txt
+  asm_asm_1619a.txt
   asm_asm_163b2.txt
   asm_asm_16544.txt
   asm_asm_16594.txt
@@ -519,6 +515,8 @@ Exported files:
   asm_asm_171de.txt
   asm_asm_172a2.txt
   asm_asm_1731c.txt
+  asm_asm_17560.txt
+  asm_asm_17578.txt
   asm_asm_176e6.txt
   asm_asm_1785b.txt
   asm_asm_179e2.txt
@@ -531,6 +529,8 @@ Exported files:
   dwords_dwords_1c500_16.txt
   dwords_dwords_1c62c_16.txt
   dwords_dwords_1c8bc_16.txt
+  field_0x10.refs.txt
+  field_0x100.refs.txt
   field_0x1006.refs.txt
   field_0x100a.refs.txt
   field_0x101e.refs.txt
@@ -564,10 +564,14 @@ Exported files:
   field_0x2e0.refs.txt
   field_0x318.refs.txt
   field_0x334.refs.txt
+  field_0x38.refs.txt
   field_0x3a6.refs.txt
+  field_0x60.refs.txt
+  field_0x88.refs.txt
   field_0xd00.refs.txt
   field_0xd28.refs.txt
   field_0xd50.refs.txt
+  field_0xd8.refs.txt
   field_0xe98.refs.txt
   raw_104a0.asm.txt
   raw_1085e.asm.txt
@@ -633,9 +637,13 @@ Exported files:
   xref_xref_1586e.txt
   xref_xref_159e2.txt
   xref_xref_15a26.txt
+  xref_xref_160a8.txt
+  xref_xref_1619a.txt
   xref_xref_16594.txt
   xref_xref_169b4.txt
   xref_xref_16bba.txt
+  xref_xref_17560.txt
+  xref_xref_17578.txt
   xref_xref_176e6.txt
   xref_xref_1785b.txt
   xref_xref_1c500.txt
