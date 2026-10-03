@@ -302,6 +302,46 @@ That matches the private-build component in file version `6.1.1.1002`.
 
 ## Dallas handlers
 
+### Dallas WRITE static reconstruction update (2026-10-03)
+
+The complete-driver pseudocode pass confirms the original
+`0x00223088` write path in considerably more detail.
+
+Outer handler `FUN_00011F54` accepts 1..0x200 input bytes, writes the range
+in chunks of at most 0x20 bytes through `FUN_00016D90`, then reads the full
+range back through `FUN_00016F2C` and compares every byte. A failed verified
+write is retried up to three times.
+
+`FUN_00016D90` implements the DS2433 scratchpad programming protocol:
+
+```text
+reset
+CC          SKIP ROM
+0F          WRITE SCRATCHPAD
+TA1 TA2
+<data>
+
+reset
+CC          SKIP ROM
+AA          READ SCRATCHPAD
+read TA1 TA2 ES
+read data back and verify
+
+reset
+CC          SKIP ROM
+55          COPY SCRATCHPAD
+TA1 TA2 ES
+~100 ms programming delay
+```
+
+The low-level helper itself also retries its scratchpad/copy sequence up to
+three times. This proves that Dallas WRITE is an intentionally verified
+production path in the original x86 driver rather than a dead or incomplete
+stub. The x64 implementation may therefore eventually reproduce it, but live
+testing remains inappropriate on the licensed original EEPROM until a
+disposable DS2433 test path exists.
+
+
 **Purpose and implementation distinction (user clarification,
 2026-09-29):** the PCI card's U11 DS2433 is the
 **XStream license-key EEPROM**, not the EEPROM for
