@@ -68,7 +68,10 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (target.toLowerCase().startsWith("field:")) {
+                if (target.equalsIgnoreCase("inventory")) {
+                    writeFunctionInventory();
+                }
+                else if (target.toLowerCase().startsWith("field:")) {
                     writeFieldScan(target.substring("field:".length()));
                 }
                 else if (target.toLowerCase().startsWith("dwords:")) {
@@ -416,6 +419,57 @@ public class ExportSelected extends GhidraScript {
 
         if (!found) {
             printerr("Symbol not found: " + name);
+        }
+    }
+
+
+    private void writeFunctionInventory() throws Exception {
+        File file = new File(outDir, "FUNCTION_INVENTORY.txt");
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+            pw.println("FUNCTION_INVENTORY");
+            pw.println("entry|name|body_bytes|selected_c_present|incoming_refs|outgoing_functions");
+
+            Iterator<Function> functions = fm.getFunctions(true).iterator();
+            while (functions.hasNext()) {
+                Function f = functions.next();
+                Address entry = f.getEntryPoint();
+                String stem = entry + "_" + sanitize(f.getName());
+                File selectedC = new File(outDir, stem + ".c");
+
+                long bodyBytes = f.getBody().getNumAddresses();
+
+                int incomingCount = 0;
+                ReferenceIterator refsTo = rm.getReferencesTo(entry);
+                while (refsTo.hasNext()) {
+                    refsTo.next();
+                    incomingCount++;
+                }
+
+                Set<String> outgoing = new HashSet<>();
+                InstructionIterator ins =
+                    currentProgram.getListing().getInstructions(f.getBody(), true);
+                while (ins.hasNext()) {
+                    Instruction inst = ins.next();
+                    for (Reference r : inst.getReferencesFrom()) {
+                        Function tf = fm.getFunctionAt(r.getToAddress());
+                        if (tf != null) {
+                            outgoing.add(tf.getEntryPoint().toString());
+                        }
+                    }
+                }
+
+                pw.print(entry);
+                pw.print("|");
+                pw.print(f.getName());
+                pw.print("|");
+                pw.print(bodyBytes);
+                pw.print("|");
+                pw.print(selectedC.exists() ? "yes" : "no");
+                pw.print("|");
+                pw.print(incomingCount);
+                pw.print("|");
+                pw.println(outgoing.size());
+            }
         }
     }
 
