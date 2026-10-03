@@ -336,6 +336,13 @@ Important parser behavior:
 After the channel list, `FUN_00013C84` stores one global `config` DWORD and
 one global `requested_bytes` DWORD. These are not repeated per channel.
 
+A zero-channel request is a legacy bug case rather than a valid empty transfer:
+`FUN_00013C84` skips the channel loop and later executes an unsigned division
+by `channel_count` without first checking for zero. With
+`channel_count == 0` this reaches a divide-by-zero fault instead of returning a
+defined NTSTATUS. The x64 replacement must reject zero explicitly and must not
+reproduce this failure mode.
+
 The parser then enforces transfer-size constraints before invoking the common
 acquisition orchestrator:
 
