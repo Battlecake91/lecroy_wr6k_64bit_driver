@@ -1,29 +1,53 @@
-# CFDC2110 third-pass: TX readiness and RX response path
+# CFDC2110 fourth pass:
+# exact JTAG payload semantics and family-2 special hardware actions
 
-17560
-asm:17560
-xref:17560
+# JTAG handlers
+15acc
+asm:15acc
+15c7e
+asm:15c7e
 
-17578
-asm:17578
-xref:17578
+# JTAG low-level object and setup
+15802
+asm:15802
+15848
+asm:15848
+1586e
+asm:1586e
+158ee
+asm:158ee
+xref:158ee
 
-160a8
-asm:160a8
-xref:160a8
+# Board setup that creates JTAGNUM/JTAGDAT/JTAGDIN
+14212
+asm:14212
 
-1619a
-asm:1619a
-xref:1619a
+# Family 2 handlers around opcodes 0x00..0x10
+166a8
+asm:166a8
 
-# Transport register group context
-1785b
-asm:1785b
+1634e
+asm:1634e
+1621a
+asm:1621a
+163b2
+asm:163b2
+16414
+asm:16414
+16490
+asm:16490
+164b8
+asm:164b8
 
-# IRQ/event relation around the transport object
-field:100
-field:10
-field:38
-field:60
-field:88
-field:d8
+# Locate the mysterious family-2 direct register pointer
+field:15e
+field:162
+field:166
+field:16a
+field:16e
+field:172
+
+# Find writes/owners of the hardware region used by family 2
+xref:16414
+xref:163b2
+xref:164b8
