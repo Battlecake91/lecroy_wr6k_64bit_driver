@@ -363,7 +363,7 @@ For each channel it writes five indexed values through the MAMDAT register
 wrapper and then launches the programming sequence with `MAMPGO = 0x105`:
 
 ```text
-MAMDAT slot 0 = 0xE000 | channel_id
+MAMDAT slot 0 = 0x0E00 | channel_id
 MAMDAT slot 1 = config & 0xFFFF
 MAMDAT slot 2 = (config >> 16) & 0xFFFF
 MAMDAT slot 3 = per_channel_bytes & 0xFFFF
@@ -374,9 +374,10 @@ MAMPGO         = 0x105
 The indexed MAMDAT helper `FUN_000179E2` uses bits 16..23 of the write value
 as the cache/index selector and the low 16 bits as the actual slot payload;
 it suppresses redundant hardware writes when the cached 16-bit value for that
-slot already matches. This corrects an earlier documentation error that listed
-slot 0 as `0x0E00 | channel`; the original x86 instructions unambiguously
-construct `0xE000 | channel`.
+slot already matches. Instruction-level reconstruction confirms slot 0 as `0x0E00 | channel`.
+`FUN_00017D20` constructs the four input bytes `FB A5 <channel> 0E`; on x86
+little-endian the upper WORD consumed by `FUN_00017C16` is therefore
+`0x0E00 | channel`.
 
 The per-channel size supplied to this helper is derived from
 `requested_bytes / channel_count`.
