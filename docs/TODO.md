@@ -1,6 +1,6 @@
 # Development TODO
 
-- [ ] Complete semantic reconstruction of the full legacy `LecS65AcqDrv.sys` function inventory. All 420 Ghidra-recognized functions now have repository pseudocode snapshots. Classify every function by role, assign semantic names where evidence permits, and request raw ASM only for ambiguous or bit-sensitive cases. Do not exclude DriverWorks/PnP/power/runtime support merely because it is not LeCroy-specific.
+- [ ] Finish the legacy-driver static quality audit. All 420 Ghidra-recognized functions now have repository pseudocode snapshots and semantic classifications; 418 are directly classified and two (`0x11894`, `0x19BB8`) remain marked for raw-ASM control-flow verification. The next focused pass also reconstructs the central DriverWorks/LeCroy vtables, this-adjusting thunks and SEH-sensitive transfer helpers. Do not exclude DriverWorks/PnP/power/runtime support merely because it is not LeCroy-specific.
 
 This file tracks unfinished work and deferred features. The current, verified capabilities are summarized in the [README](../README.md); detailed historical evidence belongs in the technical docs and [engineering handoff](next-chat-handoff.md). Entries here are not claims of implemented functionality.
 
