@@ -192,10 +192,63 @@ The original implementation resolves the selected mapped base and executes
 corresponding direct read path using the same region/offset selector and
 returns the DWORD value through the normal response-buffer staging path.
 
+### Recovered JTAG and family-2 special-register semantics
+
+Further Ghidra analysis on 2026-10-03 resolves family 0/1 opcode 0x42 as the
+board JTAG path. The board register descriptors are named directly by the
+original driver:
+
+```text
+BAR-backed base + 0x20  JTAGNUM
+BAR-backed base + 0x24  JTAGDAT
+BAR-backed base + 0x28  JTAGDIN
+```
+
+`FUN_00015802` programs JTAGNUM, `FUN_00015848` programs JTAGDAT and
+`FUN_0001586E` reads JTAGDIN. The low-level encoding is:
+
+```text
+JTAGNUM = ((selector != 0) << 8) | (bit_count & 0x0F)
+```
+
+A 16-bit block is therefore encoded with a zero low nibble. Transfers longer
+than 16 bits are split into 16-bit blocks. Each input data block supplies two
+16-bit values; `FUN_00015848` writes them as one DWORD using
+`(first_word << 16) | second_word`. Family 0 opcode 0x42 performs the JTAG
+shift/write operation without staging returned JTAG data. Family 1 opcode 0x42
+uses the same JTAGNUM/JTAGDAT sequence and additionally reads JTAGDIN into the
+response buffer. The exact electrical/domain meaning of the two 16-bit halves
+is not yet proven and should not be named speculatively.
+
+The CFDC2110 object is embedded at board-object offset `+0xEA8`. This resolves
+two previously opaque family-2 fields through their outer-object aliases:
+
+```text
+CFDC2110 +0x15E == board +0x1006 -> pointer to ITMODE descriptor
+CFDC2110 +0x162 == board +0x100A -> pointer to LEDCTL descriptor
+```
+
+`FUN_00014847` wires these aliases after creating the named board register
+descriptors. Consequently the family-2 direct-register commands are now
+identified as:
+
+```text
+family 2 / opcode 0x05 -> ITMODE write sequence 7, then 3
+family 2 / opcode 0x09 -> ITMODE write value 3
+family 2 / opcode 0x0A -> ITMODE write value 2
+family 2 / opcode 0x10 -> LEDCTL two-bit control write from payload bytes
+```
+
+The original register descriptor keeps the mapped MMIO address at descriptor
+offset 0 and a cached/shadow value at descriptor offset +0x24. The family-2
+ITMODE cases update that shadow and issue the corresponding
+`WRITE_REGISTER_ULONG`.
+
 These findings recover the common CFDC2110 physical request/response transport,
-but they do not by themselves assign complete domain-level meanings to every
-family/opcode payload. Continue opcode-specific analysis only where native x64
-compatibility or an observed runtime difference requires it.
+JTAG path and several family-2 board-control operations, but they do not by
+themselves assign complete domain-level meanings to every family/opcode
+payload. Continue opcode-specific analysis only where native x64 compatibility
+or an observed runtime difference requires it.
 
 ## User-mode analysis
 
