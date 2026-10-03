@@ -1,61 +1,45 @@
-# CFDC2138 second focused pass:
-# recover exact MAMSEQ encoding and register wiring
+# CFDC2138 final static validation pass:
+# close boundary conditions and failure semantics
+
+13c84
+asm:13c84
+
+17b72
+asm:17b72
+xref:17b72
+
+17ddc
+asm:17ddc
+
+17d20
+asm:17d20
 
 17ee0
 asm:17ee0
-xref:17ee0
 
-17cdc
-asm:17cdc
-xref:17cdc
+12d6a
+asm:12d6a
 
-179e2
-asm:179e2
-xref:179e2
+17478
+asm:17478
 
-17c16
-asm:17c16
-xref:17c16
+171de
+asm:171de
 
-# Container/index helpers used to build the sequence
-17eac
-asm:17eac
-xref:17eac
+18168
+asm:18168
 
-17dac
-asm:17dac
-xref:17dac
+# allocator / dynamic container growth
+17b00
+asm:17b00
+12184
+asm:12184
 
-13f3c
-asm:13f3c
-xref:13f3c
+# exact return-status helpers / cleanup paths
+17e58
+asm:17e58
+xref:17e58
 
-1326e
-asm:1326e
-xref:1326e
-
-# Locate construction/wiring of the MAM programming object
-17ba6
-asm:17ba6
-xref:17ba6
-
-17bc8
-asm:17bc8
-xref:17bc8
-
-17f4e
-asm:17f4e
-xref:17f4e
-
-# Relevant object fields
-field:1086
-field:108a
-field:108e
-field:1092
-field:1096
-field:109a
-field:109e
-
-# Search board setup around MAMDAT/MAMPGO/MAMSEQ descriptors
-14847
-asm:14847
+120dc
+asm:120dc
+xref:120dc
