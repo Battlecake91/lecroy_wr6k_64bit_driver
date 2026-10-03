@@ -6,6 +6,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 - Architecture overview: [legacy-driver-architecture.md](legacy-driver-architecture.md)
 - `High` means the role is directly established by API calls, register effects, strings, known ABI routing or reconstructed call flow.
 - `Pending` means pseudocode is available but an exact semantic name has not yet been justified. These entries are not being discarded.
+- `ASM audit` means the semantic role is substantially known but Ghidra emitted a control-flow warning that must be checked against raw x86 instructions.
 
 | Address | Ghidra name | Subsystem | Semantic role | Status |
 |---|---|---|---|---|
@@ -51,7 +52,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x11390` | `FUN_00011390` | IRQ/events/legacy IOCTL | LeCroy DPC dispatcher | High |
 | `0x11532` | `FUN_00011532` | IRQ/events/legacy IOCTL | CLecS65AcqDrvDevice deleting destructor | High |
 | `0x115C4` | `FUN_000115c4` | IRQ/events/legacy IOCTL | StartDevice resource mapping + board initialization + IRQ connect | High |
-| `0x11894` | `FUN_00011894` | IRQ/events/legacy IOCTL | cancel routine for active/queued IRP with cancel-spinlock ownership check | High |
+| `0x11894` | `FUN_00011894` | IRQ/events/legacy IOCTL | cancel routine for active/queued IRP with cancel-spinlock ownership check; final derived-hardware vtable call needs raw-ASM confirmation | ASM audit |
 | `0x11914` | `FUN_00011914` | IRQ/events/legacy IOCTL | owned buffer/object release | High |
 | `0x11946` | `FUN_00011946` | IRQ/events/legacy IOCTL | small owned-buffer object constructor | High |
 | `0x11962` | `FUN_00011962` | IRQ/events/legacy IOCTL | register descriptor constructor | High |
@@ -328,7 +329,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x19A00` | `FUN_00019a00` | DriverWorks/WDM support | cancel pending power IRP | High |
 | `0x19B82` | `FUN_00019b82` | DriverWorks/WDM support | framework spinlock/list object constructor | High |
 | `0x19BA6` | `FUN_00019ba6` | DriverWorks/WDM support | spinlock acquire wrapper | High |
-| `0x19BB8` | `FUN_00019bb8` | DriverWorks/WDM support | spinlock release wrapper | High |
+| `0x19BB8` | `FUN_00019bb8` | DriverWorks/WDM support | spinlock release wrapper; Ghidra lost the final control-flow form | ASM audit |
 | `0x19BC6` | `FUN_00019bc6` | DriverWorks/WDM support | locked container operation wrapper around intrusive-list front/pop helper | High |
 | `0x19BE4` | `FUN_00019be4` | DriverWorks/WDM support | locked intrusive-list lookup wrapper | High |
 | `0x19C08` | `FUN_00019c08` | DriverWorks/WDM support | locked intrusive-list insertion wrapper | High |
