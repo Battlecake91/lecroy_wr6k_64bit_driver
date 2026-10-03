@@ -233,11 +233,19 @@ descriptors. Consequently the family-2 direct-register commands are now
 identified as:
 
 ```text
+family 2 / opcode 0x02 -> INTST write value 0 or 1 at region 0 + 0x80
 family 2 / opcode 0x05 -> ITMODE write sequence 7, then 3
 family 2 / opcode 0x09 -> ITMODE write value 3
 family 2 / opcode 0x0A -> ITMODE write value 2
 family 2 / opcode 0x10 -> LEDCTL two-bit control write from payload bytes
 ```
+
+The region mapping is also statically anchored: `FUN_000115C4` creates three
+resource/register-region objects for indices 0, 1 and 2 and passes them to
+`FUN_00014847` in that order. `FUN_000159E2` stores the resulting region-0
+object at CFDC2110 field `+0x29`; `FUN_000163B2` writes
+`region0.base + 0x80`. The same board setup names that exact register
+`INTST`, so family 2 opcode 0x02 is an interrupt-test register control path.
 
 The original register descriptor keeps the mapped MMIO address at descriptor
 offset 0 and a cached/shadow value at descriptor offset +0x24. The family-2
