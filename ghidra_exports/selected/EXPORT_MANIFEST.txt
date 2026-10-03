@@ -1,9 +1,38 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 42ddcf19a2104a52bcbd82611640c620b081f660
+Source commit: d9cb3ed8b95e15f8301713a0ff7eacb7a22fca67
 Program: LecS65AcqDrv.sys
 
 Targets:
-  inventory
+  1272a
+  asm:1272a
+  xref:1272a
+  12832
+  asm:12832
+  xref:12832
+  130ea
+  asm:130ea
+  xref:130ea
+  131b5
+  asm:131b5
+  xref:131b5
+  13954
+  asm:13954
+  xref:13954
+  17184
+  asm:17184
+  xref:17184
+  174c8
+  asm:174c8
+  xref:174c8
+  138b2
+  asm:138b2
+  xref:138b2
+  16500
+  asm:16500
+  xref:16500
+  16524
+  asm:16524
+  xref:16524
 
 Exported files:
   00010380_FUN_00010380.c
@@ -104,6 +133,10 @@ Exported files:
   0001260e_FUN_0001260e.refs.txt
   000126ee_FUN_000126ee.c
   000126ee_FUN_000126ee.refs.txt
+  0001272a_FUN_0001272a.c
+  0001272a_FUN_0001272a.refs.txt
+  00012832_FUN_00012832.c
+  00012832_FUN_00012832.refs.txt
   0001286e_FUN_0001286e.c
   0001286e_FUN_0001286e.refs.txt
   000128bc_FUN_000128bc.c
@@ -140,6 +173,10 @@ Exported files:
   00012f30_FUN_00012f30.refs.txt
   00012fde_FUN_00012fde.c
   00012fde_FUN_00012fde.refs.txt
+  000130ea_FUN_000130ea.c
+  000130ea_FUN_000130ea.refs.txt
+  000131b5_FUN_000131b5.c
+  000131b5_FUN_000131b5.refs.txt
   00013230_FUN_00013230.c
   00013230_FUN_00013230.refs.txt
   0001326e_FUN_0001326e.c
@@ -162,8 +199,12 @@ Exported files:
   000137c4_FUN_000137c4.refs.txt
   0001381e_FUN_0001381e.c
   0001381e_FUN_0001381e.refs.txt
+  000138b2_FUN_000138b2.c
+  000138b2_FUN_000138b2.refs.txt
   000138d4_FUN_000138d4.c
   000138d4_FUN_000138d4.refs.txt
+  00013954_FUN_00013954.c
+  00013954_FUN_00013954.refs.txt
   00013a2e_FUN_00013a2e.c
   00013a2e_FUN_00013a2e.refs.txt
   00013a40_FUN_00013a40.c
@@ -302,6 +343,10 @@ Exported files:
   00016490_FUN_00016490.refs.txt
   000164b8_FUN_000164b8.c
   000164b8_FUN_000164b8.refs.txt
+  00016500_FUN_00016500.c
+  00016500_FUN_00016500.refs.txt
+  00016524_FUN_00016524.c
+  00016524_FUN_00016524.refs.txt
   00016544_FUN_00016544.c
   00016544_FUN_00016544.refs.txt
   00016594_FUN_00016594.c
@@ -336,6 +381,8 @@ Exported files:
   000170ba_FUN_000170ba.refs.txt
   000170fa_FUN_000170fa.c
   000170fa_FUN_000170fa.refs.txt
+  00017184_FUN_00017184.c
+  00017184_FUN_00017184.refs.txt
   000171de_FUN_000171de.c
   000171de_FUN_000171de.refs.txt
   000172a2_FUN_000172a2.c
@@ -346,6 +393,8 @@ Exported files:
   00017478_FUN_00017478.refs.txt
   000174a8_FUN_000174a8.c
   000174a8_FUN_000174a8.refs.txt
+  000174c8_FUN_000174c8.c
+  000174c8_FUN_000174c8.refs.txt
   000174f2_FUN_000174f2.c
   000174f2_FUN_000174f2.refs.txt
   00017560_FUN_00017560.c
@@ -447,6 +496,8 @@ Exported files:
   asm_asm_1259a.txt
   asm_asm_1260e.txt
   asm_asm_126ee.txt
+  asm_asm_1272a.txt
+  asm_asm_12832.txt
   asm_asm_12bae.txt
   asm_asm_12cac.txt
   asm_asm_12d24.txt
@@ -454,6 +505,8 @@ Exported files:
   asm_asm_12e72.txt
   asm_asm_12eae.txt
   asm_asm_12ede.txt
+  asm_asm_130ea.txt
+  asm_asm_131b5.txt
   asm_asm_13230.txt
   asm_asm_1326e.txt
   asm_asm_13434.txt
@@ -461,7 +514,9 @@ Exported files:
   asm_asm_13768.txt
   asm_asm_137c4.txt
   asm_asm_1381e.txt
+  asm_asm_138b2.txt
   asm_asm_138d4.txt
+  asm_asm_13954.txt
   asm_asm_13a2e.txt
   asm_asm_13a40.txt
   asm_asm_13c84.txt
@@ -500,6 +555,8 @@ Exported files:
   asm_asm_16414.txt
   asm_asm_16490.txt
   asm_asm_164b8.txt
+  asm_asm_16500.txt
+  asm_asm_16524.txt
   asm_asm_16544.txt
   asm_asm_16594.txt
   asm_asm_165a6.txt
@@ -510,10 +567,12 @@ Exported files:
   asm_asm_16c92.txt
   asm_asm_16d90.txt
   asm_asm_16f2c.txt
+  asm_asm_17184.txt
   asm_asm_171de.txt
   asm_asm_172a2.txt
   asm_asm_1731c.txt
   asm_asm_17478.txt
+  asm_asm_174c8.txt
   asm_asm_17560.txt
   asm_asm_17578.txt
   asm_asm_176e6.txt
@@ -667,14 +726,20 @@ Exported files:
   xref_xref_1259a.txt
   xref_xref_1260e.txt
   xref_xref_126ee.txt
+  xref_xref_1272a.txt
+  xref_xref_12832.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
   xref_xref_12d6a.txt
   xref_xref_12ec2.txt
+  xref_xref_130ea.txt
+  xref_xref_131b5.txt
   xref_xref_13230.txt
   xref_xref_1326e.txt
   xref_xref_13434.txt
   xref_xref_134ae.txt
+  xref_xref_138b2.txt
+  xref_xref_13954.txt
   xref_xref_13c84.txt
   xref_xref_13f3c.txt
   xref_xref_13fa6.txt
@@ -700,11 +765,15 @@ Exported files:
   xref_xref_16414.txt
   xref_xref_16490.txt
   xref_xref_164b8.txt
+  xref_xref_16500.txt
+  xref_xref_16524.txt
   xref_xref_16594.txt
   xref_xref_169b4.txt
   xref_xref_16bba.txt
+  xref_xref_17184.txt
   xref_xref_171de.txt
   xref_xref_17478.txt
+  xref_xref_174c8.txt
   xref_xref_17560.txt
   xref_xref_17578.txt
   xref_xref_176e6.txt
