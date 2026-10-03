@@ -1,55 +1,52 @@
-# CFDC2110 sixth pass:
-# close remaining family-2 opcode semantics
+# CFDC2138 first focused pass:
+# recover complete buffered acquisition-transfer parser and all accepted shapes
 
-166a8
-asm:166a8
+141dc
+asm:141dc
+xref:141dc
 
-# opcode 0 / 1 timing-event helpers
-1634e
-asm:1634e
-xref:1634e
+13c84
+asm:13c84
+xref:13c84
 
-1621a
-asm:1621a
-xref:1621a
+# shared acquisition orchestrator
+12d6a
+asm:12d6a
+xref:12d6a
 
-# opcode 3 transport/send path
-16168
-asm:16168
+# selected transfer entry lookup
+18168
+asm:18168
+xref:18168
 
-# opcode 4 INTST pulse path
-16414
-asm:16414
-xref:16414
+# synchronous transfer launch/wait path
+171de
+asm:171de
+xref:171de
 
-16074
-asm:16074
-xref:16074
+# transfer programming helpers
+17478
+asm:17478
+xref:17478
 
-# opcode 0x40 reset/reinit path
-16490
-asm:16490
-xref:16490
+15536
+asm:15536
+xref:15536
 
-1260e
-asm:1260e
-xref:1260e
+1557c
+asm:1557c
+xref:1557c
 
-126ee
-asm:126ee
-xref:126ee
+# relevant acquisition register fields / state
+field:100
+field:1086
+field:10a2
+field:10ca
+field:116e
+field:118e
 
-# state bits involved in opcode 4 / interrupt handling
-xref:1ce14
-xref:1ce18
-
-# event/timer object used by opcodes 0/1/2
-157c4
-asm:157c4
-xref:157c4
-
-field:186
-field:18a
-field:18e
-field:192
-field:196
+# Find input parsing around channel/config records
+field:60
+field:64
+field:68
+field:6c
