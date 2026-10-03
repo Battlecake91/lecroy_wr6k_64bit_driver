@@ -1,179 +1,17 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 2bf8d1ced5ec28b1d3da6025ce865e5d987814e1
+Source commit: 93a5e46902d4840cc406d2db60cc86c47a5cde08
 Program: LecS65AcqDrv.sys
 
 Targets:
-  15db8
-  160dc
-  16168
-  165a6
-  166a8
-  167f4
-  16a66
-  171de
-  1731c
-  18194
-  12fde
-  1573e
-  15772
-  15c7e
-  15a26
-  15802
-  15848
-  1586e
-  10380
-  15e80
-  15fd8
-  16962
-  158c0
-  155d0
-  1588e
-  1236e
-  16074
-  115c4
-  14847
-  159e2
-  1340c
-  15980
-  15990
-  159a0
-  159b0
-  159c0
-  157c4
-  10fc0
-  11000
-  11040
-  11080
-  128bc
-  12ada
-  12a5e
-  12cac
-  12c18
-  12d24
-  12386
-  123b4
-  124c2
-  1259a
-  12290
-  17a98
-  120fa
-  11a00
-  13f70
-  19362
-  11008
-  11010
-  11014
-  11018
-  10f30
-  10e3a
-  10da0
-  10f90
-  10fa0
-  15cc0
-  15cf0
-  15d20
-  15d50
-  15d70
-  asm:15c7e
-  11f54
-  asm:11f54
-  xref:11f54
-  16d90
-  16f2c
-  asm:16d90
-  asm:16f2c
-  field:116a
-  asm:12bae
-  asm:12d24
-  field:138
-  asm:10b30
-  asm:115c4
-  asm:13a40
-  asm:12eae
-  asm:11e46
-  xref:12bae
-  xref:12d24
-  field:1347
-  field:1348
-  field:1349
-  field:134a
-  field:134b
-  field:134c
-  field:134d
-  field:1167
-  field:1168
-  field:1169
-  field:116b
-  field:116c
-  field:116d
-  field:1340
-  field:1160
-  asm:13a2e
-  asm:12ede
-  asm:10a88
-  asm:104a0
-  xref:12ec2
-  xref:1ce10
-  xref:1ce1c
-  xref:1c62c
-  xref:1c500
-  dwords:1c62c:16
-  dwords:1c500:16
-  dwords:1c8bc:16
-  asm:12cac
-  asm:1259a
-  asm:11cff
-  asm:107fe
-  asm:13fa6
-  asm:13f3c
-  asm:13f70
-  asm:17a98
-  asm:120fa
-  xref:1259a
-  xref:11cff
-  xref:1cd08
-  1326e
-  13230
-  13434
-  134ae
-  133c4
-  14212
-  asm:1326e
-  asm:13230
-  asm:13434
-  asm:134ae
-  asm:14212
-  asm:14847
-  xref:107fe
-  xref:13fa6
-  xref:13434
-  xref:1326e
-  xref:13230
-  xref:134ae
-  xref:14847
-  12184
-  12166
-  1785b
-  16c92
-  179e2
-  asm:12184
-  asm:121fa
-  asm:12166
-  asm:1785b
-  asm:159e2
-  asm:120dc
-  asm:16c92
-  asm:179e2
-  xref:12184
-  xref:121fa
-  xref:12166
-  xref:1785b
-  xref:159e2
-  xref:120dc
-  xref:1ce20
-  field:318
-  field:334
-  field:11ee
+  16bba
+  asm:16bba
+  xref:16bba
+  169b4
+  asm:169b4
+  xref:169b4
+  16594
+  asm:16594
+  xref:16594
 
 Exported files:
   00010380_FUN_00010380.c
@@ -645,9 +483,12 @@ Exported files:
   asm_asm_15c7e.txt
   asm_asm_160dc.txt
   asm_asm_16544.txt
+  asm_asm_16594.txt
   asm_asm_165a6.txt
   asm_asm_166a8.txt
+  asm_asm_169b4.txt
   asm_asm_16a66.txt
+  asm_asm_16bba.txt
   asm_asm_16c92.txt
   asm_asm_16d90.txt
   asm_asm_16f2c.txt
@@ -759,6 +600,9 @@ Exported files:
   xref_xref_13fa6.txt
   xref_xref_14847.txt
   xref_xref_159e2.txt
+  xref_xref_16594.txt
+  xref_xref_169b4.txt
+  xref_xref_16bba.txt
   xref_xref_1785b.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
