@@ -1,0 +1,5 @@
+FIELD_SCAN 0x16e (366)
+MATCHES
+00011abe FUN_00011aa6  MOV dword ptr [ECX + 0x16e],EAX
+0001596d FUN_000158ee  MOV dword ptr [ESI + 0x16e],EBX
+00015f9c FUN_00015f7c  MOV ECX,dword ptr [ESI + 0x16e]

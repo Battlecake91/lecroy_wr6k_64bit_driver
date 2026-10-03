@@ -1,28 +1,46 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 8dceb853a6ee1be3d0b7f89fe5eaf48b3025a81e
+Source commit: 7975800e109797142141a147889c1d4f247ae437
 Program: LecS65AcqDrv.sys
 
 Targets:
-  17560
-  asm:17560
-  xref:17560
-  17578
-  asm:17578
-  xref:17578
-  160a8
-  asm:160a8
-  xref:160a8
-  1619a
-  asm:1619a
-  xref:1619a
-  1785b
-  asm:1785b
-  field:100
-  field:10
-  field:38
-  field:60
-  field:88
-  field:d8
+  15acc
+  asm:15acc
+  15c7e
+  asm:15c7e
+  15802
+  asm:15802
+  15848
+  asm:15848
+  1586e
+  asm:1586e
+  158ee
+  asm:158ee
+  xref:158ee
+  14212
+  asm:14212
+  166a8
+  asm:166a8
+  1634e
+  asm:1634e
+  1621a
+  asm:1621a
+  163b2
+  asm:163b2
+  16414
+  asm:16414
+  16490
+  asm:16490
+  164b8
+  asm:164b8
+  field:15e
+  field:162
+  field:166
+  field:16a
+  field:16e
+  field:172
+  xref:16414
+  xref:163b2
+  xref:164b8
 
 Exported files:
   00010380_FUN_00010380.c
@@ -491,9 +509,11 @@ Exported files:
   asm_asm_1586e.txt
   asm_asm_1588e.txt
   asm_asm_158c0.txt
+  asm_asm_158ee.txt
   asm_asm_159bc.txt
   asm_asm_159e2.txt
   asm_asm_15a26.txt
+  asm_asm_15acc.txt
   asm_asm_15c7e.txt
   asm_asm_15db8.txt
   asm_asm_1600e.txt
@@ -501,7 +521,12 @@ Exported files:
   asm_asm_160dc.txt
   asm_asm_16168.txt
   asm_asm_1619a.txt
+  asm_asm_1621a.txt
+  asm_asm_1634e.txt
   asm_asm_163b2.txt
+  asm_asm_16414.txt
+  asm_asm_16490.txt
+  asm_asm_164b8.txt
   asm_asm_16544.txt
   asm_asm_16594.txt
   asm_asm_165a6.txt
@@ -557,6 +582,11 @@ Exported files:
   field_0x138.refs.txt
   field_0x15.refs.txt
   field_0x15e.refs.txt
+  field_0x162.refs.txt
+  field_0x166.refs.txt
+  field_0x16a.refs.txt
+  field_0x16e.refs.txt
+  field_0x172.refs.txt
   field_0x182.refs.txt
   field_0x25.refs.txt
   field_0x29.refs.txt
@@ -635,10 +665,14 @@ Exported files:
   xref_xref_15802.txt
   xref_xref_15848.txt
   xref_xref_1586e.txt
+  xref_xref_158ee.txt
   xref_xref_159e2.txt
   xref_xref_15a26.txt
   xref_xref_160a8.txt
   xref_xref_1619a.txt
+  xref_xref_163b2.txt
+  xref_xref_16414.txt
+  xref_xref_164b8.txt
   xref_xref_16594.txt
   xref_xref_169b4.txt
   xref_xref_16bba.txt
