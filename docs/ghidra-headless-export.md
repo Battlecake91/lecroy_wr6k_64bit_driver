@@ -14,7 +14,7 @@ The Java script is used because standard `analyzeHeadless` does not load PyGhidr
 
 A target may be a function address such as `1619a` or `0x1619a`, or a symbol/import name such as `KeSetEvent`.
 
-For address targets the script exports decompiled C plus compact incoming and outgoing function references. For symbol targets it exports references and containing caller functions.
+For address targets the script exports decompiled C plus compact incoming and outgoing function references. For symbol targets it exports references and containing caller functions. The special target `inventory` writes `FUNCTION_INVENTORY.txt`, listing every function Ghidra currently recognizes together with body size, whether selected pseudocode has already been exported, and compact incoming/outgoing reference counts.
 
 ## Windows command template
 
@@ -58,6 +58,6 @@ git push
 
 ## Review rule
 
-Keep exports narrow. Prefer a small set of functions and symbol XREFs per iteration rather than exporting the whole binary. This reduces repository churn and keeps AI review/token usage focused.
+Keep pseudocode exports narrow. Prefer a small set of functions and symbol XREFs per iteration rather than exporting the whole binary. Use the `inventory` target when a complete coverage audit is needed; it gives a full function census without flooding the repository with decompiled C for framework/CRT/helper code.
 
 Do not replay unknown CFDC2110 commands on real hardware. Static analysis and passive traces remain the preferred evidence sources.
