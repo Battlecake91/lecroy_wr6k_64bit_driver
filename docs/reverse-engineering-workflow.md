@@ -434,34 +434,64 @@ rather than silently reproducing the original six-bit truncation, and require
 an independently registered transfer object of the matching byte size before
 touching acquisition hardware.
 
+## Complete legacy-driver reconstruction goal
+
+The reverse-engineering scope now intentionally extends beyond the minimum
+needed for the x64 port. The project goal is to reconstruct and classify the
+entire captured legacy `LecS65AcqDrv.sys` as far as static analysis reasonably
+allows, including DriverWorks/PnP/power/runtime support rather than discarding
+it merely because it appears framework-like.
+
+Commit `4e622dc2528127cce13ae35146554a9b2ada2982` exports decompiled C and
+compact call references for every function currently recognized by Ghidra.
+Raw assembly remains a second-pass tool for functions whose decompilation is
+ambiguous, bit-sensitive, or dependent on calling-convention details.
+
+The reconstruction therefore has two deliverables:
+
+1. recover LeCroy-specific hardware, ABI, acquisition and firmware behavior;
+2. classify the remaining support functions by concrete role, including
+   DriverWorks/PnP/power/IRP, allocation/string/container support, compiler
+   runtime, exception support and other framework infrastructure.
+
+Functions are no longer omitted merely because they appear unimportant to the
+current x64 implementation.
+
+### Initial low-address architecture classification
+
+The first complete-export review establishes several previously implicit roles:
+
+- `FUN_00010380` and `FUN_0001039A` are pool-allocation wrappers;
+  `FUN_000103B6` is a null-safe pool-free wrapper.
+- `FUN_000103C8` clears and closes a stored kernel handle with `ZwClose`.
+- `FUN_000104F4` creates the named `CLecS65AcqDrvDevice` object and delegates
+  initialization to `FUN_00010B3C`.
+- `FUN_00010B3C` is the large device-object constructor. It initializes the
+  DriverWorks base object, constructs the LeCroy hardware subobject at
+  `this+0x1E0` through `FUN_00014212`, installs derived vtables, attaches
+  the lower device stack and initializes PnP/power/device state.
+- `FUN_00010A8E` maintains a linked 16-byte record list keyed by an integer
+  and increments a per-key reference count.
+- `FUN_00010DA0` is an IRP cancellation path for the active or queued request,
+  removing queued entries from a `KDEVICE_QUEUE` before completion.
+
+This confirms that the low-address region intentionally mixes LeCroy device
+construction with DriverWorks IRP/lifecycle glue; both are part of the
+reconstruction scope.
+
 ## Full legacy-function inventory status
 
 A complete Ghidra function census was exported on 2026-10-03 using the
 `inventory` target. Ghidra currently recognizes 420 functions in the legacy
-binary. Using `0x182D0 (__alldiv)` as the practical transition into the
-compiler/runtime-heavy tail, 270 functions lie in the primary driver/code
-region. Of those, 203 already have selected decompiled-C exports and 67 do not.
+binary. Commit `4e622dc2528127cce13ae35146554a9b2ada2982` subsequently exported
+selected decompiled C and reference summaries for the complete inventory, so
+all currently recognized functions now have a repository pseudocode snapshot.
 
-The 67 missing selected exports are **not** equivalent to 67 unknown driver
-features. Many are small allocation, object, thunk or framework helpers.
-However, several are still worth explicit review because they correspond to
-known ABI paths or sit immediately beside acquisition/interrupt helpers. In
-particular, the remaining high-value selected-export candidates include:
-
-```text
-0x1272A  generic register write handler
-0x12832  driver-build query handler
-0x130EA  Dallas ID handler
-0x131B5  Dallas memory-read handler
-0x13954  generic register-read handler
-0x17184  acquisition/transfer helper
-0x174C8  acquisition/transfer helper
-```
-
-The early `0x103xx..0x11Bxx` missing functions should be triaged by call graph
-before bulk export; many have wrapper/framework characteristics. The inventory
-exists specifically to avoid dumping all 420 functions as pseudocode and
-polluting the repository with compiler/DriverWorks support code.
+The address region beginning around `0x182D0 (__alldiv)` is dominated by
+compiler/runtime and DriverWorks infrastructure, but the complete export shows
+that it also contains concrete PnP, power, IRP queue/cancel and object-support
+logic. It therefore remains part of the classification effort rather than
+being discarded wholesale.
 
 ## User-mode analysis
 
