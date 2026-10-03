@@ -1,0 +1,15 @@
+FUNCTION_ASM 00017ba6 FUN_00017ba6
+00017ba6  MOV EAX,dword ptr [ESP + 0x4]
+    -> Stack[0x4]
+00017baa  MOV dword ptr [ECX + 0x4],EAX
+00017bad  MOV EAX,dword ptr [ESP + 0x8]
+    -> Stack[0x8]
+00017bb1  MOV dword ptr [ECX + 0x8],EAX
+00017bb4  MOV EAX,dword ptr [ESP + 0xc]
+    -> Stack[0xc]
+00017bb8  MOV dword ptr [ECX + 0xc],EAX
+00017bbb  MOV EAX,dword ptr [ESP + 0x10]
+    -> Stack[0x10]
+00017bbf  MOV dword ptr [ECX + 0x10],EAX
+00017bc2  MOV byte ptr [ECX],0x1
+00017bc5  RET 0x10

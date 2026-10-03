@@ -1,0 +1,26 @@
+FUNCTION_ASM 00017dac FUN_00017dac
+00017dac  PUSH ESI
+00017dad  PUSH EDI
+00017dae  MOV EDI,dword ptr [ESP + 0xc]
+    -> Stack[0x4]
+00017db2  PUSH 0x0
+00017db4  PUSH EDI
+00017db5  MOV ESI,ECX
+00017db7  CALL 0x00017b00
+    -> 00017b00 FUN_00017b00
+00017dbc  TEST EAX,EAX
+00017dbe  JL 0x00017dd4
+    -> 00017dd4
+00017dc0  MOV ECX,dword ptr [ESP + 0x10]
+    -> Stack[0x8]
+00017dc4  MOV EAX,dword ptr [ESI + 0x10]
+00017dc7  MOV CL,byte ptr [ECX]
+00017dc9  MOV byte ptr [EDI + EAX*0x1],CL
+00017dcc  CMP EDI,dword ptr [ESI + 0xc]
+00017dcf  JLE 0x00017dd4
+    -> 00017dd4
+00017dd1  MOV dword ptr [ESI + 0xc],EDI
+00017dd4  MOV EAX,dword ptr [ESI + 0x14]
+00017dd7  POP EDI
+00017dd8  POP ESI
+00017dd9  RET 0xc

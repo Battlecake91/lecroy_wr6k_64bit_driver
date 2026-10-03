@@ -1,0 +1,28 @@
+FUNCTION_ASM 00017eac FUN_00017eac
+00017eac  PUSH ESI
+00017ead  PUSH 0x0
+00017eaf  LEA EAX,[ESP + 0xc]
+    -> Stack[0x4]
+00017eb3  PUSH EAX
+00017eb4  MOV ESI,ECX
+00017eb6  MOV EAX,dword ptr [ESI + 0xc]
+00017eb9  INC EAX
+00017eba  PUSH EAX
+00017ebb  CALL 0x00017dac
+    -> 00017dac FUN_00017dac
+00017ec0  MOV EAX,dword ptr [ESP + 0xc]
+    -> Stack[0x8]
+00017ec4  TEST EAX,EAX
+00017ec6  JZ 0x00017ed8
+    -> 00017ed8
+00017ec8  CMP dword ptr [ESI + 0x14],0x0
+00017ecc  JL 0x00017ed5
+    -> 00017ed5
+00017ece  MOV ECX,dword ptr [ESI + 0xc]
+00017ed1  MOV dword ptr [EAX],ECX
+00017ed3  JMP 0x00017ed8
+    -> 00017ed8
+00017ed5  OR dword ptr [EAX],0xffffffff
+00017ed8  MOV EAX,dword ptr [ESI + 0x14]
+00017edb  POP ESI
+00017edc  RET 0xc

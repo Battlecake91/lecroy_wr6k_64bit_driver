@@ -1,42 +1,50 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 5300dde777729f2a42d8e25d9dc70fa53999b2ad
+Source commit: 3dcd82af705092cd875e3e2d6604611198b41081
 Program: LecS65AcqDrv.sys
 
 Targets:
-  141dc
-  asm:141dc
-  xref:141dc
-  13c84
-  asm:13c84
-  xref:13c84
-  12d6a
-  asm:12d6a
-  xref:12d6a
-  18168
-  asm:18168
-  xref:18168
-  171de
-  asm:171de
-  xref:171de
-  17478
-  asm:17478
-  xref:17478
-  15536
-  asm:15536
-  xref:15536
-  1557c
-  asm:1557c
-  xref:1557c
-  field:100
+  17ee0
+  asm:17ee0
+  xref:17ee0
+  17cdc
+  asm:17cdc
+  xref:17cdc
+  179e2
+  asm:179e2
+  xref:179e2
+  17c16
+  asm:17c16
+  xref:17c16
+  17eac
+  asm:17eac
+  xref:17eac
+  17dac
+  asm:17dac
+  xref:17dac
+  13f3c
+  asm:13f3c
+  xref:13f3c
+  1326e
+  asm:1326e
+  xref:1326e
+  17ba6
+  asm:17ba6
+  xref:17ba6
+  17bc8
+  asm:17bc8
+  xref:17bc8
+  17f4e
+  asm:17f4e
+  xref:17f4e
   field:1086
-  field:10a2
-  field:10ca
-  field:116e
-  field:118e
-  field:60
-  field:64
-  field:68
-  field:6c
+  field:108a
+  field:108e
+  field:1092
+  field:1096
+  field:109a
+  field:109e
+  14847
+  asm:14847
 
 Exported files:
   00010380_FUN_00010380.c
@@ -553,9 +561,15 @@ Exported files:
   asm_asm_1785b.txt
   asm_asm_179e2.txt
   asm_asm_17a98.txt
+  asm_asm_17ba6.txt
+  asm_asm_17bc8.txt
   asm_asm_17c16.txt
+  asm_asm_17cdc.txt
   asm_asm_17d20.txt
+  asm_asm_17dac.txt
+  asm_asm_17eac.txt
   asm_asm_17ee0.txt
+  asm_asm_17f4e.txt
   asm_asm_1807a.txt
   asm_asm_18168.txt
   asm_asm_18194.txt
@@ -574,6 +588,12 @@ Exported files:
   field_0x1052.refs.txt
   field_0x1056.refs.txt
   field_0x1086.refs.txt
+  field_0x108a.refs.txt
+  field_0x108e.refs.txt
+  field_0x1092.refs.txt
+  field_0x1096.refs.txt
+  field_0x109a.refs.txt
+  field_0x109e.refs.txt
   field_0x10a2.refs.txt
   field_0x10ca.refs.txt
   field_0x1160.refs.txt
@@ -692,6 +712,7 @@ Exported files:
   xref_xref_13434.txt
   xref_xref_134ae.txt
   xref_xref_13c84.txt
+  xref_xref_13f3c.txt
   xref_xref_13fa6.txt
   xref_xref_141dc.txt
   xref_xref_14212.txt
@@ -724,6 +745,15 @@ Exported files:
   xref_xref_17578.txt
   xref_xref_176e6.txt
   xref_xref_1785b.txt
+  xref_xref_179e2.txt
+  xref_xref_17ba6.txt
+  xref_xref_17bc8.txt
+  xref_xref_17c16.txt
+  xref_xref_17cdc.txt
+  xref_xref_17dac.txt
+  xref_xref_17eac.txt
+  xref_xref_17ee0.txt
+  xref_xref_17f4e.txt
   xref_xref_18168.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
