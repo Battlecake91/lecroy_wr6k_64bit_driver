@@ -1,43 +1,42 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: b05d2ac144f4cee499493acc1a9c786757a8d40d
+Source commit: 5300dde777729f2a42d8e25d9dc70fa53999b2ad
 Program: LecS65AcqDrv.sys
 
 Targets:
-  166a8
-  asm:166a8
-  1634e
-  asm:1634e
-  xref:1634e
-  1621a
-  asm:1621a
-  xref:1621a
-  16168
-  asm:16168
-  16414
-  asm:16414
-  xref:16414
-  16074
-  asm:16074
-  xref:16074
-  16490
-  asm:16490
-  xref:16490
-  1260e
-  asm:1260e
-  xref:1260e
-  126ee
-  asm:126ee
-  xref:126ee
-  xref:1ce14
-  xref:1ce18
-  157c4
-  asm:157c4
-  xref:157c4
-  field:186
-  field:18a
-  field:18e
-  field:192
-  field:196
+  141dc
+  asm:141dc
+  xref:141dc
+  13c84
+  asm:13c84
+  xref:13c84
+  12d6a
+  asm:12d6a
+  xref:12d6a
+  18168
+  asm:18168
+  xref:18168
+  171de
+  asm:171de
+  xref:171de
+  17478
+  asm:17478
+  xref:17478
+  15536
+  asm:15536
+  xref:15536
+  1557c
+  asm:1557c
+  xref:1557c
+  field:100
+  field:1086
+  field:10a2
+  field:10ca
+  field:116e
+  field:118e
+  field:60
+  field:64
+  field:68
+  field:6c
 
 Exported files:
   00010380_FUN_00010380.c
@@ -498,12 +497,16 @@ Exported files:
   asm_asm_138d4.txt
   asm_asm_13a2e.txt
   asm_asm_13a40.txt
+  asm_asm_13c84.txt
   asm_asm_13dc6.txt
   asm_asm_13f3c.txt
   asm_asm_13f70.txt
   asm_asm_13fa6.txt
+  asm_asm_141dc.txt
   asm_asm_14212.txt
   asm_asm_14847.txt
+  asm_asm_15536.txt
+  asm_asm_1557c.txt
   asm_asm_155d0.txt
   asm_asm_157c4.txt
   asm_asm_15802.txt
@@ -543,6 +546,7 @@ Exported files:
   asm_asm_171de.txt
   asm_asm_172a2.txt
   asm_asm_1731c.txt
+  asm_asm_17478.txt
   asm_asm_17560.txt
   asm_asm_17578.txt
   asm_asm_176e6.txt
@@ -553,6 +557,7 @@ Exported files:
   asm_asm_17d20.txt
   asm_asm_17ee0.txt
   asm_asm_1807a.txt
+  asm_asm_18168.txt
   asm_asm_18194.txt
   dwords_dwords_1c500_16.txt
   dwords_dwords_1c62c_16.txt
@@ -569,6 +574,8 @@ Exported files:
   field_0x1052.refs.txt
   field_0x1056.refs.txt
   field_0x1086.refs.txt
+  field_0x10a2.refs.txt
+  field_0x10ca.refs.txt
   field_0x1160.refs.txt
   field_0x1167.refs.txt
   field_0x1168.refs.txt
@@ -577,6 +584,8 @@ Exported files:
   field_0x116b.refs.txt
   field_0x116c.refs.txt
   field_0x116d.refs.txt
+  field_0x116e.refs.txt
+  field_0x118e.refs.txt
   field_0x11ee.refs.txt
   field_0x1340.refs.txt
   field_0x1347.refs.txt
@@ -610,6 +619,9 @@ Exported files:
   field_0x38.refs.txt
   field_0x3a6.refs.txt
   field_0x60.refs.txt
+  field_0x64.refs.txt
+  field_0x68.refs.txt
+  field_0x6c.refs.txt
   field_0x88.refs.txt
   field_0xc.refs.txt
   field_0xd00.refs.txt
@@ -673,14 +685,19 @@ Exported files:
   xref_xref_126ee.txt
   xref_xref_12bae.txt
   xref_xref_12d24.txt
+  xref_xref_12d6a.txt
   xref_xref_12ec2.txt
   xref_xref_13230.txt
   xref_xref_1326e.txt
   xref_xref_13434.txt
   xref_xref_134ae.txt
+  xref_xref_13c84.txt
   xref_xref_13fa6.txt
+  xref_xref_141dc.txt
   xref_xref_14212.txt
   xref_xref_14847.txt
+  xref_xref_15536.txt
+  xref_xref_1557c.txt
   xref_xref_157c4.txt
   xref_xref_15802.txt
   xref_xref_15848.txt
@@ -701,10 +718,13 @@ Exported files:
   xref_xref_16594.txt
   xref_xref_169b4.txt
   xref_xref_16bba.txt
+  xref_xref_171de.txt
+  xref_xref_17478.txt
   xref_xref_17560.txt
   xref_xref_17578.txt
   xref_xref_176e6.txt
   xref_xref_1785b.txt
+  xref_xref_18168.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
   xref_xref_1c8bc.txt

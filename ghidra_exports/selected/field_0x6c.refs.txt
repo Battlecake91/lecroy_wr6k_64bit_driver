@@ -1,0 +1,13 @@
+FIELD_SCAN 0x6c (108)
+MATCHES
+00013e85 FUN_00013dc6  MOV dword ptr [EBP + 0x6c],EAX
+    -> Stack[-0x8]
+00013ea4 FUN_00013dc6  DEC dword ptr [EBP + 0x6c]
+    -> Stack[-0x8]
+000178cb FUN_0001785b  MOV dword ptr [ESI + 0x6c],0x1781e
+    -> 0001781e
+00017b88 FUN_00017b72  CMP dword ptr [ECX + 0x6c],EAX
+00017cfc FUN_00017cdc  MOV EAX,dword ptr [ESI + 0x6c]
+00018462 <no-function>  JMP dword ptr [EAX + 0x6c]
+00019d19 FUN_00019ccc  LEA ECX,[ESI + 0x6c]
+0001a0e9 FUN_0001a0b6  LEA ECX,[ESI + 0x6c]

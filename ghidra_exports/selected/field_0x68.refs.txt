@@ -1,0 +1,10 @@
+FIELD_SCAN 0x68 (104)
+MATCHES
+00013e29 FUN_00013dc6  MOV dword ptr [EBP + 0x68],EDI
+    -> Stack[-0xc]
+00013ed1 FUN_00013dc6  MOV EDX,dword ptr [EBP + 0x68]
+    -> Stack[-0xc]
+00013f18 FUN_00013dc6  MOV EAX,dword ptr [EBP + 0x68]
+    -> Stack[-0xc]
+00017f3e FUN_00017ee0  MOV AL,byte ptr [ESI + 0x68]
+00018450 <no-function>  JMP dword ptr [EAX + 0x68]
