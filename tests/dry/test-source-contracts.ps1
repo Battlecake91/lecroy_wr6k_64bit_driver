@@ -25,11 +25,13 @@ $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
 $adapterHeader = Join-Path $repo "driver\DmaAdapterStage.h"
 $ownerSource = Join-Path $repo "driver\DmaMappingOwner.c"
 $ownerHeader = Join-Path $repo "driver\DmaMappingOwner.h"
+$scatterSource = Join-Path $repo "driver\DmaScatterGatherStage.c"
+$scatterHeader = Join-Path $repo "driver\DmaScatterGatherStage.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -47,6 +49,8 @@ $adapterText = Get-Content -LiteralPath $adapterSource -Raw
 $adapterHeaderText = Get-Content -LiteralPath $adapterHeader -Raw
 $ownerText = Get-Content -LiteralPath $ownerSource -Raw
 $ownerHeaderText = Get-Content -LiteralPath $ownerHeader -Raw
+$scatterText = Get-Content -LiteralPath $scatterSource -Raw
+$scatterHeaderText = Get-Content -LiteralPath $scatterHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -307,6 +311,22 @@ Test-Contract "DMA mapping callback ownership model is isolated and fail-closed"
     $ownerText -match 'o->Phase == LecMapReady && o->CallbackSeen' -and
     $acquisitionText -notmatch 'LecMapOwnerRequest|LecMapOwnerLaunch' -and
     $deviceText -notmatch 'LecMapOwnerRequest|LecMapOwnerLaunch'
+}
+
+Test-Contract "WDM scatter gather callbacks retain mapping until proven idle" {
+    $driverProjectText -match 'ClCompile Include="DmaScatterGatherStage.c"' -and
+    $scatterText -match 'GetScatterGatherList\(' -and
+    $scatterText -match 'PutScatterGatherList\(' -and
+    $scatterText -match 'ObReferenceObject\(DeviceObject\)' -and
+    $scatterText -match 'ObDereferenceObject\(Stage->DeviceObject\)' -and
+    $scatterText -match 'LecMapOwnerCallback\(&stage->Owner\)' -and
+    $scatterText -match 'LecMapOwnerMayRelease\(&Stage->Owner\)' -and
+    $scatterText -match 'LecMapOwnerUncertain\(&Stage->Owner\)' -and
+    $scatterText -match 'KeRaiseIrql\(DISPATCH_LEVEL' -and
+    $scatterHeaderText -match 'LecSgStageMarkIdleProved' -and
+    $acquisitionText -notmatch 'LecSgStageMap|LecSgStageRelease' -and
+    $deviceText -notmatch 'LecSgStageMap|LecSgStageRelease' -and
+    $ioctlText -notmatch 'LecSgStageMap|LecSgStageRelease'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
