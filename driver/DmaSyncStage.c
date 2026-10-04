@@ -74,7 +74,12 @@ LecSgSyncMapNoLaunch(
      * starting to access the adapter or pinned buffers.
      */
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->Stopping || Owner->Outstanding == MAXULONG ||
+    /*
+     * A v3 channel is freed by adapter pointer, not a stage token.
+     * Until channel-sharing semantics are proven, allow at most ONE
+     * outstanding allocation for this DMA adapter.
+     */
+    if (Owner->Stopping || Owner->Outstanding != 0 ||
         Owner->NextToken == (ULONGLONG)-1) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
