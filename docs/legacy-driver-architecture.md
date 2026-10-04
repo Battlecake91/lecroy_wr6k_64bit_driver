@@ -576,23 +576,31 @@ The major architectural subsystems are now identified:
 - trace infrastructure;
 - DriverWorks support classes.
 
-Function-level semantic classification is now complete for the current Ghidra
-inventory: all 420 recognized functions have concrete roles in
-[legacy-driver-function-map.md](legacy-driver-function-map.md). The current
-quality state is 418 functions classified directly from stable pseudocode/call
-evidence and two functions marked for raw-assembly audit because Ghidra emitted
-control-flow warnings (`FUN_00011894` and `FUN_00019BB8`).
+The original PE32 code is now classified at both function and subsystem level.
+All **420 Ghidra-recognized functions** have semantic entries in
+[legacy-driver-function-map.md](legacy-driver-function-map.md). The
+2026-10-04 focused ASM pass resolved the two control-flow warnings
+(`0x11894`, `0x19BB8`), bringing the recognized inventory to
+**420 classified / 0 pending ASM warnings**.
 
-The remaining static-reconstruction work is therefore no longer broad function
-discovery. It is a quality/audit phase:
+The [vtable and ASM audit](legacy-driver-vtables-and-asm-audit.md) now confirms:
 
-- verify the two warning-bearing functions against raw x86 assembly;
-- reconstruct the central DriverWorks/LeCroy vtables and their small
-  this-adjusting thunks;
-- verify SEH-sensitive transfer helpers against raw instructions where the
-  decompiler emitted synthetic exception-frame code;
-- refine higher-level class/method names when the vtable layout provides
-  stronger evidence.
+- the main LeCroy device vtable at `0x1C500`;
+- the hardware base and derived vtables at `0x1C8BC` and `0x1C62C`;
+- the deliberate DPC-forwarding override at derived slot `+0x24`;
+- the IRP/cancel tail-dispatch through hardware slot `+0x20`;
+- a direct `KfReleaseSpinLock` tail jump, not a broken jump table;
+- small this-adjustment thunks and the SEH-sensitive MDL code paths.
 
-The complete pseudocode snapshot remains the baseline, so no further bulk
-function export is required.
+**Important coverage limit:** "420/420 classified" is not a claim that the
+complete binary has been reverse engineered. Vtables identify executable
+this-adjusting thunks (notably `0x10C34`, `0x10C62`, `0x10C8C`,
+`0x10D62`, `0x10D6E`) not necessarily present as separate
+Ghidra-recognized functions. Fixed-length DWORD dumps also extend into
+ASCII strings and unrelated adjacent objects. Further work must identify
+all such code ranges/indirect targets, establish class/method semantics
+and verify the important binary paths, not just rename functions.
+
+The next static pass focuses on the main vtable tail, derived virtual
+callbacks and missed thunk/function boundaries. This is source-only
+reverse engineering; no x64 hardware regression is implied.
