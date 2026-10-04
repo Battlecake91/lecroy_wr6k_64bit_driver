@@ -8,13 +8,27 @@
 #include <string.h>
 #include <stdint.h>
 
+#ifndef _In_
 #define _In_
+#endif
+#ifndef _In_opt_
 #define _In_opt_
+#endif
+#ifndef _Out_
 #define _Out_
+#endif
+#ifndef _Inout_
 #define _Inout_
+#endif
+#ifndef _Outptr_
 #define _Outptr_
+#endif
+#ifndef _Out_writes_to_
 #define _Out_writes_to_(x,y)
+#endif
+#ifndef _Outptr_result_maybenull_
 #define _Outptr_result_maybenull_
+#endif
 #define UNREFERENCED_PARAMETER(x) (void)(x)
 #define POOL_FLAG_NON_PAGED 0
 #define LECS65_TAG 0x4C534447
@@ -29,7 +43,6 @@ typedef unsigned long ULONG;
 typedef unsigned long KIRQL;
 typedef ULONG* PULONG;
 typedef LONG NTSTATUS;
-typedef SIZE_T SIZE_T_ALIAS;
 typedef CRITICAL_SECTION KSPIN_LOCK;
 typedef struct _FAKE_DEVICE { volatile LONG References; } FAKE_DEVICE, *PDEVICE_OBJECT;
 typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; } MDL, *PMDL;
@@ -65,7 +78,9 @@ typedef struct _DMA_ADAPTER {
 #define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xC00000A3L)
 #define STATUS_INVALID_BUFFER_SIZE ((NTSTATUS)0xC0000206L)
 #define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
+#ifndef NT_SUCCESS
 #define NT_SUCCESS(x) (((NTSTATUS)(x)) >= 0)
+#endif
 
 static inline void* ExAllocatePool2(ULONG flags, size_t bytes, ULONG tag) {
     UNREFERENCED_PARAMETER(flags);
