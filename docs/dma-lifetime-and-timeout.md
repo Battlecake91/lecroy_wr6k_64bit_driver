@@ -226,9 +226,14 @@ An additional host-only fake WDM shim builds and executes the actual
 bridge code (`tests/dry/test-sg-stage.c`), covering inline and delayed
 callbacks, bounded copying, duplicated callbacks, failed submission
 followed by late notification, STOP/REMOVE with outstanding callbacks,
-and concurrent callback/REMOVE. It does not invoke real kernel WDM
-operations, model the PCI bus or prove a physical DMA stop. This new
-revision requires a Windows build and Dry retest.
+and concurrent callback/REMOVE. It does not invoke real kernel WDM operations, model the PCI bus or
+prove a physical DMA stop. The owner confirmed the full Windows x64 Dry
+run on 2026-10-04 at 22:40:42: driver/lecdiag builds succeeded
+(0 errors, 0 warnings in an incremental build), source contracts
+24/24, descriptor layout 13/13, ownership model 17/17 and fake WDM SG
+callback bridge **27/27 PASS**. All 81 checks passed. This is
+software-only regression evidence; it neither exercises actual WDM
+resource allocation nor proves safe DMA bus idle or REMOVE rundown.
 
 **Activation blockers remain**: a reference-counted owner for the
 adapter, pinned MDL(s), descriptor common buffer, callback retirement,
