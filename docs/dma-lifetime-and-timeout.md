@@ -286,8 +286,13 @@ The new `tests/dry/test-sg-sync.c` fake-v3 DDI test checks immediate
 success/failure, transfer-context failure, no deferred callback,
 no-launch cleanup, sequential double release, 48-MiB two-MDL mapping,
 truncation, 4-GiB rejection and STOP racing with mapping allocation.
-**Current changes require owner-run Windows WDK and Dry verification.**
-These synthetic tests do not verify real OS resource allocation.
+The owner's Windows Dry execution on 2026-10-04 at 23:07:06
+verified the x64 build (0 warnings and 0 errors in an incremental build),
+source contracts **25/25**, descriptor tests **13/13**, asynchronous
+mapping ownership **17/17**, asynchronous fake-WDM callback tests
+**27/27**, and synchronous v3 mock tests **25/25**. Overall
+**107/107 PASS**. The synthetic tests do not exercise actual OS
+DMA resource allocation, real PnP REMOVE or hardware bus-master idle.
 
 ### Unresolved activation blockers
 
