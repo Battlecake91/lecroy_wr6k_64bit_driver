@@ -68,7 +68,7 @@ These constraints remain until explicitly superseded by better evidence and an o
 This section contains only work that is currently relevant across workstreams.
 
 Current project-wide decision:
-- Further driver feature work is temporarily paused while repository documentation and context handling are simplified.
+- Prioritize safe PnP/remove/power and outstanding-I/O lifetime handling, including DMA, IRQ, DPC and timer quiescence, before expanding native hardware-write features. See `docs/legacy-x86-x64-gap-audit.md` for evidence and implementation order.
 
 Deliberately deferred:
 - Dallas WRITE support until disposable/recoverable hardware is available.
