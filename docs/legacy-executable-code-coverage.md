@@ -295,3 +295,9 @@ functions until their generated records and pseudocode are reviewed.
 Ghidra-recognized function counts should grow beyond 420 after successful
 recovery; the existing 420-classification map must then be extended.
 SEH fragments and ambiguous split boundaries remain manual review items.
+
+The same future pass additionally writes
+`UNDEFINED_EXECUTABLE_RANGES.txt`, recording contiguous undefined
+ranges with 32-byte hex prefixes. These bytes have not yet been
+inspected or disassembled, so **do not assume that all 1,116 undefined
+bytes are padding or code**.
