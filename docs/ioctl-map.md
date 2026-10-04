@@ -87,9 +87,11 @@ the target only through `g_LecLegacyRegisterList`, and preserves
 `Information = 0`. Existing x64 shadows for INTEN, ERRM and SPICTL are kept
 coherent. The original x86 unchecked pointer-table access is not reproduced.
 
-Current top-level source coverage is therefore **26/27 native cases**, including
-one deliberately gated `CFDD219F`; only `0x00223088` Dallas WRITE and
-`0xCFDC2130` serial FPGA/GPIO programming remain absent. This is a
+Current top-level source coverage is therefore **25/27 original cases present**,
+including one deliberately gated `CFDD219F`; only `0x00223088` Dallas WRITE and
+`0xCFDC2130` serial FPGA/GPIO programming remain absent. An additional
+`0x00222400` case is outside the original 27-case dispatcher. Presence of an
+outer case does not prove full behavior; see [the x86/x64 gap audit](legacy-x86-x64-gap-audit.md). This is a
 **source-only** milestone: no Windows WDK build/sign/load or real-scope
 SetOneRegister validation has yet been performed.
 
