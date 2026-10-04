@@ -16,6 +16,44 @@ A target may be a function address such as `1619a` or `0x1619a`, or a symbol/imp
 
 For address targets the script exports decompiled C plus compact incoming and outgoing function references. For symbol targets it exports references and containing caller functions. The special target `inventory` writes `FUNCTION_INVENTORY.txt`, listing every function Ghidra currently recognizes together with body size, whether selected pseudocode has already been exported, and compact incoming/outgoing reference counts. The new target `coverage` writes `CODE_COVERAGE.txt`: recognized vs unowned decoded instruction byte counts in executable memory blocks, plus each contiguous cluster of disassembled instructions **outside** Ghidra function bodies. These clusters frequently include compiler thunks and virtual call targets that ordinary function inventory misses. The companion `UNOWNED_CODE_REFS.txt` enumerates incoming references for *every* orphan decoded instruction, including entry points in the middle of a contiguous cluster. The updated script also writes `UNOWNED_CODE_ASM.txt` with **all** 90 unowned decoded-instruction clusters and `EXECUTABLE_BYTE_CLASSIFICATION.txt` showing instruction/defined-data/undefined byte counts for each executable memory block. The latter is crucial because the difference between total executable-section bytes and disassembled instruction bytes is not necessarily undiscovered code.
 
+## Explicit recovery of overlooked functions
+
+After the complete code-coverage census, the original Ghidra inventory is
+known to omit 90 decoded executable-code clusters. These clusters are **not
+equivalent to 90 missing functions**, since multiple independent routines
+may share a cluster and SEH landing pads need different treatment.
+
+The `recover:<hex-address>` target is an **explicit opt-in** function
+boundary reconstruction command. It uses Ghidra's
+`CreateFunctionCmd(entryAddress)` on an already-disassembled executable
+instruction and exports the new function's decompiled C and references.
+It writes `RECOVER_<full-8-digit-address>.txt` with the result. If the
+address is already owned by a different function, it fails without
+reconstructing or overwriting that function. Failed or non-executable
+entries are reported separately. It is **not** an automatic function
+discovery mode.
+
+**Unlike `coverage`/`inventory`, this changes the LOCAL GHIDRA PROJECT
+DATABASE.** Shut down the interactive Ghidra GUI before running the
+headless script. When `ghidra_scripts/targets.txt` contains any
+`recover:` target, `scripts/run-ghidra-analysis.ps1` automatically
+copies the entire Ghidra project to a timestamped sibling directory
+(`LeCroy_Ghidra_backup_YYYYMMDD_HHMMSS`) before execution.
+This backup is deliberately outside the Git working tree.
+
+The first curated pass includes the proven 27-case IOCTL dispatch
+entry `recover:11018` and selected independent DriverWorks,
+interrupt, cancel and compiler-SEH function starts. It avoids blindly
+promoting internal exception landing pads and the many adjacent
+five-byte virtual thunks. The final `inventory` and `coverage`
+targets measure the newly recognized functions and remaining orphan
+regions after the recovery pass.
+
+Recovery is purely static. It never loads the Windows kernel driver,
+sends IOCTLs or accesses LeCroy hardware. Only report success after
+the user's Ghidra export confirms individual `RECOVER_...` records
+and new valid pseudocode files.
+
 ## Windows command template
 
 Replace `<GHIDRA_HOME>` with the installed Ghidra directory.
