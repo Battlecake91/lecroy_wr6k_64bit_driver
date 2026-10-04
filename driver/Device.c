@@ -487,6 +487,18 @@ LecS65Pnp(
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status;
 
+    /*
+     * REMOVE holds its own reference until all other dispatch references
+     * have completed. Normal PnP forwarding is completion-accounted.
+     */
+    status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+
     LecTrace("PNP: minor=0x%02X\n", stack->MinorFunction);
 
     switch (stack->MinorFunction) {
@@ -525,6 +537,7 @@ LecS65Pnp(
         }
 
         Irp->IoStatus.Status = status;
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return status;
 
@@ -535,8 +548,7 @@ LecS65Pnp(
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_SURPRISE_REMOVAL:
         devExt->Started = FALSE;
@@ -545,8 +557,7 @@ LecS65Pnp(
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_REMOVE_DEVICE:
         devExt->Removed = TRUE;
@@ -558,8 +569,12 @@ LecS65Pnp(
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
 
-        IoSkipCurrentIrpStackLocation(Irp);
-        status = IoCallDriver(devExt->LowerDeviceObject, Irp);
+        /*
+         * Own REMOVE completion and wait for the lower stack before tearing
+         * down the attachment. LecForwardAndWait retains the IRP for us.
+         */
+        status = LecForwardAndWait(devExt, Irp);
+        IoReleaseRemoveLockAndWait(&devExt->RemoveLock, Irp);
 
         if (devExt->SymbolicLinkCreated) {
             UNICODE_STRING dosName;
@@ -579,12 +594,13 @@ LecS65Pnp(
         }
 
         IoDetachDevice(devExt->LowerDeviceObject);
+        Irp->IoStatus.Status = status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
         IoDeleteDevice(DeviceObject);
         return status;
 
     default:
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
     }
 }
 
@@ -603,7 +619,16 @@ LecS65Power(
         stack->Parameters.Power.Type,
         stack->Parameters.Power.State.SystemState);
 
-    PoStartNextPowerIrp(Irp);
-    IoSkipCurrentIrpStackLocation(Irp);
-    return PoCallDriver(devExt->LowerDeviceObject, Irp);
+    {
+        NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+        if (!NT_SUCCESS(status)) {
+            Irp->IoStatus.Status = status;
+            Irp->IoStatus.Information = 0;
+            PoStartNextPowerIrp(Irp);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return status;
+        }
+        PoStartNextPowerIrp(Irp);
+        return LecForwardLockedIrp(devExt, Irp, TRUE);
+    }
 }
