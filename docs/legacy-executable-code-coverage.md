@@ -276,28 +276,61 @@ recover high-confidence function boundaries in Ghidra and export decompiled
 C for each, while inspecting still-undefined executable bytes separately.
 
 
-## First function-recovery pass prepared
+## First missing-function recovery results (2026-10-04)
 
-The first explicit `recover:` pass has been added to
-`ghidra_scripts/targets.txt`. It selects high-confidence independently
-referenced starts (including `0x11018`) for Ghidra's function-creation
-command, exports decompiled C/references, then refreshes
-`FUNCTION_INVENTORY.txt` and `CODE_COVERAGE.txt`. The new
-`RECOVER_<address>.txt` records distinguish successful creations from
-rejections/failures.
+The explicit `recover:` pass succeeded in commit
+`9d3ac5b10245d9c9098c3fca2642bf259d7ef507`. All **25
+curated entrypoints** now appear as independent Ghidra functions,
+with new selected decompiled C and compact reference summaries.
+The master `0x11018..0x1138F` IOCTL dispatcher has been independently
+verified in both raw ASM and recovered C. Complete function semantics
+are maintained in the [445-entry function map](legacy-driver-function-map.md).
 
-This pass **mutates the local Ghidra analysis database**. The runner
-automatically creates a complete project backup in a timestamped
-directory outside Git before invoking headless Ghidra. Stop/close the
-interactive Ghidra GUI before execution. Do not claim any recovered
-functions until their generated records and pseudocode are reviewed.
+| Metric | Before | After |
+|---|---:|---:|
+| Recognized internal functions | 420 | **445** |
+| Ghidra function-manager entries including external imports | 507 | **532** |
+| Decoded code bytes assigned to functions | 44,828 | **46,755** |
+| Decoded code bytes outside functions | 3,207 | **1,280** |
+| Unowned decoded instructions | 974 | **393** |
+| Unowned contiguous clusters | 90 | **69** |
+| Executable-section decoded instructions (total) | 48,035 | **48,035** |
+| Executable-section undefined bytes | 1,116 | **1,116** |
 
-Ghidra-recognized function counts should grow beyond 420 after successful
-recovery; the existing 420-classification map must then be extended.
-SEH fragments and ambiguous split boundaries remain manual review items.
+Thus 1,927 bytes and 581 instructions gained function ownership, while
+the total decoded-instruction bytes stayed unchanged. This is an
+improved **function-boundary inventory**, not newly decoded instructions.
 
-The same future pass additionally writes
-`UNDEFINED_EXECUTABLE_RANGES.txt`, recording contiguous undefined
-ranges with 32-byte hex prefixes. These bytes have not yet been
-inspected or disassembled, so **do not assume that all 1,116 undefined
-bytes are padding or code**.
+### Undefined-byte triage
+
+`UNDEFINED_EXECUTABLE_RANGES.txt` contains 424 ranges totaling 1,116
+bytes, many representing single-byte `CC` alignment, zero padding,
+register-name strings and embedded constants. Notable findings:
+
+- `0x145FA..0x14846` and `0x17800..`: visible ASCII register
+  names including `BAR0`, `BAR1`, `BAR2`, `ERRS`, `ERRM`,
+  `SGTA`; these are embedded constant data, **not x86 instructions**.
+- `0x18E58..0x18E6B` (20 bytes): likely executable helper that
+  range-checks a selector `EAX <= 0x17` and returns a lookup-table
+  entry from `0x1CD88`, or a default string address. The
+  `0x17` limit is consistent with PnP minor-function names.
+- `0x18EDB..0x18EED` (19 bytes): similar lookup helper comparing
+  `EAX <= 3` and indexing table `0x1CDE8`, consistent with
+  power minor-function names.
+- `0x1C280..0x1C2A3` (36 bytes): appears to be real x86
+  exception-chain/filter support: `XOR EAX,EAX`,
+  `MOV ECX,FS:[0]`, comparisons against SEH handler state. It
+  requires controlled disassembly.
+- `0x180C1..0x180C3` (three bytes `8B 65 E8`):
+  an exception-frame/stack-restoration landing pad, **not
+  necessarily** a standalone function.
+- `0x1DD4A..0x1DD7F`, `0x1E010..` and `0x1E8E4..`:
+  large zero-filled reserved/alignment areas.
+
+Crucially, **undefined does not imply unreachable code**, and it is
+incorrect to claim 100% binary coverage when actual executable code
+sequences remain undefined. The next stage explicitly separates
+reviewed genuine x86 function starts from EH fragments, bytes
+representing constants, and alignment.
+
+
