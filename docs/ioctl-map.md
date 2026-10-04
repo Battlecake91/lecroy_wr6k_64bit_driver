@@ -123,7 +123,7 @@ this needs original user-mode evidence and explicit
 validation before any x64 write implementation.
 
 The serial FPGA programmer `CFDC2130` modifies
-BAR1 GPIODAT mask `0x0E00` once per byte.
+BAR1 GPIODAT mask `0xE000` once per byte.
 `FUN_000120DC` clears GPIODAT bit 16 before two
 ordinary transfer paths (`FUN_00012D6A` and
 `FUN_00012F30`); blindly implementing per-byte
@@ -162,7 +162,7 @@ XStream regression baseline.
 | Original IOCTL absent from x64 switch | Original source interpretation | Remaining work |
 |---|---|---|
 | `0x00223088` | Original Dallas WRITE `FUN_00011F54` and scratchpad/copy/readback helpers `16D90`/`16F2C` are recovered. | Port and test on a disposable DS2433 first, not the licensed original. |
-| `0xCFDC2130` | Non-null, nonempty input; `FUN_00011CFF` reads BAR1 GPIODAT (+0xC4), replaces only bits 15:13 (`0x0E00`) with bits 7:5 of each input byte shifted <<8, then writes physical register **once per byte**. | Preserve stream sequence/timing and other GPIO ownership; no fabricated programming on working board. |
+| `0xCFDC2130` | Non-null, nonempty input; `FUN_00011CFF` reads BAR1 GPIODAT (+0xC4), replaces only bits 15:13 (`0xE000`) with bits 7:5 of each input byte shifted <<8, then writes physical register **once per byte**. | Preserve stream sequence/timing and other GPIO ownership; no fabricated programming on working board. |
 
 **Newly represented and tested on real scope: `0xCFDC2194`.**
 The owner completed targeted Ghidra exports. Original ISR
@@ -2112,7 +2112,7 @@ Confirmed again as a trivial `STATUS_NOT_IMPLEMENTED` handler.
 
 ### 0xCFDC2130 -> 0x11CFF
 
-The serial-trigger FPGA handler validates a non-null, non-empty input stream, reads BAR1 `GPIODAT` through the register wrapper at main-object offset `+0x318`, and for each input byte replaces the masked `0x0E00` field before writing the register back. This confirms that the programming stream is bit-banged through the GPIO register rather than sent through the BAR1 message transport.
+The serial-trigger FPGA handler validates a non-null, non-empty input stream, reads BAR1 `GPIODAT` through the register wrapper at main-object offset `+0x318`, and for each input byte replaces the masked `0xE000` field before writing the register back. This confirms that the programming stream is bit-banged through the GPIO register rather than sent through the BAR1 message transport.
 
 ### 0xCFDC2180 and 0xCFDC218C
 
