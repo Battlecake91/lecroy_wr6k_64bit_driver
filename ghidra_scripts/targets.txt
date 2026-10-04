@@ -1,9 +1,45 @@
-# Full legacy PE32 code coverage census.
-# This does not run hardware or send IOCTLs.
-# CODE_COVERAGE.txt: contiguous decoded executable instructions
-# outside functions, plus a per-block coverage summary.
-# UNOWNED_CODE_REFS.txt: every referenced executable instruction
-# outside recognized function bodies (including interior targets).
-# FUNCTION_INVENTORY.txt: known function list for comparison.
-coverage
+# Stage 1: recover high-confidence missing original functions.
+# IMPORTANT: recover:* changes the local Ghidra project database.
+# scripts/run-ghidra-analysis.ps1 now backs up the project to a
+# timestamped sibling folder before running these commands.
+# Close the Ghidra GUI before starting; no real hardware interaction.
+#
+# Entries below have concrete function-start evidence: vtable DATA
+# references, independent RET boundaries or other direct references.
+
+# DriverWorks entry/default IRP helpers
+recover:10406
+recover:1041c
+recover:1044c
+recover:10490
+recover:104a0
+recover:183ee
+
+# LeCroy ISR-related wrappers
+recover:1085e
+recover:10872
+recover:10886
+recover:1089a
+recover:108ae
+recover:108c2
+recover:10b30
+
+# Device dispatch/lifecycle and transfer/IRQ helpers
+recover:10eaf
+recover:11018
+recover:118e4
+recover:12ec2
+recover:197d0
+
+# DriverWorks cancel, completion and compiler SEH
+recover:1b00e
+recover:1be72
+recover:1c118
+recover:1c204
+recover:1d380
+recover:1d3c4
+recover:1d3d0
+
+# Recount after recovery and compare unowned code coverage
 inventory
+coverage
