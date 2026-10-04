@@ -40,6 +40,19 @@ For a fast source-only pass without compiling:
 
     .\scripts\test-driver.ps1 -Mode Dry -SkipBuild
 
+The first P0 IRQ-safety source contracts additionally enforce that a failed
+`IoConnectInterrupt` prevents START_DEVICE success, leaves interfaces
+unpublished and rolls back BAR mappings, and that both the buffered acquisition
+and CFDC2110 MTT DMA launch paths refuse operation without a started device
+and a connected interrupt.
+
+The IRQ failure path has **not** been fault-injected or hardware-tested.
+A future controlled test must simulate `IoConnectInterrupt` failure before
+any PCI device testing, verify the returned PnP failure status, disabled device
+interfaces, BAR cleanup and zero DMA launches, and confirm normal START after
+a clean retry. Passing a source contract does not prove asynchronous PnP,
+DPC, timer or DMA removal safety.
+
 The dry suite is intentionally not a fake hardware emulator. Source/ABI invariants
 can be proven without hardware; acquisition, interrupt, DMA and MMIO behavior
 cannot.
