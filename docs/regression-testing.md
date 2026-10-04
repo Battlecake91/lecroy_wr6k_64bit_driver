@@ -73,8 +73,18 @@ is accessible, disconnects the ISR, removes/drains the kernel DPC,
 cancels the embedded timer, and invalidates the acquisition shadows.
 Surprise Removal skips MMIO writes.
 
-**No WDK build, Dry regression, PnP fault injection or real hardware test
-has validated this later revision yet.** The prior 12/12 result belongs to
+Owner-reported Windows dry run on 2026-10-04 at 18:29:
+the expanded revision **built successfully** (0 errors, 2 pre-existing
+`LNK4075` warnings), `lecdiag` built for x64, and **16/17** source
+contracts passed. The one failed `START_DEVICE` contract used an outdated
+regular expression expecting direct adjacency between `Started=TRUE`
+and `LecEnableInterfaces`; correct source now inserts
+`LecSetIoctlAdmission(devExt, TRUE)` between these lines.
+The test regex was updated in commit `07653b9` and still requires
+another owner-executed Dry run. No claim of 17/17 is made yet.
+
+**The revised implementation has no verified full Dry pass, PnP fault
+injection or hardware validation yet.** The prior 12/12 result belongs to
 the earlier IRQ gating commit only. The added source contracts are
 assertions about call presence and ordering, not proofs of concurrency safety.
 
