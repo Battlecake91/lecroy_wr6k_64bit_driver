@@ -76,7 +76,17 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (target.toLowerCase().startsWith("recover:")) {
+                if (target.toLowerCase().startsWith("decode:")) {
+                    Address candidate = parseTargetAddress(
+                        target.substring("decode:".length()));
+                    if (candidate == null) {
+                        printerr("Invalid decode target: " + target);
+                    }
+                    else {
+                        decodeReviewedUndefinedFunction(candidate);
+                    }
+                }
+                else if (target.toLowerCase().startsWith("recover:")) {
                     Address candidate = parseTargetAddress(
                         target.substring("recover:".length()));
                     if (candidate == null) {
@@ -197,6 +207,66 @@ public class ExportSelected extends GhidraScript {
      * automatically from a census or heuristic. Back up the Ghidra project
      * before using recover: entries. Existing function bodies are protected.
      */
+    /*
+     * Explicit opt-in for three independently reviewed undefined x86 code
+     * sequences. Unlike broad auto-disassembly, this rejects all unknown
+     * addresses, checks the original opcode prefix, and records results.
+     * A successful disassembly is then passed through recoverFunction().
+     * This command MUTATES the local Ghidra project: backup first.
+     */
+    private void decodeReviewedUndefinedFunction(Address entry)
+            throws Exception {
+        File report = new File(outDir, "DECODE_" + entry + ".txt");
+        try (PrintWriter pw = new PrintWriter(report, "UTF-8")) {
+            pw.println("REVIEWED_UNDEFINED_CODE_DECODE " + entry);
+            String key = entry.toString().toLowerCase();
+            byte[] signature;
+            if ("00018e58".equals(key)) {
+                signature = new byte[]{(byte)0x83,(byte)0xF8,(byte)0x17};
+            }
+            else if ("00018edb".equals(key)) {
+                signature = new byte[]{(byte)0x83,(byte)0xF8,(byte)0x03};
+            }
+            else if ("0001c280".equals(key)) {
+                signature = new byte[]{(byte)0x33,(byte)0xC0,(byte)0x64};
+            }
+            else {
+                pw.println("REJECTED: address not on reviewed whitelist");
+                return;
+            }
+            MemoryBlock block = currentProgram.getMemory().getBlock(entry);
+            if (block == null || !block.isExecute()) {
+                pw.println("REJECTED: non-executable location");
+                return;
+            }
+            for (int i = 0; i < signature.length; i++) {
+                if (currentProgram.getMemory().getByte(entry.add(i))
+                        != signature[i]) {
+                    pw.println("REJECTED: original opcode prefix changed");
+                    return;
+                }
+            }
+            if (currentProgram.getListing().getDefinedDataAt(entry)
+                    != null) {
+                pw.println("REJECTED: address is already defined data");
+                return;
+            }
+            if (functionAtOrContaining(entry) != null) {
+                pw.println("REJECTED: already inside a function");
+                return;
+            }
+            boolean success = disassemble(entry);
+            if (!success ||
+                currentProgram.getListing().getInstructionAt(entry) == null) {
+                pw.println("FAILED: Ghidra could not disassemble address");
+                return;
+            }
+            pw.println("DECODED: " + entry);
+            pw.println("Calling reviewed function-recovery command.");
+        }
+        recoverFunction(entry);
+    }
+
     private void recoverFunction(Address entry) throws Exception {
         String reportName = "RECOVER_" + entry + ".txt";
         File report = new File(outDir, reportName);
