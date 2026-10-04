@@ -12,6 +12,8 @@ static int mode;
 static DMA_ADAPTER adapter;
 static DMA_OPERATIONS ops;
 static FAKE_DEVICE device;
+static LECS65_SG_SYNC_OWNER owner;
+static unsigned stopBusy;
 static MDL mdls[2];
 static SCATTER_GATHER_LIST sg;
 static char buf[128];
@@ -34,6 +36,10 @@ static NTSTATUS fakeEx(PDMA_ADAPTER a, PDEVICE_OBJECT d,
     (void)a;(void)d;(void)ctx;(void)m;(void)offset;
     (void)len;(void)arg;(void)toDevice;(void)completion;(void)cc;
     ++getCalls;
+    if (mode==3) {
+        if (LecSgSyncOwnerStop(&owner)==STATUS_DEVICE_BUSY)
+            ++stopBusy;
+    }
     if (flags!=DMA_SYNCHRONOUS_CALLBACK || cb!=NULL)
         ++deferredCallbacks;
     if (mode==1) return STATUS_INSUFFICIENT_RESOURCES;
@@ -54,6 +60,8 @@ static void setup(void) {
     ops.GetScatterGatherListEx=fakeEx;
     ops.FreeAdapterObject=fakeFree;
     adapter.DmaOperations=&ops;
+    LecSgSyncOwnerInit(&owner, &adapter, &device);
+    stopBusy=0;
     mdls[0].Va=buf;mdls[0].Size=128;
     mdls[0].MdlFlags=MDL_PAGES_LOCKED;
     sg.NumberOfElements=2;
@@ -71,7 +79,7 @@ int main(void) {
     NTSTATUS st;
 
     setup();
-    st=LecSgSyncMapNoLaunch(&adapter,&device,&mdls[0],128,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,&mdls[0],128,&stage);
     check("mapping uses synchronous callback-free v3 DDI",
           NT_SUCCESS(st)&&stage!=NULL&&initCalls==1&&getCalls==1&&
           deferredCallbacks==0);
@@ -89,12 +97,12 @@ int main(void) {
           freeCalls==1);
 
     mode=1;
-    st=LecSgSyncMapNoLaunch(&adapter,&device,&mdls[0],128,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,&mdls[0],128,&stage);
     check("no-resource failure never creates outstanding stage",
           st==STATUS_INSUFFICIENT_RESOURCES&&stage==NULL&&
           device.References==0&&freeCalls==1);
     mode=2;
-    st=LecSgSyncMapNoLaunch(&adapter,&device,&mdls[0],128,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,&mdls[0],128,&stage);
     check("context initialization failure releases FDO ref",
           st==STATUS_INSUFFICIENT_RESOURCES&&stage==NULL&&
           device.References==0);
@@ -104,7 +112,7 @@ int main(void) {
     mdls[0].Next=&mdls[1];mdls[1].MdlFlags=MDL_PAGES_LOCKED;
     sg.Elements[0].Length=0x02000000U;
     sg.Elements[1].Length=0x01000000U;
-    st=LecSgSyncMapNoLaunch(&adapter,&device,mdls,0x03000000U,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage);
     check("48-MiB two-MDL mapping accepted", NT_SUCCESS(st)&&stage!=NULL);
     check("multiple MDLs total segment coverage",
           LecSgSyncCopySegments(stage,elements,3,&n)==STATUS_SUCCESS &&
@@ -113,14 +121,14 @@ int main(void) {
     check("multi-MDL no-launch cleanup balanced",device.References==0);
 
     sg.Elements[1].Length=0x01000004U;
-    st=LecSgSyncMapNoLaunch(&adapter,&device,mdls,0x03000000U,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage);
     check("reject SG mapping beyond requested bytes",
           NT_SUCCESS(st)&&LecSgSyncCopySegments(stage,elements,3,&n)
           ==STATUS_INVALID_BUFFER_SIZE);
     (void)LecSgSyncReleaseNoLaunch(&stage);
     sg.Elements[1].Length=0x01000000U;
     sg.Elements[1].Address.QuadPart=0x100000000ULL;
-    st=LecSgSyncMapNoLaunch(&adapter,&device,mdls,0x03000000U,&stage);
+    st=LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage);
     check("reject 64-bit device logical address",
           NT_SUCCESS(st)&&LecSgSyncCopySegments(stage,elements,3,&n)
           ==STATUS_INVALID_BUFFER_SIZE);
@@ -128,9 +136,29 @@ int main(void) {
     sg.Elements[1].Address.QuadPart=0x20000;
     mdls[1].MdlFlags=0;
     check("reject unpinned second MDL",
-          LecSgSyncMapNoLaunch(&adapter,&device,mdls,
+          LecSgSyncMapNoLaunch(&owner,mdls,
           0x03000000U,&stage)==STATUS_INVALID_PARAMETER);
     check("balanced references with faults",device.References==0);
+    check("STOP gate not yet engaged",
+          !LecSgSyncOwnerCanTeardown(&owner));
+    mode=3;
+    mdls[1].MdlFlags=MDL_PAGES_LOCKED;
+    st=LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage);
+    check("STOP while GetEx in-flight reports busy",
+          NT_SUCCESS(st)&&stopBusy==1&&stage!=NULL);
+    check("STOP prevents new submissions",
+          LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,
+                              &stage)==
+              STATUS_DEVICE_BUSY);
+    check("STOP cannot release active mapping owner",
+          !LecSgSyncOwnerCanTeardown(&owner));
+    check("no-launch release drains owner",
+          LecSgSyncReleaseNoLaunch(&stage)==STATUS_SUCCESS&&
+          LecSgSyncOwnerCanTeardown(&owner)&&device.References==0);
+    check("STOP stays closed after drain",
+          LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage)
+              ==STATUS_DEVICE_BUSY);
+
 
     printf("SG SYNC V3: %u/%u passed; %u failed.\n",
            passed,passed+failed,failed);
