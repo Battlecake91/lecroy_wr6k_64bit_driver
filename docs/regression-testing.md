@@ -94,6 +94,25 @@ injection or hardware validation yet.** The prior 12/12 result belongs to
 the earlier IRQ gating commit only. The added source contracts are
 assertions about call presence and ordering, not proofs of concurrency safety.
 
+## DMA ownership staging (not yet verified)
+
+The latest draft revision, after the owner's 17/17 Dry PASS, introduces
+fail-closed DMA ownership: physical-ISR completion tracking,
+`CFDC2400` software bit-0 rejection, a latched unknown-DMA fault
+and permanent quarantine of potentially bus-mastered MDLs and descriptor
+memory across CLOSE/STOP/REMOVE. A latched fault blocks new IOCTLs and
+START within the same FDO. It deliberately leaks locked memory until
+system restart because safe abort/idle has **not** been proven. Read
+[detailed DMA evidence](dma-lifetime-and-timeout.md).
+
+**This new revision has not been Windows-built, Dry-tested, or tested on
+PCI hardware.** Regression requirements include rejecting software
+completion without affecting the existing `CFDC2400` zero-mask
+contract, 5-second simulated timeout, poisoned-transfer unregister
+refusal, process-CLOSE, STOP/REMOVE quarantine ownership and
+subsequent DMA/IOCTL admission rejection. Driver Verifier and
+recoverable hardware tests remain mandatory before release.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
