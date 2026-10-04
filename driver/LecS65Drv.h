@@ -350,6 +350,10 @@ NTSTATUS LecReadPciConfig(
 
 NTSTATUS LecConnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecDisconnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecQuiesceDeferredWork(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN HardwareAccessible);
+
 BOOLEAN LecInterruptService(_In_ PKINTERRUPT Interrupt, _In_ PVOID Context);
 VOID LecInterruptDpc(
     _In_ PKDPC Dpc,
