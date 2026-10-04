@@ -505,9 +505,20 @@ LecS65Pnp(
     case IRP_MN_START_DEVICE:
         status = LecForwardAndWait(devExt, Irp);
         if (NT_SUCCESS(status)) {
-            status = LecHandleStartDevice(
-                devExt,
-                stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+            /*
+             * A timed-out bus master may still own pinned descriptor/user
+             * pages. Even STOP/START cannot clear that uncertainty without
+             * an independently verified hardware idle protocol.
+             */
+            if (InterlockedCompareExchange(
+                    &devExt->DmaUnknownActive, 0, 0) != 0) {
+                status = STATUS_DEVICE_NOT_READY;
+            }
+            else {
+                status = LecHandleStartDevice(
+                    devExt,
+                    stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+            }
 
             if (NT_SUCCESS(status)) {
                 NTSTATUS irqStatus;
