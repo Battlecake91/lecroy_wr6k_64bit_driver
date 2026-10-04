@@ -1,0 +1,129 @@
+RAW WINDOW around 0001bc86
+START 0001bc06 END 0001bd06
+0001bc06  POP EDI    ; FUN_0001bb4e
+0001bc07  POP ESI    ; FUN_0001bb4e
+0001bc08  POP EBX    ; FUN_0001bb4e
+0001bc09  LEAVE    ; FUN_0001bb4e
+0001bc0a  RET 0x8    ; FUN_0001bb4e
+0001bc0e  PUSH EBP    ; FUN_0001bc0e
+0001bc0f  MOV EBP,ESP    ; FUN_0001bc0e
+0001bc11  PUSH ECX    ; FUN_0001bc0e
+0001bc12  PUSH EBX    ; FUN_0001bc0e
+0001bc13  PUSH ESI    ; FUN_0001bc0e
+0001bc14  MOV ESI,ECX    ; FUN_0001bc0e
+0001bc16  XOR BL,BL    ; FUN_0001bc0e
+0001bc18  CALL 0x000193b8    ; FUN_0001bc0e
+    -> 000193b8 FUN_000193b8
+0001bc1d  MOV ECX,dword ptr [EBP + 0x8]    ; FUN_0001bc0e
+    -> Stack[0x4]
+0001bc20  TEST ECX,ECX    ; FUN_0001bc0e
+0001bc22  MOV byte ptr [EBP + -0x4],AL    ; FUN_0001bc0e
+    -> Stack[-0x8]
+0001bc25  MOV EAX,dword ptr [ESI]    ; FUN_0001bc0e
+0001bc27  JZ 0x0001bc35    ; FUN_0001bc0e
+    -> 0001bc35
+0001bc29  MOV EDX,dword ptr [EBP + 0x10]    ; FUN_0001bc0e
+    -> Stack[0xc]
+0001bc2c  CMP EAX,dword ptr [EDX]    ; FUN_0001bc0e
+0001bc2e  JNZ 0x0001bc4c    ; FUN_0001bc0e
+    -> 0001bc4c
+0001bc30  CMP dword ptr [EAX + 0x38],ECX    ; FUN_0001bc0e
+0001bc33  JNZ 0x0001bc4c    ; FUN_0001bc0e
+    -> 0001bc4c
+0001bc35  CMP byte ptr [EAX + 0x24],0x0    ; FUN_0001bc0e
+0001bc39  SETZ BL    ; FUN_0001bc0e
+0001bc3c  TEST BL,BL    ; FUN_0001bc0e
+0001bc3e  JZ 0x0001bc4c    ; FUN_0001bc0e
+    -> 0001bc4c
+0001bc40  MOV EDX,dword ptr [EBP + 0xc]    ; FUN_0001bc0e
+    -> Stack[0x8]
+0001bc43  LEA ECX,[EAX + 0x38]    ; FUN_0001bc0e
+0001bc46  CALL dword ptr [0x0001c418]    ; FUN_0001bc0e
+    -> 0001c418
+    -> EXTERNAL:00000042 InterlockedExchange
+0001bc4c  PUSH dword ptr [EBP + -0x4]    ; FUN_0001bc0e
+    -> Stack[-0x8]
+0001bc4f  CALL dword ptr [0x0001c370]    ; FUN_0001bc0e
+    -> 0001c370
+    -> EXTERNAL:00000018 IoReleaseCancelSpinLock
+0001bc55  POP ESI    ; FUN_0001bc0e
+0001bc56  MOV AL,BL    ; FUN_0001bc0e
+0001bc58  POP EBX    ; FUN_0001bc0e
+0001bc59  LEAVE    ; FUN_0001bc0e
+0001bc5a  RET 0xc    ; FUN_0001bc0e
+0001bc5e  PUSH ESI    ; FUN_0001bc5e
+0001bc5f  MOV ESI,ECX    ; FUN_0001bc5e
+0001bc61  CMP dword ptr [ESI + 0x4],0x0    ; FUN_0001bc5e
+0001bc65  JZ 0x0001bc6c    ; FUN_0001bc5e
+    -> 0001bc6c
+0001bc67  CALL 0x00011914    ; FUN_0001bc5e
+    -> 00011914 FUN_00011914
+0001bc6c  MOV EAX,dword ptr [ESP + 0x8]    ; FUN_0001bc5e
+    -> Stack[0x4]
+0001bc70  AND byte ptr [ESI + 0x8],0x0    ; FUN_0001bc5e
+0001bc74  CMP byte ptr [ESP + 0xc],0x0    ; FUN_0001bc5e
+    -> Stack[0x8]
+0001bc79  MOV dword ptr [ESI + 0x4],EAX    ; FUN_0001bc5e
+0001bc7c  JZ 0x0001bc81    ; FUN_0001bc5e
+    -> 0001bc81
+0001bc7e  AND dword ptr [ESI],0x0    ; FUN_0001bc5e
+0001bc81  POP ESI    ; FUN_0001bc5e
+0001bc82  RET 0x8    ; FUN_0001bc5e
+0001bc86  PUSH 0x0
+0001bc88  PUSH dword ptr [ESP + 0xc]
+0001bc8c  ADD ECX,0x18
+0001bc8f  PUSH dword ptr [ESP + 0xc]
+0001bc93  PUSH ECX
+0001bc94  CALL dword ptr [0x0001c450]
+    -> 0001c450
+    -> EXTERNAL:00000050 KeSetTimer
+0001bc9a  RET 0x8
+0001bc9e  PUSH 0x0
+0001bca0  PUSH dword ptr [ESP + 0x10]
+0001bca4  ADD ECX,0x18
+0001bca7  PUSH dword ptr [ESP + 0x10]
+0001bcab  PUSH dword ptr [ESP + 0x10]
+0001bcaf  PUSH ECX
+0001bcb0  CALL dword ptr [0x0001c454]
+    -> 0001c454
+    -> EXTERNAL:00000051 KeSetTimerEx
+0001bcb6  RET 0xc
+0001bcba  MOV ECX,dword ptr [ESP + 0x4]    ; FUN_0001bcba
+    -> Stack[0x4]
+0001bcbe  XOR EAX,EAX    ; FUN_0001bcba
+0001bcc0  JMP 0x0001bcc5    ; FUN_0001bcba
+    -> 0001bcc5
+0001bcc2  INC ECX    ; FUN_0001bcba
+0001bcc3  INC ECX    ; FUN_0001bcba
+0001bcc4  INC EAX    ; FUN_0001bcba
+0001bcc5  CMP word ptr [ECX],0x0    ; FUN_0001bcba
+0001bcc9  JNZ 0x0001bcc2    ; FUN_0001bcba
+    -> 0001bcc2
+0001bccb  RET 0x4    ; FUN_0001bcba
+0001bcce  PUSH dword ptr [ESP + 0x4]    ; FUN_0001bcce
+    -> Stack[0x4]
+0001bcd2  CALL 0x0001bcba    ; FUN_0001bcce
+    -> 0001bcba FUN_0001bcba
+0001bcd7  SHL EAX,0x1    ; FUN_0001bcce
+0001bcd9  RET 0x4    ; FUN_0001bcce
+0001bcdc  MOV EAX,dword ptr [ESP + 0x4]    ; FUN_0001bcdc
+    -> Stack[0x4]
+0001bce0  MOV CL,byte ptr [EAX + -0xc]    ; FUN_0001bcdc
+0001bce3  ADD EAX,-0x18    ; FUN_0001bcdc
+0001bce6  TEST CL,CL    ; FUN_0001bcdc
+0001bce8  JZ 0x0001bcf4    ; FUN_0001bcdc
+    -> 0001bcf4
+0001bcea  MOVZX ECX,CL    ; FUN_0001bcdc
+0001bced  SUB EAX,ECX    ; FUN_0001bcdc
+0001bcef  ADD EAX,0x4    ; FUN_0001bcdc
+0001bcf2  JMP 0x0001bcf6    ; FUN_0001bcdc
+    -> 0001bcf6
+0001bcf4  XOR EAX,EAX    ; FUN_0001bcdc
+0001bcf6  RET 0x4    ; FUN_0001bcdc
+0001bcfa  PUSH ESI    ; FUN_0001bcfa
+0001bcfb  PUSH EDI    ; FUN_0001bcfa
+0001bcfc  MOV DI,word ptr [ESP + 0xc]    ; FUN_0001bcfa
+    -> Stack[0x4]
+0001bd01  PUSH dword ptr [ESP + 0x10]    ; FUN_0001bcfa
+    -> Stack[0x8]
+0001bd05  MOVZX EAX,DI    ; FUN_0001bcfa

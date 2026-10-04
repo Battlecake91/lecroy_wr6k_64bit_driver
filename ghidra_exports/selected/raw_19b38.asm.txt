@@ -1,0 +1,90 @@
+RAW WINDOW around 00019b38
+START 00019ab8 END 00019bb8
+00019ab8  TEST byte ptr [ECX + 0x100],0x10
+00019abf  JNZ 0x00019ac9
+    -> 00019ac9
+00019ac1  MOV EAX,dword ptr [ECX]
+00019ac3  JMP dword ptr [EAX + 0xfc]
+00019ac9  RET 0x4
+00019acc  XOR EAX,EAX
+00019ace  TEST byte ptr [ECX + 0x100],0x8
+00019ad5  JNZ 0x00019ae8
+    -> 00019ae8
+00019ad7  TEST byte ptr [ECX + 0xfc],0x8
+00019ade  JNZ 0x00019ae8
+    -> 00019ae8
+00019ae0  MOV EAX,dword ptr [ECX]
+00019ae2  JMP dword ptr [EAX + 0xfc]
+00019ae8  RET 0x4
+00019aec  XOR EAX,EAX
+00019aee  TEST byte ptr [ECX + 0x100],0x20
+00019af5  JNZ 0x00019aff
+    -> 00019aff
+00019af7  MOV EAX,dword ptr [ECX]
+00019af9  JMP dword ptr [EAX + 0xfc]
+00019aff  RET 0x4
+00019b02  XOR EAX,EAX
+00019b04  TEST byte ptr [ECX + 0x100],0x80
+00019b0b  JNZ 0x00019b1e
+    -> 00019b1e
+00019b0d  TEST byte ptr [ECX + 0xfc],0x80
+00019b14  JNZ 0x00019b1e
+    -> 00019b1e
+00019b16  MOV EAX,dword ptr [ECX]
+00019b18  JMP dword ptr [EAX + 0xfc]
+00019b1e  RET 0x4
+00019b22  XOR EAX,EAX
+00019b24  TEST byte ptr [ECX + 0x138],0x4
+00019b2b  JNZ 0x00019b35
+    -> 00019b35
+00019b2d  MOV EAX,dword ptr [ECX]
+00019b2f  JMP dword ptr [EAX + 0x100]
+00019b35  RET 0x4
+00019b38  XOR EAX,EAX
+00019b3a  TEST byte ptr [ECX + 0x138],0x8
+00019b41  JNZ 0x00019b4b
+    -> 00019b4b
+00019b43  MOV EAX,dword ptr [ECX]
+00019b45  JMP dword ptr [EAX + 0x100]
+00019b4b  RET 0x4
+00019b4e  XOR EAX,EAX
+00019b50  TEST byte ptr [ECX + 0x138],0x1
+00019b57  JNZ 0x00019b61
+    -> 00019b61
+00019b59  MOV EAX,dword ptr [ECX]
+00019b5b  JMP dword ptr [EAX + 0x100]
+00019b61  RET 0x4
+00019b64  XOR EAX,EAX
+00019b66  TEST byte ptr [ECX + 0x138],0x2
+00019b6d  JNZ 0x00019b77
+    -> 00019b77
+00019b6f  MOV EAX,dword ptr [ECX]
+00019b71  JMP dword ptr [EAX + 0x100]
+00019b77  RET 0x4
+00019b7a  MOV EAX,dword ptr [ECX]
+00019b7c  JMP dword ptr [EAX + 0xfc]
+00019b82  PUSH ESI    ; FUN_00019b82
+00019b83  PUSH 0x0    ; FUN_00019b82
+00019b85  MOV ESI,ECX    ; FUN_00019b82
+00019b87  CALL 0x0001bfda    ; FUN_00019b82
+    -> 0001bfda FUN_0001bfda
+00019b8c  AND byte ptr [ESI + 0x10],0x0    ; FUN_00019b82
+00019b90  LEA EAX,[ESI + 0xc]    ; FUN_00019b82
+00019b93  PUSH EAX    ; FUN_00019b82
+00019b94  MOV dword ptr [ESI + 0x8],0x58    ; FUN_00019b82
+00019b9b  CALL dword ptr [0x0001c428]    ; FUN_00019b82
+    -> 0001c428
+    -> EXTERNAL:00000046 KeInitializeSpinLock
+00019ba1  MOV EAX,ESI    ; FUN_00019b82
+00019ba3  POP ESI    ; FUN_00019b82
+00019ba4  RET    ; FUN_00019b82
+00019ba6  PUSH ESI    ; FUN_00019ba6
+00019ba7  MOV ESI,ECX    ; FUN_00019ba6
+00019ba9  LEA ECX,[ESI + 0xc]    ; FUN_00019ba6
+00019bac  CALL dword ptr [0x0001c300]    ; FUN_00019ba6
+    -> 0001c300
+    -> EXTERNAL:00000055 KfAcquireSpinLock
+00019bb2  MOV byte ptr [ESI + 0x10],AL    ; FUN_00019ba6
+00019bb5  POP ESI    ; FUN_00019ba6
+00019bb6  RET    ; FUN_00019ba6
+00019bb8  MOV EAX,ECX    ; FUN_00019bb8

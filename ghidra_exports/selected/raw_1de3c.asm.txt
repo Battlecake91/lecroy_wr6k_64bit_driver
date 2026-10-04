@@ -1,0 +1,107 @@
+RAW WINDOW around 0001de3c
+START 0001ddbc END 0001debc
+0001ddbf  CALL dword ptr [0x0001c374]    ; FUN_0001dd98
+    -> 0001c374
+    -> EXTERNAL:00000019 RtlInitUnicodeString
+0001ddc5  RET    ; FUN_0001dd98
+0001ddc6  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001ddc9  MOV EAX,0x1044c    ; FUN_0001ddc6
+    -> 0001044c
+0001ddce  MOV dword ptr [EDX + 0x38],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001ddd1  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001ddd4  MOV dword ptr [EDX + 0x40],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001ddd7  AND dword ptr [ECX + 0x14],0xfffffffb    ; FUN_0001ddc6
+0001dddb  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001ddde  MOV dword ptr [EDX + 0x44],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001dde1  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001dde4  MOV dword ptr [EDX + 0x48],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001dde7  AND dword ptr [ECX + 0x14],0xfffffffd    ; FUN_0001ddc6
+0001ddeb  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001ddee  MOV dword ptr [EDX + 0x70],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001ddf1  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001ddf4  AND dword ptr [ECX + 0x14],0xfffffffe    ; FUN_0001ddc6
+0001ddf8  MOV dword ptr [EDX + 0x80],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001ddfe  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de01  MOV dword ptr [EDX + 0xa4],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001de07  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de0a  MOV dword ptr [EDX + 0x90],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001de10  MOV EDX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de13  MOV dword ptr [EDX + 0x94],EAX    ; FUN_0001ddc6
+    -> 0001044c
+0001de19  MOV EAX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de1c  MOV dword ptr [EAX + 0x30],0x10406    ; FUN_0001ddc6
+    -> 00010406
+0001de23  MOV EAX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de26  MOV dword ptr [EAX + 0x34],0x1d380    ; FUN_0001ddc6
+    -> 0001d380
+0001de2d  MOV EAX,dword ptr [ECX + 0x4]    ; FUN_0001ddc6
+0001de30  MOV EAX,dword ptr [EAX + 0x18]    ; FUN_0001ddc6
+0001de33  MOV dword ptr [EAX + 0x4],0x1041c    ; FUN_0001ddc6
+    -> 0001041c
+0001de3a  RET    ; FUN_0001ddc6
+0001de3c  AND dword ptr [ECX + 0x18],0x0
+0001de40  XOR EAX,EAX
+0001de42  RET 0x4
+0001de46  PUSH EBX    ; FUN_0001de46
+0001de47  CALL 0x0001dd98    ; FUN_0001de46
+    -> 0001dd98 FUN_0001dd98
+0001de4c  MOV EBX,dword ptr [0x0001cdf8]    ; FUN_0001de46
+    -> 0001cdf8
+0001de52  TEST EBX,EBX    ; FUN_0001de46
+0001de54  JNZ 0x0001de60    ; FUN_0001de46
+    -> 0001de60
+0001de56  MOV EAX,0xc000009a    ; FUN_0001de46
+0001de5b  JMP 0x0001df25    ; FUN_0001de46
+    -> 0001df25
+0001de60  MOV EAX,dword ptr [ESP + 0x8]    ; FUN_0001de46
+    -> Stack[0x4]
+0001de64  PUSH EBP    ; FUN_0001de46
+0001de65  MOV EBP,dword ptr [ESP + 0x10]    ; FUN_0001de46
+    -> Stack[0x8]
+0001de69  MOV dword ptr [EBX + 0x4],EAX    ; FUN_0001de46
+0001de6c  MOVZX EAX,word ptr [EBP]    ; FUN_0001de46
+0001de70  PUSH ESI    ; FUN_0001de46
+0001de71  PUSH EDI    ; FUN_0001de46
+0001de72  SHR EAX,0x1    ; FUN_0001de46
+0001de74  LEA EAX,[EAX + EAX*0x1 + 0x2]    ; FUN_0001de46
+0001de78  PUSH 0x1    ; FUN_0001de46
+0001de7a  PUSH EAX    ; FUN_0001de46
+0001de7b  CALL 0x0001039a    ; FUN_0001de46
+    -> 0001039a FUN_0001039a
+0001de80  TEST EAX,EAX    ; FUN_0001de46
+0001de82  POP ECX    ; FUN_0001de46
+0001de83  POP ECX    ; FUN_0001de46
+0001de84  JZ 0x0001deab    ; FUN_0001de46
+    -> 0001deab
+0001de86  MOVZX ECX,word ptr [EBP]    ; FUN_0001de46
+0001de8a  MOV ESI,dword ptr [EBP + 0x4]    ; FUN_0001de46
+0001de8d  MOV EDX,ECX    ; FUN_0001de46
+0001de8f  SHR ECX,0x2    ; FUN_0001de46
+0001de92  MOV EDI,EAX    ; FUN_0001de46
+0001de94  MOVSD.REP ES:EDI,ESI    ; FUN_0001de46
+0001de96  MOV ECX,EDX    ; FUN_0001de46
+0001de98  AND ECX,0x3    ; FUN_0001de46
+0001de9b  MOVSB.REP ES:EDI,ESI    ; FUN_0001de46
+0001de9d  MOVZX ECX,word ptr [EBP]    ; FUN_0001de46
+0001dea1  SHR ECX,0x1    ; FUN_0001de46
+0001dea3  AND word ptr [EAX + ECX*0x2],0x0    ; FUN_0001de46
+0001dea8  PUSH EAX    ; FUN_0001de46
+0001dea9  JMP 0x0001dead    ; FUN_0001de46
+    -> 0001dead
+0001deab  PUSH 0x0    ; FUN_0001de46
+0001dead  LEA EAX,[EBX + 0x8]    ; FUN_0001de46
+0001deb0  PUSH EAX    ; FUN_0001de46
+0001deb1  CALL dword ptr [0x0001c374]    ; FUN_0001de46
+    -> 0001c374
+    -> EXTERNAL:00000019 RtlInitUnicodeString
+0001deb7  MOV EAX,[0x0001ce00]    ; FUN_0001de46
+    -> 0001ce00
+0001debc  TEST AX,AX    ; FUN_0001de46

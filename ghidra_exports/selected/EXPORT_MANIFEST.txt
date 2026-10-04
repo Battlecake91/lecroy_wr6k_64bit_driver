@@ -1,35 +1,64 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 1f46cbb81f6b8f7266cf6b2e68538e5338ac4cdd
+Source commit: 66d20f59324d2b6c6c60883819521ac845a89d69
 Program: LecS65AcqDrv.sys
 
 Targets:
-  11894
-  asm:11894
-  xref:11894
-  19bb8
-  asm:19bb8
-  xref:19bb8
-  10d68
-  10d74
+  10c34
+  asm:10c34
+  xref:10c34
+  10c62
+  asm:10c62
+  xref:10c62
+  10c8c
+  asm:10c8c
+  xref:10c8c
+  170ee
+  asm:170ee
+  xref:170ee
+  13914
+  asm:13914
+  xref:13914
+  13934
+  asm:13934
+  xref:13934
+  dwords:1c600:12
+  10c18
+  10cea
+  10d06
+  10d3c
+  10d62
+  10d6e
+  10d7a
+  10d86
+  10eaf
+  11018
   1150a
-  118e0
-  19bc0
-  dwords:1c4c4:16
-  dwords:1c500:64
-  dwords:1c62c:64
-  dwords:1c8bc:64
-  dwords:1c990:8
-  dwords:1c994:8
-  dwords:1c9a4:8
-  dwords:1c9a8:8
-  dwords:1ca00:16
-  dwords:1cbb4:16
-  17fd6
-  asm:17fd6
-  1807a
-  asm:1807a
-  1c0a8
-  asm:1c0a8
+  19a54
+  19a94
+  19ab6
+  19acc
+  19aec
+  19b02
+  19b22
+  19b38
+  19b4e
+  19b7a
+  19d38
+  1de3c
+  dwords:1c4c4:5
+  dwords:1c4d8:6
+  dwords:1c990:1
+  dwords:1c994:4
+  dwords:1c9a4:1
+  dwords:1c9a8:1
+  dwords:1cbb4:4
+  1bc86
+  1bc9e
+  16c74
+  170d0
+  xref:1c500
+  xref:1c62c
+  xref:1c8bc
 
 Exported files:
   00010380_FUN_00010380.c
@@ -1001,18 +1030,26 @@ Exported files:
   asm_asm_19bb8.txt
   asm_asm_1c0a8.txt
   dwords_dwords_1c4c4_16.txt
+  dwords_dwords_1c4c4_5.txt
+  dwords_dwords_1c4d8_6.txt
   dwords_dwords_1c500_16.txt
   dwords_dwords_1c500_64.txt
+  dwords_dwords_1c600_12.txt
   dwords_dwords_1c62c_16.txt
   dwords_dwords_1c62c_64.txt
   dwords_dwords_1c8bc_16.txt
   dwords_dwords_1c8bc_64.txt
+  dwords_dwords_1c990_1.txt
   dwords_dwords_1c990_8.txt
+  dwords_dwords_1c994_4.txt
   dwords_dwords_1c994_8.txt
+  dwords_dwords_1c9a4_1.txt
   dwords_dwords_1c9a4_8.txt
+  dwords_dwords_1c9a8_1.txt
   dwords_dwords_1c9a8_8.txt
   dwords_dwords_1ca00_16.txt
   dwords_dwords_1cbb4_16.txt
+  dwords_dwords_1cbb4_4.txt
   field_0x10.refs.txt
   field_0x100.refs.txt
   field_0x1006.refs.txt
@@ -1094,8 +1131,20 @@ Exported files:
   raw_1089a.asm.txt
   raw_108ae.asm.txt
   raw_108c2.asm.txt
+  raw_10c18.asm.txt
+  raw_10c34.asm.txt
+  raw_10c62.asm.txt
+  raw_10c8c.asm.txt
+  raw_10cea.asm.txt
+  raw_10d06.asm.txt
+  raw_10d3c.asm.txt
+  raw_10d62.asm.txt
   raw_10d68.asm.txt
+  raw_10d6e.asm.txt
   raw_10d74.asm.txt
+  raw_10d7a.asm.txt
+  raw_10d86.asm.txt
+  raw_10eaf.asm.txt
   raw_10fa0.asm.txt
   raw_10fc0.asm.txt
   raw_11000.asm.txt
@@ -1122,9 +1171,31 @@ Exported files:
   raw_12ec2.asm.txt
   raw_13914.asm.txt
   raw_13934.asm.txt
+  raw_16c74.asm.txt
+  raw_170d0.asm.txt
   raw_170ee.asm.txt
+  raw_19a54.asm.txt
+  raw_19a94.asm.txt
+  raw_19ab6.asm.txt
+  raw_19acc.asm.txt
+  raw_19aec.asm.txt
+  raw_19b02.asm.txt
+  raw_19b22.asm.txt
+  raw_19b38.asm.txt
+  raw_19b4e.asm.txt
+  raw_19b7a.asm.txt
+  raw_19d38.asm.txt
+  raw_1bc86.asm.txt
+  raw_1bc9e.asm.txt
+  raw_1de3c.asm.txt
   raw_asm_104a0.asm.txt
   raw_asm_10b30.asm.txt
+  raw_asm_10c34.asm.txt
+  raw_asm_10c62.asm.txt
+  raw_asm_10c8c.asm.txt
+  raw_asm_13914.asm.txt
+  raw_asm_13934.asm.txt
+  raw_asm_170ee.asm.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
   symbol_KeInitializeDpc_0.refs.txt
@@ -1133,6 +1204,9 @@ Exported files:
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
   xref_xref_107fe.txt
+  xref_xref_10c34.txt
+  xref_xref_10c62.txt
+  xref_xref_10c8c.txt
   xref_xref_11894.txt
   xref_xref_119bc.txt
   xref_xref_11ad2.txt
@@ -1158,6 +1232,8 @@ Exported files:
   xref_xref_13434.txt
   xref_xref_134ae.txt
   xref_xref_138b2.txt
+  xref_xref_13914.txt
+  xref_xref_13934.txt
   xref_xref_13954.txt
   xref_xref_13c84.txt
   xref_xref_13f3c.txt
@@ -1189,6 +1265,7 @@ Exported files:
   xref_xref_16594.txt
   xref_xref_169b4.txt
   xref_xref_16bba.txt
+  xref_xref_170ee.txt
   xref_xref_17184.txt
   xref_xref_171de.txt
   xref_xref_17478.txt
