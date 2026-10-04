@@ -275,3 +275,23 @@ clusters contain multiple tiny callable functions. The next stage should
 recover high-confidence function boundaries in Ghidra and export decompiled
 C for each, while inspecting still-undefined executable bytes separately.
 
+
+## First function-recovery pass prepared
+
+The first explicit `recover:` pass has been added to
+`ghidra_scripts/targets.txt`. It selects high-confidence independently
+referenced starts (including `0x11018`) for Ghidra's function-creation
+command, exports decompiled C/references, then refreshes
+`FUNCTION_INVENTORY.txt` and `CODE_COVERAGE.txt`. The new
+`RECOVER_<address>.txt` records distinguish successful creations from
+rejections/failures.
+
+This pass **mutates the local Ghidra analysis database**. The runner
+automatically creates a complete project backup in a timestamped
+directory outside Git before invoking headless Ghidra. Stop/close the
+interactive Ghidra GUI before execution. Do not claim any recovered
+functions until their generated records and pseudocode are reviewed.
+
+Ghidra-recognized function counts should grow beyond 420 after successful
+recovery; the existing 420-classification map must then be extended.
+SEH fragments and ambiguous split boundaries remain manual review items.
