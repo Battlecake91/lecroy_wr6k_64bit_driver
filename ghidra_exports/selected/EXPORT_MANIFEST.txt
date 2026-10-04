@@ -1,90 +1,22 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 81f409c50a7e452bab9426644677a3b336a02439
+Source commit: b41a19baa12357aa8158ea1e2b73c5a0678720f8
 Program: LecS65AcqDrv.sys
 
 Targets:
-  recover:10c18
-  recover:10c34
-  recover:10c62
-  recover:10c8c
-  recover:10cea
-  recover:10d06
-  recover:10d3c
-  recover:10d62
-  recover:10d6e
-  recover:10d7a
-  recover:10d86
-  recover:114f2
-  recover:1150a
-  recover:1151e
-  recover:11a7a
-  recover:13914
-  recover:13934
-  recover:16c74
-  recover:170d0
-  recover:170ee
-  recover:1840a
-  recover:18410
-  recover:18416
-  recover:1841c
-  recover:18422
-  recover:18428
-  recover:18430
-  recover:18436
-  recover:1843c
-  recover:18442
-  recover:18448
-  recover:1844e
-  recover:18454
-  recover:1845a
-  recover:18460
-  recover:18466
-  recover:1846c
-  recover:18472
-  recover:18478
-  recover:1847e
-  recover:18484
-  recover:1848a
-  recover:18490
-  recover:18496
-  recover:1849c
-  recover:184a2
-  recover:184a8
-  recover:184ae
-  recover:184b4
-  recover:184ba
-  recover:184f6
-  recover:19a1e
-  recover:19a34
-  recover:19a54
-  recover:19a74
-  recover:19a94
-  recover:19ab6
-  recover:19acc
-  recover:19aec
-  recover:19b02
-  recover:19b22
-  recover:19b38
-  recover:19b4e
-  recover:19b64
-  recover:19b7a
-  recover:19c44
-  recover:19c54
-  recover:19c64
-  recover:19c80
-  recover:19d38
-  recover:1a07e
-  recover:1a09a
-  recover:1a3fc
-  recover:1a410
-  recover:1bc86
-  recover:1bc9e
-  recover:1c2d4
-  recover:1c2e8
-  recover:1de3c
-  decode:18e58
-  decode:18edb
-  decode:1c280
+  decode-fragment:180c1
+  dwords:1cd10:30
+  dwords:1cd88:24
+  dwords:1cde8:4
+  xref:18067
+  xref:1806b
+  xref:180bd
+  xref:180c1
+  xref:1814c
+  xref:18150
+  xref:1c280
+  asm:1807a
+  asm:17fd6
+  asm:1c118
   inventory
   coverage
 
@@ -1271,6 +1203,7 @@ Exported files:
   asm_asm_18194.txt
   asm_asm_19bb8.txt
   asm_asm_1c0a8.txt
+  asm_asm_1c118.txt
   CODE_COVERAGE.txt
   DECODE_00018e58.txt
   DECODE_00018edb.txt
@@ -1296,6 +1229,9 @@ Exported files:
   dwords_dwords_1ca00_16.txt
   dwords_dwords_1cbb4_16.txt
   dwords_dwords_1cbb4_4.txt
+  dwords_dwords_1cd10_30.txt
+  dwords_dwords_1cd88_24.txt
+  dwords_dwords_1cde8_4.txt
   EXECUTABLE_BYTE_CLASSIFICATION.txt
   field_0x10.refs.txt
   field_0x100.refs.txt
@@ -1550,6 +1486,7 @@ Exported files:
   RECOVER_0001d3c4.txt
   RECOVER_0001d3d0.txt
   RECOVER_0001de3c.txt
+  SEH_FRAGMENT_000180c1.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
   symbol_KeInitializeDpc_0.refs.txt
@@ -1642,8 +1579,15 @@ Exported files:
   xref_xref_17eac.txt
   xref_xref_17ee0.txt
   xref_xref_17f4e.txt
+  xref_xref_18067.txt
+  xref_xref_1806b.txt
+  xref_xref_180bd.txt
+  xref_xref_180c1.txt
+  xref_xref_1814c.txt
+  xref_xref_18150.txt
   xref_xref_18168.txt
   xref_xref_19bb8.txt
+  xref_xref_1c280.txt
   xref_xref_1c500.txt
   xref_xref_1c62c.txt
   xref_xref_1c8bc.txt

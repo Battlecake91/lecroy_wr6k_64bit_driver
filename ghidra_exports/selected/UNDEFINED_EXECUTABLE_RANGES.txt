@@ -202,7 +202,6 @@ start|end|bytes|start_xrefs|hex_prefix_32_bytes
 00017eab|00017eab|1|0|CC
 00017edf|00017edf|1|0|CC
 00017f5f|00017f5f|1|0|CC
-000180c1|000180c3|3|1|8B65E8
 00018193|00018193|1|0|CC
 00018299|00018299|1|0|CC
 000182cd|000182cf|3|0|CCCCCC
@@ -424,5 +423,5 @@ start|end|bytes|start_xrefs|hex_prefix_32_bytes
 0001e8b7|0001e8b7|1|0|00
 0001e8e4|0001e8ff|28|0|00000000000000000000000000000000000000000000000000000000
 SUMMARY
-ranges=423
-undefined_bytes=1043
+ranges=422
+undefined_bytes=1040

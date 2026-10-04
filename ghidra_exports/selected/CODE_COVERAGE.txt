@@ -3,16 +3,16 @@ CLUSTERS: contiguous decoded executable instructions not
 contained in any Ghidra-recognized function body.
 start|end|bytes|instructions|start_xrefs
 00018067|0001806d|7|4|1
-000180bd|000180c0|4|3|1
+000180bd|000180c3|7|4|1
 0001814c|00018156|11|5|1
 SUMMARY
 recognized_local_functions=527
 recognized_functions_including_externals=614
 executable_memory_block_bytes=54528
 decoded_owned_bytes=48086
-decoded_unowned_bytes=22
+decoded_unowned_bytes=25
 decoded_owned_instructions=16276
-decoded_unowned_instructions=12
+decoded_unowned_instructions=13
 unowned_clusters=3
 NOTE: gaps in decoded instruction coverage can include
 data, alignment, undecoded code or embedded tables.

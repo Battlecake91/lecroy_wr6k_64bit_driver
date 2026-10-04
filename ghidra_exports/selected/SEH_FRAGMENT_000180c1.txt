@@ -1,0 +1,3 @@
+REVIEWED_SEH_FRAGMENT 000180c1
+DECODED 000180c1 MOV ESP,dword ptr [EBP + -0x18]
+SEH cleanup fragment only; NO function created.

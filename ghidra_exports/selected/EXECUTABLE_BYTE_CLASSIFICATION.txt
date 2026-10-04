@@ -1,8 +1,8 @@
 EXECUTABLE_BYTE_CLASSIFICATION
 block|start|end|bytes|instruction|defined_data|undefined
-.text|00010380|0001c2ff|49024|45556|2615|853
+.text|00010380|0001c2ff|49024|45559|2615|850
 PAGE|0001d380|0001dd7f|2560|1967|508|85
 INIT|0001dd80|0001e8ff|2944|585|2254|105
-TOTAL| | |54528|48108|5377|1043
+TOTAL| | |54528|48111|5377|1040
 NOTE: Defined data or undefined bytes may conceal
 undiscovered code, alignment or embedded constants.
