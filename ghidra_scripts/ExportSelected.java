@@ -455,7 +455,11 @@ public class ExportSelected extends GhidraScript {
         long clusterBytes = 0;
         long clusterInst = 0;
 
-        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+        File refFile = new File(outDir, "UNOWNED_CODE_REFS.txt");
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8");
+             PrintWriter refsPw = new PrintWriter(refFile, "UTF-8")) {
+            refsPw.println("UNOWNED_EXECUTABLE_INSTRUCTION_REFERENCES");
+            refsPw.println("target|source|type|source_function");
             pw.println("EXECUTABLE_INSTRUCTION_COVERAGE");
             pw.println("CLUSTERS: contiguous decoded executable instructions not");
             pw.println("contained in any Ghidra-recognized function body.");
@@ -478,6 +482,16 @@ public class ExportSelected extends GhidraScript {
                 else {
                     orphanBytes += inst.getLength();
                     orphanInstructions++;
+                    // Referenced entry points may lie in the middle of a
+                    // contiguous unowned instruction region.
+                    ReferenceIterator refsTo = rm.getReferencesTo(at);
+                    while (refsTo.hasNext()) {
+                        Reference ref = refsTo.next();
+                        Function src = fm.getFunctionContaining(ref.getFromAddress());
+                        refsPw.printf("%s|%s|%s|%s%n", at,
+                            ref.getFromAddress(), ref.getReferenceType(),
+                            src != null ? src.getName() : "<no-function>");
+                    }
                 }
 
                 boolean extend = owner == null && clusterStart != null &&
