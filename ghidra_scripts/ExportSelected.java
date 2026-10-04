@@ -491,11 +491,6 @@ public class ExportSelected extends GhidraScript {
                 else {
                     orphanBytes += inst.getLength();
                     orphanInstructions++;
-                    if (clusterStart == null) {
-                        asmPw.println();
-                        asmPw.println("CLUSTER_START " + at);
-                    }
-                    asmPw.println(at + "  " + inst.toString());
                     // Referenced entry points may lie in the middle of a
                     // contiguous unowned instruction region.
                     ReferenceIterator refsTo = rm.getReferencesTo(at);
@@ -522,7 +517,10 @@ public class ExportSelected extends GhidraScript {
                         clusterStart = at;
                         clusterBytes = 0;
                         clusterInst = 0;
+                        asmPw.println();
+                        asmPw.println("CLUSTER_START " + at);
                     }
+                    asmPw.println(at + "  " + inst.toString());
                     clusterEnd = inst.getMaxAddress();
                     clusterBytes += inst.getLength();
                     clusterInst++;
@@ -534,7 +532,15 @@ public class ExportSelected extends GhidraScript {
                 clusterCount++;
             }
             pw.println("SUMMARY");
-            pw.println("recognized_functions=" + fm.getFunctionCount());
+            long localFunctions = 0;
+            Iterator<Function> known = fm.getFunctions(true).iterator();
+            while (known.hasNext()) {
+                known.next();
+                localFunctions++;
+            }
+            pw.println("recognized_local_functions=" + localFunctions);
+            pw.println("recognized_functions_including_externals=" +
+                fm.getFunctionCount());
             pw.println("executable_memory_block_bytes=" + executableBlockBytes);
             pw.println("decoded_owned_bytes=" + ownedBytes);
             pw.println("decoded_unowned_bytes=" + orphanBytes);
