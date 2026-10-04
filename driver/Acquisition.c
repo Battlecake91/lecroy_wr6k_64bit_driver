@@ -967,6 +967,14 @@ LecQuiesceDeferredWork(
         DevExt->LegacyTimerStartTime.QuadPart = 0;
         DevExt->LegacyTimerDurationMs = 0;
     }
+
+    /*
+     * The next START must repopulate hardware register shadows; the device
+     * may have lost these values during the PnP transition.
+     */
+    DevExt->LegacyMamShadowInitialized = FALSE;
+    DevExt->LegacyMamSeqShadowInitialized = FALSE;
+    DevExt->LegacySpiInitialized = FALSE;
 }
 
 VOID
