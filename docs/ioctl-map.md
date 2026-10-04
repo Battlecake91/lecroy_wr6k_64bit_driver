@@ -39,16 +39,33 @@ branch tree and is independent of the modern x64 switch:
 | `0xCFDC2400` | `0x13A2E` | pending/DPC path |
 | `0xCFDD219F` | `0x141F8` | METHOD_NEITHER acquisition |
 
-The wrapper first waits on a device synchronization primitive at
-`device+0x1463` (or returns `0xC00000A3`,
-`STATUS_DEVICE_NOT_READY` when that pointer is absent). For most
-handlers, the return status becomes the overall IRP result; for
+The wrapper first waits on a mutex at
+`device+0x1463` using `KeWaitForSingleObject` (or returns
+`0xC00000A3`, `STATUS_DEVICE_NOT_READY` when that pointer is absent).
+For most handlers, the returned status becomes the overall IRP result; for
 `CFDC2110`, `CFDC2138` and `CFDD219F` it reloads the status
-from the IRP after calling the specialized frontend. It then releases
-the primitive, logs failures and completes the request via
+from the IRP after calling the specialized frontend. It releases the
+mutex with `KeReleaseMutex`, logs failures and completes the request via
 `FUN_00010798`. A returned `STATUS_PENDING (0x103)` bypasses
-normal immediate completion. Unknown codes get
-`STATUS_INVALID_PARAMETER (0xC000000D)`.
+normal immediate completion.
+
+**Newly confirmed legacy bug for an unknown IOCTL:** the default branch
+at `0x112A0` stores `STATUS_INVALID_PARAMETER (0xC000000D)` in
+`Irp->IoStatus.Status` and clears `Information`. However, after a
+successful mutex acquisition `EBX` still contains the **zero**
+`KeWaitForSingleObject` result; the default branch jumps directly
+to `0x1132F`, *skipping* the `0x1132D MOV EBX,EAX` used for
+normal handler returns. The final `FUN_00010798` unconditionally
+stores its supplied `EBX=0` status into `Irp->IoStatus.Status`
+and calls `IofCompleteRequest`. Consequently, the original driver
+actually **completes an otherwise unknown IOCTL as STATUS_SUCCESS**
+after successful mutex acquisition, even though it earlier wrote
+STATUS_INVALID_PARAMETER. The error value is overwritten. This has
+been cross-checked against the recovered decompiled C at
+`ghidra_exports/selected/00011018_FUN_00011018.c` and original
+ASM from `UNOWNED_CODE_ASM.txt`. **Do not blindly reproduce this
+legacy bug** in the x64 driver: preserving robust rejection of unknown
+IOCTLs should be an explicit compatibility/safety decision.
 
 This **confirms the original dispatcher has 27 distinct cases**.
 Both Dallas WRITE and serial FPGA/GPIO programming are reachable
