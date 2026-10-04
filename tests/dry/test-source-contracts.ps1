@@ -21,11 +21,13 @@ $deviceSource = Join-Path $repo "driver\Device.c"
 $acquisitionSource = Join-Path $repo "driver\Acquisition.c"
 $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
+$adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
+$adapterHeader = Join-Path $repo "driver\DmaAdapterStage.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -39,6 +41,8 @@ $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $layoutText = Get-Content -LiteralPath $layoutSource -Raw
 $layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
+$adapterText = Get-Content -LiteralPath $adapterSource -Raw
+$adapterHeaderText = Get-Content -LiteralPath $adapterHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -272,6 +276,21 @@ Test-Contract "adapter-logical descriptor encoder is compiled but not activated"
     $layoutText -notmatch 'MmGetMdlPfnArray|MmGetPhysicalAddress' -and
     $acquisitionText -match 'MmGetMdlPfnArray' -and
     $ioctlText -notmatch 'LecDmaEncodeMappedSegments'
+}
+
+Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisitions" {
+    $driverProjectText -match 'ClCompile Include="DmaAdapterStage.c"' -and
+    $adapterHeaderText -match 'LecDmaCreateAdapterContext' -and
+    $adapterText -match 'IoGetDmaAdapter\(' -and
+    $adapterText -match 'DEVICE_DESCRIPTION_VERSION2' -and
+    $adapterText -match 'Dma32BitAddresses = TRUE' -and
+    $adapterText -match 'AllocateCommonBuffer\(' -and
+    $adapterText -match 'FreeCommonBuffer\(' -and
+    $adapterText -match 'PutDmaAdapter\(' -and
+    $adapterText -match 'if \(!ProvenIdle \|\| Context->Quarantined\)' -and
+    $acquisitionText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
+    $deviceText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
+    $ioctlText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
