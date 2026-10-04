@@ -531,6 +531,7 @@ LecS65Pnp(
                 }
                 else {
                     devExt->Started = TRUE;
+                    LecSetIoctlAdmission(devExt, TRUE);
                     LecEnableInterfaces(devExt);
                 }
             }
@@ -542,8 +543,10 @@ LecS65Pnp(
         return status;
 
     case IRP_MN_STOP_DEVICE:
-        devExt->Started = FALSE;
+        LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
+        LecDrainIoctls(devExt);
+        devExt->Started = FALSE;
         LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
@@ -551,8 +554,10 @@ LecS65Pnp(
         return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_SURPRISE_REMOVAL:
-        devExt->Started = FALSE;
+        LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
+        LecDrainIoctls(devExt);
+        devExt->Started = FALSE;
         LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
@@ -561,13 +566,10 @@ LecS65Pnp(
 
     case IRP_MN_REMOVE_DEVICE:
         devExt->Removed = TRUE;
-        devExt->Started = FALSE;
-
+        LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
-        LecDisconnectInterrupt(devExt);
-        LecReleaseLegacyEvents(devExt);
-        LecReleaseAllTransfers(devExt);
-        LecUnmapBars(devExt);
+        LecDrainIoctls(devExt);
+        devExt->Started = FALSE;
 
         /*
          * Own REMOVE completion and wait for the lower stack before tearing
@@ -575,6 +577,16 @@ LecS65Pnp(
          */
         status = LecForwardAndWait(devExt, Irp);
         IoReleaseRemoveLockAndWait(&devExt->RemoveLock, Irp);
+
+        /*
+         * All regular dispatch references have left; asynchronous ISR/DPC
+         * and DMA hardware shutdown still require the separate P0 quiesce
+         * work before this teardown can be considered hardware-safe.
+         */
+        LecDisconnectInterrupt(devExt);
+        LecReleaseLegacyEvents(devExt);
+        LecReleaseAllTransfers(devExt);
+        LecUnmapBars(devExt);
 
         if (devExt->SymbolicLinkCreated) {
             UNICODE_STRING dosName;
