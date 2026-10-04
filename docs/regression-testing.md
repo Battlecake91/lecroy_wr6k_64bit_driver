@@ -261,7 +261,7 @@ rejects every launch and every release and is not called by the active
 PFN-derived acquisition path.
 
 
-### Staged WDM v3 synchronous no-launch mapping (needs Windows verification)
+### Staged WDM v3 synchronous no-launch mapping (Windows Dry verified)
 
 Following the verified 81/81 Dry checkpoint, the draft now includes
 `DmaSyncStage.c/.h`, a second, entirely **inactive** adapter-mapped
@@ -287,14 +287,24 @@ lengths/addresses, STOP during allocation and admission refusal.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Owner-reported first Windows fake-v3 test compile encountered
-`DmaSyncStage.c(94): C2065 STATUS_NOT_SUPPORTED` because
-`tests/dry/sg-stage-mock.h` lacked the NTSTATUS constant. The
-host-only mock now defines the standard `0xC00000BB` value.
-**The corrected fake-v3 test has not yet been rerun**, and this
-new revision has no owner-verified complete Dry PASS.
-The preceding 81/81 Dry checkpoint remains valid for the earlier
-source revision. No DMA hardware validation is authorized.
+Owner-verified Windows Dry regression on 2026-10-04 at 23:07:06:
+- Debug|x64 driver build **PASS** (0 warnings and 0 errors in an
+  incremental build), x64 `lecdiag` **PASS**.
+- Source/ABI contracts **25/25 PASS**.
+- DMA descriptor layout **13/13 PASS**.
+- Asynchronous mapping ownership **17/17 PASS**.
+- Asynchronous fake-WDM SG bridge **27/27 PASS**.
+- Synchronous WDM v3 no-launch fake-DDI suite **25/25 PASS**,
+  including token-based copy vs release, stale tokens, overlapping
+  adapter-channel rejection, resource shortage, two-MDL 48-MiB
+  coverage, and STOP during allocation.
+- Overall **REGRESSION SUITE PASS: Dry** (**107/107** checks).
+
+The earlier host-only `STATUS_NOT_SUPPORTED` compile error was
+resolved in the test shim. This test is software-only: no real OS
+SG mapping, actual PnP rundown or physical DMA idle has been proven.
+The active PFN-based DMA path is unchanged. No hardware tests are
+authorized.
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
