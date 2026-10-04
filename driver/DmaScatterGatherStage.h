@@ -1,5 +1,6 @@
 #pragma once
 #include "LecS65Drv.h"
+#include "DmaMappingOwner.h"
 
 /*
  * INACTIVE WDM SG prototype: never called by live acquisition.
@@ -17,6 +18,7 @@ typedef struct _LECS65_SG_STAGE {
     BOOLEAN Unsafe;
     BOOLEAN PutStarted;
     BOOLEAN WriteToDevice;
+    LECS65_MAPPING_OWNER Owner;
 } LECS65_SG_STAGE, *PLECS65_SG_STAGE;
 
 /*
@@ -43,3 +45,7 @@ BOOLEAN LecSgStagePeek(
 NTSTATUS LecSgStageRelease(
     _Inout_ PLECS65_SG_STAGE Stage,
     _In_ BOOLEAN ProvenIdle);
+
+/* State transitions called by future serialized hardware-owner code only. */
+BOOLEAN LecSgStageMarkLaunched(_Inout_ PLECS65_SG_STAGE Stage);
+BOOLEAN LecSgStageMarkIdleProved(_Inout_ PLECS65_SG_STAGE Stage);
