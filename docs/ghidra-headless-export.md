@@ -14,7 +14,7 @@ The Java script is used because standard `analyzeHeadless` does not load PyGhidr
 
 A target may be a function address such as `1619a` or `0x1619a`, or a symbol/import name such as `KeSetEvent`.
 
-For address targets the script exports decompiled C plus compact incoming and outgoing function references. For symbol targets it exports references and containing caller functions. The special target `inventory` writes `FUNCTION_INVENTORY.txt`, listing every function Ghidra currently recognizes together with body size, whether selected pseudocode has already been exported, and compact incoming/outgoing reference counts. The new target `coverage` writes `CODE_COVERAGE.txt`: recognized vs unowned decoded instruction byte counts in executable memory blocks, plus each contiguous cluster of disassembled instructions **outside** Ghidra function bodies. These clusters frequently include compiler thunks and virtual call targets that ordinary function inventory misses. The companion `UNOWNED_CODE_REFS.txt` enumerates incoming references for *every* orphan decoded instruction, including entry points in the middle of a contiguous cluster. The updated script also writes `UNOWNED_CODE_ASM.txt` with **all** 90 unowned decoded-instruction clusters and `EXECUTABLE_BYTE_CLASSIFICATION.txt` showing instruction/defined-data/undefined byte counts for each executable memory block. The same run now emits `UNDEFINED_EXECUTABLE_RANGES.txt`, listing each still-undefined executable range with its exact address span, byte length, references to the start address and a 32-byte hex prefix. This report is for manual triage, not automatic disassembly. The latter is crucial because the difference between total executable-section bytes and disassembled instruction bytes is not necessarily undiscovered code.
+For address targets the script exports decompiled C plus compact incoming and outgoing function references. For symbol targets it exports references and containing caller functions. The special target `inventory` writes `FUNCTION_INVENTORY.txt`, listing every function Ghidra currently recognizes together with body size, whether selected pseudocode has already been exported, and compact incoming/outgoing reference counts. The new target `coverage` writes `CODE_COVERAGE.txt`: recognized vs unowned decoded instruction byte counts in executable memory blocks, plus each contiguous cluster of disassembled instructions **outside** Ghidra function bodies. These clusters frequently include compiler thunks and virtual call targets that ordinary function inventory misses. The companion `UNOWNED_CODE_REFS.txt` enumerates incoming references for *every* orphan decoded instruction, including entry points in the middle of a contiguous cluster. The updated script also writes `UNOWNED_CODE_ASM.txt` with **all currently unowned** decoded-instruction clusters and `EXECUTABLE_BYTE_CLASSIFICATION.txt` showing instruction/defined-data/undefined byte counts for each executable memory block. The same run now emits `UNDEFINED_EXECUTABLE_RANGES.txt`, listing each still-undefined executable range with its exact address span, byte length, references to the start address and a 32-byte hex prefix. This report is for manual triage, not automatic disassembly. The latter is crucial because the difference between total executable-section bytes and disassembled instruction bytes is not necessarily undiscovered code.
 
 ## Explicit recovery of overlooked functions
 
@@ -54,39 +54,37 @@ sends IOCTLs or accesses LeCroy hardware. Only report success after
 the user's Ghidra export confirms individual `RECOVER_...` records
 and new valid pseudocode files.
 
-## Stage 2: referenced short functions and reviewed undefined code
+## Recovery and reviewed disassembly safety
 
-The first explicit `recover:` stage (commit `9d3ac5b1`) successfully
-created all **25** selected functions, bringing the recognized internal
-inventory from **420 to 445** and reducing unowned code from 3,207
-bytes/90 clusters to **1,280 bytes/69 clusters**. Each new entry has
-decompiled-C and reference exports.
+The original 420-entry auto-discovery census was extended to
+**527** internal functions by creating 107 independently
+reviewed code entrypoints. Recovery is deliberately opt-in.
+`recover:<hex>` creates a function only when the target is an
+already decoded instruction start and not owned by another
+function. `decode:<hex>` additionally checks a whitelisted
+opcode prefix before disassembly and function creation.
 
-The next `targets.txt` selects **79 more independently referenced,
-already decoded entrypoints**, primarily LeCroy virtual thunks,
-DriverWorks PnP/power callback thunks and static initializer helpers.
-The selection is grounded in incoming `DATA` references from
-`UNOWNED_CODE_REFS.txt`, not speculative disassembly. Deliberately
-excluded are exceptional cleanup/filter entrypoints inside x86 SEH
-scope regions (`0x18067`, `0x1806B`, `0x180BD`,
-`0x1814C`, `0x18150`).
+The separate `decode-fragment:180c1` target was used once
+to decode a missing three-byte x86 SEH frame-restoration
+instruction. It did **not** create an artificial function.
+Subsequent exports confirm the 25 decoded code bytes outside
+function bodies all belong to three SEH cleanup/filter regions;
+their scope metadata supplies six separate DATA references.
 
-A further **explicitly whitelisted** target form is
-`decode:<hexaddress>`. Unlike `recover:` (which requires
-pre-existing decoded instructions), `decode:` invokes Ghidra's
-disassembler before attempting function creation. It is restricted
-to three opcode-verified candidates: `0x18E58`, `0x18EDB`,
-`0x1C280`. Unknown addresses, altered instruction prefixes and
-existing defined data are rejected. Results appear in
-`DECODE_<address>.txt`, and successful function creations in
-`RECOVER_<address>.txt`.
+All three mutation modes (`recover:`, `decode:`, and
+`decode-fragment:`) automatically trigger a full Ghidra
+project backup outside the Git working tree. Close the
+Ghidra GUI before a headless run that changes the project.
+The default `targets.txt` selects only **non-mutating**
+`inventory` and `coverage`.
 
-Both `decode:` and `recover:` **change the local Ghidra analysis
-database**. The runner copies the complete Ghidra project to a
-timestamped sibling directory before invoking either target type.
-Close interactive Ghidra before running. The first/second-stage
-exports are static only; no original or x64 Windows driver is loaded
-or exercised.
+The full original 28-entry `IRP_MJ` dispatch table at
+`0x1CD10` has been reconciled against the device vtable,
+and the name arrays have 24 PnP and four Power minor entries.
+The earlier 30-DWORD export included two adjacent
+**non-dispatch** values. See the
+[canonical architecture](legacy-driver-architecture.md)
+and [current coverage](legacy-executable-code-coverage.md).
 
 ## Windows command template
 
@@ -130,7 +128,7 @@ git push
 
 ## Review rule
 
-The complete pseudocode snapshot of the current 420-function inventory was exported in October 2026. New focused exports should avoid re-exporting all functions. Use `inventory` for the Ghidra-recognized function census and `coverage` for an **independent** decoded-instruction check against missed executable thunks.
+The current inventory includes **527** recovered internal functions with selected pseudocode and descriptions. New focused exports should avoid re-exporting all functions. Use `inventory` for the Ghidra-recognized function census and `coverage` for an **independent** decoded-instruction check against missed executable thunks.
 
 `coverage` is not a proof of complete binary reconstruction: executable blocks also contain padding, data, and potentially undecoded code. The report compares decoded instruction lengths, not all executable bytes labeled as genuine instructions. Short indirect virtual targets still require manual assembly and call-site review.
 
@@ -138,28 +136,3 @@ In the working Ghidra checkout, run `git pull --rebase` after script updates, se
 
 Do not replay unknown CFDC2110 commands on real hardware. Static analysis and passive traces remain the preferred evidence sources.
 
-## Final fragment/table audit (after 527-function recovery)
-
-The second curated run (`7bdbd3cf`) successfully recovered all
-**79** independently referenced function starts and **three**
-opcode-checked undefined executable routines, reaching **527**
-internal functions. It leaves only **22 already decoded bytes**
-across three x86 SEH filter/cleanup code clusters. There is one
-three-byte undefined instruction, `0x180C1` (`8B 65 E8`,
-`MOV ESP,[EBP-0x18]`), in an SEH cleanup epilog.
-
-For this special case `decode-fragment:180c1` is intentionally
-different from `decode:`: it verifies the exact bytes, decodes
-the single existing SEH cleanup instruction, writes
-`SEH_FRAGMENT_000180c1.txt`, and **does not create a
-Ghidra function**. Other fragment addresses are rejected.
-The runner automatically makes the same full project backup
-for `decode-fragment:` as for `decode:` and `recover:`.
-
-The selected final targets also inspect the 30-DWORD
-`IRP_MJ` dispatch array at `0x1CD10`, the 24-entry PnP
-minor-name table at `0x1CD88`, the four-entry Power
-minor-name array at `0x1CDE8`, and the SEH filter/landing
-xrefs. This is a conservative code-coverage audit, not
-another bulk discovery pass. The results must be checked
-against actual Ghidra output before claiming completion.
