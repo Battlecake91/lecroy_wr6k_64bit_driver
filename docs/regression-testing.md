@@ -237,18 +237,29 @@ The live driver still cannot call this staging layer.
 bridge against a synthetic host-only WDM API, including inline/delayed
 and racing callback/REMOVE, late callback after failure, and copied
 list lifetime. The full Dry runner invokes `test-sg-stage.ps1`.
-Owner-reported Windows Dry execution on 2026-10-04 at 22:32:
-WDK x64 driver and lecdiag **built** (0 errors, the same two
-`LNK4075` warnings); source contracts **24/24 PASS**, descriptor
-layout **13/13 PASS**, and mapping ownership **17/17 PASS**.
-The new host-only SG mock did **not compile**, due to mock-only
-collisions with Win32 declarations: `UNREFERENCED_PARAMETER` C4005,
-`KSPIN_LOCK` C2371, `puts` C2365 and missing `MAXULONG`.
-No bridge unit test binary ran; the overall Dry suite **FAILED**.
-The host-only mock was corrected (guarded macros, host mutex
-substitution, renamed `putCalls`, 32-bit limit definition).
-**A new Windows Dry run is still required**; do not report 24/24
-as an overall passing Dry suite for this revision.
+Owner-verified Windows 10 x64 full Dry regression on 2026-10-04 at
+22:40:42 (after fixing the Win32-only test shim):
+- Debug|x64 driver and x64 `lecdiag` builds **PASS**,
+  0 warnings and 0 errors in the incremental WDK build.
+- Source/ABI contracts **24/24 PASS**.
+- DMA descriptor layout native tests **13/13 PASS**.
+- DMA mapping ownership state native tests **17/17 PASS**.
+- Actual inactive WDM SG bridge linked against fake DDIs:
+  **27/27 PASS**, including inline/delayed callbacks, racing REMOVE,
+  concurrent SG copying/closing, failed submission, late callbacks,
+  duplicate callbacks and malformed/beyond-4GiB mappings.
+- Overall **REGRESSION SUITE PASS: Dry**; 81/81 checks passed.
+
+The preceding 22:32 run failed **only** to compile the new host test
+shim due to Windows type/name collisions. The 22:40 test supersedes
+that failure. The 0-warning result is an incremental build, not a
+separate clean-build warning audit.
+
+The successful host simulation **does not prove** WDM callback retirement,
+adapter/MDL/PnP rundown or live DMA safety. The SG bridge still
+rejects every launch and every release and is not called by the active
+PFN-derived acquisition path.
+
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
