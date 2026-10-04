@@ -1,3 +1,65 @@
+# Recovered 25/25 missing functions; second stage selected (2026-10-04)
+
+After the user executed the curated Ghidra recovery, export
+commit `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`
+confirms **all 25** addressed code functions were created and
+decompiled. Original internal recognized function count rose
+**420 to 445**, while Ghidra's inclusive function-manager
+count rose 507 to 532 (still +87 externals).
+
+- Function-owned decoded bytes **44,828 -> 46,755**;
+  unowned bytes **3,207 -> 1,280**;
+  unowned decoded clusters **90 -> 69**.
+- All 445 entries now have semantic entries in
+  [legacy-driver-function-map.md](legacy-driver-function-map.md).
+- Main `0x11018` is recovered as 888-byte 27-case
+  device-control dispatcher with mutex serialization.
+- **Important new legacy bug:** unknown IOCTL `0x112A0`
+  writes `STATUS_INVALID_PARAMETER` to IRP, but jumps
+  over the handler-result assignment, leaving `EBX=0`
+  from successful mutex wait. `FUN_00010798` overwrites
+  `IoStatus.Status` with `STATUS_SUCCESS` and completes.
+  Preserve robust x64 rejection unless compatibility
+  testing establishes a concrete dependency.
+  See [ioctl-map.md](ioctl-map.md).
+- Executable bytes: total 54,528 = 48,035 decoded code +
+  5,377 defined data + **1,116 undefined** (424 ranges).
+  `0x18E58`, `0x18EDB`, `0x1C280` contain plausible
+  real code, unlike typical `CC` padding, zero padding and
+  embedded `BAR0/BAR1/BAR2` strings.
+- Next `ghidra_scripts/targets.txt` selects **79
+  independently referenced** already-decoded missing function
+  starts plus **3 whitelisted `decode:`** targets
+  (`18e58`, `18edb`, `1c280`).
+  The compiler SEH fragments `18067/1806b/180bd/1814c/18150`
+  were deliberately excluded from standalone function creation.
+- `ExportSelected.java` supports guarded `decode:`:
+  verifies exact reviewed opcode prefixes, rejects other
+  addresses/defined data, calls Ghidra's disassembler and
+  explicit function recovery; creates `DECODE_*.txt`,
+  `RECOVER_*.txt`, selected C and refs. This script change
+  is **not yet locally Ghidra-tested**.
+- `run-ghidra-analysis.ps1` creates a timestamped complete
+  Ghidra project backup outside the repo for **both**
+  `recover:` and `decode:`. Close the interactive Ghidra GUI
+  before launching.
+- Follow-up `inventory` and `coverage` measure actual
+  changes. Check all per-target success/fail records before
+  accepting new counts.
+
+Next Ghidra-PC command:
+
+```powershell
+cd C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver
+git pull --rebase
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: recover referenced virtual thunks and undefined code"
+```
+
+All of this is static legacy-driver reverse engineering;
+no x64 driver source, WDK build or physical scope was changed.
+
+---
+
 # Recovery targets and undefined-byte triage ready (2026-10-04)
 
 Latest staged static RE tooling on `main`:
