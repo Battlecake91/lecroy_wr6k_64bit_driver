@@ -1,3 +1,42 @@
+# Code coverage audit: 90 executable clusters (2026-10-04)
+
+The Ghidra `coverage` export at commit
+`cabdc5f9f882044bb3928545278024b1aad5ac9d` found:
+
+- 420 recognized **internal** functions in `FUNCTION_INVENTORY.txt`;
+  507 `FunctionManager.getFunctionCount()` entries **including 87 external**
+  entries.
+- 44,828 decoded code bytes (15,292 instructions) inside known functions.
+- 3,207 decoded code bytes (974 instructions) **outside** known functions,
+  forming 90 contiguous unowned clusters.
+- 54,528 bytes in executable memory blocks, leaving 6,493 bytes not
+  counted as disassembled instructions. These may be defined data, padding
+  or undecoded code and cannot yet be treated as missing functions.
+- Highest-priority missing region: `0x11018..0x1138F`, 888 bytes and
+  236 instructions, pointed to by the LeCroy main-device vtable slot
+  `0x1C54C` (`+0x4C`). Likely a major IRP/device-control
+  dispatcher, but classify only after reviewing raw instructions.
+- Full checklist: [coverage audit](legacy-executable-code-coverage.md).
+
+The expanded `ghidra_scripts/ExportSelected.java` coverage target now
+writes `UNOWNED_CODE_ASM.txt` (full raw disassembly for the 90 clusters)
+and `EXECUTABLE_BYTE_CLASSIFICATION.txt` (per-block instruction,
+defined-data and undefined-byte counts), in addition to previous
+`CODE_COVERAGE.txt`, `UNOWNED_CODE_REFS.txt` and
+`FUNCTION_INVENTORY.txt`.
+`ghidra_scripts/targets.txt` is **already set** to `coverage`
+and `inventory`.
+
+Next Ghidra-PC step after `git pull --rebase`:
+
+```powershell
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: export orphan ASM and executable byte classes"
+```
+
+No native x64 driver code or scope hardware was changed or tested.
+
+---
+
 # Full-binary executable coverage pass selected (2026-10-04)
 
 The follow-up Ghidra export `9b6d3ccad7865a79efccd6343ae9fe697c1e6ec8`
