@@ -215,6 +215,31 @@ descriptor-layout tests **13/13 PASS**, mapping-ownership tests
 compilation and software-only invariants, **not** live WDM DMA callbacks
 or PnP/REMOVE runtime safety.
 
+### SG callback ownership analysis integrated, mock test added (unverified)
+
+The focused WDM SG read-only analysis established critical races in the
+inactive bridge: a borrowed `Peek` pointer could be invalidated by
+concurrent `Release`, `CallbackComplete` was published before the
+callback returned, and adapter/MDL/callback/PnP lifetime ownership was
+not unified. A failed mapping also wrote shared fields outside its lock.
+
+The new isolated bridge revision replaces `Peek` with a bounded,
+spin-lock-protected `LecSgStageCopySegments`; synchronizes failed
+submission state and callback publication; and makes
+`LecSgStageRelease` **always fail closed** pending a real callback
+rundown and bus-idle protocol. The latter deliberately leaks the
+stage, device-object reference and any DMA mapping, even after
+no-hardware-start mapping, instead of assuming retirement.
+The live driver still cannot call this staging layer.
+
+`test-sg-stage.c` and `sg-stage-mock.h` now execute the actual
+bridge against a synthetic host-only WDM API, including inline/delayed
+and racing callback/REMOVE, late callback after failure, and copied
+list lifetime. The full Dry runner invokes `test-sg-stage.ps1`.
+**The Windows WDK build and new mock run for these changes remain
+unverified.** Previously owner-verified results (24/24, 13/13, 17/17)
+belong to the prior bridge revision only.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
