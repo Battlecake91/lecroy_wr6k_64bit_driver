@@ -1,0 +1,7 @@
+FUNCTION_ASM 00019bb8 FUN_00019bb8
+00019bb8  MOV EAX,ECX
+00019bba  MOV DL,byte ptr [EAX + 0x10]
+00019bbd  LEA ECX,[EAX + 0xc]
+00019bc0  JMP dword ptr [0x0001c308]
+    -> 0001c308
+    -> EXTERNAL:00000057 KfReleaseSpinLock
