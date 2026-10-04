@@ -233,6 +233,7 @@ public class ExportSelected extends GhidraScript {
             pw.println("CREATED " + created.getName());
             pw.println("BODY_ADDRESSES " + created.getBody().getNumAddresses());
             pw.println("This recovery updates the local Ghidra project.");
+            decomp.flushCache();
             writeFunction(created);
         }
     }
