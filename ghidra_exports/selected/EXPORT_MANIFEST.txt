@@ -1,10 +1,35 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: f5c99ad1c8600424a6b73ab78758804b93fa8dcb
+Source commit: bb1db429c50a5d167fc14bb0964247e6b2ea28c7
 Program: LecS65AcqDrv.sys
 
 Targets:
-  coverage
+  recover:10406
+  recover:1041c
+  recover:1044c
+  recover:10490
+  recover:104a0
+  recover:183ee
+  recover:1085e
+  recover:10872
+  recover:10886
+  recover:1089a
+  recover:108ae
+  recover:108c2
+  recover:10b30
+  recover:10eaf
+  recover:11018
+  recover:118e4
+  recover:12ec2
+  recover:197d0
+  recover:1b00e
+  recover:1be72
+  recover:1c118
+  recover:1c204
+  recover:1d380
+  recover:1d3c4
+  recover:1d3d0
   inventory
+  coverage
 
 Exported files:
   00010380_FUN_00010380.c
@@ -17,6 +42,16 @@ Exported files:
   000103c8_FUN_000103c8.refs.txt
   000103dc_FUN_000103dc.c
   000103dc_FUN_000103dc.refs.txt
+  00010406_FUN_00010406.c
+  00010406_FUN_00010406.refs.txt
+  0001041c_FUN_0001041c.c
+  0001041c_FUN_0001041c.refs.txt
+  0001044c_FUN_0001044c.c
+  0001044c_FUN_0001044c.refs.txt
+  00010490_FUN_00010490.c
+  00010490_FUN_00010490.refs.txt
+  000104a0_FUN_000104a0.c
+  000104a0_FUN_000104a0.refs.txt
   000104a4_FUN_000104a4.c
   000104a4_FUN_000104a4.refs.txt
   000104f4_FUN_000104f4.c
@@ -63,6 +98,18 @@ Exported files:
   00010816_FUN_00010816.refs.txt
   0001082e_FUN_0001082e.c
   0001082e_FUN_0001082e.refs.txt
+  0001085e_FUN_0001085e.c
+  0001085e_FUN_0001085e.refs.txt
+  00010872_FUN_00010872.c
+  00010872_FUN_00010872.refs.txt
+  00010886_FUN_00010886.c
+  00010886_FUN_00010886.refs.txt
+  0001089a_FUN_0001089a.c
+  0001089a_FUN_0001089a.refs.txt
+  000108ae_FUN_000108ae.c
+  000108ae_FUN_000108ae.refs.txt
+  000108c2_FUN_000108c2.c
+  000108c2_FUN_000108c2.refs.txt
   000108d6_FUN_000108d6.c
   000108d6_FUN_000108d6.refs.txt
   00010a88_FUN_00010a88.c
@@ -71,6 +118,8 @@ Exported files:
   00010a8e_FUN_00010a8e.refs.txt
   00010b10_FUN_00010b10.c
   00010b10_FUN_00010b10.refs.txt
+  00010b30_FUN_00010b30.c
+  00010b30_FUN_00010b30.refs.txt
   00010b3c_FUN_00010b3c.c
   00010b3c_FUN_00010b3c.refs.txt
   00010c98_FUN_00010c98.c
@@ -83,8 +132,12 @@ Exported files:
   00010da0_FUN_00010da0.refs.txt
   00010e3a_FUN_00010e3a.c
   00010e3a_FUN_00010e3a.refs.txt
+  00010eaf_FUN_00010eaf.c
+  00010eaf_FUN_00010eaf.refs.txt
   00010f30_FUN_00010f30.c
   00010f30_FUN_00010f30.refs.txt
+  00011018_FUN_00011018.c
+  00011018_FUN_00011018.refs.txt
   00011390_FUN_00011390.c
   00011390_FUN_00011390.refs.txt
   00011532_FUN_00011532.c
@@ -93,6 +146,8 @@ Exported files:
   000115c4_FUN_000115c4.refs.txt
   00011894_FUN_00011894.c
   00011894_FUN_00011894.refs.txt
+  000118e4_FUN_000118e4.c
+  000118e4_FUN_000118e4.refs.txt
   00011914_FUN_00011914.c
   00011914_FUN_00011914.refs.txt
   00011946_FUN_00011946.c
@@ -213,6 +268,8 @@ Exported files:
   00012e72_FUN_00012e72.refs.txt
   00012eae_FUN_00012eae.c
   00012eae_FUN_00012eae.refs.txt
+  00012ec2_FUN_00012ec2.c
+  00012ec2_FUN_00012ec2.refs.txt
   00012ede_FUN_00012ede.c
   00012ede_FUN_00012ede.refs.txt
   00012f30_FUN_00012f30.c
@@ -557,6 +614,8 @@ Exported files:
   000183b8_FUN_000183b8.refs.txt
   000183ce_FUN_000183ce.c
   000183ce_FUN_000183ce.refs.txt
+  000183ee_FUN_000183ee.c
+  000183ee_FUN_000183ee.refs.txt
   000184c0_FUN_000184c0.c
   000184c0_FUN_000184c0.refs.txt
   000184fa_FUN_000184fa.c
@@ -629,6 +688,8 @@ Exported files:
   000196b4_FUN_000196b4.refs.txt
   00019734_FUN_00019734.c
   00019734_FUN_00019734.refs.txt
+  000197d0_FUN_000197d0.c
+  000197d0_FUN_000197d0.refs.txt
   000197ee_FUN_000197ee.c
   000197ee_FUN_000197ee.refs.txt
   00019812_FUN_00019812.c
@@ -701,6 +762,8 @@ Exported files:
   0001a420_FUN_0001a420.refs.txt
   0001a6ea_FUN_0001a6ea.c
   0001a6ea_FUN_0001a6ea.refs.txt
+  0001b00e_FUN_0001b00e.c
+  0001b00e_FUN_0001b00e.refs.txt
   0001b096_FUN_0001b096.c
   0001b096_FUN_0001b096.refs.txt
   0001b98e_FUN_0001b98e.c
@@ -749,6 +812,8 @@ Exported files:
   0001be20_FUN_0001be20.refs.txt
   0001be34_FUN_0001be34.c
   0001be34_FUN_0001be34.refs.txt
+  0001be72_FUN_0001be72.c
+  0001be72_FUN_0001be72.refs.txt
   0001bed2_FUN_0001bed2.c
   0001bed2_FUN_0001bed2.refs.txt
   0001bf5a_FUN_0001bf5a.c
@@ -783,10 +848,14 @@ Exported files:
   0001c104__vsnprintf.refs.txt
   0001c10a_DbgPrint.c
   0001c10a_DbgPrint.refs.txt
+  0001c118_FUN_0001c118.c
+  0001c118_FUN_0001c118.refs.txt
   0001c1c6_FUN_0001c1c6.c
   0001c1c6_FUN_0001c1c6.refs.txt
   0001c1e4___global_unwind2.c
   0001c1e4___global_unwind2.refs.txt
+  0001c204_FUN_0001c204.c
+  0001c204_FUN_0001c204.refs.txt
   0001c226_FUN_0001c226.c
   0001c226_FUN_0001c226.refs.txt
   0001c2a4_RtlUnwind.c
@@ -795,8 +864,14 @@ Exported files:
   0001c2aa_FUN_0001c2aa.refs.txt
   0001c2b6_FUN_0001c2b6.c
   0001c2b6_FUN_0001c2b6.refs.txt
+  0001d380_FUN_0001d380.c
+  0001d380_FUN_0001d380.refs.txt
   0001d3a4_FUN_0001d3a4.c
   0001d3a4_FUN_0001d3a4.refs.txt
+  0001d3c4_FUN_0001d3c4.c
+  0001d3c4_FUN_0001d3c4.refs.txt
+  0001d3d0_FUN_0001d3d0.c
+  0001d3d0_FUN_0001d3d0.refs.txt
   0001d3dc_FUN_0001d3dc.c
   0001d3dc_FUN_0001d3dc.refs.txt
   0001d3f2_FUN_0001d3f2.c
@@ -1144,6 +1219,31 @@ Exported files:
   raw_asm_13914.asm.txt
   raw_asm_13934.asm.txt
   raw_asm_170ee.asm.txt
+  RECOVER_00010406.txt
+  RECOVER_0001041c.txt
+  RECOVER_0001044c.txt
+  RECOVER_00010490.txt
+  RECOVER_000104a0.txt
+  RECOVER_0001085e.txt
+  RECOVER_00010872.txt
+  RECOVER_00010886.txt
+  RECOVER_0001089a.txt
+  RECOVER_000108ae.txt
+  RECOVER_000108c2.txt
+  RECOVER_00010b30.txt
+  RECOVER_00010eaf.txt
+  RECOVER_00011018.txt
+  RECOVER_000118e4.txt
+  RECOVER_00012ec2.txt
+  RECOVER_000183ee.txt
+  RECOVER_000197d0.txt
+  RECOVER_0001b00e.txt
+  RECOVER_0001be72.txt
+  RECOVER_0001c118.txt
+  RECOVER_0001c204.txt
+  RECOVER_0001d380.txt
+  RECOVER_0001d3c4.txt
+  RECOVER_0001d3d0.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
   symbol_KeInitializeDpc_0.refs.txt
@@ -1151,6 +1251,7 @@ Exported files:
   symbol_KeSetEvent_0.refs.txt
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
+  UNDEFINED_EXECUTABLE_RANGES.txt
   UNOWNED_CODE_ASM.txt
   UNOWNED_CODE_REFS.txt
   xref_xref_107fe.txt

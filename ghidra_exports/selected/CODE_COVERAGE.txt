@@ -2,15 +2,6 @@ EXECUTABLE_INSTRUCTION_COVERAGE
 CLUSTERS: contiguous decoded executable instructions not
 contained in any Ghidra-recognized function body.
 start|end|bytes|instructions|start_xrefs
-00010406|0001044a|69|21|1
-0001044c|000104a2|87|28|10
-0001085e|00010870|19|6|1
-00010872|00010884|19|6|1
-00010886|00010898|19|6|1
-0001089a|000108ac|19|6|1
-000108ae|000108c0|19|6|1
-000108c2|000108d4|19|6|1
-00010b30|00010b3b|12|3|1
 00010c18|00010c32|27|6|79
 00010c34|00010c60|45|14|1
 00010c62|00010c8a|41|13|1
@@ -21,14 +12,10 @@ start|end|bytes|instructions|start_xrefs
 00010d6e|00010d78|11|2|1
 00010d7a|00010d84|11|2|1
 00010d86|00010d99|20|5|1
-00010eaf|00010f2e|128|38|1
-00011018|0001138f|888|236|1
 000114f2|00011508|23|6|1
 0001150a|0001151c|19|5|2
 0001151e|00011531|20|5|1
-000118e4|00011912|47|18|2
 00011a7a|00011a87|14|6|1
-00012ec2|00012edc|27|8|1
 00013914|00013932|31|12|2
 00013934|00013952|31|12|2
 00016c74|00016c90|29|10|1
@@ -37,7 +24,6 @@ start|end|bytes|instructions|start_xrefs
 00018067|0001806d|7|4|1
 000180bd|000180c0|4|3|1
 0001814c|00018156|11|5|1
-000183ee|00018408|27|10|1
 0001840a|0001840e|5|2|1
 00018410|00018414|5|2|1
 00018416|0001841a|5|2|1
@@ -68,7 +54,6 @@ start|end|bytes|instructions|start_xrefs
 000184b4|000184b8|5|2|1
 000184ba|000184be|5|2|1
 000184f6|000184f8|3|1|2
-000197d0|000197ec|29|8|2
 00019a1e|00019a52|53|14|1
 00019a54|00019a72|31|8|2
 00019a74|00019a92|31|8|1
@@ -82,24 +67,18 @@ start|end|bytes|instructions|start_xrefs
 0001a09a|0001a0b4|27|8|1
 0001a3fc|0001a40e|19|5|1
 0001a410|0001a41f|16|4|1
-0001b00e|0001b095|136|42|2
 0001bc86|0001bc9c|23|7|2
 0001bc9e|0001bcb8|27|8|2
-0001be72|0001bed0|95|37|2
-0001c118|0001c1c5|174|70|1
-0001c204|0001c225|34|9|1
 0001c2d4|0001c2f1|30|5|1
-0001d380|0001d3a3|36|9|2
-0001d3c4|0001d3db|24|8|1
 0001de3c|0001de44|9|3|1
 SUMMARY
-recognized_local_functions=420
-recognized_functions_including_externals=507
+recognized_local_functions=445
+recognized_functions_including_externals=532
 executable_memory_block_bytes=54528
-decoded_owned_bytes=44828
-decoded_unowned_bytes=3207
-decoded_owned_instructions=15292
-decoded_unowned_instructions=974
-unowned_clusters=90
+decoded_owned_bytes=46755
+decoded_unowned_bytes=1280
+decoded_owned_instructions=15873
+decoded_unowned_instructions=393
+unowned_clusters=69
 NOTE: gaps in decoded instruction coverage can include
 data, alignment, undecoded code or embedded tables.
