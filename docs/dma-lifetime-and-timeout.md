@@ -278,8 +278,8 @@ The **new, inactive** `DmaSyncStage.c/.h` implementation:
   deadlock PnP/remove locks. Caller MUST preserve the parent, DMA
   adapter, PDO, and pinned MDLs until the gate reports quiescence.
 - In the specific no-launch case calls `FreeAdapterObject`, drops
-  the held device-object reference, clears the sole caller's stage
-  pointer and deallocates stage memory. It does not implement any
+  the held device-object reference, invalidates the mapping token and
+  deallocates stage memory. A duplicate or stale token is rejected. It does not implement any
   release for hardware-started or unknown-active DMA.
 
 The new `tests/dry/test-sg-sync.c` fake-v3 DDI test checks immediate
