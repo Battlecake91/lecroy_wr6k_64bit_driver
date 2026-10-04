@@ -227,7 +227,8 @@ The new isolated bridge revision replaces `Peek` with a bounded,
 spin-lock-protected `LecSgStageCopySegments`; synchronizes failed
 submission state and callback publication; and makes
 `LecSgStageRelease` **always fail closed** pending a real callback
-rundown and bus-idle protocol. The latter deliberately leaks the
+rundown and bus-idle protocol. `LecSgStageMarkLaunched` also
+returns FALSE unconditionally to prevent accidental DMA activation. The latter deliberately leaks the
 stage, device-object reference and any DMA mapping, even after
 no-hardware-start mapping, instead of assuming retirement.
 The live driver still cannot call this staging layer.
