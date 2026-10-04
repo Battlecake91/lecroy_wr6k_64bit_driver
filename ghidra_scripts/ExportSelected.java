@@ -611,6 +611,7 @@ public class ExportSelected extends GhidraScript {
             pw.println("data, alignment, undecoded code or embedded tables.");
         }
         writeExecutableByteClassification();
+        writeUndefinedExecutableRanges();
     }
 
     /*
@@ -672,6 +673,90 @@ public class ExportSelected extends GhidraScript {
             pw.println("NOTE: Defined data or undefined bytes may conceal");
             pw.println("undiscovered code, alignment or embedded constants.");
         }
+    }
+
+    /*
+     * Record undefined bytes in executable memory blocks, keeping addresses
+     * and a short hex prefix for distinguishing padding from possible
+     * un-decoded x86 code. Do not interpret these bytes as instructions.
+     */
+    private void writeUndefinedExecutableRanges() throws Exception {
+        File file = new File(outDir, "UNDEFINED_EXECUTABLE_RANGES.txt");
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+            pw.println("UNDEFINED_EXECUTABLE_RANGES");
+            pw.println("start|end|bytes|start_xrefs|hex_prefix_32_bytes");
+            long total = 0;
+            int ranges = 0;
+            for (MemoryBlock block : currentProgram.getMemory().getBlocks()) {
+                if (!block.isExecute()) {
+                    continue;
+                }
+                Address start = null;
+                Address end = null;
+                CodeUnitIterator it = currentProgram.getListing()
+                    .getCodeUnits(block.getStart(), true);
+                while (it.hasNext()) {
+                    CodeUnit cu = it.next();
+                    Address at = cu.getAddress();
+                    if (at.compareTo(block.getEnd()) > 0) {
+                        break;
+                    }
+                    boolean isUndefined = !(cu instanceof Instruction) &&
+                        !(cu instanceof Data && ((Data)cu).isDefined());
+                    if (isUndefined) {
+                        if (start == null) {
+                            start = at;
+                        }
+                        else if (end.next() == null ||
+                                !end.next().equals(at)) {
+                            writeUndefinedRegion(pw, start, end);
+                            ranges++;
+                            total += end.subtract(start) + 1;
+                            start = at;
+                        }
+                        end = cu.getMaxAddress();
+                    }
+                    else if (start != null) {
+                        writeUndefinedRegion(pw, start, end);
+                        ranges++;
+                        total += end.subtract(start) + 1;
+                        start = null;
+                        end = null;
+                    }
+                }
+                if (start != null) {
+                    writeUndefinedRegion(pw, start, end);
+                    ranges++;
+                    total += end.subtract(start) + 1;
+                }
+            }
+            pw.println("SUMMARY");
+            pw.println("ranges=" + ranges);
+            pw.println("undefined_bytes=" + total);
+        }
+    }
+
+    private void writeUndefinedRegion(PrintWriter pw, Address start,
+            Address end) {
+        long n = end.subtract(start) + 1;
+        int refs = 0;
+        ReferenceIterator it = rm.getReferencesTo(start);
+        while (it.hasNext()) {
+            it.next();
+            refs++;
+        }
+        StringBuilder head = new StringBuilder();
+        for (int i = 0; i < 32 && i < n; ++i) {
+            try {
+                int b = currentProgram.getMemory().getByte(start.add(i)) & 0xff;
+                head.append(String.format("%02X", b));
+            }
+            catch (Exception e) {
+                head.append("??");
+            }
+        }
+        pw.printf("%s|%s|%d|%d|%s%n", start, end, n, refs,
+            head.toString());
     }
 
     private void writeOrphanCodeCluster(PrintWriter pw, Address start,
