@@ -43,8 +43,9 @@ NTSTATUS LecSgStageMap(
 
 /*
  * A bounded SNAPSHOT under the stage lock, never a borrowed SG pointer.
- * Copies real device-logical elements to caller storage. No target buffer
- * access after return without separately retaining its own allocation.
+ * Copies real device-logical elements into caller-owned NONPAGED memory
+ * accessible at DISPATCH_LEVEL. The resulting copy is independent of
+ * the stage; the caller still needs its own lifetime for that copy.
  */
 NTSTATUS LecSgStageCopySegments(
     _Inout_ PLECS65_SG_STAGE Stage,
