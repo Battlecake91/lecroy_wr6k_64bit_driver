@@ -74,6 +74,7 @@ static void setup(void) {
 }
 int main(void) {
     PLECS65_SG_SYNC_STAGE stage=NULL;
+    PLECS65_SG_SYNC_STAGE extra=NULL;
     SCATTER_GATHER_ELEMENT elements[3];
     ULONG n=9;
     NTSTATUS st;
@@ -148,7 +149,7 @@ int main(void) {
           NT_SUCCESS(st)&&stopBusy==1&&stage!=NULL);
     check("STOP prevents new submissions",
           LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,
-                              &stage)==
+                              &extra)==
               STATUS_DEVICE_BUSY);
     check("STOP cannot release active mapping owner",
           !LecSgSyncOwnerCanTeardown(&owner));
@@ -156,8 +157,8 @@ int main(void) {
           LecSgSyncReleaseNoLaunch(&stage)==STATUS_SUCCESS&&
           LecSgSyncOwnerCanTeardown(&owner)&&device.References==0);
     check("STOP stays closed after drain",
-          LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&stage)
-              ==STATUS_DEVICE_BUSY);
+          LecSgSyncMapNoLaunch(&owner,mdls,0x03000000U,&extra)
+              ==STATUS_DEVICE_BUSY && extra==NULL);
 
 
     printf("SG SYNC V3: %u/%u passed; %u failed.\n",
