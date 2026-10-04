@@ -10,9 +10,11 @@ allocation/string/container helpers and compiler/runtime support.
 
 The original **420 recognized internal functions** were snapshotted in commit
 `4e622dc2528127cce13ae35146554a9b2ada2982`.
-The first missing-function recovery pass (`9d3ac5b1`) added **25
-new functions**, bringing Ghidra's current internal count to **445**.
-All 445 have selected pseudocode and a [semantic function-map entry](legacy-driver-function-map.md).
+Two subsequent missing-function recovery passes (`9d3ac5b1`,
+`7bdbd3cf`) added **25 + 82 new functions**, bringing Ghidra's
+**current** internal count to **527**.
+All 527 have selected pseudocode and a
+[semantic function-map entry](legacy-driver-function-map.md).
 Raw x86 assembly remains the authority when the decompiler loses
 calling-convention, stack-argument, fallthrough or bit-level detail.
 
@@ -579,11 +581,15 @@ The major architectural subsystems are now identified:
 - DriverWorks support classes.
 
 The original PE32 code is now classified at both function and subsystem level.
-All **420 Ghidra-recognized functions** have semantic entries in
-[legacy-driver-function-map.md](legacy-driver-function-map.md). The
-2026-10-04 focused ASM pass resolved the two control-flow warnings
-(`0x11894`, `0x19BB8`), bringing the recognized inventory to
-**420 classified / 0 pending ASM warnings**.
+The **initial 420-function inventory** had complete semantic entries
+in [legacy-driver-function-map.md](legacy-driver-function-map.md);
+it was then expanded to **527 recognized internal functions** after
+two curated Ghidra recovery passes. The first ASM pass resolved the
+two legacy warnings (`0x11894`, `0x19BB8`). The newest small
+DriverWorks virtual-forwarder functions emit indirect-jump
+decompiler warnings, but the corresponding x86 tail-jump forms
+are independently visible in raw ASM and are recorded in the
+function-map entries.
 
 The [vtable and ASM audit](legacy-driver-vtables-and-asm-audit.md) now confirms:
 
@@ -638,13 +644,18 @@ This is not yet 100% executable-byte provenance.
 
 ## First recovered-function pass: ABI and code-coverage implications
 
-The curated Ghidra `recover:` run at `9d3ac5b1` created
-25 additional functions from separately referenced orphan ASM
-boundaries, including the complete master device-control dispatcher
-`0x11018` and its associated IRP, DPC, DriverWorks and SEH
-routines. Of the **48,035** decoded instruction bytes in executable
-memory blocks, **46,755** are now owned by internal functions;
-**1,280** remain outside recognized bodies in **69** clusters.
+The first curated Ghidra `recover:` run at
+`9d3ac5b1` created **25** additional functions, including the
+complete master device-control dispatcher `0x11018`.
+The second run at `7bdbd3cf` created another **82** functions
+(79 referenced virtual/callbacks, plus three newly decoded helpers).
+Current coverage is **48,086** owned decoded instruction bytes,
+only **22** decoded unowned bytes in **three compiler-SEH**
+fragments, and **48,108** total decoded instruction bytes.
+The remaining **1,043 undefined bytes** are predominantly
+alignment/padding/text/constant data, with a separately identified
+three-byte x86 SEH frame-restoration instruction at `0x180C1`.
+Full details: [coverage audit](legacy-executable-code-coverage.md).
 
 The recovered decompiler code confirms
 `KeWaitForSingleObject` / `KeReleaseMutex` serialization around
@@ -662,8 +673,33 @@ intervals (1,116 bytes). Most sampled spans are `CC` alignment,
 zero padding, or embedded strings/register names, but there are at
 least three plausible **real unrecognized code routines** at
 `0x18E58`, `0x18EDB`, `0x1C280`, likely PnP/power
-string-table lookup and SEH exception helper code. The second staged
-recovery now chooses 79 additional directly referenced thunks plus
-whitelisted decode of just those three candidates. Successful
-decode and creation have not yet been tested; their results must be
-checked before claiming any new coverage.
+string-table lookup and SEH exception helper code. The second recovery successfully decoded and decompiled all three
+candidates. The remaining scope is specific SEH-frame/code-boundary
+and major-IRP table auditing; do not mistake the **historical**
+424-range/1,116-byte state in this section for the newer
+423-range/1,043-byte state in the coverage report.
+
+## Current whole-binary function coverage (post-second recovery)
+
+The analyzed PE32 now has **527** internal functions with
+function-by-function semantic descriptions and decompiled C
+snapshots, plus **87** external/imported Ghidra function-manager
+entries. The source count of 420 was a Ghidra auto-discovery
+limitation, not an architectural constraint.
+
+All former orphan clusters except **three x86 SEH fragments**
+have function ownership. The known compiler landing pads
+`0x18067..0x1806D`, `0x180BD..0x180C0` and
+`0x1814C..0x18156` total **22 bytes** and are properly
+handled as exception scope/filter code, not ordinary
+`__thiscall` methods. Three newly discovered functions
+`0x18E58`, `0x18EDB` and `0x1C280` implement PnP
+minor-name lookup, Power minor-name lookup and compiler SEH
+frame verification respectively.
+
+The final optional static audit is already staged in
+`ghidra_scripts/targets.txt`: whitelisted disassembly of
+`0x180C1` as a fragment (no artificial function), the
+30-entry IRP-major callback table, the PnP/Power name
+tables, and SEH xrefs. This must be checked independently
+before describing all executable bytes as accounted for.
