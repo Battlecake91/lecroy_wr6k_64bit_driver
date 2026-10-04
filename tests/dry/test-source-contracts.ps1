@@ -17,10 +17,11 @@ $publicHeader = Join-Path $repo "include\LecS65LegacyIoctl.h"
 $driverHeader = Join-Path $repo "driver\LecS65Drv.h"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
 $deviceSource = Join-Path $repo "driver\Device.c"
+$acquisitionSource = Join-Path $repo "driver\Acquisition.c"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $deviceSource, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $deviceSource, $acquisitionSource, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -30,6 +31,7 @@ $publicText = Get-Content -LiteralPath $publicHeader -Raw
 $driverText = Get-Content -LiteralPath $driverHeader -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
 $deviceText = Get-Content -LiteralPath $deviceSource -Raw
+$acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
 $script:Checks = 0
@@ -176,6 +178,40 @@ Test-Contract "both native DMA launch paths reject absent interrupts" {
     $gate = 'if\s*\(!DevExt->Started\s*\|\|\s*!DevExt->InterruptConnected\)\s*\{\s*return STATUS_DEVICE_NOT_READY;'
     $mttr.Success -and $buffered.Success -and
     $mttr.Value -match $gate -and $buffered.Value -match $gate
+}
+
+Test-Contract "PnP remove is drained before deleting device" {
+    $remove = [regex]::Match(
+        $deviceText,
+        '(?s)case IRP_MN_REMOVE_DEVICE:(.*?)default:')
+    $remove.Success -and
+    $remove.Value -match 'LecSetIoctlAdmission\(devExt, FALSE\)' -and
+    $remove.Value -match 'LecDrainIoctls\(devExt\)' -and
+    $remove.Value -match 'LecQuiesceDeferredWork\(devExt, devExt->Started\)' -and
+    $remove.Value -match 'IoReleaseRemoveLockAndWait\(&devExt->RemoveLock, Irp\)' -and
+    $remove.Value.IndexOf('IoReleaseRemoveLockAndWait') -lt
+        $remove.Value.IndexOf('IoDeleteDevice')
+}
+
+Test-Contract "STOP and surprise removal drain IOCTLs before BAR release" {
+    $stop = [regex]::Match(
+        $deviceText, '(?s)case IRP_MN_STOP_DEVICE:(.*?)case IRP_MN_SURPRISE_REMOVAL:')
+    $surprise = [regex]::Match(
+        $deviceText, '(?s)case IRP_MN_SURPRISE_REMOVAL:(.*?)case IRP_MN_REMOVE_DEVICE:')
+    $stop.Success -and $surprise.Success -and
+    $stop.Value -match 'LecQuiesceDeferredWork\(devExt, TRUE\)' -and
+    $surprise.Value -match 'LecQuiesceDeferredWork\(devExt, FALSE\)' -and
+    $stop.Value.IndexOf('LecDrainIoctls') -lt $stop.Value.IndexOf('LecReleaseAllTransfers') -and
+    $surprise.Value.IndexOf('LecDrainIoctls') -lt $surprise.Value.IndexOf('LecReleaseAllTransfers')
+}
+
+Test-Contract "IRQ DPC and timer quiescence precedes resource cleanup" {
+    $acquisitionText -match 'KeSynchronizeExecution\(' -and
+    $acquisitionText -match 'KeRemoveQueueDpc\(' -and
+    $acquisitionText -match 'KeFlushQueuedDpcs\(' -and
+    $acquisitionText -match 'KeCancelTimer\(' -and
+    $acquisitionText -match 'LegacyMamShadowInitialized = FALSE' -and
+    $acquisitionText -match 'LegacyMamSeqShadowInitialized = FALSE'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
