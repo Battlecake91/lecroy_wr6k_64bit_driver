@@ -1,6 +1,6 @@
 # Development TODO
 
-- [ ] Finish the legacy-driver static quality audit. All 420 Ghidra-recognized functions now have repository pseudocode snapshots and semantic classifications; 418 are directly classified and two (`0x11894`, `0x19BB8`) remain marked for raw-ASM control-flow verification. The next focused pass also reconstructs the central DriverWorks/LeCroy vtables, this-adjusting thunks and SEH-sensitive transfer helpers. Do not exclude DriverWorks/PnP/power/runtime support merely because it is not LeCroy-specific.
+- [ ] **Continue full original-binary reverse engineering beyond the recognized-function inventory.** All 420 Ghidra-recognized functions are semantically classified; the two former ASM warnings (`0x11894`, `0x19BB8`) were resolved on 2026-10-04. Main, hardware base and derived vtables are mapped, but short executable thunks and indirect virtual targets are not all identified as functions. Next audit `0x10C34`, `0x10C62`, `0x10C8C`, `0x170EE`, `0x13914`, `0x13934`, main-vtable tail `0x1C600`, and neighboring x86 this-adjusting thunks. Do not infer full executable-code coverage from 420/420 recognized entries; include DriverWorks/PnP/power/runtime support. See [vtable/ASM evidence](legacy-driver-vtables-and-asm-audit.md).
 
 This file tracks unfinished work and deferred features. The current, verified capabilities are summarized in the [README](../README.md); detailed historical evidence belongs in the technical docs and [engineering handoff](next-chat-handoff.md). Entries here are not claims of implemented functionality.
 
