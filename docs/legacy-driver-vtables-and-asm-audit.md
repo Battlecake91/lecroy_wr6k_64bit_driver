@@ -6,9 +6,10 @@ as the authoritative source. It complements
 [legacy-driver-architecture.md](legacy-driver-architecture.md) and
 [legacy-driver-function-map.md](legacy-driver-function-map.md).
 
-The pass resolves both *control-flow* warnings from the 420-function snapshot
-but does not establish that Ghidra has identified every executable thunk or
-every indirect virtual target in the binary. No native driver source or real
+The initial pass resolved two decompiler control-flow warnings. Subsequent
+reviewed recovery brought the inventory to **527** internal functions, and
+the final SEH audit accounts for all remaining decoded instruction clusters.
+This still does not prove all runtime indirect targets or source equivalence. No native driver source or real
 hardware was changed/tested in this pass.
 
 ## Important table-boundary caveat
@@ -29,9 +30,12 @@ Selected entries from `dwords_dwords_1c500_64.txt`:
 |---|---|---|
 | +0x04 | 0x11532 | main-device deleting destructor |
 | +0x08 | 0x1A420 | generic DriverWorks IRP dispatcher |
-| +0x0C | 0x10E3A | create dispatch path |
-| +0x24 | 0x118E4 | IRP queue/forward helper |
-| +0x5C | 0x10F30 | close path |
+| +0x0C | 0x10E3A | IRP_MJ_CREATE |
+| +0x18 | 0x10EAF | IRP_MJ_CLOSE |
+| +0x1C | 0x118E4 | IRP_MJ_READ, queue helper |
+| +0x24 | 0x118E4 | IRP_MJ_WRITE, queue helper |
+| +0x4C | 0x11018 | IRP_MJ_DEVICE_CONTROL, 27-case dispatcher |
+| +0x5C | 0x10F30 | IRP_MJ_CLEANUP |
 | +0x6C | 0x1B096 | power IRP dispatcher |
 | +0x80 | 0x1A6EA | PnP IRP dispatcher |
 | +0x84 | 0x11894 | guarded cancel/dispatch path |
@@ -41,8 +45,9 @@ Selected entries from `dwords_dwords_1c500_64.txt`:
 | +0xE0 | 0x10D7A | this-adjusting hardware-subobject thunk |
 | +0xF8 | 0x194BA | DriverWorks state/capability policy init |
 
-Other entries include inherited framework/default handlers and short unrecognized
-thunks; individual slot semantics require the relevant call site.
+Other slots include inherited framework/default handlers and short
+now-recovered thunks. The complete 28-entry IRP-major-to-vtable
+crosswalk is in [legacy-driver-architecture.md](legacy-driver-architecture.md).
 
 ## Hardware base vtable: 0x1C8BC
 
@@ -51,12 +56,12 @@ Confirmed ten function slots (`+0x00` through `+0x24`):
 | Offset | Target | Meaning |
 |---|---|---|
 | +0x00 | 0x12E18 | remove all transfer registrations for process |
-| +0x04 | 0x170EE | acquisition/transfer helper, thunk to examine |
+| +0x04 | 0x170EE | transfer-list release via this+0x100, 0x1829A |
 | +0x08 | 0x172A2 | unregister one transfer |
 | +0x0C | 0x1731C | register a transfer |
 | +0x10 | 0x14122 | deleting destructor |
-| +0x14 | 0x13914 | board/helper virtual method, target pending |
-| +0x18 | 0x13934 | board/helper virtual method, target pending |
+| +0x14 | 0x13914 | global interrupt mask bit 0 set and synchronized |
+| +0x18 | 0x13934 | global interrupt mask bit 0 clear and synchronized |
 | +0x1C | 0x104A0 | zero-return default |
 | +0x20 | 0x104A0 | zero-return default |
 | +0x24 | 0x104A0 | zero-return default |
@@ -72,9 +77,9 @@ The changed entries are:
 
 | Offset | Base target | Derived target | Status |
 |---|---|---|---|
-| +0x10 | 0x14122 | 0x10C8C | destructor/thunk, audit implementation |
-| +0x1C | 0x104A0 | 0x10C62 | derived override, target pending |
-| +0x20 | 0x104A0 | 0x10C34 | derived override, target pending |
+| +0x10 | 0x14122 | 0x10C8C | this -= 0x1E0; device deleting destructor |
+| +0x1C | 0x104A0 | 0x10C62 | select one of three embedded 32-byte helper records |
+| +0x20 | 0x104A0 | 0x10C34 | IoStartNextPacket and conditional IRP completion |
 | +0x24 | 0x104A0 | 0x114F2 | DPC forwarding thunk, verified |
 
 The `+0x24` thunk is directly proven:
@@ -89,9 +94,9 @@ The `+0x24` thunk is directly proven:
 ```
 
 This independently corroborates the original `CFDC2400` derived-object
-dispatch and synchronous reuse of the original DPC core. The derived object's
-`+0x20` implementation (`0x10C34`) is **not** yet semantically recovered
-merely by identifying its address.
+dispatch and reuse of the original DPC core. The neighboring
+`+0x20` implementation (`0x10C34`) was independently recovered
+as the packet-queue/IRP-completion callback.
 
 ## DriverWorks driver-object area: 0x1C4C4 / 0x1C4D8
 
@@ -196,18 +201,7 @@ registers), not a LeCroy-specific operation.
 The x64 port must preserve resource ownership and balanced unlocking, not
 mechanically translate x86 SEH-frame setup.
 
-## Next verification work
-
-- Analyze **unrecognized** derived virtual targets `0x10C34`,
-  `0x10C62`, `0x10C8C`, `0x170EE`, `0x13914`, `0x13934`.
-- Recover the complete main-device vtable tail at `0x1C600` before the
-  next table at `0x1C62C`.
-- Recover the actual function starts/ends of the x86 this-adjusting thunks
-  from `0x10C18` through `0x10D90`.
-- Continue class/vtable coverage audits. **420/420 classified means coverage
-  of Ghidra-recognized entries, not full binary code coverage.**
-
-## Follow-up: unrecognized virtual functions (2026-10-04)
+## Verified virtual functions and thunks
 
 Focused Ghidra pass `9b6d3ccad7865a79efccd6343ae9fe697c1e6ec8`
 verified virtual targets that were executable but absent as independent
@@ -273,10 +267,10 @@ perform DriverWorks PnP/power policy-flag checks (primarily offsets
 virtual handlers; the method-level Windows minor-code mapping is a further
 cross-reference task.
 
-The 420-function Ghidra census **under-counts executable call targets**.
-Future census improvements should enumerate executable addresses referenced
-by virtual tables/dispatch tables, distinguish import thunks from actual
-internal functions, and identify short `this`-adjuster regions.
+The initial 420-function census **under-counted executable call targets**.
+Later reviewed Ghidra recovery created the missing short vtable thunks;
+the current 527-function inventory and remaining SEH fragments are
+verified in [executable-code coverage](legacy-executable-code-coverage.md).
 
 ### Auxiliary virtual timer/destructor thunks
 
@@ -295,14 +289,14 @@ The `0x19A54`, `0x19A94`, `0x19AB6`, `0x19ACC`,
 `this+0xFC/+0x100/+0x138`; individual WDM minor-code identities are
 not yet attributed.
 
-### Open detailed verification
+### Semantic verification still needed
 
-- Confirm which public/callback operations select the three pointers
-  returned from `0x10C62`.
-- Trace the main `0x1B00E` power callback and the `0x19A54..`
-  policy-gated forwarders to their owning PnP/power minor codes.
-- Re-inventory actual executable function starts not recovered by
-  Ghidra, particularly the short non-inventory thunks.
-- Do not claim complete binary reverse engineering from the
-  **420/420 recognized-function semantic classification** alone.
+- Establish the exact caller-level purpose of each of the three embedded
+  records returned by `0x10C62` (their addresses are proven).
+- Cross-check individual PnP/power minor-code policy paths in
+  `0x19Axx/0x19Bxx` and the `0x1B00E` cancellation path against
+  user-mode/runtime behavior and the intended x64 design.
+- The recovered virtual jumps are intentional tail calls. Do not
+  mechanically translate compiler-generated x86 thunks or SEH
+  frame code to x64.
 
