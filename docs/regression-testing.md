@@ -273,8 +273,10 @@ The sync stage owns each successful mapping until
 `FreeAdapterObject(DeallocateObject)` without ever providing a
 hardware-launch operation. Its parent `LECS65_SG_SYNC_OWNER` reserves
 an outstanding count before each WDM call, blocks submissions after
-STOP, and permits parent teardown only when the last no-launch
-mapping has released. It cannot be used by real PnP yet, and its
+STOP, and permits parent teardown only when the no-launch
+mapping has released. It admits only one v3 allocation per adapter.
+Monotonic, nonreused tokens and parent-locked copying/removal prevent
+a borrowed-pointer use-after-free or duplicate release. It cannot be used by real PnP yet, and its
 adapter/MDL chain are deliberately borrowed from an external owner.
 
 The new fake-WDM test suite `test-sg-sync.c` runs actual stage code
