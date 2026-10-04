@@ -77,7 +77,7 @@ LecDmaEncodeMappedSegments(
         return LecDmaLayoutAddressRange;
     }
 
-    capacity = TableBytes / sizeof(LECS65_DMA_LAYOUT_ENTRY);
+    capacity = TableBytes / (uint32_t)sizeof(LECS65_DMA_LAYOUT_ENTRY);
 
     /* Reject unmapped holes, misalignment and 32-bit PCI address overflow. */
     for (i = 0; i < SegmentCount; ++i) {
