@@ -106,9 +106,9 @@ int main(void) {
     check("parent cannot teardown before STOP",
           !LecSgSyncOwnerCanTeardown(&owner));
     st=LecSgSyncMapNoLaunch(&owner,&mdls[0],128,&second);
-    check("distinct mappings receive distinct IDs",
-          NT_SUCCESS(st)&&second!=id&&second!=0&&
-          owner.Outstanding==2);
+    check("adapter refuses overlapping channel allocation",
+          st==STATUS_DEVICE_BUSY&&second==0&&
+          owner.Outstanding==1);
 
     race.Token=id;race.Errors=0;
     worker=CreateThread(NULL,0,concurrentCopy,&race,0,NULL);
@@ -122,7 +122,10 @@ int main(void) {
     check("stale token cannot double release",
           LecSgSyncReleaseNoLaunch(&owner,id)==STATUS_INVALID_PARAMETER &&
           freeCalls==1);
-    check("other mapping stays accessible",LecSgSyncCopySegments(
+    st=LecSgSyncMapNoLaunch(&owner,&mdls[0],128,&second);
+    check("new allocation has nonreused mapping ID",
+          NT_SUCCESS(st)&&second!=id&&second!=0);
+    check("new mapping stays accessible",LecSgSyncCopySegments(
           &owner,second,els,3,&count)==STATUS_SUCCESS);
     (void)LecSgSyncReleaseNoLaunch(&owner,second);
     check("successful no-launch cleanup balances refs",
