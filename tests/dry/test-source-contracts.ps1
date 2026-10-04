@@ -323,6 +323,8 @@ Test-Contract "WDM SG callback bridge is fail-closed pending real rundown" {
     $scatterText -match 'LecSgStageCopySegments\(' -and
     $scatterText -match 'KeAcquireSpinLock\(&Stage->Lock' -and
     $scatterText -match 'Stage->SubmissionReturned = TRUE;' -and
+    $scatterText -match '(?s)LecSgStageMarkLaunched\(.*?return FALSE;' -and
+    $scatterText -notmatch 'LecMapOwnerLaunch\(&Stage->Owner\)' -and
     $scatterText -match 'LecMapOwnerUncertain\(&Stage->Owner\)' -and
     $scatterText -match 'return STATUS_DEVICE_BUSY;' -and
     $scatterText -match 'KeRaiseIrql\(DISPATCH_LEVEL' -and
