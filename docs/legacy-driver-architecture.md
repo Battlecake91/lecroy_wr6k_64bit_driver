@@ -615,3 +615,21 @@ functions plus **87** external/imported entries and is not evidence that
 orphan-cluster assembly and separately classifies the 6,493 bytes of
 executable-block content not decoded as instructions. This is source-only
 reverse engineering; no x64 hardware regression is implied.
+
+## Complete executable audit and missed device dispatch
+
+The 2026-10-04 full orphan ASM export has now conclusively
+identified `0x11018..0x1138F`, main LeCroy device vtable slot
+`0x1C500+0x4C`, as the **original top-level 27-case IOCTL
+dispatcher**. Unlike the earlier manually pieced-together IOCTL case
+list, this is a direct raw-assembly proof of the whole dispatch tree.
+See [IOCTL map](ioctl-map.md) and
+[complete decoded executable audit](legacy-executable-code-coverage.md).
+
+The first whole-executable byte-classification pass shows
+48,035 decoded-instruction bytes, 5,377 bytes of defined data and
+1,116 undefined bytes across 54,528 executable-section bytes. All
+90 Ghidra-unowned decoded-code clusters have been semantically
+categorized by family, but short independent functions/virtual thunks
+still require function-boundary recovery and separate decompilation.
+This is not yet 100% executable-byte provenance.
