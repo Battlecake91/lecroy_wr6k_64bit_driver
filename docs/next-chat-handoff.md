@@ -1,3 +1,46 @@
+# Full-binary executable coverage pass selected (2026-10-04)
+
+The follow-up Ghidra export `9b6d3ccad7865a79efccd6343ae9fe697c1e6ec8`
+resolved additional **unrecognized executable virtual methods**:
+
+- Derived hardware virtual `+0x10` at `0x10C8C`: deleting-destructor
+  thunk, `this -= 0x1E0` and jump to `0x11532`.
+- `+0x1C` at `0x10C62`: returns embedded helper pointer
+  `this+0x12D5/+0x12F5/+0x1315` based on selector `0/1/2`.
+- `+0x20` at `0x10C34`: start next packet via
+  `IoStartNextPacket`, optionally complete the IRP and drop I/O ref.
+- `0x13914/0x13934`: set/clear global pending/enable bit 0 and
+  synchronously publish using `0x12EAE`.
+- `0x170EE`: adjust `this+0x100` and jump to transfer-list free `0x1829A`.
+- Complete main-device vtable to `0x1C628` (the next vtable begins
+  `0x1C62C`), including 0x10D62/0x10D6E Start/Stop thunks, power
+  and framework queue callbacks.
+- `0x1BC86/0x1BC9E` are timer wrappers; `0x19Axx/0x19Bxx`
+  contain framework policy-gated virtual callback forwarders.
+
+All recognized functions remain classified, but **420 recognized functions
+is not full executable binary coverage**. The next focused script change in
+`ghidra_scripts/ExportSelected.java` supports `coverage`. Its committed
+`ghidra_scripts/targets.txt` selects `coverage` and `inventory`.
+The expected outputs are `CODE_COVERAGE.txt`,
+`UNOWNED_CODE_REFS.txt` and refreshed `FUNCTION_INVENTORY.txt`.
+
+Run on the Ghidra PC after `git pull --rebase`:
+
+```powershell
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: export complete executable code coverage"
+```
+
+Afterward enumerate and classify each unowned decoded-code cluster and
+referenced internal target, then audit undecoded executable-byte ranges
+before claiming complete code coverage.
+
+Latest detailed evidence:
+[legacy vtables/ASM audit](legacy-driver-vtables-and-asm-audit.md),
+[coverage workflow](ghidra-headless-export.md).
+
+---
+
 # Latest reverse-engineering handoff (2026-10-04)
 
 The full legacy x86 `LecS65AcqDrv.sys` pseudocode export is available in
