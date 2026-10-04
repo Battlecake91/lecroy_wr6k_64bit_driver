@@ -117,7 +117,7 @@ are satisfactorily modeled.
 A separate `driver/DmaAdapterStage.c/.h` module now compiles as part
 of the draft driver. It provides:
 - `LecDmaCreateAdapterContext`: `IoGetDmaAdapter` using a
-  `DEVICE_DESCRIPTION_VERSION2` PCI bus-master, 32-bit DMA-address
+  `DEVICE_DESCRIPTION_VERSION3` PCI bus-master, 32-bit DMA-address
   constraint, scatter/gather support and maximum transfer size. The
   returned map-register count is retained, **not assumed sufficient**.
 - `LecDmaAllocateCommonTable`: requests a device-visible
@@ -242,6 +242,65 @@ successful no-launch cleanup path, multi-MDL sizing and map-register
 budget, and independent hardware bus-idle proof. Pending or unknown
 mappings cannot be returned. Until resolved, the staged bridge MUST
 remain unreachable from active acquisition and PnP paths.
+
+## Experimental synchronous DMA v3 path: safe no-launch cleanup only
+
+The Microsoft WDM v3 `GetScatterGatherListEx` contract explicitly allows
+`DMA_SYNCHRONOUS_CALLBACK` with a NULL execution callback. Resource
+shortage then returns `STATUS_INSUFFICIENT_RESOURCES` without queuing
+an asynchronous mapping callback. On a successful allocation, the
+caller owns the mapping until `FreeAdapterObject(DeallocateObject)`.
+Unlike the earlier asynchronous `GetScatterGatherList` bridge,
+this path can distinguish **allocation without any device DMA launch**
+from indeterminate device activity.
+
+The **new, inactive** `DmaSyncStage.c/.h` implementation:
+- Requires DMA adapter **v3** and its transfer-context initialization,
+  synchronous GetEx and FreeAdapterObject operations; no automatic v2
+  fallback. `DmaAdapterStage` now requests `DEVICE_DESCRIPTION_VERSION3`.
+- Has **no device launch function**, no MMIO and no integration with
+  the active `Acquisition.c`, PnP or IOCTL paths.
+- Uses a unique, aligned `DMA_TRANSFER_CONTEXT_SIZE_V1` context per
+  request and a locked MDL chain (including more than one 32-MiB MDL).
+- Validates requested byte extent and copied SG elements for full
+  coverage, nonzero dword-aligned lengths, 32-bit logical addresses,
+  and bounded caller-provided element capacity. Actual descriptor
+  encoding and map-register/SG capacity negotiation remain open.
+- Adds a nonpaged parent `LECS65_SG_SYNC_OWNER` with a spinlocked
+  `Stopping` gate and `Outstanding` count. A submission increments
+  before its WDM call, and cleanup decrements only after its no-launch
+  allocation is released. STOP closes admission and returns BUSY while
+  mappings remain; it never waits and therefore does not by itself
+  deadlock PnP/remove locks. Caller MUST preserve the parent, DMA
+  adapter, PDO, and pinned MDLs until the gate reports quiescence.
+- In the specific no-launch case calls `FreeAdapterObject`, drops
+  the held device-object reference, clears the sole caller's stage
+  pointer and deallocates stage memory. It does not implement any
+  release for hardware-started or unknown-active DMA.
+
+The new `tests/dry/test-sg-sync.c` fake-v3 DDI test checks immediate
+success/failure, transfer-context failure, no deferred callback,
+no-launch cleanup, sequential double release, 48-MiB two-MDL mapping,
+truncation, 4-GiB rejection and STOP racing with mapping allocation.
+**Current changes require owner-run Windows WDK and Dry verification.**
+These synthetic tests do not verify real OS resource allocation.
+
+### Unresolved activation blockers
+
+This owner is a staging-only PnP gate, not a live STOP/REMOVE policy:
+the real PnP code does not reference it. No existing DMA transfer
+may be converted to this path yet. In particular, a physical
+hardware-start/IRQ/timeout path still lacks a proven bus-master idle
+transition and must **never** call the no-launch release method.
+The old async SG stage remains fail-closed and does not launch or
+free mappings. Real STOP/REMOVE must eventually reconcile pinned MDL
+chain ownership, adapters, descriptors, DMA completion, loss of device,
+and remove locks, without waiting on permanently quarantined mappings.
+
+Sources:
+[GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
+[InitializeDmaTransferContext](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pinitialize_dma_transfer_context),
+[FreeAdapterObject](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_adapter_object).
 
 ## Remaining P0 work, no shortcuts
 
