@@ -213,6 +213,7 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT Self;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT LowerDeviceObject;
+    IO_REMOVE_LOCK RemoveLock;
 
     BOOLEAN Started;
     BOOLEAN Removed;
@@ -315,6 +316,11 @@ VOID LecS65Unload(_In_ PDRIVER_OBJECT DriverObject);
 VOID LecTrace(_In_z_ _Printf_format_string_ PCSTR Format, ...);
 VOID LecHexDump(_In_reads_bytes_opt_(Length) const UCHAR* Buffer, _In_ ULONG Length);
 VOID LecUnmapBars(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+NTSTATUS LecForwardLockedIrp(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PIRP Irp,
+    _In_ BOOLEAN IsPowerIrp);
+
 
 NTSTATUS LecForwardAndWait(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
