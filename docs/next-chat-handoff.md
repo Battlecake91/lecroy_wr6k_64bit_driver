@@ -1,3 +1,37 @@
+# Latest reverse-engineering handoff (2026-10-04)
+
+The full legacy x86 `LecS65AcqDrv.sys` pseudocode export is available in
+`ghidra_exports/selected/`. All **420 Ghidra-recognized functions** now have
+semantic classifications; the last two control-flow warnings at `0x11894`
+and `0x19BB8` were resolved against raw x86 assembly in export commit
+`d567bb0bc1210778cf8af8b4853614e9d82ae6d1`.
+
+- `0x11894`: device-control IRP branch sets
+  `STATUS_INVALID_DEVICE_REQUEST`, then deliberately tail-jumps through
+  hardware virtual slot `+0x20`; other majors CALL the same virtual slot.
+- `0x19BB8`: direct tail-jump to `KfReleaseSpinLock` with the saved IRQL.
+- Main-device vtable `0x1C500`, hardware base `0x1C8BC`, derived
+  hardware `0x1C62C` are mapped; derived slot `+0x24` calls the original
+  DPC via `0x114F2`, confirming the `CFDC2400` route.
+- `0x1807A`: MDL handling has a 96-MiB input limit and 32-MiB chunks;
+  `0x17FD6` cleanup order is verified.
+- The 420 recognized functions **do not imply complete PE executable coverage**:
+  vtables expose further short/unrecognized executable thunks and targets.
+- Primary evidence: [legacy architecture](legacy-driver-architecture.md),
+  [function map](legacy-driver-function-map.md),
+  [vtable and ASM audit](legacy-driver-vtables-and-asm-audit.md).
+- Next focused export targets are already committed to
+  `ghidra_scripts/targets.txt` (commit
+  `dcdd46f292449e3567a13b9e7a038ca142ac8e34`).
+  Audit derived virtual targets `0x10C34`, `0x10C62`,
+  `0x10C8C`, shared methods `0x170EE`, `0x13914`, `0x13934`,
+  the main vtable tail at `0x1C600` and short DriverWorks thunks.
+
+No native driver code, x64 build or hardware runtime was modified or tested
+during this static pass.
+
+---
+
 # Active handoff: hardened native SetOneRegister staged in source (2026-10-01)
 
 ## Newest source milestone
