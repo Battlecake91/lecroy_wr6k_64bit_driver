@@ -1891,6 +1891,10 @@ LecExecuteLegacyMttTransferLocked(
         return STATUS_INVALID_PARAMETER;
     }
 
+    if (!DevExt->Started || !DevExt->InterruptConnected) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
     /*
      * Caller holds TransferMutex.  Legacy FUN_000160DC resolves the transfer
      * entry first, then FUN_00017478/FUN_000171DE uses that selected entry for
@@ -3515,6 +3519,10 @@ LecIoctlAcquireBufferedOneChannel(
         InputLength != 15 ||
         OutputLength != sizeof(ULONG)) {
         return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    if (!DevExt->Started || !DevExt->InterruptConnected) {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     RtlCopyMemory(&token, SystemBuffer, sizeof(token));
