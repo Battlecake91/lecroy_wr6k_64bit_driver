@@ -35,6 +35,20 @@ LecFreeTransfer(
     _In_ PLECS65_TRANSFER Transfer
     )
 {
+    /*
+     * Deliberate fail-closed quarantine. Without a proven DMA abort/idle
+     * protocol, unlocking/reusing these pages could corrupt unrelated
+     * kernel or process memory. The pinned pages and descriptor storage
+     * must survive FDO destruction; recovery is a controlled system restart,
+     * not a driver restart. This leaks kernel resources by design and is
+     * NOT production-ready DMA lifecycle management.
+     */
+    if (Transfer->DmaUnsafeToFree) {
+        LecTrace("DMA quarantine: token=%lu retained across teardown\n",
+            Transfer->Token);
+        return;
+    }
+
     if (Transfer->DescriptorMdl != NULL) {
         IoFreeMdl(Transfer->DescriptorMdl);
         Transfer->DescriptorMdl = NULL;
@@ -407,7 +421,8 @@ LecUnregisterTransfer(
         return STATUS_NOT_FOUND;
     }
 
-    if (DevExt->CurrentTransfer == transfer) {
+    if (DevExt->CurrentTransfer == transfer ||
+        transfer->DmaUnsafeToFree) {
         KeReleaseMutex(&DevExt->TransferMutex, FALSE);
         return STATUS_DEVICE_BUSY;
     }
@@ -448,7 +463,8 @@ LecReleaseTransfersForProcess(
                 CONTAINING_RECORD(link, LECS65_TRANSFER, Link);
 
             if (candidate->OwnerProcessId == OwnerProcessId &&
-                DevExt->CurrentTransfer != candidate) {
+                DevExt->CurrentTransfer != candidate &&
+                !candidate->DmaUnsafeToFree) {
                 RemoveEntryList(link);
                 transfer = candidate;
                 break;
@@ -495,6 +511,10 @@ LecReleaseAllTransfers(
             break;
         }
 
+        /*
+         * LecFreeTransfer retains poisoned allocations permanently.
+         * They are not recoverable without a verified hardware reset.
+         */
         LecFreeTransfer(transfer);
     }
 }
@@ -579,6 +599,10 @@ LecInterruptService(
      * synchronous acquisition thread's later cleanup.
      */
     if ((status & 0x01UL) != 0) {
+        if (devExt->CurrentTransfer != NULL) {
+            (VOID)InterlockedExchange(
+                &devExt->DmaCompletionIrqSeen, 1);
+        }
         iimcl = (volatile ULONG*)(
             devExt->Bar[0] + LECS65_BAR0_IIMCL);
         WRITE_REGISTER_ULONG(iimcl, 0UL);
@@ -834,6 +858,15 @@ LecInjectLegacyPendingAndDispatch(
 
     if (callerIrql > DISPATCH_LEVEL) {
         return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    /*
+     * CFDC2400 can force software-pending bit 0 and wake a DMA waiter
+     * without any hardware completion. Never accept synthetic acquisition
+     * completion, even when no transfer is currently selected.
+     */
+    if ((PendingMask & 0x01UL) != 0) {
+        return STATUS_INVALID_PARAMETER;
     }
 
     (VOID)InterlockedOr(
