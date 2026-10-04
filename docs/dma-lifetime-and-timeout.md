@@ -79,8 +79,9 @@ References: Microsoft Learn,
 [Using Scatter/Gather DMA](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-scatter-gather-dma),
 [GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list),
 [Map Registers](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/map-registers).
-This section is a **design plan only**. No DMA adapter was added and no
-IOMMU compatibility is claimed.
+This plan is **not active**. An isolated DMA adapter/common-buffer and
+SG bridge have been staged but not connected to acquisitions. No PCI
+DMA/IOMMU compatibility is claimed.
 
 ## Hardware-independent encoder staging
 
@@ -127,10 +128,10 @@ of the draft driver. It provides:
   and no previous quarantine. Otherwise the independent context and
   device mapping remain quarantined; this is a leak, **not recovery**.
 
-No PnP or acquisition call site uses these functions yet. In particular,
-no transfer MDL scatter/gather mapping or `GetScatterGatherList` callback
-lifetime has been introduced. The existing PFN-based active path is still
-unmodified. Review callback IRQL, limited map registers, owner lifetimes,
+No PnP or acquisition call site uses these functions yet. The separate
+inactive SG stage can request a mapping for one MDL, but adapter/MDL/PNP
+lifetime is not yet unified and no live mapping exists. The existing
+PFN-based active path remains unmodified. Review callback IRQL, limited map registers, owner lifetimes,
 STOP/REMOVE and reset/idle requirements before wiring this into DMA.
 The adapter stage compiled successfully in the owner's Windows WDK Dry
 run (2026-10-04). It has not been exercised by runtime DMA requests.
