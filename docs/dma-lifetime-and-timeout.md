@@ -111,6 +111,33 @@ and common-buffer descriptor pages, and replace the old PFN table
 builder only when resource ownership and abort/idle guarantees
 are satisfactorily modeled.
 
+## WDM adapter/common-buffer staging (not yet activated)
+
+A separate `driver/DmaAdapterStage.c/.h` module now compiles as part
+of the draft driver. It provides:
+- `LecDmaCreateAdapterContext`: `IoGetDmaAdapter` using a
+  `DEVICE_DESCRIPTION_VERSION2` PCI bus-master, 32-bit DMA-address
+  constraint, scatter/gather support and maximum transfer size. The
+  returned map-register count is retained, **not assumed sufficient**.
+- `LecDmaAllocateCommonTable`: requests a device-visible
+  `AllocateCommonBuffer`, validates page alignment and entire 32-bit
+  logical-address range, and zero-initializes the descriptor table.
+- `LecDmaReleaseAdapterContext`: frees common buffer and adapter
+  only with an explicit, externally established `ProvenIdle=TRUE`
+  and no previous quarantine. Otherwise the independent context and
+  device mapping remain quarantined; this is a leak, **not recovery**.
+
+No PnP or acquisition call site uses these functions yet. In particular,
+no transfer MDL scatter/gather mapping or `GetScatterGatherList` callback
+lifetime has been introduced. The existing PFN-based active path is still
+unmodified. Review callback IRQL, limited map registers, owner lifetimes,
+STOP/REMOVE and reset/idle requirements before wiring this into DMA.
+The new source is pending Windows WDK compilation and Dry verification.
+
+Windows references: [IoGetDmaAdapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdmaadapter),
+[AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list).
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
