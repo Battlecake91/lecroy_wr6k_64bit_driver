@@ -177,7 +177,7 @@ Test-Contract "both native DMA launch paths reject absent interrupts" {
     $buffered = [regex]::Match(
         $ioctlText,
         '(?s)LecIoctlAcquireBufferedOneChannel\s*\(.*?(?=static\s+(?:NTSTATUS|BOOLEAN|VOID)|\z)')
-    $gate = 'if\s*\(!DevExt->Started\s*\|\|\s*!DevExt->InterruptConnected\)\s*\{\s*return STATUS_DEVICE_NOT_READY;'
+    $gate = 'if\s*\(!DevExt->Started\s*\|\|\s*!DevExt->InterruptConnected\s*\|\|\s*InterlockedCompareExchange\(&DevExt->DmaUnknownActive,\s*0,\s*0\)\s*!=\s*0\)\s*\{\s*return STATUS_DEVICE_NOT_READY;'
     $mttr.Success -and $buffered.Success -and
     $mttr.Value -match $gate -and $buffered.Value -match $gate
 }
