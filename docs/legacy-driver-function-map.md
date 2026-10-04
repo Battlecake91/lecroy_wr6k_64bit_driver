@@ -1,13 +1,13 @@
 # Legacy driver function map
 
-This is the semantic coverage map for every function currently recognized by Ghidra in the original 32-bit `LecS65AcqDrv.sys`. The current count is **445 internal functions**, including 25 reviewed code-recovery entries added on 2026-10-04 (commit `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`).
+This is the semantic coverage map for every function currently recognized by Ghidra in the original 32-bit `LecS65AcqDrv.sys`. The current count is **527 internal functions**, including 25 functions recovered in commit `9d3ac5b1` and another 82 in commit `7bdbd3cf` (all on 2026-10-04).
 
-- Initial 420-function pseudocode snapshot: `4e622dc2528127cce13ae35146554a9b2ada2982`; subsequent recovery/decompilation: `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`
+- Initial 420-function pseudocode snapshot: `4e622dc2528127cce13ae35146554a9b2ada2982`; staged recovery/decompilation: `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`, `7bdbd3cf797a991ab8ab3dc686e069fcc419e343`
 - Architecture overview: [legacy-driver-architecture.md](legacy-driver-architecture.md)
 - `High` means the role is directly established by API calls, register effects, strings, known ABI routing or reconstructed call flow.
 - `Pending` means pseudocode is available but an exact semantic name has not yet been justified. These entries are not being discarded.
 - `ASM audit` means the semantic role is substantially known but Ghidra emitted a control-flow warning that must be checked against raw x86 instructions. The 2026-10-04 ASM pass resolved both such warnings.
-- The current **445** entries reflect **recognized internal functions**, **not** all executable bytes. After the first recovery pass, **69** orphan decoded-code clusters (1,280 bytes) remain, including additional small virtual thunks. Audits: [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md), [executable code coverage](legacy-executable-code-coverage.md).
+- The current **527** entries reflect **recognized internal functions**, **not** all executable bytes. The second recovery leaves only **3** SEH/exception landing-pad clusters totaling **22 decoded bytes** outside function bodies. There are **1,043 still-undefined bytes** (including data/padding). The 44 new decompiler `indirect jump` warnings in DriverWorks virtual forwarders/policy gates reflect known x86 tail jumps independently visible in the preceding raw ASM; see [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md) and [executable code coverage](legacy-executable-code-coverage.md).
 
 | Address | Ghidra name | Subsystem | Semantic role | Status |
 |---|---|---|---|---|
@@ -56,8 +56,19 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x10B10` | `FUN_00010b10` | device/IRP low-level | replace owned helper object | High |
 | `0x10B30` | `FUN_00010b30` | ISR/DPC | ISR adapter forwarding to 0x108D6 | High |
 | `0x10B3C` | `FUN_00010b3c` | device/IRP low-level | CLecS65AcqDrvDevice constructor | High |
+| `0x10C18` | `FUN_00010c18` | device / IRP | default handler: complete IRP with STATUS_NOT_IMPLEMENTED (0xC0000002) | High |
+| `0x10C34` | `FUN_00010c34` | device / IRP | derived hardware vtable +0x20: IoStartNextPacket and conditional IofCompleteRequest + outstanding-I/O release | High |
+| `0x10C62` | `FUN_00010c62` | device / events | hardware virtual +0x1C: return embedded 32-byte control/event record pointer for selector 0/1/2 | High |
+| `0x10C8C` | `FUN_00010c8c` | device lifecycle | this -= 0x1E0; LeCroy device deleting-destructor thunk to 0x11532 | High |
 | `0x10C98` | `FUN_00010c98` | device/IRP low-level | CLecS65AcqDrvDevice destructor | High |
+| `0x10CEA` | `FUN_00010cea` | device / IRP | advance IRP stack state (stack location +0x24), pass IRP to lower-device forwarder | High |
+| `0x10D06` | `FUN_00010d06` | device / power | PoStartNextPowerIrp, copy lower stack and forward power IRP | High |
+| `0x10D3C` | `FUN_00010d3c` | device / resources | hardware interrupt/resource disconnect cleanup wrapper 0x1082E | High |
 | `0x10D46` | `FUN_00010d46` | device/IRP low-level | hardware stop/interrupt cleanup | High |
+| `0x10D62` | `FUN_00010d62` | device lifecycle | this += 0x1E0 hardware start/resume thunk to 0x138B2 | High |
+| `0x10D6E` | `FUN_00010d6e` | device lifecycle | this += 0x1E0 hardware stop/quiesce thunk to 0x138D4 | High |
+| `0x10D7A` | `FUN_00010d7a` | device / events | this += 0x1E0 forward to hardware event helper 0x11B70 | High |
+| `0x10D86` | `FUN_00010d86` | device / callbacks | this-adjusting virtual default callback, ultimately returns 0 | High |
 | `0x10D9A` | `FUN_00010d9a` | device/IRP low-level | success/no-op helper | High |
 | `0x10DA0` | `FUN_00010da0` | device/IRP low-level | IRP cancel routine / device-queue removal | High |
 | `0x10E3A` | `FUN_00010e3a` | device/IRP low-level | create/open dispatch bookkeeping | High |
@@ -65,6 +76,9 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x10F30` | `FUN_00010f30` | device/IRP low-level | close dispatch / per-process transfer cleanup | High |
 | `0x11018` | `FUN_00011018` | legacy IOCTL | full LeCroy DeviceControl 27-case IOCTL dispatcher, serializes through KeWaitForSingleObject/KeReleaseMutex and completes IRP unless pending; unknown-status overwrite quirk | High |
 | `0x11390` | `FUN_00011390` | IRQ/events/legacy IOCTL | LeCroy DPC dispatcher | High |
+| `0x114F2` | `FUN_000114f2` | ISR / DPC | derived hardware virtual +0x24: this -= 0x1E0 then call common DPC 0x11390 | High |
+| `0x1150A` | `FUN_0001150a` | IRP / cancel | static cancel callback: retrieve device extension then invoke 0x10DA0 | High |
+| `0x1151E` | `FUN_0001151e` | ISR / DPC | DPC callback adapter forwarding original arguments to 0x11390 | High |
 | `0x11532` | `FUN_00011532` | IRQ/events/legacy IOCTL | CLecS65AcqDrvDevice deleting destructor | High |
 | `0x115C4` | `FUN_000115c4` | IRQ/events/legacy IOCTL | StartDevice resource mapping + board initialization + IRQ connect | High |
 | `0x11894` | `FUN_00011894` | IRQ/events/legacy IOCTL | ASM-verified guarded IRP/cancel dispatch: major 0x0E sets STATUS_INVALID_DEVICE_REQUEST then tail-jumps to hardware virtual +0x20; other majors CALL same virtual slot | High |
@@ -76,6 +90,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x119BC` | `FUN_000119bc` | IRQ/events/legacy IOCTL | register descriptor metadata copy | High |
 | `0x11A00` | `FUN_00011a00` | IRQ/events/legacy IOCTL | 256-slot indexed-register shadow/cache object constructor | High |
 | `0x11A30` | `FUN_00011a30` | IRQ/events/legacy IOCTL | flush dirty 256-slot indexed-register shadow entries to bound MMIO register | High |
+| `0x11A7A` | `FUN_00011a7a` | hardware / helpers | zero four bytes of embedded hardware helper state | High |
 | `0x11A88` | `FUN_00011a88` | IRQ/events/legacy IOCTL | bind shared trace/control owner pointer into hardware helper fields | High |
 | `0x11AA6` | `FUN_00011aa6` | IRQ/events/legacy IOCTL | bind CFDC2110 divider/counter register pointers | High |
 | `0x11AD2` | `FUN_00011ad2` | IRQ/events/legacy IOCTL | bind CFDC2110 parent/trace state | High |
@@ -148,6 +163,8 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1381E` | `FUN_0001381e` | IOCTL/register/DMA/acquisition | hardware resume/start sequence; reinitialize board controls and restore interrupt state | High |
 | `0x138B2` | `FUN_000138b2` | IOCTL/register/DMA/acquisition | resume/start wrapper that optionally signals event then runs hardware start sequence | High |
 | `0x138D4` | `FUN_000138d4` | IOCTL/register/DMA/acquisition | hardware quiesce/stop sequence; save and disable interrupt state | High |
+| `0x13914` | `FUN_00013914` | hardware / IRQ | set global interrupt-mask bit 0, synchronize via 0x12EAE | High |
+| `0x13934` | `FUN_00013934` | hardware / IRQ | clear global interrupt-mask bit 0, synchronize via 0x12EAE | High |
 | `0x13954` | `FUN_00013954` | IOCTL/register/DMA/acquisition | CFDC21C0 generic register-read IOCTL | High |
 | `0x13A2E` | `FUN_00013a2e` | IOCTL/register/DMA/acquisition | CFDC2400 outer handler | High |
 | `0x13A40` | `FUN_00013a40` | IOCTL/register/DMA/acquisition | CFDC2190 29-byte status/control IOCTL | High |
@@ -244,6 +261,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x16C14` | `FUN_00016c14` | CFDC2110/JTAG/SPI/control | CFDC2110 packet signature dispatcher | High |
 | `0x16C62` | `FUN_00016c62` | 1-Wire/Dallas | 1-Wire helper base/destructor vtable reset | High |
 | `0x16C6A` | `FUN_00016c6a` | 1-Wire/Dallas | bind ONEWIRE controller register | High |
+| `0x16C74` | `FUN_00016c74` | Dallas / 1-Wire | Dallas deleting destructor: reset vtable and optionally ExFreePool | High |
 | `0x16C92` | `FUN_00016c92` | 1-Wire/Dallas | issue low-level ONEWIRE command | High |
 | `0x16CA4` | `FUN_00016ca4` | 1-Wire/Dallas | read ONEWIRE controller status | High |
 | `0x16CB0` | `FUN_00016cb0` | 1-Wire/Dallas | 1-Wire reset/presence | High |
@@ -256,6 +274,8 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x16FAC` | `FUN_00016fac` | 1-Wire/Dallas | Dallas READ ROM + CRC retry | High |
 | `0x170BA` | `FUN_000170ba` | 1-Wire/Dallas | small acquisition helper object constructor | High |
 | `0x170C8` | `FUN_000170c8` | 1-Wire/Dallas | small acquisition helper object destructor/vtable reset | High |
+| `0x170D0` | `FUN_000170d0` | DMA / transfer | acquisition helper deleting destructor: reset vtable and optionally ExFreePool | High |
+| `0x170EE` | `FUN_000170ee` | DMA / transfer | this += 0x100 then free all registered transfer objects using 0x1829A | High |
 | `0x170FA` | `FUN_000170fa` | acquisition/DMA/MAM/transport | acquisition/transfer hardware object constructor | High |
 | `0x17184` | `FUN_00017184` | acquisition/DMA/MAM/transport | acquisition/transfer hardware object destructor | High |
 | `0x171DE` | `FUN_000171de` | acquisition/DMA/MAM/transport | synchronous DMA/acquisition launch and wait | High |
@@ -303,7 +323,38 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x183B8` | `FUN_000183b8` | DriverWorks/WDM support | IoDeleteDevice wrapper/base-device teardown | High |
 | `0x183CE` | `FUN_000183ce` | DriverWorks/WDM support | DriverWorks base-device deleting destructor | High |
 | `0x183EE` | `FUN_000183ee` | DriverWorks/WDM | dispatches IRP by current stack MajorFunction through table at 0x1CD10 | High |
+| `0x1840A` | `FUN_0001840a` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x7C (Ghidra's indirect-jump warning is expected) | High |
+| `0x18410` | `FUN_00018410` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x5C (Ghidra's indirect-jump warning is expected) | High |
+| `0x18416` | `FUN_00018416` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x3C (Ghidra's indirect-jump warning is expected) | High |
+| `0x1841C` | `FUN_0001841c` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x1C (Ghidra's indirect-jump warning is expected) | High |
+| `0x18422` | `FUN_00018422` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x20 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18428` | `FUN_00018428` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x80 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18430` | `FUN_00018430` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x60 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18436` | `FUN_00018436` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x40 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1843C` | `FUN_0001843c` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x64 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18442` | `FUN_00018442` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x44 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18448` | `FUN_00018448` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x24 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1844E` | `FUN_0001844e` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x68 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18454` | `FUN_00018454` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x48 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1845A` | `FUN_0001845a` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x28 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18460` | `FUN_00018460` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x6C (Ghidra's indirect-jump warning is expected) | High |
+| `0x18466` | `FUN_00018466` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x4C (Ghidra's indirect-jump warning is expected) | High |
+| `0x1846C` | `FUN_0001846c` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x2C (Ghidra's indirect-jump warning is expected) | High |
+| `0x18472` | `FUN_00018472` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0xC (Ghidra's indirect-jump warning is expected) | High |
+| `0x18478` | `FUN_00018478` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x10 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1847E` | `FUN_0001847e` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x70 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18484` | `FUN_00018484` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x50 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1848A` | `FUN_0001848a` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x30 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18490` | `FUN_00018490` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x74 (Ghidra's indirect-jump warning is expected) | High |
+| `0x18496` | `FUN_00018496` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x54 (Ghidra's indirect-jump warning is expected) | High |
+| `0x1849C` | `FUN_0001849c` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x34 (Ghidra's indirect-jump warning is expected) | High |
+| `0x184A2` | `FUN_000184a2` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x14 (Ghidra's indirect-jump warning is expected) | High |
+| `0x184A8` | `FUN_000184a8` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x78 (Ghidra's indirect-jump warning is expected) | High |
+| `0x184AE` | `FUN_000184ae` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x58 (Ghidra's indirect-jump warning is expected) | High |
+| `0x184B4` | `FUN_000184b4` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x38 (Ghidra's indirect-jump warning is expected) | High |
+| `0x184BA` | `FUN_000184ba` | DriverWorks / WDM | major-IRP vtable tail-forwarder to virtual slot +0x18 (Ghidra's indirect-jump warning is expected) | High |
 | `0x184C0` | `FUN_000184c0` | DriverWorks/WDM support | append Unicode string helper | High |
+| `0x184F6` | `FUN_000184f6` | DriverWorks / WDM | default no-op IRP handler (RET 4) | High |
 | `0x184FA` | `FUN_000184fa` | DriverWorks/WDM support | registered global/static destructor node invocation and unlink/free | High |
 | `0x1851C` | `FUN_0001851c` | DriverWorks/WDM support | run compiler/DriverWorks static initializer table | High |
 | `0x18542` | `FUN_00018542` | DriverWorks/WDM support | run registered global/static destructors | High |
@@ -322,6 +373,8 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1896E` | `FUN_0001896e` | DriverWorks/WDM support | connect to optional \\Device\\DebugMessageDevice and fetch debug callbacks | High |
 | `0x18A1C` | `FUN_00018a1c` | DriverWorks/WDM support | formatted trace/logging backend | High |
 | `0x18B9E` | `FUN_00018b9e` | DriverWorks/WDM support | trace/debug object destructor; invoke debug callback and free owned name/buffer | High |
+| `0x18E58` | `FUN_00018e58` | DriverWorks / PnP | PnP minor code lookup (0..0x17) via name table at 0x1CD88; fallback unknown string | High |
+| `0x18EDB` | `FUN_00018edb` | DriverWorks / power | power IRP minor code lookup (0..3) via table at 0x1CDE8; fallback unknown string | High |
 | `0x18FBF` | `FUN_00018fbf` | DriverWorks/WDM support | system-power-state name helper | High |
 | `0x190AD` | `FUN_000190ad` | DriverWorks/WDM support | device-power-state name helper | High |
 | `0x1919A` | `FUN_0001919a` | DriverWorks/WDM support | IRP trace formatter | High |
@@ -346,6 +399,20 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x19966` | `FUN_00019966` | DriverWorks/WDM support | power request completion callback | High |
 | `0x199AA` | `FUN_000199aa` | DriverWorks/WDM support | power-request completion callback; continue device-power transition and release context | High |
 | `0x19A00` | `FUN_00019a00` | DriverWorks/WDM support | cancel pending power IRP | High |
+| `0x19A1E` | `FUN_00019a1e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x1 and byte ptr [ECX + 0x100],0x2 and byte ptr [ECX + 0xfc],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A34` | `FUN_00019a34` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x2 and byte ptr [ECX + 0xfc],0x10 and byte ptr [ECX + 0x100],0x4); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A54` | `FUN_00019a54` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x4 and byte ptr [ECX + 0xfc],0x20 and byte ptr [ECX + 0x100],0x40); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A74` | `FUN_00019a74` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x40 and byte ptr [ECX + 0xfc],0x40 and dword ptr [ECX + 0x100],EDX); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A94` | `FUN_00019a94` | DriverWorks / PnP | policy-bit gate (dword ptr [ECX + 0x100],EDX and dword ptr [ECX + 0xfc],EDX and byte ptr [ECX + 0x100],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19AB6` | `FUN_00019ab6` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x10 and byte ptr [ECX + 0x100],0x8 and byte ptr [ECX + 0xfc],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19ACC` | `FUN_00019acc` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x8 and byte ptr [ECX + 0xfc],0x8 and byte ptr [ECX + 0x100],0x20); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19AEC` | `FUN_00019aec` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x20 and byte ptr [ECX + 0x100],0x80 and byte ptr [ECX + 0xfc],0x80); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19B02` | `FUN_00019b02` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x80 and byte ptr [ECX + 0xfc],0x80 and byte ptr [ECX + 0x138],0x4); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19B22` | `FUN_00019b22` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x4 and byte ptr [ECX + 0x138],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B38` | `FUN_00019b38` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x8 and byte ptr [ECX + 0x138],0x1); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B4E` | `FUN_00019b4e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x1 and byte ptr [ECX + 0x138],0x2); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B64` | `FUN_00019b64` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x2); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B7A` | `FUN_00019b7a` | DriverWorks / PnP | policy-bit gate (); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
 | `0x19B82` | `FUN_00019b82` | DriverWorks/WDM support | framework spinlock/list object constructor | High |
 | `0x19BA6` | `FUN_00019ba6` | DriverWorks/WDM support | spinlock acquire wrapper | High |
 | `0x19BB8` | `FUN_00019bb8` | DriverWorks/WDM support | ASM-verified tail-jump to KfReleaseSpinLock with lock at this+0x0C and saved KIRQL from this+0x10 | High |
@@ -353,8 +420,13 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x19BE4` | `FUN_00019be4` | DriverWorks/WDM support | locked intrusive-list lookup wrapper | High |
 | `0x19C08` | `FUN_00019c08` | DriverWorks/WDM support | locked intrusive-list insertion wrapper | High |
 | `0x19C26` | `FUN_00019c26` | DriverWorks/WDM support | locked intrusive-list pop-front wrapper | High |
+| `0x19C44` | `FUN_00019c44` | DriverWorks / power | completion adapter to 0x197EE | High |
+| `0x19C54` | `FUN_00019c54` | DriverWorks / power | completion adapter to 0x196B4 | High |
+| `0x19C64` | `FUN_00019c64` | DriverWorks / power | completion adapter to 0x199AA | High |
+| `0x19C80` | `FUN_00019c80` | DriverWorks / power | completion adapter to 0x19966 | High |
 | `0x19C9C` | `FUN_00019c9c` | DriverWorks/WDM support | complete stored/forwarded IRP and release originating device outstanding-I/O ref | High |
 | `0x19CCC` | `FUN_00019ccc` | DriverWorks/WDM support | framework device support-state cleanup | High |
+| `0x19D38` | `FUN_00019d38` | DriverWorks / objects | if nonnull: virtual deleting destructor (slot +0x04) | High |
 | `0x19D44` | `FUN_00019d44` | DriverWorks/WDM support | power completion continuation; free context, update flags, complete original IRP | High |
 | `0x19D84` | `FUN_00019d84` | DriverWorks/WDM support | power completion continuation; on success forward original IRP, on failure complete it | High |
 | `0x19DDC` | `FUN_00019ddc` | DriverWorks/WDM support | synchronous power request helper | High |
@@ -368,12 +440,16 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1A040` | `FUN_0001a040` | DriverWorks/WDM support | spinlock-protected intrusive-list empty test | High |
 | `0x1A05E` | `FUN_0001a05e` | DriverWorks/WDM support | DriverWorks intrusive queue/list wrapper constructor | High |
 | `0x1A07C` | `FUN_0001a07c` | DriverWorks/WDM support | no-op framework hook/default callback | High |
+| `0x1A07E` | `FUN_0001a07e` | DriverWorks / power | completion adapter to 0x19D44 | High |
+| `0x1A09A` | `FUN_0001a09a` | DriverWorks / power | completion adapter to 0x19D84 | High |
 | `0x1A0B6` | `FUN_0001a0b6` | DriverWorks/WDM support | DriverWorks base device constructor | High |
 | `0x1A17A` | `FUN_0001a17a` | DriverWorks/WDM support | DriverWorks base device destructor | High |
 | `0x1A196` | `FUN_0001a196` | DriverWorks/WDM support | cancel routine for IRP stored in DriverWorks queue | High |
 | `0x1A1D4` | `FUN_0001a1d4` | DriverWorks/WDM support | drain queued IRPs, cancel or dispatch each according to mode | High |
 | `0x1A276` | `FUN_0001a276` | DriverWorks/WDM support | partition queued IRPs by criterion; cancel matching entries and restore others | High |
 | `0x1A342` | `FUN_0001a342` | DriverWorks/WDM support | power continuation that may request a device-power transition before completing | High |
+| `0x1A3FC` | `FUN_0001a3fc` | DriverWorks / cancel | cancel callback forwards to 0x1A196 | High |
+| `0x1A410` | `FUN_0001a410` | DriverWorks / power | power completion callback adapter to 0x1A342 | High |
 | `0x1A420` | `FUN_0001a420` | DriverWorks/WDM support | generic DriverWorks IRP dispatcher | High |
 | `0x1A6EA` | `FUN_0001a6ea` | DriverWorks/WDM support | full PnP IRP state machine | High |
 | `0x1B00E` | `FUN_0001b00e` | queue/IRP | cancel-safe deferred IRP queue; returns STATUS_PENDING or STATUS_CANCELLED and installs cancel callback | High |
@@ -391,6 +467,8 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1BB4E` | `FUN_0001bb4e` | DriverWorks/WDM support | cancel/remove matching queued IRPs | High |
 | `0x1BC0E` | `FUN_0001bc0e` | DriverWorks/WDM support | cancel-spinlock ownership/match check for current IRP | High |
 | `0x1BC5E` | `FUN_0001bc5e` | DriverWorks/WDM support | rebind owned referenced-object holder and optionally clear status | High |
+| `0x1BC86` | `FUN_0001bc86` | DriverWorks / timers | timer wrapper invoking KeSetTimer at embedded timer +0x18 | High |
+| `0x1BC9E` | `FUN_0001bc9e` | DriverWorks / timers | timer wrapper invoking KeSetTimerEx at embedded timer +0x18 | High |
 | `0x1BCBA` | `FUN_0001bcba` | DriverWorks/WDM support | wide-string length helper | High |
 | `0x1BCCE` | `FUN_0001bcce` | DriverWorks/WDM support | wide-string byte-length helper | High |
 | `0x1BCDC` | `FUN_0001bcdc` | DriverWorks/WDM support | recover DriverWorks object/header base from embedded variable-length string pointer | High |
@@ -424,9 +502,12 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1C1E4` | `__global_unwind2` | compiler/SEH/runtime | compiler global unwind helper | High |
 | `0x1C204` | `FUN_0001c204` | compiler SEH | exception flag filter: exception flags mask 0x6, return 1 or 3 | High |
 | `0x1C226` | `FUN_0001c226` | compiler/SEH/runtime | C++ exception cleanup-table unwind loop | High |
+| `0x1C280` | `FUN_0001c280` | compiler / SEH | read FS:[0] exception chain and test active handler and SEH frame compatibility | High |
 | `0x1C2A4` | `RtlUnwind` | compiler/SEH/runtime | RtlUnwind import thunk | High |
 | `0x1C2AA` | `FUN_0001c2aa` | compiler/SEH/runtime | register static destructor callback | High |
 | `0x1C2B6` | `FUN_0001c2b6` | compiler/SEH/runtime | initialize global INTEN register descriptor and register its static destructor | High |
+| `0x1C2D4` | `FUN_0001c2d4` | runtime / statics | static cleanup callback resets global vtable then IoDisconnectInterrupt via 0x18648 | High |
+| `0x1C2E8` | `FUN_0001c2e8` | runtime / statics | static register-descriptor destructor callback via 0x119A0 | High |
 | `0x1D380` | `FUN_0001d380` | DriverWorks/runtime | global driver singleton unload, vtable teardown, static destructor iteration | High |
 | `0x1D3A4` | `FUN_0001d3a4` | DriverWorks registry/string/device support | recursive DriverWorks object-tree cleanup/destructor walk | High |
 | `0x1D3C4` | `FUN_0001d3c4` | DriverWorks/runtime | object reference-tree cleanup wrapper via 0x1D3A4 | High |
@@ -454,5 +535,6 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1DD80` | `FUN_0001dd80` | DriverWorks registry/string/device support | install global DriverWorks driver-object singleton/vtable | High |
 | `0x1DD98` | `FUN_0001dd98` | DriverWorks registry/string/device support | global DriverWorks support initialization | High |
 | `0x1DDC6` | `FUN_0001ddc6` | DriverWorks registry/string/device support | install DriverWorks default dispatch/callback slots on DRIVER_OBJECT support state | High |
+| `0x1DE3C` | `FUN_0001de3c` | DriverWorks / lifecycle | default reset of this+0x18 then returns STATUS_SUCCESS | High |
 | `0x1DE46` | `FUN_0001de46` | DriverWorks registry/string/device support | global driver-object initialization | High |
 | `0x1DF42` | `entry` | entry | PE/DriverEntry entry point | High |
