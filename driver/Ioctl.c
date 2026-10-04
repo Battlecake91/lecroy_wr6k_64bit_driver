@@ -3473,6 +3473,19 @@ LecIoctlCfDc2110(
             }
         }
 
+        /*
+         * This packed request may contain multiple hardware commands.
+         * If an earlier MTT launch became indeterminate, never run the
+         * remaining records while the same outer IOCTL is still active.
+         */
+        if (InterlockedCompareExchange(
+                &DevExt->DmaUnknownActive, 0, 0) != 0) {
+            if (NT_SUCCESS(status)) {
+                status = STATUS_DEVICE_NOT_READY;
+            }
+            break;
+        }
+
         outputOffset += recordOutput;
         inputOffset += 8 + payloadLength;
     }
