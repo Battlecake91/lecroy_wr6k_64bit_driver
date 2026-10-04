@@ -906,6 +906,69 @@ LecConnectInterrupt(
     return status;
 }
 
+static BOOLEAN
+LecMaskHardwareInterruptsSynchronized(_In_ PVOID Context)
+{
+    PLECS65_DEVICE_EXTENSION devExt = (PLECS65_DEVICE_EXTENSION)Context;
+
+    /*
+     * INTEN is BAR0+0x084. Serialize the final mask write with the ISR
+     * while the interrupt connection and BAR mapping are still valid.
+     */
+    InterlockedExchange(
+        (volatile LONG*)&devExt->InterruptEnableShadow, 0);
+
+    if (devExt->Bar[0] != NULL &&
+        devExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
+        WRITE_REGISTER_ULONG(
+            (volatile ULONG*)(devExt->Bar[0] + 0x084), 0);
+    }
+
+    return TRUE;
+}
+
+VOID
+LecQuiesceDeferredWork(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN HardwareAccessible)
+{
+    /*
+     * Caller has disabled admission and drained synchronous IOCTLs.
+     * SURPRISE_REMOVAL must never touch potentially absent PCI MMIO.
+     */
+    if (HardwareAccessible &&
+        DevExt->Bar[0] != NULL &&
+        DevExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
+        if (DevExt->InterruptConnected &&
+            DevExt->InterruptObject != NULL) {
+            (VOID)KeSynchronizeExecution(
+                DevExt->InterruptObject,
+                LecMaskHardwareInterruptsSynchronized,
+                DevExt);
+        }
+        else {
+            (VOID)LecMaskHardwareInterruptsSynchronized(DevExt);
+        }
+    }
+
+    LecDisconnectInterrupt(DevExt);
+
+    /*
+     * No more ISRs can queue work after disconnect. Remove any pending
+     * instance, then wait for an instance already running on another CPU.
+     * The flush is kernel-wide, therefore use only for PnP teardown.
+     */
+    (VOID)KeRemoveQueueDpc(&DevExt->InterruptDpc);
+    KeFlushQueuedDpcs();
+
+    if (DevExt->LegacyTimerInitialized) {
+        (VOID)KeCancelTimer(&DevExt->LegacyTimer);
+        DevExt->LegacyTimerInitialized = FALSE;
+        DevExt->LegacyTimerStartTime.QuadPart = 0;
+        DevExt->LegacyTimerDurationMs = 0;
+    }
+}
+
 VOID
 LecDisconnectInterrupt(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
