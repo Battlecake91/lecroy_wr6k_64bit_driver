@@ -1974,6 +1974,8 @@ Cleanup:
              &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
         Transfer->DmaUnsafeToFree = TRUE;
         (VOID)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+        /* Block every subsequent IOCTL, including direct register writes. */
+        LecSetIoctlAdmission(DevExt, FALSE);
         if (status == STATUS_SUCCESS) {
             status = STATUS_IO_DEVICE_ERROR;
         }
@@ -3762,6 +3764,8 @@ CleanupTransfer:
              &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
         transfer->DmaUnsafeToFree = TRUE;
         (VOID)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+        /* Block every subsequent IOCTL, including direct register writes. */
+        LecSetIoctlAdmission(DevExt, FALSE);
         if (status == STATUS_SUCCESS) {
             status = STATUS_IO_DEVICE_ERROR;
         }
