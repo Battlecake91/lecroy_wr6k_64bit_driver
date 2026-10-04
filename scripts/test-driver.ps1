@@ -76,6 +76,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
     Invoke-Step "DMA logical descriptor layout unit tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-layout.ps1")
     }
+
+    Invoke-Step "DMA mapping ownership state tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-dma-ownership.ps1")
+    }
 }
 
 if ($Mode -eq "Hardware" -or $Mode -eq "All") {
