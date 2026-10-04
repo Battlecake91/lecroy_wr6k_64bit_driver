@@ -313,15 +313,18 @@ Test-Contract "DMA mapping callback ownership model is isolated and fail-closed"
     $deviceText -notmatch 'LecMapOwnerRequest|LecMapOwnerLaunch'
 }
 
-Test-Contract "WDM scatter gather callbacks retain mapping until proven idle" {
+Test-Contract "WDM SG callback bridge is fail-closed pending real rundown" {
     $driverProjectText -match 'ClCompile Include="DmaScatterGatherStage.c"' -and
     $scatterText -match 'GetScatterGatherList\(' -and
-    $scatterText -match 'PutScatterGatherList\(' -and
-    $scatterText -match 'ObReferenceObject\(DeviceObject\)' -and
-    $scatterText -match 'ObDereferenceObject\(Stage->DeviceObject\)' -and
-    $scatterText -match 'LecMapOwnerCallback\(&stage->Owner\)' -and
-    $scatterText -match 'LecMapOwnerMayRelease\(&Stage->Owner\)' -and
+    $scatterText -notmatch '->PutScatterGatherList\(' -and
+    $scatterText -notmatch 'ObDereferenceObject\(' -and
+    $scatterText -notmatch 'ExFreePoolWithTag\(' -and
+    $scatterText -notmatch 'LecSgStagePeek\(' -and
+    $scatterText -match 'LecSgStageCopySegments\(' -and
+    $scatterText -match 'KeAcquireSpinLock\(&Stage->Lock' -and
+    $scatterText -match 'Stage->SubmissionReturned = TRUE;' -and
     $scatterText -match 'LecMapOwnerUncertain\(&Stage->Owner\)' -and
+    $scatterText -match 'return STATUS_DEVICE_BUSY;' -and
     $scatterText -match 'KeRaiseIrql\(DISPATCH_LEVEL' -and
     $scatterHeaderText -match 'LecSgStageMarkIdleProved' -and
     $acquisitionText -notmatch 'LecSgStageMap|LecSgStageRelease' -and
