@@ -601,6 +601,17 @@ ASCII strings and unrelated adjacent objects. Further work must identify
 all such code ranges/indirect targets, establish class/method semantics
 and verify the important binary paths, not just rename functions.
 
-The next static pass focuses on the main vtable tail, derived virtual
-callbacks and missed thunk/function boundaries. This is source-only
+The initial whole-executable instruction census (commit
+`cabdc5f9f882044bb3928545278024b1aad5ac9d`) now identifies
+**90 decoded unowned code clusters** totaling **3,207 bytes**, including
+the 888-byte main-device vtable target `0x11018..0x1138F` (slot
+`0x1C54C`, relative offset `+0x4C`). These are not accounted for in
+the 420 recognized internal function inventory. All 90 clusters are listed
+in [executable-code coverage](legacy-executable-code-coverage.md).
+
+The function-manager count of **507** includes the **420** internal
+functions plus **87** external/imported entries and is not evidence that
+87 new internal functions appeared. The next static pass exports all
+orphan-cluster assembly and separately classifies the 6,493 bytes of
+executable-block content not decoded as instructions. This is source-only
 reverse engineering; no x64 hardware regression is implied.
