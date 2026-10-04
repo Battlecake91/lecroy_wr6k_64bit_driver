@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "../../driver/DmaScatterGatherStage.h"
 
-static unsigned passed, failed, puts;
+static unsigned passed, failed, putCalls;
 static int mode;
 static PDRIVER_LIST_CONTROL pending;
 static void* pendingContext;
@@ -32,7 +32,7 @@ static NTSTATUS fakeGet(PDMA_ADAPTER a, PDEVICE_OBJECT d, PMDL m,
 }
 static void fakePut(PDMA_ADAPTER a, PSCATTER_GATHER_LIST list,
                     BOOLEAN writeToDevice) {
-    (void)a; (void)list; (void)writeToDevice; ++puts;
+    (void)a; (void)list; (void)writeToDevice; ++putCalls;
 }
 static DWORD WINAPI delayedCallback(void* unused) {
     (void)unused;
@@ -65,7 +65,7 @@ static void init(void) {
     memset(&dev,0,sizeof(dev));
     memset(&mdl,0,sizeof(mdl));
     memset(&sg,0,sizeof(sg));
-    puts=0;
+    putCalls=0;
     ops.GetScatterGatherList=fakeGet;
     ops.PutScatterGatherList=fakePut;
     adapter.DmaOperations=&ops;
@@ -101,10 +101,10 @@ int main(void) {
     check("callback cannot certify idle without DMA launch",
           !LecSgStageMarkIdleProved(stage));
     check("even an apparently ready mapping refuses release",
-          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
+          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && putCalls==0);
     check("closed stage cannot relaunch",!LecSgStageMarkLaunched(stage));
     check("duplicate release cannot free stage",
-          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
+          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && putCalls==0);
 
     mode=0;
     st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
@@ -118,7 +118,7 @@ int main(void) {
           LecSgStageCopySegments(stage,copy,3,&count)==STATUS_SUCCESS &&
           count==2);
     check("release with callback notification still blocked",
-          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
+          LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && putCalls==0);
 
     mode=0;
     st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
@@ -130,7 +130,7 @@ int main(void) {
     check("late callback cannot revive quarantined mapping",
           !LecSgStageMarkLaunched(stage) &&
           LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS &&
-          puts==0);
+          putCalls==0);
     check("FDO references deliberately persist for late callbacks",
           dev.References==3);
 
@@ -146,7 +146,7 @@ int main(void) {
     check("concurrent callback cannot revive REMOVE stage",
           stage->Unsafe &&
           LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS &&
-          puts==0);
+          putCalls==0);
 
     {
         COPY_RACE race;
@@ -161,7 +161,7 @@ int main(void) {
         WaitForSingleObject(worker,INFINITE);
         CloseHandle(worker);
         check("copy or closed are the only race outcomes",
-              race.InvalidResults==0 && puts==0);
+              race.InvalidResults==0 && putCalls==0);
     }
 
     mode=3;
@@ -172,13 +172,13 @@ int main(void) {
     check("failure with late callback still cannot release",
           LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY &&
           LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS &&
-          puts==0);
+          putCalls==0);
 
     mode=1;
     st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
     pending(&dev,NULL,&sg,pendingContext);
     check("duplicate callbacks quarantine rather than double Put",
-          NT_SUCCESS(st) && stage->Unsafe && puts==0);
+          NT_SUCCESS(st) && stage->Unsafe && putCalls==0);
 
     mode=1;
     sg.NumberOfElements=0;
