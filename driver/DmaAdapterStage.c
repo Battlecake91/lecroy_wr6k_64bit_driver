@@ -27,7 +27,7 @@ LecDmaCreateAdapterContext(
     RtlZeroMemory(context, sizeof(*context));
     RtlZeroMemory(&description, sizeof(description));
 
-    description.Version = DEVICE_DESCRIPTION_VERSION2;
+    description.Version = DEVICE_DESCRIPTION_VERSION3;
     description.Master = TRUE;
     description.ScatterGather = TRUE;
     description.Dma32BitAddresses = TRUE;
@@ -39,6 +39,20 @@ LecDmaCreateAdapterContext(
         &description,
         &context->NumberOfMapRegisters);
     if (context->Adapter == NULL) {
+        ExFreePoolWithTag(context, LECS65_TAG);
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    /*
+     * The only new no-launch mapping stage requires the v3 synchronous
+     * contract. Refuse an adapter missing any mandatory v3 operation;
+     * never silently fall back to the callback-driven v2 mechanism.
+     */
+    if (context->Adapter->DmaOperations == NULL ||
+        context->Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
+        context->Adapter->DmaOperations->InitializeDmaTransferContext == NULL ||
+        context->Adapter->DmaOperations->FreeAdapterObject == NULL) {
+        context->Adapter->DmaOperations->PutDmaAdapter(context->Adapter);
         ExFreePoolWithTag(context, LECS65_TAG);
         return STATUS_NOT_SUPPORTED;
     }
