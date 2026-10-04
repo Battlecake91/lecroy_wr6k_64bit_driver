@@ -1886,12 +1886,14 @@ LecExecuteLegacyMttTransferLocked(
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
 
     if (Transfer == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
-    if (!DevExt->Started || !DevExt->InterruptConnected) {
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
         return STATUS_DEVICE_NOT_READY;
     }
 
@@ -1921,6 +1923,7 @@ LecExecuteLegacyMttTransferLocked(
         Transfer->TotalDwords);
 
     KeResetEvent(&Transfer->CompletionEvent);
+    (VOID)InterlockedExchange(&DevExt->DmaCompletionIrqSeen, 0);
     (VOID)InterlockedAnd(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
@@ -1945,6 +1948,7 @@ LecExecuteLegacyMttTransferLocked(
 
     WRITE_REGISTER_ULONG(iimcl, 1UL);
     WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
+    dmaLaunched = TRUE;
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -1959,6 +1963,22 @@ LecExecuteLegacyMttTransferLocked(
     }
 
 Cleanup:
+    /*
+     * A timeout, failed wait or synthetic completion is NOT DMA idle.
+     * Retain both the user-page MDLs and descriptor pages indefinitely,
+     * and refuse later DMA starts on this FDO. No guessed abort writes.
+     */
+    if (dmaLaunched &&
+        (status != STATUS_SUCCESS ||
+         InterlockedCompareExchange(
+             &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
+        Transfer->DmaUnsafeToFree = TRUE;
+        (VOID)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -3512,6 +3532,7 @@ LecIoctlAcquireBufferedOneChannel(
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
     ULONG i;
 
     if (SystemBuffer == NULL ||
@@ -3521,7 +3542,8 @@ LecIoctlAcquireBufferedOneChannel(
         return STATUS_INVALID_BUFFER_SIZE;
     }
 
-    if (!DevExt->Started || !DevExt->InterruptConnected) {
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
         return STATUS_DEVICE_NOT_READY;
     }
 
@@ -3694,6 +3716,7 @@ LecIoctlAcquireBufferedOneChannel(
         transfer->TotalDwords);
 
     KeResetEvent(&transfer->CompletionEvent);
+    (VOID)InterlockedExchange(&DevExt->DmaCompletionIrqSeen, 0);
     (VOID)InterlockedAnd(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
@@ -3718,6 +3741,7 @@ LecIoctlAcquireBufferedOneChannel(
 
     WRITE_REGISTER_ULONG(iimcl, 1UL);
     WRITE_REGISTER_ULONG(mamRgo, launchCount);
+    dmaLaunched = TRUE;
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -3732,6 +3756,17 @@ LecIoctlAcquireBufferedOneChannel(
     }
 
 CleanupTransfer:
+    if (dmaLaunched &&
+        (status != STATUS_SUCCESS ||
+         InterlockedCompareExchange(
+             &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
+        transfer->DmaUnsafeToFree = TRUE;
+        (VOID)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
