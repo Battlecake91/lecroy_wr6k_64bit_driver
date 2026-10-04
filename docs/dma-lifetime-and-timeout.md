@@ -138,6 +138,28 @@ Windows references: [IoGetDmaAdapter](https://learn.microsoft.com/en-us/windows-
 [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
 [GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list).
 
+## Staged asynchronous mapping ownership checks
+
+`DmaMappingOwner.c/.h` now models `EMPTY`, `AWAITING_CALLBACK`,
+`READY`, `DEVICE_ACTIVE`, `UNKNOWN_ACTIVE`, and `RETURNED`.
+This is a **pure software** transition model, not a DMA mapping API.
+It refuses returning a mapping before its callback arrives, while
+the device could still access memory, and after an unknown-active
+timeout or surprise removal. A true mapping request failure may reset
+a pending owner **only if the DDI guarantees no late callback**.
+A successful software or physical IRQ alone does **not** enter the
+externally proven-idle transition. Terminal uncertainty cannot be
+recovered by a late callback.
+
+The separate Windows-native test runner
+`tests/dry/test-dma-ownership.ps1` checks delayed callbacks, failed
+requests, launches, proven-idle prerequisites and permanent quarantine.
+Its methods are deliberately **not connected** to the active driver
+or to the staged WDM `GetScatterGatherList` implementation. The
+callback ownership and serialization protocol (including IRQL and
+device/remove lifetime references) must be reviewed before actual
+WDM integration. Tests and WDK build of this new revision are pending.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
