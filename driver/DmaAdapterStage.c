@@ -212,6 +212,20 @@ LecDmaReleaseAdapterContext(
     return STATUS_SUCCESS;
 }
 
+VOID
+LecDmaQuarantineAdapterContext(
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context)
+{
+    KIRQL irql;
+
+    if (Context == NULL) {
+        return;
+    }
+    KeAcquireSpinLock(&Context->Lock, &irql);
+    Context->Quarantined = TRUE;
+    KeReleaseSpinLock(&Context->Lock, irql);
+}
+
 NTSTATUS
 LecDmaClaimSynchronousOwner(
     _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context,

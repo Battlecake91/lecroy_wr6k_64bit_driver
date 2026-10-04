@@ -14,8 +14,9 @@
  * Context allocation is independent of the FDO. On an unproven DMA idle
  * condition the context and any common-buffer mapping MUST survive REMOVE.
  * Ownership serialization is per context, not per PDO or physical device.
- * A future PnP integration must create exactly one context for each device
- * or add a separate device-wide registry before mappings can be launched.
+ * The inactive DmaPnpStage parent is the required creation boundary and owns
+ * at most one context. Live PnP must publish exactly one such parent per PDO
+ * and forbid calls that bypass it before mappings can be activated.
  */
 typedef struct _LECS65_DMA_ADAPTER_CONTEXT {
     PDMA_ADAPTER Adapter;
@@ -48,6 +49,10 @@ NTSTATUS LecDmaAllocateCommonTable(
 NTSTATUS LecDmaReleaseAdapterContext(
     _In_opt_ PLECS65_DMA_ADAPTER_CONTEXT Context,
     _In_ BOOLEAN ProvenIdle);
+
+/* Latches retention without attempting any release or waiting. */
+VOID LecDmaQuarantineAdapterContext(
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context);
 
 /*
  * Exactly one synchronous v3 owner may use an adapter context. The claim

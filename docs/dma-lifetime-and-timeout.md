@@ -1,7 +1,7 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **software-only staged lifetime hardening**, 2026-10-04.
-Base reviewed: `fix/p0-irq-start-dma-gating` at `f3f0c25`.
+Status: **software-only staged lifetime hardening**, 2026-10-05.
+Base reviewed: `fix/p0-irq-start-dma-gating` at `8c952dc`.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -292,8 +292,9 @@ installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
   independent owners from bypassing the **one outstanding mapping per
   adapter context** rule. This is deliberately not described as device-wide:
   two separately created contexts for the same PDO/adapter are not serialized.
-  Live PnP integration must guarantee one context per physical device or add
-  a lifetime-safe device registry before this stage can be activated.
+  The inactive PnP parent described below now supplies a single-context
+  creation boundary. Live PnP must still publish exactly one such parent per
+  physical device before this stage can be activated.
   Successful mappings are referenced by monotonic, nonreused tokens:
   copies and token removal use the same lock, and physical adapter
   resources are freed outside it. No raw stage pointer escapes. STOP
@@ -318,7 +319,8 @@ installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
   slot 511 chaining and the final zero descriptor.
 
 The expanded `tests/dry/test-sg-sync.c` compiles the actual
-`DmaSyncStage.c` and `DmaAdapterStage.c` sources against fake v3 DDIs.
+`DmaSyncStage.c`, `DmaAdapterStage.c` and `DmaPnpStage.c` sources against
+fake v3 DDIs.
 It covers allocation and initialization failure, resource shortage,
 malformed successful GetEx results, repeated/concurrent owner init,
 concurrent init/destroy API rejection, sequential and concurrent duplicate
@@ -331,10 +333,76 @@ page-chain capacity. The current full Dry result is recorded in
 do not exercise actual OS DMA resource allocation, real PnP REMOVE or
 hardware bus-master idle.
 
+## Inactive PnP/DMA parent ownership
+
+`DmaPnpStage.c/.h` now supplies the missing software parent for the staged
+adapter and synchronous owner. It remains unreachable from `Driver.c`,
+`Device.c`, `Acquisition.c` and `Ioctl.c`; compiling it does not allocate an
+adapter, map memory or change the active PFN-derived path.
+
+The ownership contract is:
+
+| Resource | Current owner | Valid/release boundary |
+| --- | --- | --- |
+| Dispatch/remove reference | `IO_REMOVE_LOCK` in the live device extension | Acquired before dispatch work and released at local or lower-stack completion; REMOVE waits for all references. |
+| Live IOCTL admission | `AcceptIoctls`, `ActiveIoctls` and `IoIdleEvent` | STOP/SURPRISE/REMOVE close admission and drain synchronous requests before deferred work or transfer cleanup. |
+| BAR mappings | Live device extension | Published only after START resource mapping; unmapped after IOCTL drain and IRQ/DPC/timer quiescence. Surprise removal performs no MMIO. |
+| IRQ and queued DPC | Live device extension | Interrupt disconnect precedes DPC removal/flush; neither step proves physical DMA idle. |
+| Embedded timer | Live device extension | Used only as a waited timer object; canceled after the DPC rundown and before transfer/BAR release. |
+| Active PFN transfer MDLs and descriptors | `LECS65_TRANSFER` | Released only when `DmaUnsafeToFree` is false. Unknown-active transfers are detached and intentionally leaked, not declared idle. |
+| Staged adapter, PDO reference and descriptor common buffer | One `LECS65_DMA_PNP_STAGE` through its single `LECS65_DMA_ADAPTER_CONTEXT` | Created transactionally on inactive START; retained until the child owner is stopped, all parent calls retire, every no-launch mapping drains and software quiescence ordering is recorded. |
+| Staged SG allocation and transfer context | `LECS65_SG_SYNC_OWNER`/token | One allocation per adapter context; released by `FreeAdapterObject(DeallocateObject)` only because this interface has no launch operation. |
+| Staged locked MDL chain | External future request owner; borrowed by the SG stage | Must remain pinned through mapping release and parent-call rundown. The new parent does not unlock borrowed MDLs. |
+
+The live-source audit confirmed that valid STOP and surprise-removal paths
+close admission and drain IOCTLs before disconnecting the interrupt, flushing
+queued DPCs, canceling the timer, releasing ordinary transfers and unmapping
+BARs. REMOVE additionally waits on the remove lock before deleting the FDO.
+No concrete double release or DPC-after-transfer-free path was found in that
+ordering. This is source evidence only: lower-stack completion timing, power
+IRPs, repeated or malformed PnP sequences and Driver Verifier behavior have
+not been exercised. The confirmed staging defect was narrower: adapter and
+sync ownership ended at each independently created context, so there was no
+parent START generation, request rundown or single context boundary. The new
+inactive parent corrects that software architecture without changing live PnP.
+
+The parent implements `Stopped -> Starting -> Started` and explicit STOP,
+surprise-removal and REMOVE states. START publishes admission only after the
+adapter, descriptor table and child owner all succeed. Failed partial START
+releases only never-launched allocations and returns to `Stopped`. Teardown
+atomically closes parent admission, requests child STOP without holding the
+parent spin lock, rejects new mappings, waits by retry rather than blocking
+under a lock, and requires interrupt disconnect, DPC drain and timer stop in
+that order. Those flags describe software rundown only and are deliberately
+not a DMA-idle flag.
+
+The parent keeps a call reference across map, copy and release. Consequently
+STOP cannot destroy the child while `GetScatterGatherListEx`, a copy or
+`FreeAdapterObject` is executing. A cleanup attempt that loses this race
+returns `STATUS_DEVICE_BUSY`; after callers retire, the same state can be
+retried. Adapter cleanup also records when the SG owner has already detached,
+so a later adapter-release failure does not cause a second owner destruction.
+Tokens remain monotonic across START generations, so stale tokens cannot name
+a mapping from a later generation.
+
+One parent holds at most one adapter context. This corrects the confirmed
+staging architecture gap in which two contexts for the same fake PDO could
+independently claim owners. The guarantee is currently **per parent object**.
+Before activation, live PnP must create and publish exactly one independently
+resident parent for each physical device and must forbid direct adapter-context
+creation outside it. Parent storage cannot be embedded only in an FDO if an
+unknown-active quarantine must survive FDO deletion.
+
+`LecDmaPnpQuarantineUnknownActive` closes admission and permanently latches
+both the parent and adapter context. It does not drain, destroy or unmap the
+child. REMOVE and owner destruction then remain blocked. This is retention,
+not recovery, and it intentionally leaves the adapter, descriptor common
+buffer, mapping, PDO references and external MDL ownership outstanding.
+
 ### Unresolved activation blockers
 
-This owner remains a staging-only PnP gate, not a live STOP/REMOVE policy:
-the real PnP code does not reference it. No existing DMA transfer
+The parent and child owners remain staging-only, not a live STOP/REMOVE policy:
+the real PnP code does not reference them. No existing DMA transfer
 may be converted to this path yet. In particular, a physical
 hardware-start/IRQ/timeout path still lacks a proven bus-master idle
 transition and must **never** call the no-launch release method.
@@ -343,8 +411,9 @@ free mappings. Real STOP/REMOVE must eventually reconcile pinned MDL
 chain ownership, adapters, descriptors, DMA completion, loss of device,
 and remove locks, without waiting on permanently quarantined mappings.
 The stage also does not own or unlock its borrowed MDLs. A real parent must
-join owner-storage rundown, MDL ownership, adapter-context uniqueness and PnP
-remove-lock lifetime before any request can reach this code.
+join independently resident parent storage, MDL ownership, the per-device
+parent instance and PnP remove-lock lifetime before any request can reach this
+code.
 
 Sources:
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
