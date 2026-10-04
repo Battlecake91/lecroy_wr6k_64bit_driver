@@ -208,7 +208,11 @@ limits remain unsupported.
 
 The draft now removes the raw-pointer `Peek` interface in favor of
 `LecSgStageCopySegments`, which copies bounded SG elements while
-holding the lock. Both synchronous and delayed callbacks, submitted
+holding the lock and checks that the complete returned device-logical
+SG length matches the requested MDL span, addresses fit the board's
+32-bit DMA limit and lengths are DWORD aligned. Invalid mappings are
+quarantined rather than being truncated. Both synchronous and delayed
+callbacks, submitted
 status and submission failure transition under the same spin lock.
 `LecSgStageRelease` marks closing and permanently quarantines unknown
 DMA. **It currently refuses ALL releases**, even `ProvenIdle=TRUE`:
