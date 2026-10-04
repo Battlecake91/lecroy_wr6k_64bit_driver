@@ -56,7 +56,7 @@ typedef unsigned long KIRQL;
  * real host-side mutex only within this fake-WDM translation unit. */
 #define KSPIN_LOCK CRITICAL_SECTION
 typedef struct _FAKE_DEVICE { volatile LONG References; } FAKE_DEVICE, *PDEVICE_OBJECT;
-typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; } MDL, *PMDL;
+typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; struct _FAKE_MDL* Next; } MDL, *PMDL;
 typedef void* PIRP;
 typedef struct _SCATTER_GATHER_ELEMENT {
     LARGE_INTEGER Address;
@@ -77,11 +77,31 @@ typedef struct _DMA_OPERATIONS {
         PDRIVER_LIST_CONTROL, void*, BOOLEAN);
     VOID (*PutScatterGatherList)(
         struct _DMA_ADAPTER*, PSCATTER_GATHER_LIST, BOOLEAN);
+    NTSTATUS (*InitializeDmaTransferContext)(
+        struct _DMA_ADAPTER*, void*);
+    NTSTATUS (*GetScatterGatherListEx)(
+        struct _DMA_ADAPTER*, PDEVICE_OBJECT, void*, PMDL,
+        ULONGLONG, ULONG, ULONG, PDRIVER_LIST_CONTROL, void*,
+        BOOLEAN, void*, void*, PSCATTER_GATHER_LIST*);
+    VOID (*FreeAdapterObject)(
+        struct _DMA_ADAPTER*, int);
 } DMA_OPERATIONS, *PDMA_OPERATIONS;
 typedef struct _DMA_ADAPTER {
     PDMA_OPERATIONS DmaOperations;
 } DMA_ADAPTER, *PDMA_ADAPTER;
 
+#ifndef DMA_TRANSFER_CONTEXT_SIZE_V1
+#define DMA_TRANSFER_CONTEXT_SIZE_V1 128U
+#endif
+#ifndef DMA_SYNCHRONOUS_CALLBACK
+#define DMA_SYNCHRONOUS_CALLBACK 1U
+#endif
+#ifndef DeallocateObject
+#define DeallocateObject 2
+#endif
+#ifndef STATUS_INTERNAL_ERROR
+#define STATUS_INTERNAL_ERROR ((NTSTATUS)0xC00000E5L)
+#endif
 #ifndef MAXULONG
 #define MAXULONG 0xFFFFFFFFUL
 #endif
@@ -136,3 +156,11 @@ static inline VOID KeLowerIrql(KIRQL prev) { UNREFERENCED_PARAMETER(prev); }
 static inline VOID ObReferenceObject(PDEVICE_OBJECT d) { InterlockedIncrement(&d->References); }
 static inline ULONG MmGetMdlByteCount(PMDL m) { return m->Size; }
 static inline void* MmGetMdlVirtualAddress(PMDL m) { return m->Va; }
+
+static inline VOID ObDereferenceObject(PDEVICE_OBJECT d) {
+    InterlockedDecrement(&d->References);
+}
+static inline VOID ExFreePoolWithTag(void* p, ULONG tag) {
+    UNREFERENCED_PARAMETER(tag);
+    free(p);
+}
