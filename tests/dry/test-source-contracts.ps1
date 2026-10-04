@@ -27,11 +27,13 @@ $ownerSource = Join-Path $repo "driver\DmaMappingOwner.c"
 $ownerHeader = Join-Path $repo "driver\DmaMappingOwner.h"
 $scatterSource = Join-Path $repo "driver\DmaScatterGatherStage.c"
 $scatterHeader = Join-Path $repo "driver\DmaScatterGatherStage.h"
+$syncSource = Join-Path $repo "driver\DmaSyncStage.c"
+$syncHeader = Join-Path $repo "driver\DmaSyncStage.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -51,6 +53,8 @@ $ownerText = Get-Content -LiteralPath $ownerSource -Raw
 $ownerHeaderText = Get-Content -LiteralPath $ownerHeader -Raw
 $scatterText = Get-Content -LiteralPath $scatterSource -Raw
 $scatterHeaderText = Get-Content -LiteralPath $scatterHeader -Raw
+$syncText = Get-Content -LiteralPath $syncSource -Raw
+$syncHeaderText = Get-Content -LiteralPath $syncHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -290,7 +294,7 @@ Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisi
     $driverProjectText -match 'ClCompile Include="DmaAdapterStage.c"' -and
     $adapterHeaderText -match 'LecDmaCreateAdapterContext' -and
     $adapterText -match 'IoGetDmaAdapter\(' -and
-    $adapterText -match 'DEVICE_DESCRIPTION_VERSION2' -and
+    $adapterText -match 'DEVICE_DESCRIPTION_VERSION3' -and
     $adapterText -match 'Dma32BitAddresses = TRUE' -and
     $adapterText -match 'AllocateCommonBuffer\(' -and
     $adapterText -match 'FreeCommonBuffer\(' -and
@@ -332,6 +336,23 @@ Test-Contract "WDM SG callback bridge is fail-closed pending real rundown" {
     $acquisitionText -notmatch 'LecSgStageMap|LecSgStageRelease' -and
     $deviceText -notmatch 'LecSgStageMap|LecSgStageRelease' -and
     $ioctlText -notmatch 'LecSgStageMap|LecSgStageRelease'
+}
+
+Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
+    $driverProjectText -match 'ClCompile Include="DmaSyncStage.c"' -and
+    $adapterText -match 'DEVICE_DESCRIPTION_VERSION3' -and
+    $syncText -match 'DMA_SYNCHRONOUS_CALLBACK, NULL, NULL, FALSE' -and
+    $syncText -match 'InitializeDmaTransferContext' -and
+    $syncText -match 'GetScatterGatherListEx' -and
+    $syncText -match 'FreeAdapterObject' -and
+    $syncText -match 'LecSgSyncOwnerStop' -and
+    $syncText -match 'Owner->Outstanding' -and
+    $syncText -match 'Owner->Stopping' -and
+    $syncText -match 'DeallocateObject' -and
+    $syncText -notmatch 'LecMapOwnerLaunch' -and
+    $acquisitionText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
+    $deviceText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
+    $ioctlText -notmatch 'LecSgSync|GetScatterGatherListEx'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
