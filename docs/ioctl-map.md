@@ -1,5 +1,63 @@
 # IOCTL map
 
+## Definitive original 27-case switch (raw ASM, 2026-10-04)
+
+The complete orphan-code export
+`d5e08317e515ea46cb525b5628ea3e67de9c5e46` finally exposes
+`0x11018..0x1138F`, the previously **unrecognized** original
+`CLecS65AcqDrvDevice` device-control dispatcher at main-device vtable
+`0x1C500+0x4C`. This mapping is read directly from the original x86
+branch tree and is independent of the modern x64 switch:
+
+| Original IOCTL | Legacy dispatch target | Note |
+|---|---|---|
+| `0x00222C00` | `0x1286E` | wait/control |
+| `0x00222C04` | `0x128BC` | flag/control |
+| `0x00223000` | `0x12ADA` | trace config |
+| `0x00223004` | `0x12A5E` | saved buffer query |
+| `0x0022303C` | `0x12CAC` | SetOneRegister |
+| `0x00223040` | `0x12C18` | register-list query |
+| `0x00223044` | `0x12D24` | direct START/FVER read |
+| `0x00223080` | `0x130EA` | Dallas ROM ID |
+| `0x00223084` | `0x131B5` | Dallas READ |
+| `0x00223088` | `0x11F54` | Dallas WRITE with readback verify |
+| `0x00223100` | `0x12988` | event registration |
+| `0xCFDC2110` | `0x13AE2` | packed CFDC2110 batch |
+| `0xCFDC2124` | `0x11BDC` | register transfer |
+| `0xCFDC2128` | `0x11C36` | unregister transfer |
+| `0xCFDC212C` | `0x11C5E` | not implemented |
+| `0xCFDC2130` | `0x11CFF` | serial FPGA/GPIO programming |
+| `0xCFDC2138` | `0x141DC` | buffered acquisition |
+| `0xCFDC2180` | `0x128F8` | event/control |
+| `0xCFDC2184` | inline in `0x11018` | return success, Information=0 |
+| `0xCFDC218C` | `0x12B34` | event/control |
+| `0xCFDC2190` | `0x13A40` | status/control |
+| `0xCFDC2194` | `0x12BAE` | status/error latch |
+| `0xCFDC21C0` | `0x13954` | generic register read |
+| `0xCFDC21C4` | `0x1272A` | generic register write |
+| `0xCFDC21C8` | `0x12832` | build 1002 |
+| `0xCFDC2400` | `0x13A2E` | pending/DPC path |
+| `0xCFDD219F` | `0x141F8` | METHOD_NEITHER acquisition |
+
+The wrapper first waits on a device synchronization primitive at
+`device+0x1463` (or returns `0xC00000A3`,
+`STATUS_DEVICE_NOT_READY` when that pointer is absent). For most
+handlers, the return status becomes the overall IRP result; for
+`CFDC2110`, `CFDC2138` and `CFDD219F` it reloads the status
+from the IRP after calling the specialized frontend. It then releases
+the primitive, logs failures and completes the request via
+`FUN_00010798`. A returned `STATUS_PENDING (0x103)` bypasses
+normal immediate completion. Unknown codes get
+`STATUS_INVALID_PARAMETER (0xC000000D)`.
+
+This **confirms the original dispatcher has 27 distinct cases**.
+Both Dallas WRITE and serial FPGA/GPIO programming are reachable
+first-class original operations; their eventual x64 implementation and
+safe hardware test policy remain separate tasks. This static
+discovery makes **no claim** that the present x64 driver code or live
+hardware tests were changed.
+
+
 
 
 ## 2026-10-01 native SetOneRegister update
