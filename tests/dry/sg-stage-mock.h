@@ -30,19 +30,26 @@
 #define _Outptr_result_maybenull_
 #endif
 #define UNREFERENCED_PARAMETER(x) (void)(x)
+#ifndef POOL_FLAG_NON_PAGED
 #define POOL_FLAG_NON_PAGED 0
+#endif
+#ifndef LECS65_TAG
 #define LECS65_TAG 0x4C534447
+#endif
+#ifndef MDL_PAGES_LOCKED
 #define MDL_PAGES_LOCKED 1U
+#endif
+#ifndef DISPATCH_LEVEL
 #define DISPATCH_LEVEL 2
+#endif
+#ifndef FALSE
 #define FALSE 0
+#endif
+#ifndef TRUE
 #define TRUE 1
+#endif
 
-typedef void VOID;
-typedef unsigned char BOOLEAN;
-typedef unsigned long ULONG;
 typedef unsigned long KIRQL;
-typedef ULONG* PULONG;
-typedef LONG NTSTATUS;
 typedef CRITICAL_SECTION KSPIN_LOCK;
 typedef struct _FAKE_DEVICE { volatile LONG References; } FAKE_DEVICE, *PDEVICE_OBJECT;
 typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; } MDL, *PMDL;
@@ -71,13 +78,27 @@ typedef struct _DMA_ADAPTER {
     PDMA_OPERATIONS DmaOperations;
 } DMA_ADAPTER, *PDMA_ADAPTER;
 
+#ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS ((NTSTATUS)0L)
+#endif
+#ifndef STATUS_INVALID_PARAMETER
 #define STATUS_INVALID_PARAMETER ((NTSTATUS)0xC000000DL)
+#endif
+#ifndef STATUS_INSUFFICIENT_RESOURCES
 #define STATUS_INSUFFICIENT_RESOURCES ((NTSTATUS)0xC000009AL)
+#endif
+#ifndef STATUS_DEVICE_BUSY
 #define STATUS_DEVICE_BUSY ((NTSTATUS)0xC000009EL)
+#endif
+#ifndef STATUS_DEVICE_NOT_READY
 #define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xC00000A3L)
+#endif
+#ifndef STATUS_INVALID_BUFFER_SIZE
 #define STATUS_INVALID_BUFFER_SIZE ((NTSTATUS)0xC0000206L)
+#endif
+#ifndef STATUS_BUFFER_TOO_SMALL
 #define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
+#endif
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(x) (((NTSTATUS)(x)) >= 0)
 #endif
