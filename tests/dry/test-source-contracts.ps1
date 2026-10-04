@@ -16,10 +16,11 @@ $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $publicHeader = Join-Path $repo "include\LecS65LegacyIoctl.h"
 $driverHeader = Join-Path $repo "driver\LecS65Drv.h"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
+$deviceSource = Join-Path $repo "driver\Device.c"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $deviceSource, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -28,6 +29,7 @@ foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $lecwatchSource,
 $publicText = Get-Content -LiteralPath $publicHeader -Raw
 $driverText = Get-Content -LiteralPath $driverHeader -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
+$deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
 $script:Checks = 0
@@ -151,6 +153,29 @@ Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" 
     $ioctlText -match 'entry\s*=\s*&g_LecLegacyRegisterList\[index\]' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x101\)' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x106\)'
+}
+
+Test-Contract "START_DEVICE requires a connected IRQ before publishing device interfaces" {
+    $startMatch = [regex]::Match(
+        $deviceText,
+        '(?s)case IRP_MN_START_DEVICE:(.*?)case IRP_MN_STOP_DEVICE:')
+    $startMatch.Success -and
+    $startMatch.Groups[1].Value -match 'irqStatus = LecConnectInterrupt\(devExt\)' -and
+    $startMatch.Groups[1].Value -match 'status = irqStatus' -and
+    $startMatch.Groups[1].Value -match 'LecUnmapBars\(devExt\)' -and
+    $startMatch.Groups[1].Value -match '(?s)else\s*\{\s*devExt->Started = TRUE;\s*LecEnableInterfaces\(devExt\)'
+}
+
+Test-Contract "both native DMA launch paths reject absent interrupts" {
+    $mttr = [regex]::Match(
+        $ioctlText,
+        '(?s)LecExecuteLegacyMttTransferLocked\s*\(.*?(?=static\s+(?:NTSTATUS|BOOLEAN|VOID)|\z)')
+    $buffered = [regex]::Match(
+        $ioctlText,
+        '(?s)LecIoctlAcquireBufferedOneChannel\s*\(.*?(?=static\s+(?:NTSTATUS|BOOLEAN|VOID)|\z)')
+    $gate = 'if\s*\(!DevExt->Started\s*\|\|\s*!DevExt->InterruptConnected\)\s*\{\s*return STATUS_DEVICE_NOT_READY;'
+    $mttr.Success -and $buffered.Success -and
+    $mttr.Value -match $gate -and $buffered.Value -match $gate
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
