@@ -1,5 +1,16 @@
 # IOCTL map
 
+## DMA-related safety policy (draft x64 branch)
+
+The original `CFDC2400` software-pending dispatcher can inject INTST bit 0
+and make a DMA completion event appear signaled without a physical hardware
+completion. The P0 draft now rejects synthetic bit 0; the established
+zero-mask diagnostic is unchanged. Physical completion is tracked separately,
+but its bus-idle guarantee remains **unproven**. DMA timeouts/faults latch
+a terminal unknown-active state and quarantine possibly bus-owned memory.
+See [DMA lifetime and timeout](dma-lifetime-and-timeout.md) for the
+reconstructed original code, limits, and release blockers.
+
 ## Definitive original 27-case switch (raw ASM, 2026-10-04)
 
 The complete orphan-code export
