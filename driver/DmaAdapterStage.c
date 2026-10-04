@@ -48,8 +48,11 @@ LecDmaCreateAdapterContext(
      * contract. Refuse an adapter missing any mandatory v3 operation;
      * never silently fall back to the callback-driven v2 mechanism.
      */
-    if (context->Adapter->DmaOperations == NULL ||
-        context->Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
+    if (context->Adapter->DmaOperations == NULL) {
+        /* Malformed adapter cannot be safely released through DDIs. */
+        return STATUS_NOT_SUPPORTED;
+    }
+    if (context->Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
         context->Adapter->DmaOperations->InitializeDmaTransferContext == NULL ||
         context->Adapter->DmaOperations->FreeAdapterObject == NULL) {
         context->Adapter->DmaOperations->PutDmaAdapter(context->Adapter);
