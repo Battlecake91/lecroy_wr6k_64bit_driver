@@ -155,6 +155,20 @@ These are actual Windows native test results for the staged encoder,
 **not** successful WDM DMA adapter use, IOMMU compatibility, verified
 DMA bus idle, STOP/REMOVE stress or PCI hardware validation.
 
+### Staged WDM DMA adapter ownership (unverified)
+
+After the 21/21 + 13/13 owner-verified checkpoint, the draft now builds
+an **inactive** `DmaAdapterStage.c` module. This acquires a WDM DMA
+adapter, provides common-buffer allocation with a checked 32-bit
+device-logical address, and refuses to return mappings without a
+proven-idle predicate. A Dry source contract asserts that the WDM
+adapter stage is not invoked by live PnP/acquisition/IOCTL paths.
+
+The newly added stage has **not** yet been built with Windows WDK or
+runtime-tested; all prior passing counts exclude it. The adapter is
+not yet used for transfer mappings and the PCI hardware path is
+unchanged. Do not install the branch.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
