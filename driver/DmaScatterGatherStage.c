@@ -210,16 +210,14 @@ LecSgStageRelease(
 BOOLEAN
 LecSgStageMarkLaunched(_Inout_ PLECS65_SG_STAGE Stage)
 {
-    KIRQL irql;
-    BOOLEAN result;
-
-    if (Stage == NULL) return FALSE;
-    KeAcquireSpinLock(&Stage->Lock, &irql);
-    result = (BOOLEAN)(!Stage->Unsafe && !Stage->Closing &&
-        Stage->SubmissionReturned && Stage->CallbackComplete &&
-        LecMapOwnerLaunch(&Stage->Owner));
-    KeReleaseSpinLock(&Stage->Lock, irql);
-    return result;
+    /*
+     * The WDM callback may still be executing when it publishes its
+     * result. The isolated stage does not yet have the complete
+     * adapter/MDL/FDO/PNP rundown required to launch actual DMA.
+     * Do not advertise READY as authorization to bus-master.
+     */
+    UNREFERENCED_PARAMETER(Stage);
+    return FALSE;
 }
 
 BOOLEAN
