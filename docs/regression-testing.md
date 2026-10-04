@@ -237,9 +237,18 @@ The live driver still cannot call this staging layer.
 bridge against a synthetic host-only WDM API, including inline/delayed
 and racing callback/REMOVE, late callback after failure, and copied
 list lifetime. The full Dry runner invokes `test-sg-stage.ps1`.
-**The Windows WDK build and new mock run for these changes remain
-unverified.** Previously owner-verified results (24/24, 13/13, 17/17)
-belong to the prior bridge revision only.
+Owner-reported Windows Dry execution on 2026-10-04 at 22:32:
+WDK x64 driver and lecdiag **built** (0 errors, the same two
+`LNK4075` warnings); source contracts **24/24 PASS**, descriptor
+layout **13/13 PASS**, and mapping ownership **17/17 PASS**.
+The new host-only SG mock did **not compile**, due to mock-only
+collisions with Win32 declarations: `UNREFERENCED_PARAMETER` C4005,
+`KSPIN_LOCK` C2371, `puts` C2365 and missing `MAXULONG`.
+No bridge unit test binary ran; the overall Dry suite **FAILED**.
+The host-only mock was corrected (guarded macros, host mutex
+substitution, renamed `putCalls`, 32-bit limit definition).
+**A new Windows Dry run is still required**; do not report 24/24
+as an overall passing Dry suite for this revision.
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
