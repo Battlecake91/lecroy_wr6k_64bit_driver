@@ -500,23 +500,27 @@ LecS65Pnp(
             if (NT_SUCCESS(status)) {
                 NTSTATUS irqStatus;
 
-                devExt->Started = TRUE;
-
                 /*
-                 * Connecting the interrupt is passive until an understood
-                 * source is explicitly enabled in InterruptEnableShadow.
-                 * Do not fail safe bring-up if a platform refuses the legacy
-                 * line interrupt; diagnostics and passive tracing remain
-                 * useful in that state.
+                 * Acquisition/DMA requires an ISR to complete transfers.
+                 * Never publish a started device if IRQ registration fails:
+                 * the former diagnostic-only fallback also admitted active
+                 * hardware operations through the normal interface.
                  */
                 irqStatus = LecConnectInterrupt(devExt);
                 if (!NT_SUCCESS(irqStatus)) {
                     LecTrace(
-                        "START_DEVICE: continuing without connected IRQ: 0x%08X\n",
+                        "START_DEVICE: IRQ unavailable, rejecting start: 0x%08X\n",
                         irqStatus);
+                    devExt->Started = FALSE;
+                    devExt->LegacyMamShadowInitialized = FALSE;
+                    devExt->LegacyMamSeqShadowInitialized = FALSE;
+                    LecUnmapBars(devExt);
+                    status = irqStatus;
                 }
-
-                LecEnableInterfaces(devExt);
+                else {
+                    devExt->Started = TRUE;
+                    LecEnableInterfaces(devExt);
+                }
             }
         }
 
