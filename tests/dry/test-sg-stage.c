@@ -178,6 +178,24 @@ int main(void) {
     check("duplicate callbacks quarantine rather than double Put",
           NT_SUCCESS(st) && stage->Unsafe && puts==0);
 
+    mode=1;
+    sg.NumberOfElements=0;
+    st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+    check("reject empty callback SG list",
+          NT_SUCCESS(st) &&
+          LecSgStageCopySegments(stage,copy,3,&count)==
+              STATUS_INVALID_BUFFER_SIZE);
+    sg.NumberOfElements=4; /* No dereference beyond the 3-slot mock. */
+    st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+    check("reject SG element count above supplied capacity",
+          NT_SUCCESS(st) &&
+          LecSgStageCopySegments(stage,copy,3,&count)==
+              STATUS_BUFFER_TOO_SMALL);
+    sg.NumberOfElements=2;
+    check("reject length exceeding a single locked MDL",
+          LecSgStageMap(&adapter,&dev,&mdl,129,&stage)==
+              STATUS_INVALID_PARAMETER);
+
     check("reject locked-MDL contract violation", (mdl.MdlFlags=0,
           LecSgStageMap(&adapter,&dev,&mdl,128,&stage))==
           STATUS_INVALID_PARAMETER);
