@@ -54,6 +54,40 @@ sends IOCTLs or accesses LeCroy hardware. Only report success after
 the user's Ghidra export confirms individual `RECOVER_...` records
 and new valid pseudocode files.
 
+## Stage 2: referenced short functions and reviewed undefined code
+
+The first explicit `recover:` stage (commit `9d3ac5b1`) successfully
+created all **25** selected functions, bringing the recognized internal
+inventory from **420 to 445** and reducing unowned code from 3,207
+bytes/90 clusters to **1,280 bytes/69 clusters**. Each new entry has
+decompiled-C and reference exports.
+
+The next `targets.txt` selects **79 more independently referenced,
+already decoded entrypoints**, primarily LeCroy virtual thunks,
+DriverWorks PnP/power callback thunks and static initializer helpers.
+The selection is grounded in incoming `DATA` references from
+`UNOWNED_CODE_REFS.txt`, not speculative disassembly. Deliberately
+excluded are exceptional cleanup/filter entrypoints inside x86 SEH
+scope regions (`0x18067`, `0x1806B`, `0x180BD`,
+`0x1814C`, `0x18150`).
+
+A further **explicitly whitelisted** target form is
+`decode:<hexaddress>`. Unlike `recover:` (which requires
+pre-existing decoded instructions), `decode:` invokes Ghidra's
+disassembler before attempting function creation. It is restricted
+to three opcode-verified candidates: `0x18E58`, `0x18EDB`,
+`0x1C280`. Unknown addresses, altered instruction prefixes and
+existing defined data are rejected. Results appear in
+`DECODE_<address>.txt`, and successful function creations in
+`RECOVER_<address>.txt`.
+
+Both `decode:` and `recover:` **change the local Ghidra analysis
+database**. The runner copies the complete Ghidra project to a
+timestamped sibling directory before invoking either target type.
+Close interactive Ghidra before running. The first/second-stage
+exports are static only; no original or x64 Windows driver is loaded
+or exercised.
+
 ## Windows command template
 
 Replace `<GHIDRA_HOME>` with the installed Ghidra directory.
