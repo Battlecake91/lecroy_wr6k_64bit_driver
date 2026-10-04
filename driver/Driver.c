@@ -391,7 +391,14 @@ LecS65Close(
      * process close. The x64 replacement uses opaque tokens rather than
      * leaking kernel pointers, and always enforces owner identity.
      */
-    LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
+    /*
+     * STOP waits for process-owned transfer cleanup as well as IOCTLs.
+     * A close racing with STOP leaves transfer release to the PnP teardown.
+     */
+    if (LecEnterIoctl(devExt)) {
+        LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
+        LecLeaveIoctl(devExt);
+    }
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
