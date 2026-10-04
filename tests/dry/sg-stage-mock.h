@@ -29,7 +29,9 @@
 #ifndef _Outptr_result_maybenull_
 #define _Outptr_result_maybenull_
 #endif
+#ifndef UNREFERENCED_PARAMETER
 #define UNREFERENCED_PARAMETER(x) (void)(x)
+#endif
 #ifndef POOL_FLAG_NON_PAGED
 #define POOL_FLAG_NON_PAGED 0
 #endif
@@ -50,7 +52,9 @@
 #endif
 
 typedef unsigned long KIRQL;
-typedef CRITICAL_SECTION KSPIN_LOCK;
+/* The Windows user header already typedefs KSPIN_LOCK. Substitute a
+ * real host-side mutex only within this fake-WDM translation unit. */
+#define KSPIN_LOCK CRITICAL_SECTION
 typedef struct _FAKE_DEVICE { volatile LONG References; } FAKE_DEVICE, *PDEVICE_OBJECT;
 typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; } MDL, *PMDL;
 typedef void* PIRP;
@@ -77,6 +81,10 @@ typedef struct _DMA_OPERATIONS {
 typedef struct _DMA_ADAPTER {
     PDMA_OPERATIONS DmaOperations;
 } DMA_ADAPTER, *PDMA_ADAPTER;
+
+#ifndef MAXULONG
+#define MAXULONG 0xFFFFFFFFUL
+#endif
 
 #ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS ((NTSTATUS)0L)
