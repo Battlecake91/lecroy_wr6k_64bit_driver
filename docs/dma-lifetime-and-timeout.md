@@ -196,10 +196,42 @@ Before enabling this code, the following blockers must be resolved:
 The source stage was compiled and linked by the Windows WDK on
 2026-10-04; the full Dry runner reported 24/24 source contracts,
 13/13 layout tests and 17/17 mapping-ownership tests.
-**No actual WDM SG callback was exercised.** The unresolved detailed
-callback/removal contract is isolated in the read-only workstream
-`docs/handoffs/wdm-sg-callback-ownership.md`. Do not activate staged
-code until that review is implemented and validated.
+**No actual WDM SG callback was exercised in the verified driver
+run.** The focused read-only WDM SG review subsequently identified
+concrete P0 issues: `LecSgStagePeek` returned an unprotected SG pointer;
+`CallbackComplete` could precede callback retirement; FDO-object
+referencing did not establish a joint adapter, locked-MDL, mapping,
+callback and PnP remove lifetime. Failures also changed shared state
+outside the spin lock. Multi-MDL (>32 MiB) transfers and map-register
+limits remain unsupported.
+
+The draft now removes the raw-pointer `Peek` interface in favor of
+`LecSgStageCopySegments`, which copies bounded SG elements while
+holding the lock. Both synchronous and delayed callbacks, submitted
+status and submission failure transition under the same spin lock.
+`LecSgStageRelease` marks closing and permanently quarantines unknown
+DMA. **It currently refuses ALL releases**, even `ProvenIdle=TRUE`:
+callback publication is not proof of callback retirement and there is
+no verified joint MDL/adapter/FDO rundown. Therefore it never calls
+`PutScatterGatherList` or deallocates a stage or device-object
+reference. This conservative leak is an intentional development
+interlock, **not finished resource ownership**.
+
+An additional host-only fake WDM shim builds and executes the actual
+bridge code (`tests/dry/test-sg-stage.c`), covering inline and delayed
+callbacks, bounded copying, duplicated callbacks, failed submission
+followed by late notification, STOP/REMOVE with outstanding callbacks,
+and concurrent callback/REMOVE. It does not invoke real kernel WDM
+operations, model the PCI bus or prove a physical DMA stop. This new
+revision requires a Windows build and Dry retest.
+
+**Activation blockers remain**: a reference-counted owner for the
+adapter, pinned MDL(s), descriptor common buffer, callback retirement,
+all readers, device teardown and DMA mapping, an explicit certified
+successful no-launch cleanup path, multi-MDL sizing and map-register
+budget, and independent hardware bus-idle proof. Pending or unknown
+mappings cannot be returned. Until resolved, the staged bridge MUST
+remain unreachable from active acquisition and PnP paths.
 
 ## Remaining P0 work, no shortcuts
 
