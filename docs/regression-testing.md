@@ -60,6 +60,33 @@ Owner-reported Windows 10 x64 Dry execution on 2026-10-04
 This confirms build and source contracts, **not** loaded-driver behavior,
 fault-injected IRQ failure, safe Stop/Remove or hardware acquisition.
 
+## P0 request/removal lifecycle staging
+
+A later revision of this branch (after the 12/12 owner-verified Dry run)
+adds `IO_REMOVE_LOCK` coverage for CREATE, CLOSE, DEVICE_CONTROL, PnP,
+Power and generic forwarded IRPs. Forwarded IRPs release their references
+on lower-stack completion, not at the initial dispatch return.
+STOP/SURPRISE_REMOVE/REMOVE now close IOCTL admission and wait for
+synchronous operations before releasing transfer/event/BAR resources.
+The quiesce sequence masks a known INTEN register only when mapped hardware
+is accessible, disconnects the ISR, removes/drains the kernel DPC,
+cancels the embedded timer, and invalidates the acquisition shadows.
+Surprise Removal skips MMIO writes.
+
+**No WDK build, Dry regression, PnP fault injection or real hardware test
+has validated this later revision yet.** The prior 12/12 result belongs to
+the earlier IRQ gating commit only. The added source contracts are
+assertions about call presence and ordering, not proofs of concurrency safety.
+
+Remaining hard blockers before production/HLK readiness:
+- A DMA timeout or error may leave real bus-master activity running after
+  software pointers and descriptors are released. Establish a proven
+  hardware abort/reset/idle sequence or safe OS DMA-mapping lifecycle.
+- Test remove-lock callbacks, Start/Stop/Remove, rearm races and fault
+  injection under Driver Verifier/controlled hardware.
+- Review whether power transitions, DMA-remapping/IOMMU and unexpected
+  removals need a stronger hardware ownership model.
+
 The IRQ failure path has **not** been fault-injected or hardware-tested.
 A future controlled test must simulate `IoConnectInterrupt` failure before
 any PCI device testing, verify the returned PnP failure status, disabled device
