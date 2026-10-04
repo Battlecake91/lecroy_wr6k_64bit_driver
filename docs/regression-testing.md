@@ -177,6 +177,20 @@ This is an owner-reported source/build and synthetic-layout result,
 not yet used for transfer mappings and the PCI hardware path is
 unchanged. Do not install the branch.
 
+### Asynchronous SG ownership state model (pending Windows verification)
+
+After the owner's 22/22 source contract and 13/13 DMA-layout Dry pass,
+the source now contains an **inactive** pure mapping-ownership model,
+`driver/DmaMappingOwner.c/.h`, compiled into the WDK project. It
+enforces that pending callbacks, device-active DMA, and unknown
+hardware ownership cannot return mappings. Synthetic completion alone
+never proves idle. A separate MSVC unit test suite exercises lifecycle
+and callback timing without making DMA DDI calls; the Dry runner invokes it.
+
+**This latest revision has not been Windows-built or tested yet.**
+The existing active acquisition still derives 32-bit addresses from
+CPU PFNs. WDM scatter/gather mapping and actual recovery remain unimplemented.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
