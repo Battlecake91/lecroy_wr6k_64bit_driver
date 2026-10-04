@@ -25,6 +25,9 @@ import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CodeUnitIterator;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
@@ -457,8 +460,13 @@ public class ExportSelected extends GhidraScript {
         long clusterInst = 0;
 
         File refFile = new File(outDir, "UNOWNED_CODE_REFS.txt");
+        File asmFile = new File(outDir, "UNOWNED_CODE_ASM.txt");
         try (PrintWriter pw = new PrintWriter(file, "UTF-8");
-             PrintWriter refsPw = new PrintWriter(refFile, "UTF-8")) {
+             PrintWriter refsPw = new PrintWriter(refFile, "UTF-8");
+             PrintWriter asmPw = new PrintWriter(asmFile, "UTF-8")) {
+            asmPw.println("DECODED_EXECUTABLE_INSTRUCTIONS_OUTSIDE_FUNCTIONS");
+            asmPw.println("Refer to CODE_COVERAGE.txt for cluster ranges and");
+            asmPw.println("UNOWNED_CODE_REFS.txt for incoming references.");
             refsPw.println("UNOWNED_EXECUTABLE_INSTRUCTION_REFERENCES");
             refsPw.println("target|source|type|source_function");
             pw.println("EXECUTABLE_INSTRUCTION_COVERAGE");
@@ -483,6 +491,11 @@ public class ExportSelected extends GhidraScript {
                 else {
                     orphanBytes += inst.getLength();
                     orphanInstructions++;
+                    if (clusterStart == null) {
+                        asmPw.println();
+                        asmPw.println("CLUSTER_START " + at);
+                    }
+                    asmPw.println(at + "  " + inst.toString());
                     // Referenced entry points may lie in the middle of a
                     // contiguous unowned instruction region.
                     ReferenceIterator refsTo = rm.getReferencesTo(at);
@@ -530,6 +543,68 @@ public class ExportSelected extends GhidraScript {
             pw.println("unowned_clusters=" + clusterCount);
             pw.println("NOTE: gaps in decoded instruction coverage can include");
             pw.println("data, alignment, undecoded code or embedded tables.");
+        }
+        writeExecutableByteClassification();
+    }
+
+    /*
+     * Inspect all code units in executable blocks to distinguish decoded
+     * instruction bytes from defined data and undefined bytes. An executable
+     * permission on a section is not proof that each byte contains code.
+     */
+    private void writeExecutableByteClassification() throws Exception {
+        File file = new File(outDir, "EXECUTABLE_BYTE_CLASSIFICATION.txt");
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+            pw.println("EXECUTABLE_BYTE_CLASSIFICATION");
+            pw.println("block|start|end|bytes|instruction|defined_data|undefined");
+            long allInstruction = 0;
+            long allData = 0;
+            long allUndefined = 0;
+            long allBlockBytes = 0;
+            for (MemoryBlock block : currentProgram.getMemory().getBlocks()) {
+                if (!block.isExecute()) {
+                    continue;
+                }
+                long insBytes = 0;
+                long dataBytes = 0;
+                long undefBytes = 0;
+                CodeUnitIterator it = currentProgram.getListing()
+                    .getCodeUnits(block.getStart(), true);
+                while (it.hasNext()) {
+                    CodeUnit cu = it.next();
+                    if (cu.getAddress().compareTo(block.getEnd()) > 0) {
+                        break;
+                    }
+                    long len = cu.getLength();
+                    if (cu instanceof Instruction) {
+                        insBytes += len;
+                    }
+                    else if (cu instanceof Data && ((Data)cu).isDefined()) {
+                        dataBytes += len;
+                    }
+                    else {
+                        undefBytes += len;
+                    }
+                }
+                long accounted = insBytes + dataBytes + undefBytes;
+                // Unexpected gaps are explicitly counted as undefined,
+                // rather than silently reporting them as decoded code.
+                long extra = block.getSize() - accounted;
+                if (extra > 0) {
+                    undefBytes += extra;
+                }
+                pw.printf("%s|%s|%s|%d|%d|%d|%d%n",
+                    block.getName(), block.getStart(), block.getEnd(),
+                    block.getSize(), insBytes, dataBytes, undefBytes);
+                allInstruction += insBytes;
+                allData += dataBytes;
+                allUndefined += undefBytes;
+                allBlockBytes += block.getSize();
+            }
+            pw.printf("TOTAL| | |%d|%d|%d|%d%n",
+                allBlockBytes, allInstruction, allData, allUndefined);
+            pw.println("NOTE: Defined data or undefined bytes may conceal");
+            pw.println("undiscovered code, alignment or embedded constants.");
         }
     }
 
