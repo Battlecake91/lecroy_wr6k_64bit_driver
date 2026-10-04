@@ -160,6 +160,40 @@ callback ownership and serialization protocol (including IRQL and
 device/remove lifetime references) must be reviewed before actual
 WDM integration. Tests and WDK build of this new revision are pending.
 
+## Inactive WDM scatter/gather callback bridge (pending WDK validation)
+
+The newly staged `DmaScatterGatherStage.c/.h` wraps the WDM
+`GetScatterGatherList` / `PutScatterGatherList` functions without
+changing `LecBuildDescriptorTable` or invoking hardware. It accepts
+one already locked MDL, records the device-logical SG list in a
+`DRIVER_LIST_CONTROL` callback, holds an object reference while a
+callback can be outstanding, and uses a spin lock to synchronize
+its mapping-ownership state. The callback itself starts **no DMA**.
+The WDM SG DDIs are invoked at DISPATCH_LEVEL. The temporary stage
+is *not* called by PnP, IOCTL or real acquisition code.
+
+The state model requires callback completion and an explicit,
+separately proven DMA-idle predicate before `PutScatterGatherList`.
+A failed submission or unconfirmed idle conservatively retains the
+stage and mappings. **A late callback or a signal from the DMA IRQ
+is not proof of bus inactivity.**
+
+Before enabling this code, the following blockers must be resolved:
+- Model device-object, adapter, source-MDL and IRP/remove-lock ownership
+  together (referencing an FDO alone does not retain every PnP resource).
+- Serialize all peeks and releases across worker/DPC and PnP actions;
+  borrowed SG pointers cannot survive asynchronous destruction.
+- Confirm precise WDM callback and failure/cancellation contracts,
+  including resources queued before STOP and callbacks after remove.
+- Handle chained MDLs, map-register shortage, scatter/gather length
+  limits, descriptor-buffer capacity and the unknown-active quarantine
+  without releasing any DMA/IOMMU mapping prematurely.
+- Observe that `PutScatterGatherList` flushes/unmaps resources, so
+  it may only be used after real hardware DMA is demonstrably finished.
+
+The source stage itself has **not** been Windows-built or Dry tested
+at this revision. It provides no supported PCI or IOMMU path yet.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
