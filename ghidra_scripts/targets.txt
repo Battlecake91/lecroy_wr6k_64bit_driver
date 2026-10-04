@@ -1,39 +1,73 @@
-# Complete legacy-driver quality pass:
-# verify remaining decompiler warnings and reconstruct central vtables/thunks
+# Full-binary RE: identify executable virtual targets and short thunks
+# Ghidra recognizes 420 functions; these targets probe code outside that set.
+# Address-only entries generate raw windows if no function exists at the address.
 
-11894
-asm:11894
-xref:11894
+# Derived hardware vtable overrides and shared virtual entries
+10c34
+asm:10c34
+xref:10c34
+10c62
+asm:10c62
+xref:10c62
+10c8c
+asm:10c8c
+xref:10c8c
+170ee
+asm:170ee
+xref:170ee
+13914
+asm:13914
+xref:13914
+13934
+asm:13934
+xref:13934
 
-19bb8
-asm:19bb8
-xref:19bb8
+# Main driver vtable tail beyond first 64 slots
+dwords:1c600:12
 
-# Raw/non-function thunks referenced by device lifecycle/cancel paths
-10d68
-10d74
+# x86 this-adjusting and WDM entrypoint thunk region
+10c18
+10cea
+10d06
+10d3c
+10d62
+10d6e
+10d7a
+10d86
+10eaf
+11018
 1150a
-118e0
-19bc0
 
-# DriverWorks/global driver and LeCroy device/hardware vtables
-dwords:1c4c4:16
-dwords:1c500:64
-dwords:1c62c:64
-dwords:1c8bc:64
+# DriverWorks vtable callable targets not in recognized-function inventory
+19a54
+19a94
+19ab6
+19acc
+19aec
+19b02
+19b22
+19b38
+19b4e
+19b7a
+19d38
+1de3c
 
-# Helper-object vtables seen in constructors/destructors
-dwords:1c990:8
-dwords:1c994:8
-dwords:1c9a4:8
-dwords:1c9a8:8
-dwords:1ca00:16
-dwords:1cbb4:16
+# Adjacent helper vtables: determine real boundaries, not fixed-size assumptions
+dwords:1c4c4:5
+dwords:1c4d8:6
+dwords:1c990:1
+dwords:1c994:4
+dwords:1c9a4:1
+dwords:1c9a8:1
+dwords:1cbb4:4
 
-# SEH-sensitive helpers whose semantics are known but decompiler shape is synthetic
-17fd6
-asm:17fd6
-1807a
-asm:1807a
-1c0a8
-asm:1c0a8
+# Thunks used by auxiliary timer and Dallas virtual dispatch
+1bc86
+1bc9e
+16c74
+170d0
+
+# Check real xref owners of vtables
+xref:1c500
+xref:1c62c
+xref:1c8bc
