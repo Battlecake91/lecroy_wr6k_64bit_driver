@@ -3,29 +3,32 @@
 #include "DmaMappingOwner.h"
 
 /*
- * INACTIVE WDM SG prototype: never called by live acquisition.
- * Holds its own referenced DeviceObject across an asynchronous callback.
- * The parent DMA_ADAPTER must outlive the entire request.
- * The caller serializes all query/release operations and PnP ownership.
+ * Unreachable staging-only WDM SG bridge. Caller MUST retain the DMA
+ * adapter and locked MDL, plus the physical device and remove ownership,
+ * until all callbacks are independently known to have retired.
+ * FDO object references alone do NOT serialize PnP teardown.
+ *
+ * No release path may free the stage itself while other callers can
+ * reference it: it remains a tombstone until a future owner-wide rundown
+ * protocol has been implemented.
  */
 typedef struct _LECS65_SG_STAGE {
-    PDMA_ADAPTER Adapter;            /* Borrowed; parent must outlive us. */
-    PDEVICE_OBJECT DeviceObject;    /* Object reference owned by stage. */
+    PDMA_ADAPTER Adapter;             /* Borrowed, not reference-counted. */
+    PDEVICE_OBJECT DeviceObject;     /* Object-ref retained on submission. */
+    PMDL SourceMdl;                  /* Borrowed; owner must keep pinned. */
     PSCATTER_GATHER_LIST List;
     KSPIN_LOCK Lock;
-    BOOLEAN CallbackComplete;
-    BOOLEAN Submitted;
+    BOOLEAN CallbackComplete;        /* Notification, not callback retirement. */
+    BOOLEAN SubmissionReturned;
     BOOLEAN Unsafe;
     BOOLEAN PutStarted;
     BOOLEAN WriteToDevice;
+    BOOLEAN Closing;
+    ULONG CopiedSegments;
     LECS65_MAPPING_OWNER Owner;
 } LECS65_SG_STAGE, *PLECS65_SG_STAGE;
 
-/*
- * Stage the DMA mapping for exactly one already-locked MDL at PASSIVE_LEVEL.
- * GetScatterGatherList may call back later at DISPATCH_LEVEL. No hardware
- * launch is allowed from this staging callback.
- */
+/* Staging only. No caller from PnP, IOCTL or acquisition is allowed. */
 NTSTATUS LecSgStageMap(
     _In_ PDMA_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -34,18 +37,26 @@ NTSTATUS LecSgStageMap(
     _Outptr_ PLECS65_SG_STAGE* Result);
 
 /*
- * Returns a borrowed list, not proof of DMA idle or ownership transfer.
- * A caller must serialize the entire read/use interval with release.
+ * A bounded SNAPSHOT under the stage lock, never a borrowed SG pointer.
+ * Copies real device-logical elements to caller storage. No target buffer
+ * access after return without separately retaining its own allocation.
  */
-BOOLEAN LecSgStagePeek(
+NTSTATUS LecSgStageCopySegments(
     _Inout_ PLECS65_SG_STAGE Stage,
-    _Outptr_result_maybenull_ PSCATTER_GATHER_LIST* List);
+    _Out_writes_to_(Capacity, *Copied) PSCATTER_GATHER_ELEMENT Elements,
+    _In_ ULONG Capacity,
+    _Out_ PULONG Copied);
 
-/* On FALSE or absent callback, indefinitely retain the mapping. */
+/*
+ * Currently fail-closed: no reliable callback-retirement proof or
+ * PnP/MDL/adapter rundown contract exists. Even ProvenIdle=TRUE cannot
+ * authorize PutScatterGatherList or free a stage. A FALSE argument
+ * permanently quarantines the mapping.
+ */
 NTSTATUS LecSgStageRelease(
     _Inout_ PLECS65_SG_STAGE Stage,
     _In_ BOOLEAN ProvenIdle);
 
-/* State transitions called by future serialized hardware-owner code only. */
+/* Staged for software-only ownership transitions; no MMIO. */
 BOOLEAN LecSgStageMarkLaunched(_Inout_ PLECS65_SG_STAGE Stage);
 BOOLEAN LecSgStageMarkIdleProved(_Inout_ PLECS65_SG_STAGE Stage);
