@@ -496,11 +496,15 @@ reconstruction scope.
 
 ## Full legacy-function inventory status
 
-A complete Ghidra function census was exported on 2026-10-03 using the
-`inventory` target. Ghidra currently recognizes 420 functions in the legacy
-binary. Commit `4e622dc2528127cce13ae35146554a9b2ada2982` subsequently exported
-selected decompiled C and reference summaries for the complete inventory, so
-all currently recognized functions now have a repository pseudocode snapshot.
+The initial 2026-10-03 Ghidra function census recognized **420** internal
+functions. Subsequent carefully selected function-boundary and opcode-checked
+recovery raised that to **527**; all 527 have selected decompiled C,
+reference summaries and semantic entries in
+[legacy-driver-function-map.md](legacy-driver-function-map.md).
+The final byte/SEH audit verifies three separate compiler-managed filter
+and cleanup regions outside ordinary function bodies, not missing
+C++ driver methods. See [current code coverage](legacy-executable-code-coverage.md)
+and [28 IRP-major dispatch entries](legacy-driver-architecture.md).
 
 The address region beginning around `0x182D0 (__alldiv)` is dominated by
 compiler/runtime and DriverWorks infrastructure, but the complete export shows
