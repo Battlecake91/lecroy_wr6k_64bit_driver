@@ -11,10 +11,19 @@ static LECS65_DMA_MAPPED_SEGMENT segments[512];
 static unsigned passed;
 static unsigned failed;
 
-#define CHECK(name, cond) do {                                       \
-    if (cond) { ++passed; printf("[PASS] %s\n", name); }             \
-    else { ++failed; printf("[FAIL] %s\n", name); }                   \
-} while (0)
+static void CheckResult(const char* name, int ok)
+{
+    if (ok) {
+        ++passed;
+        printf("[PASS] %s\n", name);
+    }
+    else {
+        ++failed;
+        printf("[FAIL] %s\n", name);
+    }
+}
+
+#define CHECK(name, cond) CheckResult(name, (cond))
 
 int main(void)
 {
