@@ -1,9 +1,56 @@
 #include "DmaSyncStage.h"
 
+/* All functions are staging-only. PnP does not currently invoke them. */
+VOID
+LecSgSyncOwnerInit(
+    _Out_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ PDMA_ADAPTER Adapter,
+    _In_ PDEVICE_OBJECT DeviceObject)
+{
+    RtlZeroMemory(Owner, sizeof(*Owner));
+    KeInitializeSpinLock(&Owner->Lock);
+    Owner->Adapter = Adapter;
+    Owner->DeviceObject = DeviceObject;
+}
+
+NTSTATUS
+LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    KIRQL irql;
+    ULONG outstanding;
+    if (Owner == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    Owner->Stopping = TRUE;
+    outstanding = Owner->Outstanding;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    return outstanding ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
+}
+
+BOOLEAN
+LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    KIRQL irql;
+    BOOLEAN ready;
+    if (Owner == NULL) return FALSE;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    ready = (BOOLEAN)(Owner->Stopping && Owner->Outstanding == 0);
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    return ready;
+}
+
+static VOID
+LecSgSyncOwnerDone(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    /* Every successful enter owns exactly one count. */
+    --Owner->Outstanding;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+}
+
 NTSTATUS
 LecSgSyncMapNoLaunch(
-    _In_ PDMA_ADAPTER Adapter,
-    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ PMDL LockedMdlChain,
     _In_ ULONG Length,
     _Outptr_ PLECS65_SG_SYNC_STAGE* Result)
@@ -12,9 +59,15 @@ LecSgSyncMapNoLaunch(
     PMDL mdl;
     ULONGLONG available = 0;
     NTSTATUS status;
+    PDMA_ADAPTER Adapter;
+    PDEVICE_OBJECT DeviceObject;
+    KIRQL irql;
 
     if (Result == NULL) return STATUS_INVALID_PARAMETER;
     *Result = NULL;
+    if (Owner == NULL) return STATUS_INVALID_PARAMETER;
+    Adapter = Owner->Adapter;
+    DeviceObject = Owner->DeviceObject;
     if (Adapter == NULL || Adapter->DmaOperations == NULL ||
         Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
         Adapter->DmaOperations->InitializeDmaTransferContext == NULL ||
@@ -34,10 +87,27 @@ LecSgSyncMapNoLaunch(
     }
     if (available < Length) return STATUS_INVALID_BUFFER_SIZE;
 
+    /*
+     * Reserve a parent mapping slot BEFORE any WDM resource request.
+     * STOP flips Stopping under the same lock and cannot mistake an
+     * in-flight submission for a quiescent adapter.
+     */
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (Owner->Stopping || Owner->Outstanding == MAXULONG) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    ++Owner->Outstanding;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+
     stage = (PLECS65_SG_SYNC_STAGE)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*stage), LECS65_TAG);
-    if (!stage) return STATUS_INSUFFICIENT_RESOURCES;
+    if (!stage) {
+        LecSgSyncOwnerDone(Owner);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
     RtlZeroMemory(stage, sizeof(*stage));
+    stage->Parent = Owner;
     stage->Adapter = Adapter;
     stage->DeviceObject = DeviceObject;
     stage->MdlChain = LockedMdlChain;
@@ -67,6 +137,7 @@ LecSgSyncMapNoLaunch(
          */
         ObDereferenceObject(DeviceObject);
         ExFreePoolWithTag(stage, LECS65_TAG);
+        LecSgSyncOwnerDone(Owner);
         return status;
     }
 
@@ -141,6 +212,7 @@ LecSgSyncReleaseNoLaunch(
         current->Adapter, DeallocateObject);
     ObDereferenceObject(current->DeviceObject);
     *Stage = NULL;
+    LecSgSyncOwnerDone(current->Parent);
     ExFreePoolWithTag(current, LECS65_TAG);
     return STATUS_SUCCESS;
 }
