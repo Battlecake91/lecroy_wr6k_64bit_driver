@@ -12,8 +12,8 @@ static unsigned passed;
 static unsigned failed;
 
 #define CHECK(name, cond) do {                                       \
-    if (cond) { ++passed; printf("[PASS] %s\\n", name); }             \
-    else { ++failed; printf("[FAIL] %s\\n", name); }                   \
+    if (cond) { ++passed; printf("[PASS] %s\n", name); }             \
+    else { ++failed; printf("[FAIL] %s\n", name); }                   \
 } while (0)
 
 int main(void)
@@ -120,7 +120,7 @@ int main(void)
     CHECK("reject zero-length segment",
           rc == LecDmaLayoutInvalid);
 
-    printf("DMA LAYOUT: %u/%u passed; %u failed.\\n",
+    printf("DMA LAYOUT: %u/%u passed; %u failed.\n",
         passed, passed + failed, failed);
     return failed == 0 ? 0 : 1;
 }
