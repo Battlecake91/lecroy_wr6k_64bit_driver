@@ -99,6 +99,9 @@ typedef struct _DMA_ADAPTER {
 #ifndef DeallocateObject
 #define DeallocateObject 2
 #endif
+#ifndef STATUS_NOT_SUPPORTED
+#define STATUS_NOT_SUPPORTED ((NTSTATUS)0xC00000BBL)
+#endif
 #ifndef STATUS_INTERNAL_ERROR
 #define STATUS_INTERNAL_ERROR ((NTSTATUS)0xC00000E5L)
 #endif
