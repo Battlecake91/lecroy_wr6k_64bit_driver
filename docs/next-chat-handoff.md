@@ -1,3 +1,42 @@
+# Recovery targets and undefined-byte triage ready (2026-10-04)
+
+Latest staged static RE tooling on `main`:
+
+- Original master IOCTL dispatcher **`0x11018..0x1138F`** and
+  all 27 original IOCTL cases are now directly proven by raw ASM.
+- All 90 orphan decoded-code clusters were semantically categorized
+  in [executable code coverage](legacy-executable-code-coverage.md).
+- `ghidra_scripts/ExportSelected.java` supports **`recover:<hex>`**
+  for explicit, reviewed function creation and decompilation;
+  `ghidra_scripts/targets.txt` selects 25 high-confidence missing
+  function starts, then `inventory` and `coverage`.
+- `scripts/run-ghidra-analysis.ps1` automatically creates a complete
+  timestamped Ghidra project backup outside the repo when
+  `recover:` targets are present. **Close the interactive Ghidra GUI**
+  before the next headless run.
+- `coverage` now also writes
+  `UNDEFINED_EXECUTABLE_RANGES.txt` with an address/length
+  and short hex dump of each undefined executable-byte range.
+  Baseline: **1,116 undefined bytes**. No classification of these
+  individual ranges has been executed yet.
+- Review `RECOVER_*.txt` success/failure, new `.c`/refs,
+  `FUNCTION_INVENTORY.txt`, `CODE_COVERAGE.txt` and
+  `UNDEFINED_EXECUTABLE_RANGES.txt` before updating counts.
+
+Next command on Ghidra analysis PC:
+
+```powershell
+cd C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver
+git pull --rebase
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: recover original missing functions"
+```
+
+This will update the **local Ghidra analysis database**, not the modern x64
+driver source and not the real hardware. Ghidra has not yet validated the
+new `recover:` script version on the user's machine.
+
+---
+
 # Legacy complete ASM analyzed; missing-function recovery prepared (2026-10-04)
 
 Full Ghidra orphan-code export:
