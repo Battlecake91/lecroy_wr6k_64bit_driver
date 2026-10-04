@@ -66,6 +66,7 @@ LecSgStageMap(
     stage->Adapter = Adapter;
     stage->DeviceObject = DeviceObject;
     stage->SourceMdl = LockedMdl;
+    stage->RequestedLength = Length;
     stage->WriteToDevice = FALSE;  /* Acquisition: device writes host. */
     ObReferenceObject(DeviceObject);
 
@@ -128,11 +129,48 @@ LecSgStageCopySegments(
             status = STATUS_BUFFER_TOO_SMALL;
         }
         else {
-            RtlCopyMemory(Elements, Stage->List->Elements,
-                (SIZE_T)count * sizeof(*Elements));
-            *Copied = count;
-            Stage->CopiedSegments = count;
+            ULONG i;
+            ULONGLONG total = 0;
+
+            /*
+             * Windows returns device-logical addresses. Even a valid
+             * callback must not silently accept a truncated, malformed
+             * or non-32-bit mapping. This does not prove bus idleness.
+             */
             status = STATUS_SUCCESS;
+            for (i = 0; i < count; ++i) {
+                const SCATTER_GATHER_ELEMENT* element =
+                    &Stage->List->Elements[i];
+                ULONGLONG address =
+                    (ULONGLONG)element->Address.QuadPart;
+                ULONG length = element->Length;
+                if (length == 0 || (length & 3U) != 0 ||
+                    (address & 3U) != 0 ||
+                    address > MAXULONG ||
+                    (ULONGLONG)length - 1U >
+                        MAXULONG - address) {
+                    status = STATUS_INVALID_BUFFER_SIZE;
+                    break;
+                }
+                total += length;
+                if (total > Stage->RequestedLength) {
+                    status = STATUS_INVALID_BUFFER_SIZE;
+                    break;
+                }
+            }
+            if (total != Stage->RequestedLength) {
+                status = STATUS_INVALID_BUFFER_SIZE;
+            }
+            if (NT_SUCCESS(status)) {
+                RtlCopyMemory(Elements, Stage->List->Elements,
+                    (SIZE_T)count * sizeof(*Elements));
+                *Copied = count;
+                Stage->CopiedSegments = count;
+            }
+            else {
+                Stage->Unsafe = TRUE;
+                LecMapOwnerUncertain(&Stage->Owner);
+            }
         }
     }
     KeReleaseSpinLock(&Stage->Lock, irql);
