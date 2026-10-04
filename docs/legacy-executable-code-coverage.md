@@ -362,3 +362,107 @@ result must be established from new `RECOVER_*`/`DECODE_*`
 reports and the refreshed inventory, not presumed from the
 target list. The modern x64 driver remains untouched.
 
+
+
+## Second-stage recovery results: 527 functions (2026-10-04)
+
+Commit `7bdbd3cf797a991ab8ab3dc686e069fcc419e343` confirms that
+all **79** previously decoded, separately referenced virtual/callback
+targets were successfully created as Ghidra functions and all **three**
+reviewed undefined-code candidates were disassembled and recovered.
+All 82 have `RECOVER_*.txt` records with `CREATED`, selected
+decompiled C and compact reference exports. The three `DECODE_*.txt`
+records confirm successful disassembly.
+
+| Coverage metric | Original census | After 25 recoveries | After 82 further recoveries |
+|---|---:|---:|---:|
+| Internal recognized functions | 420 | 445 | **527** |
+| Including external function-manager entries | 507 | 532 | **614** |
+| Owned decoded instruction bytes | 44,828 | 46,755 | **48,086** |
+| Unowned decoded instruction bytes | 3,207 | 1,280 | **22** |
+| Unowned decoded instructions | 974 | 393 | **12** |
+| Unowned clusters | 90 | 69 | **3** |
+| All decoded instruction bytes | 48,035 | 48,035 | **48,108** |
+| Defined data in executable memory | 5,377 | 5,377 | **5,377** |
+| Undefined bytes in executable memory | 1,116 | 1,116 | **1,043** |
+
+The 82 new functions account for another **1,331** bytes formerly
+decoded but unowned, plus **73 bytes** newly decoded in the three
+reviewed undefined-code areas. Combined, the recovered-inventory
+increase from 420 to 527 accounts for all but **22 bytes** of
+previously disassembled unowned code.
+
+### Exact remaining decoded-but-unowned instructions
+
+Only three clusters remain in `CODE_COVERAGE.txt`:
+
+| Start | End | Bytes | Instructions | Interpretation |
+|---|---|---:|---:|---|
+| `0x18067` | `0x1806D` | 7 | 4 | short x86 SEH filter return and stack/frame restoration |
+| `0x180BD` | `0x180C0` | 4 | 3 | x86 SEH filter return |
+| `0x1814C` | `0x18156` | 11 | 5 | x86 SEH filter return and stack/frame restoration |
+
+These appear in the MDL probe/lock section and are reached as
+exception handling landing/filter paths; they should not be promoted
+to ordinary callable functions without proof of their exception
+scope table ownership. A separate undefined three-byte span at
+`0x180C1..0x180C3` is `8B 65 E8`
+(`MOV ESP,[EBP-0x18]`), consistent with the adjacent SEH
+stack restoration epilog. It is **not** an unrelated fourth
+conventional function.
+
+### Three decoded former unknown-code candidates
+
+Recovered C makes these functions unambiguous:
+
+- `0x18E58`: PnP minor-function name lookup via
+  `PTR_s_IRP_MN_START_DEVICE_0001CD88[minor]`; accepts
+  minor 0..23, else the unknown-minor-function string.
+- `0x18EDB`: power IRP minor-function name lookup via
+  `PTR_s_IRP_MN_WAIT_WAKE_0001CDE8[minor]`; accepts 0..3.
+- `0x1C280`: x86 compiler SEH status helper that inspects
+  `FS:[0]` (active exception chain) and verifies the handler
+  and stack/scope frame state.
+
+The other 79 are concrete LeCroy device lifecycle/IRP/DPC thunks,
+30 DriverWorks major-IRP vtable forwarders, policy-gated PnP/power
+callbacks, timer wrappers, completion adapters and static runtime
+registration helpers. Full per-address semantics are recorded in
+[legacy-driver-function-map.md](legacy-driver-function-map.md).
+
+Forty-four recovered `0x184xx` and `0x19Axx/0x19Bxx`
+forwarders emit Ghidra's `Could not recover jumptable`
+or `Treating indirect jump as call` warnings. Direct raw x86
+inspection shows deliberate **virtual tail jumps** (`JMP [EAX+slot]`),
+not a missing dynamic jump table. These are expected decompiler
+limitations and must not be mistranslated into ordinary call/return
+semantics.
+
+### Classification of remaining 1,043 undefined bytes
+
+The refreshed `UNDEFINED_EXECUTABLE_RANGES.txt` has **423**
+distinct ranges. Categorizing by exact byte patterns:
+
+| Evident pattern | Bytes | Interpretation |
+|---|---:|---|
+| `CC` padding/trap markers | 282 | alignment/breakpoint padding |
+| Zero-filled bytes | 281 | padding, reserved bytes, zeros |
+| ASCII/text or small inline constants | 458 | register labels (BAR0/1/2), format strings, small literals |
+| Mixed `CC` and `0A 00 00 00` | 19 | padding followed by literal value 10 (three short ranges) |
+| `8B 65 E8` | 3 | x86 SEH frame restoration instruction |
+
+Together these categories account for all 1,043 bytes by
+observed prefix/content. **Pattern recognition is not equivalent
+to a proof that every byte is non-executable**; the 1,040
+padding/data-like bytes are high-confidence classifications,
+not forced Ghidra-defined data. Do not blindly disassemble
+embedded `BAR0`/register strings.
+
+The final precise code-boundary check should:
+1. examine the SEH scope/exception dispatch links for the three
+   remaining decoded clusters;
+2. optionally disassemble only `0x180C1` as a reviewed
+   *fragment*, without manufacturing a normal function;
+3. reconstruct the indexed `IRP_MJ` dispatch table at `0x1CD10`,
+   with PnP/power name arrays at `0x1CD88`/`0x1CDE8`,
+   to document framework dispatch-slot ownership.
