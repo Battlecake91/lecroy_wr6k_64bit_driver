@@ -1,13 +1,13 @@
 # Legacy driver function map
 
-This is the semantic coverage map for every function currently recognized by Ghidra in the original 32-bit `LecS65AcqDrv.sys`.
+This is the semantic coverage map for every function currently recognized by Ghidra in the original 32-bit `LecS65AcqDrv.sys`. The current count is **445 internal functions**, including 25 reviewed code-recovery entries added on 2026-10-04 (commit `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`).
 
-- Complete pseudocode snapshot: `4e622dc2528127cce13ae35146554a9b2ada2982`
+- Initial 420-function pseudocode snapshot: `4e622dc2528127cce13ae35146554a9b2ada2982`; subsequent recovery/decompilation: `9d3ac5b10245d9c9098c3fca2642bf259d7ef507`
 - Architecture overview: [legacy-driver-architecture.md](legacy-driver-architecture.md)
 - `High` means the role is directly established by API calls, register effects, strings, known ABI routing or reconstructed call flow.
 - `Pending` means pseudocode is available but an exact semantic name has not yet been justified. These entries are not being discarded.
 - `ASM audit` means the semantic role is substantially known but Ghidra emitted a control-flow warning that must be checked against raw x86 instructions. The 2026-10-04 ASM pass resolved both such warnings.
-- The 420 entries reflect **recognized internal functions**, **not** all executable bytes or every short virtual thunk in the PE32 driver. A complete initial decoded-instruction census additionally found **90 unowned code clusters (3,207 bytes)**, including the large `0x11018..0x1138F` main-device vtable target. Audits: [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md), [executable code coverage](legacy-executable-code-coverage.md).
+- The current **445** entries reflect **recognized internal functions**, **not** all executable bytes. After the first recovery pass, **69** orphan decoded-code clusters (1,280 bytes) remain, including additional small virtual thunks. Audits: [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md), [executable code coverage](legacy-executable-code-coverage.md).
 
 | Address | Ghidra name | Subsystem | Semantic role | Status |
 |---|---|---|---|---|
@@ -16,6 +16,11 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x103B6` | `FUN_000103b6` | device/IRP low-level | null-safe pool free wrapper | High |
 | `0x103C8` | `FUN_000103c8` | device/IRP low-level | stored kernel-handle close/reset | High |
 | `0x103DC` | `FUN_000103dc` | device/IRP low-level | global DriverWorks driver/support destructor; releases copied registry/global buffers | High |
+| `0x10406` | `FUN_00010406` | DriverWorks/WDM | device callback routes IRP through device vtable slot +0x84 | High |
+| `0x1041C` | `FUN_0001041c` | DriverWorks/WDM | global driver initialization callback: invokes virtual +0x0C and clears bit 7 in linked device records on success | High |
+| `0x1044C` | `FUN_0001044c` | DriverWorks/WDM | global IRP dispatch trampoline: direct virtual +0x08 or enabled per-major table +0x1CD10 | High |
+| `0x10490` | `FUN_00010490` | DriverWorks/WDM | virtual dispatch forwarder through object slot +0x08 | High |
+| `0x104A0` | `FUN_000104a0` | DriverWorks/runtime | returns zero (base-class default virtual no-op) | High |
 | `0x104A4` | `FUN_000104a4` | device/IRP low-level | PoSetPowerState wrapper and cached device-power update | High |
 | `0x104F4` | `FUN_000104f4` | device/IRP low-level | CLecS65AcqDrvDevice factory / AddDevice path | High |
 | `0x10582` | `FUN_00010582` | device/IRP low-level | owned object destruction + pool free | High |
@@ -39,21 +44,31 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x107FE` | `FUN_000107fe` | device/IRP low-level | MMIO write + descriptor shadow update | High |
 | `0x10816` | `FUN_00010816` | device/IRP low-level | signal enabled event object | High |
 | `0x1082E` | `FUN_0001082e` | device/IRP low-level | interrupt/resource cleanup helper | High |
+| `0x1085E` | `FUN_0001085e` | ISR/DPC | conditional pending-bit consumer using 0x11DD8, gated by nonzero argument | High |
+| `0x10872` | `FUN_00010872` | ISR/DPC | conditional pending-bit consumer using 0x11DC2, gated by nonzero argument | High |
+| `0x10886` | `FUN_00010886` | ISR/DPC | conditional pending-bit consumer using 0x11DEE, gated by nonzero argument | High |
+| `0x1089A` | `FUN_0001089a` | ISR/DPC | conditional pending-bit consumer using 0x11E04, gated by nonzero argument | High |
+| `0x108AE` | `FUN_000108ae` | ISR/DPC | conditional pending-bit consumer using 0x11E1A, gated by nonzero argument | High |
+| `0x108C2` | `FUN_000108c2` | ISR/DPC | conditional pending-bit consumer using 0x11E30, gated by nonzero argument | High |
 | `0x108D6` | `FUN_000108d6` | device/IRP low-level | LeCroy ISR | High |
 | `0x10A88` | `FUN_00010a88` | device/IRP low-level | global synchronization/callback object accessor | High |
 | `0x10A8E` | `FUN_00010a8e` | device/IRP low-level | per-process linked reference record add/ref | High |
 | `0x10B10` | `FUN_00010b10` | device/IRP low-level | replace owned helper object | High |
+| `0x10B30` | `FUN_00010b30` | ISR/DPC | ISR adapter forwarding to 0x108D6 | High |
 | `0x10B3C` | `FUN_00010b3c` | device/IRP low-level | CLecS65AcqDrvDevice constructor | High |
 | `0x10C98` | `FUN_00010c98` | device/IRP low-level | CLecS65AcqDrvDevice destructor | High |
 | `0x10D46` | `FUN_00010d46` | device/IRP low-level | hardware stop/interrupt cleanup | High |
 | `0x10D9A` | `FUN_00010d9a` | device/IRP low-level | success/no-op helper | High |
 | `0x10DA0` | `FUN_00010da0` | device/IRP low-level | IRP cancel routine / device-queue removal | High |
 | `0x10E3A` | `FUN_00010e3a` | device/IRP low-level | create/open dispatch bookkeeping | High |
+| `0x10EAF` | `FUN_00010eaf` | device lifecycle | decrements global usage count; when zero disables board registers and IRQ/error shadow, then completes IRP | High |
 | `0x10F30` | `FUN_00010f30` | device/IRP low-level | close dispatch / per-process transfer cleanup | High |
+| `0x11018` | `FUN_00011018` | legacy IOCTL | full LeCroy DeviceControl 27-case IOCTL dispatcher, serializes through KeWaitForSingleObject/KeReleaseMutex and completes IRP unless pending; unknown-status overwrite quirk | High |
 | `0x11390` | `FUN_00011390` | IRQ/events/legacy IOCTL | LeCroy DPC dispatcher | High |
 | `0x11532` | `FUN_00011532` | IRQ/events/legacy IOCTL | CLecS65AcqDrvDevice deleting destructor | High |
 | `0x115C4` | `FUN_000115c4` | IRQ/events/legacy IOCTL | StartDevice resource mapping + board initialization + IRQ connect | High |
 | `0x11894` | `FUN_00011894` | IRQ/events/legacy IOCTL | ASM-verified guarded IRP/cancel dispatch: major 0x0E sets STATUS_INVALID_DEVICE_REQUEST then tail-jumps to hardware virtual +0x20; other majors CALL same virtual slot | High |
+| `0x118E4` | `FUN_000118e4` | queue/IRP | packet queue entry: complete zero-length IRP immediately or start packet with cancel routine 0x1150A | High |
 | `0x11914` | `FUN_00011914` | IRQ/events/legacy IOCTL | owned buffer/object release | High |
 | `0x11946` | `FUN_00011946` | IRQ/events/legacy IOCTL | small owned-buffer object constructor | High |
 | `0x11962` | `FUN_00011962` | IRQ/events/legacy IOCTL | register descriptor constructor | High |
@@ -114,6 +129,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x12E18` | `FUN_00012e18` | IOCTL/register/DMA/acquisition | remove/free all registered transfer objects owned by a process | High |
 | `0x12E72` | `FUN_00012e72` | IOCTL/register/DMA/acquisition | release captured event references associated with a process | High |
 | `0x12EAE` | `FUN_00012eae` | IOCTL/register/DMA/acquisition | interrupt-synchronized board callback | High |
+| `0x12EC2` | `FUN_00012ec2` | interrupt | conditional global error/pending-latch update; decompiler return-register reconstruction is noncanonical | High |
 | `0x12EDE` | `FUN_00012ede` | IOCTL/register/DMA/acquisition | CFDC2400 software-pending injection/dispatch IOCTL | High |
 | `0x12F30` | `FUN_00012f30` | IOCTL/register/DMA/acquisition | MAM configuration-record programmer | High |
 | `0x12FDE` | `FUN_00012fde` | IOCTL/register/DMA/acquisition | board startup ITMODE/initialization sequence | High |
@@ -286,6 +302,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x183A2` | `FUN_000183a2` | DriverWorks/WDM support | DriverWorks base-device helper constructor/vtable initialization | High |
 | `0x183B8` | `FUN_000183b8` | DriverWorks/WDM support | IoDeleteDevice wrapper/base-device teardown | High |
 | `0x183CE` | `FUN_000183ce` | DriverWorks/WDM support | DriverWorks base-device deleting destructor | High |
+| `0x183EE` | `FUN_000183ee` | DriverWorks/WDM | dispatches IRP by current stack MajorFunction through table at 0x1CD10 | High |
 | `0x184C0` | `FUN_000184c0` | DriverWorks/WDM support | append Unicode string helper | High |
 | `0x184FA` | `FUN_000184fa` | DriverWorks/WDM support | registered global/static destructor node invocation and unlink/free | High |
 | `0x1851C` | `FUN_0001851c` | DriverWorks/WDM support | run compiler/DriverWorks static initializer table | High |
@@ -322,6 +339,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x19662` | `FUN_00019662` | DriverWorks/WDM support | wait helper for framework outstanding-I/O state | High |
 | `0x196B4` | `FUN_000196b4` | DriverWorks/WDM support | power completion/state callback | High |
 | `0x19734` | `FUN_00019734` | DriverWorks/WDM support | initialize default power-policy bitfields and cached power state | High |
+| `0x197D0` | `FUN_000197d0` | power | read indexed cached power state at this+0x174 with fallback at +0x1A4 | High |
 | `0x197EE` | `FUN_000197ee` | DriverWorks/WDM support | power completion callback; clear pending flag, start next power IRP, release outstanding-I/O ref | High |
 | `0x19812` | `FUN_00019812` | DriverWorks/WDM support | issue synchronous IRP_MN_QUERY_CAPABILITIES and cache DEVICE_CAPABILITIES | High |
 | `0x198D0` | `FUN_000198d0` | DriverWorks/WDM support | synchronous power-state query/forward helper | High |
@@ -358,6 +376,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1A342` | `FUN_0001a342` | DriverWorks/WDM support | power continuation that may request a device-power transition before completing | High |
 | `0x1A420` | `FUN_0001a420` | DriverWorks/WDM support | generic DriverWorks IRP dispatcher | High |
 | `0x1A6EA` | `FUN_0001a6ea` | DriverWorks/WDM support | full PnP IRP state machine | High |
+| `0x1B00E` | `FUN_0001b00e` | queue/IRP | cancel-safe deferred IRP queue; returns STATUS_PENDING or STATUS_CANCELLED and installs cancel callback | High |
 | `0x1B096` | `FUN_0001b096` | DriverWorks/WDM support | full power IRP state machine | High |
 | `0x1B98E` | `FUN_0001b98e` | DriverWorks/WDM support | attach device to lower stack | High |
 | `0x1B9C6` | `FUN_0001b9c6` | DriverWorks/WDM support | lower-device wrapper constructor/bind helper with status return | High |
@@ -382,6 +401,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1BE12` | `FUN_0001be12` | DriverWorks/WDM support | initialize simple lower-device/file-object holder | High |
 | `0x1BE20` | `FUN_0001be20` | DriverWorks/WDM support | initialize lower-device pointer/status wrapper | High |
 | `0x1BE34` | `FUN_0001be34` | DriverWorks/WDM support | IoGetDeviceObjectPointer wrapper for named device | High |
+| `0x1BE72` | `FUN_0001be72` | DriverWorks/WDM | completion trampoline invokes optional callback, copies IoStatus and signals completion event | High |
 | `0x1BED2` | `FUN_0001bed2` | DriverWorks/WDM support | synchronous generic IRP forward-and-wait | High |
 | `0x1BF5A` | `FUN_0001bf5a` | DriverWorks/WDM support | synchronous lower-device DeviceIoControl helper | High |
 | `0x1BFDA` | `FUN_0001bfda` | DriverWorks/WDM support | initialize intrusive doubly-linked-list head with embedded-link offset | High |
@@ -399,13 +419,18 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x1C0FE` | `strchr` | DriverWorks/WDM support | import thunk for strchr | High |
 | `0x1C104` | `_vsnprintf` | compiler/SEH/runtime | import thunk for _vsnprintf | High |
 | `0x1C10A` | `DbgPrint` | compiler/SEH/runtime | import thunk for DbgPrint | High |
+| `0x1C118` | `FUN_0001c118` | compiler SEH | x86 scope table exception-filter dispatcher and unwind via __global_unwind2 | High |
 | `0x1C1C6` | `FUN_0001c1c6` | compiler/SEH/runtime | C++ exception cleanup/unwind dispatcher wrapper | High |
 | `0x1C1E4` | `__global_unwind2` | compiler/SEH/runtime | compiler global unwind helper | High |
+| `0x1C204` | `FUN_0001c204` | compiler SEH | exception flag filter: exception flags mask 0x6, return 1 or 3 | High |
 | `0x1C226` | `FUN_0001c226` | compiler/SEH/runtime | C++ exception cleanup-table unwind loop | High |
 | `0x1C2A4` | `RtlUnwind` | compiler/SEH/runtime | RtlUnwind import thunk | High |
 | `0x1C2AA` | `FUN_0001c2aa` | compiler/SEH/runtime | register static destructor callback | High |
 | `0x1C2B6` | `FUN_0001c2b6` | compiler/SEH/runtime | initialize global INTEN register descriptor and register its static destructor | High |
+| `0x1D380` | `FUN_0001d380` | DriverWorks/runtime | global driver singleton unload, vtable teardown, static destructor iteration | High |
 | `0x1D3A4` | `FUN_0001d3a4` | DriverWorks registry/string/device support | recursive DriverWorks object-tree cleanup/destructor walk | High |
+| `0x1D3C4` | `FUN_0001d3c4` | DriverWorks/runtime | object reference-tree cleanup wrapper via 0x1D3A4 | High |
+| `0x1D3D0` | `FUN_0001d3d0` | DriverWorks/runtime | conditionally destruct owned DriverWorks object if enabled flag | High |
 | `0x1D3DC` | `FUN_0001d3dc` | DriverWorks registry/string/device support | free DriverWorks object only when allocation magic matches | High |
 | `0x1D3F2` | `FUN_0001d3f2` | DriverWorks registry/string/device support | no-op framework hook | High |
 | `0x1D3F4` | `FUN_0001d3f4` | DriverWorks registry/string/device support | DriverWorks device-support object constructor/vtable initialization | High |
