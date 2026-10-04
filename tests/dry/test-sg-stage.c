@@ -196,6 +196,21 @@ int main(void) {
           LecSgStageMap(&adapter,&dev,&mdl,129,&stage)==
               STATUS_INVALID_PARAMETER);
 
+    sg.Elements[1].Length=60;
+    st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+    check("reject truncated SG mapping and quarantine",
+          NT_SUCCESS(st) &&
+          LecSgStageCopySegments(stage,copy,3,&count)==
+              STATUS_INVALID_BUFFER_SIZE && stage->Unsafe);
+    sg.Elements[1].Length=64;
+    sg.Elements[1].Address.QuadPart=0x100000000ULL;
+    st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+    check("reject over-4GiB logical SG mapping",
+          NT_SUCCESS(st) &&
+          LecSgStageCopySegments(stage,copy,3,&count)==
+              STATUS_INVALID_BUFFER_SIZE && stage->Unsafe);
+    sg.Elements[1].Address.QuadPart=0x20000;
+
     check("reject locked-MDL contract violation", (mdl.MdlFlags=0,
           LecSgStageMap(&adapter,&dev,&mdl,128,&stage))==
           STATUS_INVALID_PARAMETER);
