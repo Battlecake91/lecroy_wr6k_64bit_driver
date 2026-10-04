@@ -46,6 +46,20 @@ unpublished and rolls back BAR mappings, and that both the buffered acquisition
 and CFDC2110 MTT DMA launch paths refuse operation without a started device
 and a connected interrupt.
 
+Owner-reported Windows 10 x64 Dry execution on 2026-10-04
+(`scripts/test-driver.ps1 -Mode Dry`) confirmed:
+
+- Driver MSBuild Debug|x64: **success**, 0 errors, 2 `LNK4075`
+  linker-option warnings (INCREMENTAL/EDITANDCONTINUE ignored by
+  the driver link configuration).
+- `lecdiag.exe`: built as x64 (PE machine `0x8664`).
+- Source/ABI contracts: **12/12 PASS**, including IRQ-required START
+  and both DMA-launch admission gates.
+- Regression runner: `REGRESSION SUITE PASS: Dry`.
+
+This confirms build and source contracts, **not** loaded-driver behavior,
+fault-injected IRQ failure, safe Stop/Remove or hardware acquisition.
+
 The IRQ failure path has **not** been fault-injected or hardware-tested.
 A future controlled test must simulate `IoConnectInterrupt` failure before
 any PCI device testing, verify the returned PnP failure status, disabled device
