@@ -1,37 +1,8 @@
-# Final PE32 code-boundary / DriverWorks dispatch-table audit
-#
-# The 527 recovered internal functions already account for 48,086 of
-# the 48,108 decoded executable instruction bytes. The remaining
-# three decoded unowned regions are x86 SEH/filter/epilog fragments,
-# not independently referenced ordinary functions.
-#
-# Disassemble ONE explicitly reviewed 3-byte SEH epilog fragment.
-# No function will be created. The runner makes a full external
-# Ghidra project backup before this mutation. Close the Ghidra GUI.
-decode-fragment:180c1
-
-# Full IRP MajorFunction dispatch-pointer table; preserve exact order.
-# Note the static dispatch table has 30 entries, including reserved
-# slots, before the PnP name array begins at 0x1CD88.
-dwords:1cd10:30
-
-# Tables used by the newly recovered PnP/power minor-name lookup code.
-dwords:1cd88:24
-dwords:1cde8:4
-
-# Verify compiler SEH filter and MDL cleanup control flow.
-xref:18067
-xref:1806b
-xref:180bd
-xref:180c1
-xref:1814c
-xref:18150
-xref:1c280
-
-asm:1807a
-asm:17fd6
-asm:1c118
-
-# Confirm that the inventory/function-region counts remain coherent.
+# Safe, non-mutating baseline for the next Ghidra analysis pass.
+# The 527-function census, 28-entry IRP major dispatch table and the
+# compiler SEH fragment at 0x180c1 were verified on 2026-10-04.
+# Add specific new xref:/asm:/dwords:/address targets only when needed.
+# recover:, decode: and decode-fragment: modify the local Ghidra
+# project and trigger a full backup before execution.
 inventory
 coverage
