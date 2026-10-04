@@ -263,46 +263,47 @@ PFN-derived acquisition path.
 
 ### Staged WDM v3 synchronous no-launch mapping (Windows Dry verified)
 
-Following the verified 81/81 Dry checkpoint, the draft now includes
-`DmaSyncStage.c/.h`, a second, entirely **inactive** adapter-mapped
+The current draft includes `DmaSyncStage.c/.h`, an entirely **inactive** adapter-mapped
 mapping path using `GetScatterGatherListEx` with
 `DMA_SYNCHRONOUS_CALLBACK` and NULL callback. The adapter staging
 layer requests DMA_OPERATIONS v3 and checks its entry points.
 
 The sync stage owns each successful mapping until
 `FreeAdapterObject(DeallocateObject)` without ever providing a
-hardware-launch operation. Its parent `LECS65_SG_SYNC_OWNER` reserves
-an outstanding count before each WDM call, blocks submissions after
-STOP, and permits parent teardown only when the no-launch
-mapping has released. It admits only one v3 allocation per adapter.
-Monotonic, nonreused tokens and parent-locked copying/removal prevent
-a borrowed-pointer use-after-free or duplicate release. It cannot be used by real PnP yet, and its
-adapter/MDL chain are deliberately borrowed from an external owner.
+hardware-launch operation. The central adapter context holds the PDO,
+sets the required v3 DMA address width to 32 bits, validates the v3
+operations-table size and allows only one sync owner.
+That owner reserves an outstanding count before each WDM call, blocks
+submissions after STOP, validates the adapter map-register budget and
+WR6k descriptor capacity, and permits teardown only after its no-launch
+mappings have drained. Monotonic, nonreused tokens and parent-locked
+copying/removal prevent borrowed-pointer use-after-free and duplicate
+release. It cannot be used by real PnP yet, and its pinned MDL chain is
+deliberately borrowed from an external owner.
 
-The new fake-WDM test suite `test-sg-sync.c` runs actual stage code
-against synchronous v3 DDI mocks; it covers allocation failure,
-context initialization failure, balanced no-launch cleanup, sequential
-double release rejection, multi-MDL requests, invalid mapping
-lengths/addresses, STOP during allocation and admission refusal.
+The fake-WDM test suite `test-sg-sync.c` runs the actual sync and adapter
+stage sources against synchronous v3 DDI mocks. It covers adapter and
+common-buffer ownership, allocation failure, context initialization and
+GetEx resource failure, malformed-success cleanup, sequential/concurrent
+double release, copy/release and map/release races, multiple adapter
+contexts, 48-MiB MDL chains, cyclic/unlocked MDLs, invalid mappings,
+map-register and descriptor limits, STOP during GetEx, no-launch PnP drain
+and owner destruction.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Owner-verified Windows Dry regression on 2026-10-04 at 23:07:06:
-- Debug|x64 driver build **PASS** (0 warnings and 0 errors in an
-  incremental build), x64 `lecdiag` **PASS**.
+Current Windows Dry regression on 2026-10-04:
+- Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
+  x64 `lecdiag` **PASS**.
 - Source/ABI contracts **25/25 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
-- Synchronous WDM v3 no-launch fake-DDI suite **25/25 PASS**,
-  including token-based copy vs release, stale tokens, overlapping
-  adapter-channel rejection, resource shortage, two-MDL 48-MiB
-  coverage, and STOP during allocation.
-- Overall **REGRESSION SUITE PASS: Dry** (**107/107** checks).
+- Synchronous WDM v3 no-launch fake-DDI suite **55/55 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**137/137** checks).
 
-The earlier host-only `STATUS_NOT_SUPPORTED` compile error was
-resolved in the test shim. This test is software-only: no real OS
-SG mapping, actual PnP rundown or physical DMA idle has been proven.
+This test is software-only: no real OS SG mapping, actual PnP rundown
+or physical DMA idle has been proven.
 The active PFN-based DMA path is unchanged. No hardware tests are
 authorized.
 

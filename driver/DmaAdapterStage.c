@@ -1,5 +1,30 @@
 #include "DmaAdapterStage.h"
 
+static BOOLEAN
+LecDmaHasOperation(
+    _In_opt_ PDMA_OPERATIONS Operations,
+    _In_ SIZE_T RequiredSize)
+{
+    return (BOOLEAN)(Operations != NULL &&
+        Operations->Size >= RequiredSize);
+}
+
+static VOID
+LecDmaPutAdapterIfSupported(_In_opt_ PDMA_ADAPTER Adapter)
+{
+    PDMA_OPERATIONS operations;
+
+    if (Adapter == NULL) {
+        return;
+    }
+    operations = Adapter->DmaOperations;
+    if (LecDmaHasOperation(operations,
+            RTL_SIZEOF_THROUGH_FIELD(DMA_OPERATIONS, PutDmaAdapter)) &&
+        operations->PutDmaAdapter != NULL) {
+        operations->PutDmaAdapter(Adapter);
+    }
+}
+
 /*
  * WDM DMA-adapter acquisition and device-visible common buffer.
  * Intentionally not wired to PnP or DMA requests yet.
@@ -26,11 +51,12 @@ LecDmaCreateAdapterContext(
     }
     RtlZeroMemory(context, sizeof(*context));
     RtlZeroMemory(&description, sizeof(description));
+    KeInitializeSpinLock(&context->Lock);
 
     description.Version = DEVICE_DESCRIPTION_VERSION3;
     description.Master = TRUE;
     description.ScatterGather = TRUE;
-    description.Dma32BitAddresses = TRUE;
+    description.DmaAddressWidth = 32;
     description.InterfaceType = PCIBus;
     description.MaximumLength = MaximumTransferBytes;
 
@@ -48,14 +74,16 @@ LecDmaCreateAdapterContext(
      * contract. Refuse an adapter missing any mandatory v3 operation;
      * never silently fall back to the callback-driven v2 mechanism.
      */
-    if (context->Adapter->DmaOperations == NULL) {
-        /* Malformed adapter cannot be safely released through DDIs. */
-        return STATUS_NOT_SUPPORTED;
-    }
-    if (context->Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
+    if (!LecDmaHasOperation(context->Adapter->DmaOperations,
+            RTL_SIZEOF_THROUGH_FIELD(DMA_OPERATIONS, FreeAdapterObject)) ||
+        context->Adapter->DmaOperations->PutDmaAdapter == NULL ||
+        context->Adapter->DmaOperations->AllocateCommonBuffer == NULL ||
+        context->Adapter->DmaOperations->FreeCommonBuffer == NULL ||
+        context->Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
         context->Adapter->DmaOperations->InitializeDmaTransferContext == NULL ||
-        context->Adapter->DmaOperations->FreeAdapterObject == NULL) {
-        context->Adapter->DmaOperations->PutDmaAdapter(context->Adapter);
+        context->Adapter->DmaOperations->FreeAdapterObject == NULL ||
+        context->NumberOfMapRegisters == 0) {
+        LecDmaPutAdapterIfSupported(context->Adapter);
         ExFreePoolWithTag(context, LECS65_TAG);
         return STATUS_NOT_SUPPORTED;
     }
@@ -65,6 +93,8 @@ LecDmaCreateAdapterContext(
      * need. The later mapping layer must fragment transfers as required,
      * not assume MaximumLength is a hard allocation guarantee.
      */
+    ObReferenceObject(PhysicalDeviceObject);
+    context->PhysicalDeviceObject = PhysicalDeviceObject;
     *Result = context;
     return STATUS_SUCCESS;
 }
@@ -76,18 +106,35 @@ LecDmaAllocateCommonTable(
 {
     PVOID buffer;
     PHYSICAL_ADDRESS logical;
+    KIRQL irql;
 
     if (Context == NULL || Context->Adapter == NULL ||
         Context->Adapter->DmaOperations == NULL ||
-        Context->TableVirtual != NULL ||
         Length == 0 || (Length & (PAGE_SIZE - 1U)) != 0) {
         return STATUS_INVALID_PARAMETER;
     }
+
+    KeAcquireSpinLock(&Context->Lock, &irql);
+    if (Context->Releasing || Context->Quarantined ||
+        Context->SynchronousOwner != NULL ||
+        Context->TableAllocationPending) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    if (Context->TableVirtual != NULL) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+    Context->TableAllocationPending = TRUE;
+    KeReleaseSpinLock(&Context->Lock, irql);
 
     logical.QuadPart = 0;
     buffer = Context->Adapter->DmaOperations->AllocateCommonBuffer(
         Context->Adapter, Length, &logical, FALSE);
     if (buffer == NULL) {
+        KeAcquireSpinLock(&Context->Lock, &irql);
+        Context->TableAllocationPending = FALSE;
+        KeReleaseSpinLock(&Context->Lock, irql);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -99,25 +146,39 @@ LecDmaAllocateCommonTable(
             MAXULONG - (ULONGLONG)logical.QuadPart) {
         Context->Adapter->DmaOperations->FreeCommonBuffer(
             Context->Adapter, Length, logical, buffer, FALSE);
+        KeAcquireSpinLock(&Context->Lock, &irql);
+        Context->TableAllocationPending = FALSE;
+        KeReleaseSpinLock(&Context->Lock, irql);
         return STATUS_NOT_SUPPORTED;
     }
 
     RtlZeroMemory(buffer, Length);
+    KeAcquireSpinLock(&Context->Lock, &irql);
     Context->TableVirtual = buffer;
     Context->TableLogical = logical;
     Context->TableLength = Length;
+    Context->TableAllocationPending = FALSE;
+    KeReleaseSpinLock(&Context->Lock, irql);
     return STATUS_SUCCESS;
 }
 
-VOID
+NTSTATUS
 LecDmaReleaseAdapterContext(
     _In_opt_ PLECS65_DMA_ADAPTER_CONTEXT Context,
     _In_ BOOLEAN ProvenIdle)
 {
+    KIRQL irql;
+
     if (Context == NULL) {
-        return;
+        return STATUS_SUCCESS;
     }
 
+    KeAcquireSpinLock(&Context->Lock, &irql);
+    if (Context->Releasing || Context->TableAllocationPending ||
+        Context->SynchronousOwner != NULL) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
     if (!ProvenIdle || Context->Quarantined) {
         /*
          * DMA may still read the descriptor table. Dropping a common
@@ -125,8 +186,11 @@ LecDmaReleaseAdapterContext(
          * pinned. Quarantine context independent of the device extension.
          */
         Context->Quarantined = TRUE;
-        return;
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_DEVICE_BUSY;
     }
+    Context->Releasing = TRUE;
+    KeReleaseSpinLock(&Context->Lock, irql);
 
     if (Context->TableVirtual != NULL) {
         Context->Adapter->DmaOperations->FreeCommonBuffer(
@@ -137,9 +201,56 @@ LecDmaReleaseAdapterContext(
             FALSE);
     }
 
-    if (Context->Adapter != NULL) {
-        Context->Adapter->DmaOperations->PutDmaAdapter(Context->Adapter);
+    LecDmaPutAdapterIfSupported(Context->Adapter);
+    if (Context->PhysicalDeviceObject != NULL) {
+        ObDereferenceObject(Context->PhysicalDeviceObject);
     }
 
     ExFreePoolWithTag(Context, LECS65_TAG);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LecDmaClaimSynchronousOwner(
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context,
+    _In_ PVOID Owner)
+{
+    KIRQL irql;
+
+    if (Context == NULL || Owner == NULL || Context->Adapter == NULL ||
+        Context->PhysicalDeviceObject == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeAcquireSpinLock(&Context->Lock, &irql);
+    if (Context->Quarantined || Context->Releasing ||
+        Context->TableAllocationPending ||
+        Context->SynchronousOwner != NULL) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    Context->SynchronousOwner = Owner;
+    KeReleaseSpinLock(&Context->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LecDmaReleaseSynchronousOwner(
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context,
+    _In_ PVOID Owner)
+{
+    KIRQL irql;
+
+    if (Context == NULL || Owner == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeAcquireSpinLock(&Context->Lock, &irql);
+    if (Context->SynchronousOwner != Owner) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+    Context->SynchronousOwner = NULL;
+    KeReleaseSpinLock(&Context->Lock, irql);
+    return STATUS_SUCCESS;
 }

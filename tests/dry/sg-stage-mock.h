@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef _In_
 #define _In_
@@ -72,6 +73,12 @@ typedef void (*PDRIVER_LIST_CONTROL)(
     PDEVICE_OBJECT, PIRP, PSCATTER_GATHER_LIST, void*);
 struct _DMA_ADAPTER;
 typedef struct _DMA_OPERATIONS {
+    ULONG Size;
+    VOID (*PutDmaAdapter)(struct _DMA_ADAPTER*);
+    PVOID (*AllocateCommonBuffer)(
+        struct _DMA_ADAPTER*, ULONG, LARGE_INTEGER*, BOOLEAN);
+    VOID (*FreeCommonBuffer)(
+        struct _DMA_ADAPTER*, ULONG, LARGE_INTEGER, PVOID, BOOLEAN);
     NTSTATUS (*GetScatterGatherList)(
         struct _DMA_ADAPTER*, PDEVICE_OBJECT, PMDL, void*, ULONG,
         PDRIVER_LIST_CONTROL, void*, BOOLEAN);
@@ -87,11 +94,47 @@ typedef struct _DMA_OPERATIONS {
         struct _DMA_ADAPTER*, int);
 } DMA_OPERATIONS, *PDMA_OPERATIONS;
 typedef struct _DMA_ADAPTER {
+    USHORT Version;
+    USHORT Size;
     PDMA_OPERATIONS DmaOperations;
 } DMA_ADAPTER, *PDMA_ADAPTER;
 
+typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
+typedef enum _INTERFACE_TYPE { InterfaceTypeUndefined = -1, PCIBus = 5 } INTERFACE_TYPE;
+typedef struct _DEVICE_DESCRIPTION {
+    ULONG Version;
+    BOOLEAN Master;
+    BOOLEAN ScatterGather;
+    BOOLEAN DemandMode;
+    BOOLEAN AutoInitialize;
+    BOOLEAN Dma32BitAddresses;
+    BOOLEAN IgnoreCount;
+    BOOLEAN Reserved1;
+    BOOLEAN Dma64BitAddresses;
+    ULONG BusNumber;
+    ULONG DmaChannel;
+    INTERFACE_TYPE InterfaceType;
+    ULONG DmaWidth;
+    ULONG DmaSpeed;
+    ULONG MaximumLength;
+    ULONG DmaPort;
+    ULONG DmaAddressWidth;
+    ULONG DmaControllerInstance;
+    ULONG DmaRequestLine;
+    PHYSICAL_ADDRESS DeviceAddress;
+} DEVICE_DESCRIPTION, *PDEVICE_DESCRIPTION;
+
+PDMA_ADAPTER FakeIoGetDmaAdapter(
+    PDEVICE_OBJECT DeviceObject,
+    PDEVICE_DESCRIPTION Description,
+    PULONG NumberOfMapRegisters);
+#define IoGetDmaAdapter FakeIoGetDmaAdapter
+
 #ifndef DMA_TRANSFER_CONTEXT_SIZE_V1
 #define DMA_TRANSFER_CONTEXT_SIZE_V1 128U
+#endif
+#ifndef DEVICE_DESCRIPTION_VERSION3
+#define DEVICE_DESCRIPTION_VERSION3 3U
 #endif
 #ifndef DMA_SYNCHRONOUS_CALLBACK
 #define DMA_SYNCHRONOUS_CALLBACK 1U
@@ -107,6 +150,18 @@ typedef struct _DMA_ADAPTER {
 #endif
 #ifndef MAXULONG
 #define MAXULONG 0xFFFFFFFFUL
+#endif
+#ifndef PAGE_SIZE
+#define PAGE_SIZE 4096U
+#endif
+#ifndef RTL_SIZEOF_THROUGH_FIELD
+#define RTL_SIZEOF_THROUGH_FIELD(type, field) \
+    (offsetof(type, field) + sizeof(((type*)0)->field))
+#endif
+#ifndef ADDRESS_AND_SIZE_TO_SPAN_PAGES
+#define ADDRESS_AND_SIZE_TO_SPAN_PAGES(va, size) \
+    ((ULONG)(((((ULONG_PTR)(va)) & (PAGE_SIZE - 1U)) + \
+        (ULONG_PTR)(size) + PAGE_SIZE - 1U) / PAGE_SIZE))
 #endif
 
 #ifndef STATUS_SUCCESS
@@ -130,15 +185,32 @@ typedef struct _DMA_ADAPTER {
 #ifndef STATUS_BUFFER_TOO_SMALL
 #define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
 #endif
+#ifndef STATUS_DELETE_PENDING
+#define STATUS_DELETE_PENDING ((NTSTATUS)0xC0000056L)
+#endif
+#ifndef STATUS_INVALID_DEVICE_STATE
+#define STATUS_INVALID_DEVICE_STATE ((NTSTATUS)0xC0000184L)
+#endif
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(x) (((NTSTATUS)(x)) >= 0)
 #endif
 
+#if defined(LECS65_SG_TEST_ALLOCATION_HOOKS)
+void* FakeExAllocatePool2(ULONG flags, size_t bytes, ULONG tag);
+VOID FakeExFreePoolWithTag(void* p, ULONG tag);
+#define ExAllocatePool2 FakeExAllocatePool2
+#define ExFreePoolWithTag FakeExFreePoolWithTag
+#else
 static inline void* ExAllocatePool2(ULONG flags, size_t bytes, ULONG tag) {
     UNREFERENCED_PARAMETER(flags);
     UNREFERENCED_PARAMETER(tag);
     return malloc(bytes);
 }
+static inline VOID ExFreePoolWithTag(void* p, ULONG tag) {
+    UNREFERENCED_PARAMETER(tag);
+    free(p);
+}
+#endif
 #ifndef RtlZeroMemory
 #define RtlZeroMemory(p,n) memset((p),0,(n))
 #endif
@@ -162,8 +234,4 @@ static inline void* MmGetMdlVirtualAddress(PMDL m) { return m->Va; }
 
 static inline VOID ObDereferenceObject(PDEVICE_OBJECT d) {
     InterlockedDecrement(&d->References);
-}
-static inline VOID ExFreePoolWithTag(void* p, ULONG tag) {
-    UNREFERENCED_PARAMETER(tag);
-    free(p);
 }

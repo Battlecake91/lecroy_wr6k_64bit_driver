@@ -1,10 +1,6 @@
 #pragma once
 
-#if defined(LECS65_SG_HOST_TEST)
-#include "../tests/dry/sg-stage-mock.h"
-#else
-#include "LecS65Drv.h"
-#endif
+#include "DmaAdapterStage.h"
 
 /*
  * INACTIVE v3 synchronous no-callback staging only. No hardware launch
@@ -17,13 +13,14 @@
  */
 struct _LECS65_SG_SYNC_STAGE;
 typedef struct _LECS65_SG_SYNC_OWNER {
-    PDMA_ADAPTER Adapter;
-    PDEVICE_OBJECT DeviceObject;
+    PLECS65_DMA_ADAPTER_CONTEXT AdapterContext;
     KSPIN_LOCK Lock;
     struct _LECS65_SG_SYNC_STAGE* Mappings;
     ULONGLONG NextToken;
     ULONG Outstanding;
+    ULONG DescriptorSlotCapacity;
     BOOLEAN Stopping;
+    BOOLEAN Destroying;
 } LECS65_SG_SYNC_OWNER, *PLECS65_SG_SYNC_OWNER;
 
 typedef struct _LECS65_SG_SYNC_STAGE {
@@ -38,14 +35,20 @@ typedef struct _LECS65_SG_SYNC_STAGE {
         sizeof(ULONG_PTR)];
 } LECS65_SG_SYNC_STAGE, *PLECS65_SG_SYNC_STAGE;
 
-VOID LecSgSyncOwnerInit(
+NTSTATUS LecSgSyncOwnerInit(
     _Out_ PLECS65_SG_SYNC_OWNER Owner,
-    _In_ PDMA_ADAPTER Adapter,
-    _In_ PDEVICE_OBJECT DeviceObject);
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT AdapterContext,
+    _In_ ULONG DescriptorSlotCapacity);
 
 /* STOP is nonblocking. BUSY means retain parent, adapter and MDLs. */
 NTSTATUS LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
 BOOLEAN LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
+
+/* Releases every published mapping because this API can never launch DMA. */
+NTSTATUS LecSgSyncOwnerDrainNoLaunch(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
+
+/* Requires STOP, no in-flight submission/copy/release, and a drained owner. */
+NTSTATUS LecSgSyncOwnerDestroy(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
 
 /* PASSIVE_LEVEL; v3 adapter and pinned MDL chain, may span 32-MiB MDLs. */
 NTSTATUS LecSgSyncMapNoLaunch(

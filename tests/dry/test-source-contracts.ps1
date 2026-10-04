@@ -295,11 +295,14 @@ Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisi
     $adapterHeaderText -match 'LecDmaCreateAdapterContext' -and
     $adapterText -match 'IoGetDmaAdapter\(' -and
     $adapterText -match 'DEVICE_DESCRIPTION_VERSION3' -and
-    $adapterText -match 'Dma32BitAddresses = TRUE' -and
+    $adapterText -match 'DmaAddressWidth = 32' -and
     $adapterText -match 'AllocateCommonBuffer\(' -and
     $adapterText -match 'FreeCommonBuffer\(' -and
     $adapterText -match 'PutDmaAdapter\(' -and
-    $adapterText -match 'if \(!ProvenIdle \|\| Context->Quarantined\)' -and
+    $adapterText -match 'RTL_SIZEOF_THROUGH_FIELD\(DMA_OPERATIONS, FreeAdapterObject\)' -and
+    $adapterText -match 'LecDmaClaimSynchronousOwner' -and
+    $adapterText -match 'Context->TableAllocationPending' -and
+    $adapterText -match 'Context->Quarantined = TRUE;' -and
     $acquisitionText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $deviceText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $ioctlText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable'
@@ -348,6 +351,11 @@ Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
     $syncText -match 'LecSgSyncOwnerStop' -and
     $syncText -match 'Owner->Outstanding' -and
     $syncText -match 'Owner->Stopping' -and
+    $syncText -match 'LecSgSyncOwnerDrainNoLaunch' -and
+    $syncText -match 'LecSgSyncOwnerDestroy' -and
+    $syncText -match 'NumberOfMapRegisters' -and
+    $syncText -match 'DescriptorSlotCapacity' -and
+    $syncText -match 'STATUS_DELETE_PENDING' -and
     $syncText -match 'DeallocateObject' -and
     $syncText -notmatch 'LecMapOwnerLaunch' -and
     $acquisitionText -notmatch 'LecSgSync|GetScatterGatherListEx' -and

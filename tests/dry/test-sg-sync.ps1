@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $test = Join-Path $PSScriptRoot "test-sg-sync.c"
 $source = Join-Path $repo "driver\DmaSyncStage.c"
+$adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
 $outDir = Join-Path $PSScriptRoot "build"
 $exe = Join-Path $outDir "test-sg-sync.exe"
 New-Item -Path $outDir -ItemType Directory -Force | Out-Null
@@ -18,7 +19,7 @@ $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Push-Location $outDir
     try {
-        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST /TC "/Fe:$exe" $test $source
+        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC "/Fe:$exe" $test $source $adapterSource
         if ($LASTEXITCODE -ne 0) { throw "SG v3 synchronous test build failed." }
     }
     finally {
@@ -32,7 +33,7 @@ else {
     if (-not $vs) { throw "Visual Studio C++ tools not found." }
     $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
     if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found." }
-    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /TC /Fe:`"$exe`" `"$test`" `"$source`""
+    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC /Fe:`"$exe`" `"$test`" `"$source`" `"$adapterSource`""
     & $env:ComSpec /d /s /c $cmd
     if ($LASTEXITCODE -ne 0) { throw "SG v3 synchronous test build failed." }
 }
