@@ -95,9 +95,9 @@ int main(void) {
     check("small copy buffer rejected",
           LecSgStageCopySegments(stage,copy,1,&count)==STATUS_BUFFER_TOO_SMALL &&
           count==0);
-    check("stage launch requires completed mapping",
-          LecSgStageMarkLaunched(stage) &&
-          LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS);
+    check("even completed SG callback cannot authorize DMA launch",
+          !LecSgStageMarkLaunched(stage) &&
+          LecSgStageCopySegments(stage,copy,3,&count)==STATUS_SUCCESS);
     check("active mapping refuses release",
           LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
     check("closed stage cannot relaunch",!LecSgStageMarkLaunched(stage));
