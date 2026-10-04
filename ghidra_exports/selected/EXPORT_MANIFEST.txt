@@ -1,5 +1,5 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: e5730de95c22aff8149c7e5c980e442d3249d5ca
+Source commit: f5c99ad1c8600424a6b73ab78758804b93fa8dcb
 Program: LecS65AcqDrv.sys
 
 Targets:
@@ -997,6 +997,7 @@ Exported files:
   dwords_dwords_1ca00_16.txt
   dwords_dwords_1cbb4_16.txt
   dwords_dwords_1cbb4_4.txt
+  EXECUTABLE_BYTE_CLASSIFICATION.txt
   field_0x10.refs.txt
   field_0x100.refs.txt
   field_0x1006.refs.txt
@@ -1150,6 +1151,7 @@ Exported files:
   symbol_KeSetEvent_0.refs.txt
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
+  UNOWNED_CODE_ASM.txt
   UNOWNED_CODE_REFS.txt
   xref_xref_107fe.txt
   xref_xref_10c34.txt

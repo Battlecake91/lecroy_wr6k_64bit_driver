@@ -93,7 +93,8 @@ start|end|bytes|instructions|start_xrefs
 0001d3c4|0001d3db|24|8|1
 0001de3c|0001de44|9|3|1
 SUMMARY
-recognized_functions=507
+recognized_local_functions=420
+recognized_functions_including_externals=507
 executable_memory_block_bytes=54528
 decoded_owned_bytes=44828
 decoded_unowned_bytes=3207
