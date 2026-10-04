@@ -1,7 +1,7 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **source reconstruction and defensive source patch only**, 2026-10-04.
-Baseline analyzed: `fix/p0-irq-start-dma-gating` at `79ef70626e2649d5e01ecbd6f32afecb4293716d`.
+Status: **software-only staged lifetime hardening**, 2026-10-04.
+Base reviewed: `fix/p0-irq-start-dma-gating` at `f3f0c25`.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -30,9 +30,12 @@ This is **partial damage containment**, not DMA engine stop/recovery:
 5. `CFDC2400` continues to accept the known zero-mask diagnostic but rejects software completion bit 0. Source and debug ABI contracts must not interpret this as full legacy opcode parity.
 6. STOP/REMOVE still unmap BARs and detach the FDO after quiesce. Retaining DMA memory is necessary but **insufficient** to prove a fully safe PnP lifecycle (PCI transaction completion and hardware reset remain unverified).
 
-The defensive patch has not been executed under Driver Verifier, in a DMA fault injection simulation, or on real PCI hardware. The previously owner-verified 17/17 Dry pass **predates** this new patch; do not assign it to the modified code.
+The defensive active-path patch has not been executed under Driver Verifier,
+in a DMA fault-injection simulation or on real PCI hardware. The current Dry
+result covers source contracts and inactive staging only; do not treat it as
+runtime evidence for the active path.
 
-## Windows DMA-adapter migration design (unimplemented)
+## Windows DMA-adapter migration design (not activated)
 
 Current descriptor builder: `driver/Acquisition.c:LecBuildDescriptorTable`.
 The board consumes an 8-byte descriptor (`CountDwords` and a **32-bit device
@@ -120,21 +123,26 @@ of the draft driver. It provides:
   `DEVICE_DESCRIPTION_VERSION3` PCI bus-master, 32-bit DMA-address
   constraint, scatter/gather support and maximum transfer size. The
   returned map-register count is retained, **not assumed sufficient**.
+  The context validates `DMA_OPERATIONS.Size`, owns a PDO reference and
+  permits only one synchronous owner claim.
 - `LecDmaAllocateCommonTable`: requests a device-visible
   `AllocateCommonBuffer`, validates page alignment and entire 32-bit
-  logical-address range, and zero-initializes the descriptor table.
+  logical-address range, and zero-initializes the descriptor table. A
+  pending allocation blocks owner claim and adapter teardown.
 - `LecDmaReleaseAdapterContext`: frees common buffer and adapter
   only with an explicit, externally established `ProvenIdle=TRUE`
-  and no previous quarantine. Otherwise the independent context and
-  device mapping remain quarantined; this is a leak, **not recovery**.
+  after owner rundown and with no previous quarantine. Otherwise the
+  independent context and device mapping remain retained or quarantined;
+  this is a leak, **not recovery**.
 
 No PnP or acquisition call site uses these functions yet. The separate
 inactive SG stage can request a mapping for one MDL, but adapter/MDL/PNP
 lifetime is not yet unified and no live mapping exists. The existing
 PFN-based active path remains unmodified. Review callback IRQL, limited map registers, owner lifetimes,
 STOP/REMOVE and reset/idle requirements before wiring this into DMA.
-The adapter stage compiled successfully in the owner's Windows WDK Dry
-run (2026-10-04). It has not been exercised by runtime DMA requests.
+The adapter stage compiles in the current Windows WDK Dry run and is
+exercised only through fake host DDIs. It has not been exercised by an
+actual kernel DMA request.
 
 Windows references: [IoGetDmaAdapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdmaadapter),
 [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
@@ -254,49 +262,78 @@ Unlike the earlier asynchronous `GetScatterGatherList` bridge,
 this path can distinguish **allocation without any device DMA launch**
 from indeterminate device activity.
 
-The **new, inactive** `DmaSyncStage.c/.h` implementation:
+The **inactive** `DmaSyncStage.c/.h` implementation now follows the
+installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
 - Requires DMA adapter **v3** and its transfer-context initialization,
   synchronous GetEx and FreeAdapterObject operations; no automatic v2
-  fallback. `DmaAdapterStage` now requests `DEVICE_DESCRIPTION_VERSION3`.
+  fallback. `DmaAdapterStage` requests `DEVICE_DESCRIPTION_VERSION3`,
+  sets the v3-only `DmaAddressWidth` to the board's 32-bit limit,
+  checks `DMA_OPERATIONS.Size` through `FreeAdapterObject`, requires all
+  operations used by the stage and rejects a zero map-register budget.
 - Has **no device launch function**, no MMIO and no integration with
   the active `Acquisition.c`, PnP or IOCTL paths.
 - Uses a unique, aligned `DMA_TRANSFER_CONTEXT_SIZE_V1` context per
   request and a locked MDL chain (including more than one 32-MiB MDL).
 - Validates requested byte extent and copied SG elements for full
   coverage, nonzero dword-aligned lengths, 32-bit logical addresses,
-  and bounded caller-provided element capacity. Actual descriptor
-  encoding and map-register/SG capacity negotiation remain open.
-- Adds a nonpaged parent `LECS65_SG_SYNC_OWNER` with a spinlocked
-  `Stopping` gate and `Outstanding` count. A submission increments
+  the adapter's reported map-register budget and exact WR6k descriptor
+  slot consumption, including 4-KiB splitting, page-chain slots and the
+  final zero descriptor. Cyclic or unlocked MDL chains are rejected.
+- Adds a nonpaged parent `LECS65_SG_SYNC_OWNER` with an explicit spinlocked
+  `Constructed -> Initializing -> Active -> Stopping -> Destroying ->
+  Destroyed` lifecycle and an `Outstanding` count. One-time construction
+  initializes the lock without inspecting prior storage. Init never clears or
+  reinitializes a published owner; repeated or concurrent init returns BUSY
+  without changing its mapping list, token sequence, adapter pointer or count.
+  The caller-owned storage must remain resident until all API callers have
+  completed, including after Destroy returns. A submission increments
   before its WDM call, and cleanup decrements only after its no-launch
-  allocation is released. There is **at most one outstanding mapping
-  per adapter owner** until v3 channel-sharing semantics are proven.
+  allocation is released. A central adapter-context claim prevents two
+  independent owners from bypassing the **one outstanding mapping per
+  adapter context** rule. This is deliberately not described as device-wide:
+  two separately created contexts for the same PDO/adapter are not serialized.
+  Live PnP integration must guarantee one context per physical device or add
+  a lifetime-safe device registry before this stage can be activated.
   Successful mappings are referenced by monotonic, nonreused tokens:
   copies and token removal use the same lock, and physical adapter
-  resources are freed outside it. No raw stage pointer escapes. STOP closes admission and returns BUSY while
-  mappings remain; it never waits and therefore does not by itself
-  deadlock PnP/remove locks. Caller MUST preserve the parent, DMA
-  adapter, PDO, and pinned MDLs until the gate reports quiescence.
+  resources are freed outside it. No raw stage pointer escapes. STOP
+  closes admission and returns BUSY while a request is in flight. A
+  request that loses the STOP race releases its never-launched mapping
+  and returns `STATUS_DELETE_PENDING`; published no-launch mappings can
+  be drained explicitly before the owner relinquishes the adapter claim.
 - In the specific no-launch case calls `FreeAdapterObject`, drops
-  the held device-object reference, invalidates the mapping token and
-  deallocates stage memory. A duplicate or stale token is rejected. It does not implement any
-  release for hardware-started or unknown-active DMA.
+  the per-mapping device-object reference, invalidates the mapping token
+  and deallocates stage memory. A successful GetEx result with a malformed
+  or NULL list is also explicitly freed instead of being orphaned. Adapter
+  teardown later uses `PutDmaAdapter`; these are distinct ownership steps.
+  The adapter context holds its own PDO reference and refuses teardown
+  while an owner or common-buffer allocation is outstanding. A duplicate,
+  stale or concurrent second release is rejected. The stage does not
+  implement any release for hardware-started or unknown-active DMA.
+- Owner claim requires a present, page-aligned descriptor common buffer of at
+  least one page. Its capacity is derived only from `TableLength / 8`; caller
+  input can no longer inflate the capacity independently of the allocation.
+  Missing, undersized, non-page-sized, misaligned or 32-bit-range-inconsistent
+  backing is rejected. The same 512-slot/page constants as the encoder govern
+  slot 511 chaining and the final zero descriptor.
 
-The new `tests/dry/test-sg-sync.c` fake-v3 DDI test checks immediate
-success/failure, transfer-context failure, no deferred callback,
-no-launch cleanup, sequential double release, 48-MiB two-MDL mapping,
-truncation, 4-GiB rejection and STOP racing with mapping allocation.
-The owner's Windows Dry execution on 2026-10-04 at 23:07:06
-verified the x64 build (0 warnings and 0 errors in an incremental build),
-source contracts **25/25**, descriptor tests **13/13**, asynchronous
-mapping ownership **17/17**, asynchronous fake-WDM callback tests
-**27/27**, and synchronous v3 mock tests **25/25**. Overall
-**107/107 PASS**. The synthetic tests do not exercise actual OS
-DMA resource allocation, real PnP REMOVE or hardware bus-master idle.
+The expanded `tests/dry/test-sg-sync.c` compiles the actual
+`DmaSyncStage.c` and `DmaAdapterStage.c` sources against fake v3 DDIs.
+It covers allocation and initialization failure, resource shortage,
+malformed successful GetEx results, repeated/concurrent owner init,
+concurrent init/destroy API rejection, sequential and concurrent duplicate
+release, copy/release and map/release races, STOP during GetEx, explicit
+PnP-style no-launch drain, context-scoped adapter ownership, multiple contexts
+for the same fake adapter, 48-MiB MDL chains, cyclic/unlocked MDLs,
+map-register limits, missing/inconsistent tables and exact descriptor
+page-chain capacity. The current full Dry result is recorded in
+`docs/regression-testing.md` and `docs/status.md`. These synthetic tests
+do not exercise actual OS DMA resource allocation, real PnP REMOVE or
+hardware bus-master idle.
 
 ### Unresolved activation blockers
 
-This owner is a staging-only PnP gate, not a live STOP/REMOVE policy:
+This owner remains a staging-only PnP gate, not a live STOP/REMOVE policy:
 the real PnP code does not reference it. No existing DMA transfer
 may be converted to this path yet. In particular, a physical
 hardware-start/IRQ/timeout path still lacks a proven bus-master idle
@@ -305,11 +342,34 @@ The old async SG stage remains fail-closed and does not launch or
 free mappings. Real STOP/REMOVE must eventually reconcile pinned MDL
 chain ownership, adapters, descriptors, DMA completion, loss of device,
 and remove locks, without waiting on permanently quarantined mappings.
+The stage also does not own or unlock its borrowed MDLs. A real parent must
+join owner-storage rundown, MDL ownership, adapter-context uniqueness and PnP
+remove-lock lifetime before any request can reach this code.
 
 Sources:
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
 [InitializeDmaTransferContext](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pinitialize_dma_transfer_context),
 [FreeAdapterObject](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_adapter_object).
+
+Confirmed DDI boundary: `InitializeDmaTransferContext` initializes an
+opaque caller buffer and requires a unique context for each adapter
+allocation request. With `DMA_SYNCHRONOUS_CALLBACK` and NULL execution
+callback, GetEx either returns the mapping synchronously or fails without
+queuing a callback; successful resources require explicit
+`FreeAdapterObject(DeallocateObject)`. `FreeAdapterObject` releases the
+channel/map-register allocation, while `PutDmaAdapter` releases the
+longer-lived adapter returned by `IoGetDmaAdapter`. Software tests still
+cannot prove how a real DMA-remapping implementation behaves under device
+removal, nor can they turn IRQ/timeout state into physical bus-idle proof.
+The documentation and WDK headers do not establish that separately acquired
+adapter contexts for one PDO share a serialization domain usable by this
+driver; only the per-context guarantee is currently confirmed in source.
+Microsoft describes `FreeAdapterObject(DeallocateObject)` as the explicit
+release after successful synchronous GetEx allocation, but does not separately
+spell out the abandon-before-launch case used by this quarantine stage. The
+software implementation releases that never-launched allocation through the
+same required primitive; actual HAL/IOMMU behavior, chained-MDL handling and
+teardown ordering remain unverified until controlled kernel tests are possible.
 
 ## Remaining P0 work, no shortcuts
 
