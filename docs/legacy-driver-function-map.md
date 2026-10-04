@@ -7,7 +7,7 @@ This is the semantic coverage map for every function currently recognized by Ghi
 - `High` means the role is directly established by API calls, register effects, strings, known ABI routing or reconstructed call flow.
 - `Pending` means pseudocode is available but an exact semantic name has not yet been justified. These entries are not being discarded.
 - `ASM audit` means the semantic role is substantially known but Ghidra emitted a control-flow warning that must be checked against raw x86 instructions. The 2026-10-04 ASM pass resolved both such warnings.
-- The 420 entries reflect the functions recognized by Ghidra in the inventory, **not** all executable bytes or every short virtual thunk in the PE32 driver. Audit: [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md).
+- The 420 entries reflect **recognized internal functions**, **not** all executable bytes or every short virtual thunk in the PE32 driver. A complete initial decoded-instruction census additionally found **90 unowned code clusters (3,207 bytes)**, including the large `0x11018..0x1138F` main-device vtable target. Audits: [vtables and raw assembly](legacy-driver-vtables-and-asm-audit.md), [executable code coverage](legacy-executable-code-coverage.md).
 
 | Address | Ghidra name | Subsystem | Semantic role | Status |
 |---|---|---|---|---|
