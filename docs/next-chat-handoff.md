@@ -1,3 +1,80 @@
+# 527 recovered legacy functions; final compiler SEH audit queued (2026-10-04)
+
+The user completed second-stage Ghidra function recovery, pushed in
+`7bdbd3cf797a991ab8ab3dc686e069fcc419e343`.
+
+- All **79 reviewed, referenced thunks** and **three guarded
+  undefined-code candidates** were successfully created/decompiled;
+  **82/82** `RECOVER_*.txt` records show `CREATED`.
+- Current Ghidra inventory: **527 internal functions**, **87 external**
+  function-manager entries (614 inclusive). All 527 have a
+  [semantic function-map entry](legacy-driver-function-map.md).
+- `CODE_COVERAGE.txt`: 48,086 decoded bytes owned, **22 bytes
+  unowned (12 instructions)**, split into just three
+  exception-handler/filter clusters:
+  `0x18067..0x1806D`, `0x180BD..0x180C0`,
+  `0x1814C..0x18156`. These are compiler SEH landing
+  paths, not independent normal functions.
+- `EXECUTABLE_BYTE_CLASSIFICATION.txt`: 54,528 executable
+  memory-block bytes, 48,108 decoded instruction bytes,
+  5,377 defined data bytes, **1,043 undefined bytes**.
+- Undefined bytes: 423 ranges. Prefix/byte-pattern triage
+  identifies 282 `CC` bytes, 281 zeros, 458 embedded
+  text/constants, 19 mixed `CC` + literal 0x0A and
+  **3 actual x86 bytes** at `0x180C1` (`8B 65 E8`,
+  `MOV ESP,[EBP-0x18]`) forming an exception-frame
+  cleanup/restoration instruction. Classification by pattern
+  is not proof of data semantics for every byte.
+- Newly decoded routine `0x18E58`: PnP minor-function name
+  table lookup, `0x1CD88` (0..23);
+  `0x18EDB`: Power minor-function name lookup,
+  `0x1CDE8` (0..3);
+  `0x1C280`: check active x86 SEH handler/frame.
+- The master original 27-IOCTL DeviceControl implementation
+  is `0x11018`, with a confirmed unknown-IOCTL legacy
+  status-overwrite bug. Never automatically emulate the
+  bug in modern x64; see [IOCTL map](ioctl-map.md).
+- **44** short recovered DriverWorks virtual-forwarder/
+  PnP-policy functions display Ghidra "could not recover
+  jumptable / indirect jump" warnings despite direct
+  raw ASM proof that these are deliberate `JMP [vtable+slot]`
+  tail jumps. They are not missing ordinary switch tables.
+
+Final *optional* static audit already prepared on `main`:
+
+- `ghidra_scripts/targets.txt`: `decode-fragment:180c1`
+  plus 30-DWORD `IRP_MJ` table `dwords:1cd10:30`,
+  24-entry PnP minor-name and four-entry Power minor-name
+  tables, x86 SEH xrefs and instruction dumps, then
+  `inventory`/`coverage`.
+- `decode-fragment:` is **not** `recover:`; verifies the
+  specific 3-byte `8B 65 E8` sequence, disassembles it
+  but **does not create an artificial function**. All other
+  fragment addresses are rejected.
+- The runner backs up the **entire local Ghidra project**
+  to a timestamped sibling directory for this mutation.
+  Close the interactive Ghidra GUI before running.
+
+On the Ghidra PC:
+
+```powershell
+cd C:\Users\steve\Projekte\NEUE_STRUKTUR\Messtechnik\LeCroy\lecroy_wr6k_64bit_driver
+git pull --rebase
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: audit SEH fragment and WDM dispatch tables"
+```
+
+New evidence: [whole-executable audit](legacy-executable-code-coverage.md),
+[527-function map](legacy-driver-function-map.md),
+[architecture](legacy-driver-architecture.md).
+
+This has been **static Ghidra reconstruction only**:
+no native x64 driver source/build, WHQL test or hardware
+regression was changed or executed. Full driver-port
+compatibility and dynamic behavior validation remain
+separate milestones.
+
+---
+
 # Recovered 25/25 missing functions; second stage selected (2026-10-04)
 
 After the user executed the curated Ghidra recovery, export
