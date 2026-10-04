@@ -137,3 +137,29 @@ The complete pseudocode snapshot of the current 420-function inventory was expor
 In the working Ghidra checkout, run `git pull --rebase` after script updates, set `ghidra_scripts/targets.txt` to `coverage` and `inventory`, then run `scripts/run-ghidra-analysis.ps1`.
 
 Do not replay unknown CFDC2110 commands on real hardware. Static analysis and passive traces remain the preferred evidence sources.
+
+## Final fragment/table audit (after 527-function recovery)
+
+The second curated run (`7bdbd3cf`) successfully recovered all
+**79** independently referenced function starts and **three**
+opcode-checked undefined executable routines, reaching **527**
+internal functions. It leaves only **22 already decoded bytes**
+across three x86 SEH filter/cleanup code clusters. There is one
+three-byte undefined instruction, `0x180C1` (`8B 65 E8`,
+`MOV ESP,[EBP-0x18]`), in an SEH cleanup epilog.
+
+For this special case `decode-fragment:180c1` is intentionally
+different from `decode:`: it verifies the exact bytes, decodes
+the single existing SEH cleanup instruction, writes
+`SEH_FRAGMENT_000180c1.txt`, and **does not create a
+Ghidra function**. Other fragment addresses are rejected.
+The runner automatically makes the same full project backup
+for `decode-fragment:` as for `decode:` and `recover:`.
+
+The selected final targets also inspect the 30-DWORD
+`IRP_MJ` dispatch array at `0x1CD10`, the 24-entry PnP
+minor-name table at `0x1CD88`, the four-entry Power
+minor-name array at `0x1CDE8`, and the SEH filter/landing
+xrefs. This is a conservative code-coverage audit, not
+another bulk discovery pass. The results must be checked
+against actual Ghidra output before claiming completion.
