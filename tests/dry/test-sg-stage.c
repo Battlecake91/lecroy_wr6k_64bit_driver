@@ -98,7 +98,9 @@ int main(void) {
     check("even completed SG callback cannot authorize DMA launch",
           !LecSgStageMarkLaunched(stage) &&
           LecSgStageCopySegments(stage,copy,3,&count)==STATUS_SUCCESS);
-    check("active mapping refuses release",
+    check("callback cannot certify idle without DMA launch",
+          !LecSgStageMarkIdleProved(stage));
+    check("even an apparently ready mapping refuses release",
           LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
     check("closed stage cannot relaunch",!LecSgStageMarkLaunched(stage));
     check("duplicate release cannot free stage",
