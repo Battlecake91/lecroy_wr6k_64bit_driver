@@ -18,7 +18,30 @@
  * DMA_SYNCHRONOUS_CALLBACK and NULL ExecutionRoutine never queues a
  * delayed callback. Failure cannot leave a pending mapping request.
  */
+/*
+ * Parent-owned nonpaged stop gate. Real PnP integration must hold its
+ * lifetime until Stop is requested and Outstanding has drained.
+ * Stop never waits while holding PnP/remove locks.
+ */
+typedef struct _LECS65_SG_SYNC_OWNER {
+    PDMA_ADAPTER Adapter;             /* borrowed; parent retains */
+    PDEVICE_OBJECT DeviceObject;     /* parent keeps PnP resources */
+    KSPIN_LOCK Lock;
+    ULONG Outstanding;
+    BOOLEAN Stopping;
+} LECS65_SG_SYNC_OWNER, *PLECS65_SG_SYNC_OWNER;
+
+VOID LecSgSyncOwnerInit(
+    _Out_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ PDMA_ADAPTER Adapter,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+/* No new mappings after Stop. BUSY means keep adapter, MDLs and owner. */
+NTSTATUS LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
+BOOLEAN LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
+
 typedef struct _LECS65_SG_SYNC_STAGE {
+    PLECS65_SG_SYNC_OWNER Parent;   /* parent must outlive stage */
     PDMA_ADAPTER Adapter;                /* borrowed from parent */
     PDEVICE_OBJECT DeviceObject;         /* referenced until released */
     PMDL MdlChain;                       /* pinned, borrowed from parent */
@@ -31,8 +54,7 @@ typedef struct _LECS65_SG_SYNC_STAGE {
 
 /* PASSIVE_LEVEL; WDM v3 adapter and pinned MDL chain required. */
 NTSTATUS LecSgSyncMapNoLaunch(
-    _In_ PDMA_ADAPTER Adapter,
-    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ PMDL LockedMdlChain,
     _In_ ULONG Length,
     _Outptr_ PLECS65_SG_SYNC_STAGE* Result);
