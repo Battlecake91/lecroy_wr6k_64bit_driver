@@ -122,6 +122,31 @@ refusal, process-CLOSE, STOP/REMOVE quarantine ownership and
 subsequent DMA/IOCTL admission rejection. Driver Verifier and
 recoverable hardware tests remain mandatory before release.
 
+### Staged DMA logical descriptor encoder
+
+The owner confirmed the previous DMA-quarantine revision on Windows 10 x64:
+`scripts/test-driver.ps1 -Mode Dry`, 2026-10-04 at 19:46,
+**20/20 PASS**, successful incremental driver build (0 errors, 0 warnings)
+and x64 `lecdiag` build. The prior clean build reported only the
+two known LNK4075 linker-option warnings.
+
+**After that verified checkpoint**, the draft gained a new
+hardware-independent `driver/DmaLayout.c` +
+`driver/DmaLayout.h` module, compiled into the driver project but
+not yet called by the active acquisition path. It converts already
+adapter-mapped 32-bit **device logical** segments to WR6k descriptor
+entries, with page splits, chain-link slots, an end marker and bounds
+checking. It does not call `IoGetDmaAdapter`, map pages or program PCI.
+The existing legacy PFN-based acquisition path remains unchanged.
+
+`test-driver.ps1 -Mode Dry` now also invokes a native C unit test executable
+(`tests/dry/test-dma-layout.c`) via
+`tests/dry/test-dma-layout.ps1`, with cases for table-page boundaries,
+mapping length/misalignment, 32-bit range overflow and capacity.
+**The new build and tests require an owner-run Windows verification**
+and are not covered by the earlier 20/20 result. The new native unit
+test is not a DMA mapping or runtime test.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
