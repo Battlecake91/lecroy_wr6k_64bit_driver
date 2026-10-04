@@ -269,7 +269,11 @@ The **new, inactive** `DmaSyncStage.c/.h` implementation:
 - Adds a nonpaged parent `LECS65_SG_SYNC_OWNER` with a spinlocked
   `Stopping` gate and `Outstanding` count. A submission increments
   before its WDM call, and cleanup decrements only after its no-launch
-  allocation is released. STOP closes admission and returns BUSY while
+  allocation is released. There is **at most one outstanding mapping
+  per adapter owner** until v3 channel-sharing semantics are proven.
+  Successful mappings are referenced by monotonic, nonreused tokens:
+  copies and token removal use the same lock, and physical adapter
+  resources are freed outside it. No raw stage pointer escapes. STOP closes admission and returns BUSY while
   mappings remain; it never waits and therefore does not by itself
   deadlock PnP/remove locks. Caller MUST preserve the parent, DMA
   adapter, PDO, and pinned MDLs until the gate reports quiescence.
