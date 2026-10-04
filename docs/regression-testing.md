@@ -287,10 +287,14 @@ lengths/addresses, STOP during allocation and admission refusal.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-**No Windows WDK build or execution of this new stage has been
-confirmed.** The 81/81 Dry result remains the preceding verified
-checkpoint, not a result for the present HEAD. No DMA hardware
-validation is authorized.
+Owner-reported first Windows fake-v3 test compile encountered
+`DmaSyncStage.c(94): C2065 STATUS_NOT_SUPPORTED` because
+`tests/dry/sg-stage-mock.h` lacked the NTSTATUS constant. The
+host-only mock now defines the standard `0xC00000BB` value.
+**The corrected fake-v3 test has not yet been rerun**, and this
+new revision has no owner-verified complete Dry PASS.
+The preceding 81/81 Dry checkpoint remains valid for the earlier
+source revision. No DMA hardware validation is authorized.
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
