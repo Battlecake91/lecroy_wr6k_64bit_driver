@@ -5,7 +5,7 @@
 //   -postScript ExportSelected.java <output-dir> <target> [<target> ...]
 //
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
-// (for example KeSetEvent), field displacement scans such as field:2e0,
+// (for example KeSetEvent), full coverage audit via coverage,\n// field displacement scans such as field:2e0,
 // full function instruction exports such as asm:18194, arbitrary address
 // reference scans such as xref:1c8bc, or raw pointer-table snapshots such as
 // dwords:1c62c:16 (base address in hex, count in decimal, 1..64).
@@ -28,6 +28,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.ReferenceManager;
@@ -68,7 +69,10 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (target.equalsIgnoreCase("inventory")) {
+                if (target.equalsIgnoreCase("coverage")) {
+                    writeCodeCoverage();
+                }
+                else if (target.equalsIgnoreCase("inventory")) {
                     writeFunctionInventory();
                 }
                 else if (target.toLowerCase().startsWith("field:")) {
@@ -422,6 +426,109 @@ public class ExportSelected extends GhidraScript {
         }
     }
 
+
+    /*
+     * Audit executable instruction coverage separately from the function
+     * inventory. Ghidra can disassemble short thunks/indirect-call targets
+     * without treating them as functions. Report each contiguous region of
+     * decoded executable instructions outside recognized function bodies.
+     *
+     * This is a decoded-instruction audit, NOT a proof that all executable
+     * bytes are code or that all possible indirect targets are discovered.
+     */
+    private void writeCodeCoverage() throws Exception {
+        File file = new File(outDir, "CODE_COVERAGE.txt");
+        long executableBlockBytes = 0;
+        for (MemoryBlock block : currentProgram.getMemory().getBlocks()) {
+            if (block.isExecute()) {
+                executableBlockBytes += block.getSize();
+            }
+        }
+
+        long ownedBytes = 0;
+        long orphanBytes = 0;
+        long ownedInstructions = 0;
+        long orphanInstructions = 0;
+        long clusterCount = 0;
+        Address clusterStart = null;
+        Address clusterEnd = null;
+        long clusterBytes = 0;
+        long clusterInst = 0;
+
+        try (PrintWriter pw = new PrintWriter(file, "UTF-8")) {
+            pw.println("EXECUTABLE_INSTRUCTION_COVERAGE");
+            pw.println("CLUSTERS: contiguous decoded executable instructions not");
+            pw.println("contained in any Ghidra-recognized function body.");
+            pw.println("start|end|bytes|instructions|start_xrefs");
+
+            InstructionIterator it =
+                currentProgram.getListing().getInstructions(true);
+            while (it.hasNext()) {
+                Instruction inst = it.next();
+                Address at = inst.getAddress();
+                MemoryBlock block = currentProgram.getMemory().getBlock(at);
+                if (block == null || !block.isExecute()) {
+                    continue;
+                }
+                Function owner = fm.getFunctionContaining(at);
+                if (owner != null) {
+                    ownedBytes += inst.getLength();
+                    ownedInstructions++;
+                }
+                else {
+                    orphanBytes += inst.getLength();
+                    orphanInstructions++;
+                }
+
+                boolean extend = owner == null && clusterStart != null &&
+                    clusterEnd.next() != null &&
+                    clusterEnd.next().equals(at);
+                if (clusterStart != null && !extend) {
+                    writeOrphanCodeCluster(pw, clusterStart, clusterEnd,
+                        clusterBytes, clusterInst);
+                    clusterCount++;
+                    clusterStart = null;
+                }
+                if (owner == null) {
+                    if (clusterStart == null) {
+                        clusterStart = at;
+                        clusterBytes = 0;
+                        clusterInst = 0;
+                    }
+                    clusterEnd = inst.getMaxAddress();
+                    clusterBytes += inst.getLength();
+                    clusterInst++;
+                }
+            }
+            if (clusterStart != null) {
+                writeOrphanCodeCluster(pw, clusterStart, clusterEnd,
+                    clusterBytes, clusterInst);
+                clusterCount++;
+            }
+            pw.println("SUMMARY");
+            pw.println("recognized_functions=" + fm.getFunctionCount());
+            pw.println("executable_memory_block_bytes=" + executableBlockBytes);
+            pw.println("decoded_owned_bytes=" + ownedBytes);
+            pw.println("decoded_unowned_bytes=" + orphanBytes);
+            pw.println("decoded_owned_instructions=" + ownedInstructions);
+            pw.println("decoded_unowned_instructions=" + orphanInstructions);
+            pw.println("unowned_clusters=" + clusterCount);
+            pw.println("NOTE: gaps in decoded instruction coverage can include");
+            pw.println("data, alignment, undecoded code or embedded tables.");
+        }
+    }
+
+    private void writeOrphanCodeCluster(PrintWriter pw, Address start,
+            Address end, long bytes, long instructions) {
+        long refs = 0;
+        ReferenceIterator it = rm.getReferencesTo(start);
+        while (it.hasNext()) {
+            it.next();
+            refs++;
+        }
+        pw.printf("%s|%s|%d|%d|%d%n",
+            start, end, bytes, instructions, refs);
+    }
 
     private void writeFunctionInventory() throws Exception {
         File file = new File(outDir, "FUNCTION_INVENTORY.txt");
