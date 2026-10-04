@@ -137,6 +137,7 @@ LecS65AddDevice(
 
     devExt = (PLECS65_DEVICE_EXTENSION)deviceObject->DeviceExtension;
     RtlZeroMemory(devExt, sizeof(*devExt));
+    IoInitializeRemoveLock(&devExt->RemoveLock, LECS65_TAG, 0, 0);
     /* Original BAR0 ERRM register wrapper starts with cached 0xFFFFFFFF. */
     devExt->LegacyErrmShadow = (LONG)0xFFFFFFFFUL;
     KeInitializeMutex(&devExt->DallasMutex, 0);
@@ -211,6 +212,42 @@ LecS65Unload(
     LecTrace("Unload\n");
 }
 
+/*
+ * A forwarded IRP can complete asynchronously. Release its remove-lock
+ * reference from the completion routine, not from the dispatch return.
+ */
+static NTSTATUS
+LecReleaseForwardedIrpLock(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp,
+    _In_ PVOID Context)
+{
+    PLECS65_DEVICE_EXTENSION devExt = (PLECS65_DEVICE_EXTENSION)Context;
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    if (Irp->PendingReturned) {
+        IoMarkIrpPending(Irp);
+    }
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+    return STATUS_CONTINUE_COMPLETION;
+}
+
+NTSTATUS
+LecForwardLockedIrp(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PIRP Irp,
+    _In_ BOOLEAN IsPowerIrp)
+{
+    IoCopyCurrentIrpStackLocationToNext(Irp);
+    IoSetCompletionRoutine(
+        Irp, LecReleaseForwardedIrpLock, DevExt,
+        TRUE, TRUE, TRUE);
+
+    return IsPowerIrp ?
+        PoCallDriver(DevExt->LowerDeviceObject, Irp) :
+        IoCallDriver(DevExt->LowerDeviceObject, Irp);
+}
+
 NTSTATUS
 LecS65PassThrough(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -221,15 +258,23 @@ LecS65PassThrough(
 
     devExt = (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+
     if (devExt->LowerDeviceObject == NULL) {
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         Irp->IoStatus.Status = STATUS_INVALID_DEVICE_STATE;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(devExt->LowerDeviceObject, Irp);
+    return LecForwardLockedIrp(devExt, Irp, FALSE);
 }
 
 NTSTATUS
@@ -240,7 +285,15 @@ LecS65Create(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    LONGLONG count = InterlockedIncrement64(&devExt->CreateCount);
+    LONGLONG count;
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+    count = InterlockedIncrement64(&devExt->CreateCount);
 
     LecTrace("CREATE: pid=%p requestor=%s started=%u count=%lld\n",
         PsGetCurrentProcessId(),
@@ -248,10 +301,12 @@ LecS65Create(
         devExt->Started,
         count);
 
-    Irp->IoStatus.Status = devExt->Removed ? STATUS_DELETE_PENDING : STATUS_SUCCESS;
+    status = devExt->Removed ? STATUS_DELETE_PENDING : STATUS_SUCCESS;
+    Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = 0;
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return Irp->IoStatus.Status;
+    return status;
 }
 
 NTSTATUS
@@ -262,7 +317,15 @@ LecS65Close(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    LONGLONG count = InterlockedIncrement64(&devExt->CloseCount);
+    LONGLONG count;
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+    count = InterlockedIncrement64(&devExt->CloseCount);
 
     LecTrace("CLOSE: pid=%p count=%lld\n", PsGetCurrentProcessId(), count);
 
@@ -275,6 +338,7 @@ LecS65Close(
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_SUCCESS;
 }
