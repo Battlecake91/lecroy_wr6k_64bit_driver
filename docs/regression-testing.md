@@ -261,6 +261,35 @@ rejects every launch and every release and is not called by the active
 PFN-derived acquisition path.
 
 
+### Staged WDM v3 synchronous no-launch mapping (needs Windows verification)
+
+Following the verified 81/81 Dry checkpoint, the draft now includes
+`DmaSyncStage.c/.h`, a second, entirely **inactive** adapter-mapped
+mapping path using `GetScatterGatherListEx` with
+`DMA_SYNCHRONOUS_CALLBACK` and NULL callback. The adapter staging
+layer requests DMA_OPERATIONS v3 and checks its entry points.
+
+The sync stage owns each successful mapping until
+`FreeAdapterObject(DeallocateObject)` without ever providing a
+hardware-launch operation. Its parent `LECS65_SG_SYNC_OWNER` reserves
+an outstanding count before each WDM call, blocks submissions after
+STOP, and permits parent teardown only when the last no-launch
+mapping has released. It cannot be used by real PnP yet, and its
+adapter/MDL chain are deliberately borrowed from an external owner.
+
+The new fake-WDM test suite `test-sg-sync.c` runs actual stage code
+against synchronous v3 DDI mocks; it covers allocation failure,
+context initialization failure, balanced no-launch cleanup, sequential
+double release rejection, multi-MDL requests, invalid mapping
+lengths/addresses, STOP during allocation and admission refusal.
+`scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
+A source contract ensures the live PCI code cannot invoke this stage.
+
+**No Windows WDK build or execution of this new stage has been
+confirmed.** The 81/81 Dry result remains the preceding verified
+checkpoint, not a result for the present HEAD. No DMA hardware
+validation is authorized.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
