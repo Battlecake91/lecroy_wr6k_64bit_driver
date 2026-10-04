@@ -7,7 +7,7 @@
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
 // (for example KeSetEvent), full coverage audit via coverage,
 // and explicit recover:11018 to create reviewed missing functions.
-// recover: targets MODIFY the local Ghidra project database; back it up first.
+// recover:, decode:, decode-fragment: MODIFY the Ghidra project; backup first.
 // field displacement scans such as field:2e0,
 // full function instruction exports such as asm:18194, arbitrary address
 // reference scans such as xref:1c8bc, or raw pointer-table snapshots such as
@@ -76,7 +76,17 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (target.toLowerCase().startsWith("decode:")) {
+                if (target.toLowerCase().startsWith("decode-fragment:")) {
+                    Address candidate = parseTargetAddress(
+                        target.substring("decode-fragment:".length()));
+                    if (candidate == null) {
+                        printerr("Invalid decode-fragment target: " + target);
+                    }
+                    else {
+                        decodeReviewedSehFragment(candidate);
+                    }
+                }
+                else if (target.toLowerCase().startsWith("decode:")) {
                     Address candidate = parseTargetAddress(
                         target.substring("decode:".length()));
                     if (candidate == null) {
@@ -214,6 +224,47 @@ public class ExportSelected extends GhidraScript {
      * A successful disassembly is then passed through recoverFunction().
      * This command MUTATES the local Ghidra project: backup first.
      */
+    /*
+     * Decode a reviewed x86 SEH cleanup instruction without inventing
+     * an independent function. The literal machine bytes were extracted
+     * from the original PE32; all other requests are rejected.
+     */
+    private void decodeReviewedSehFragment(Address entry) throws Exception {
+        File report = new File(outDir, "SEH_FRAGMENT_" + entry + ".txt");
+        try (PrintWriter pw = new PrintWriter(report, "UTF-8")) {
+            pw.println("REVIEWED_SEH_FRAGMENT " + entry);
+            if (!"000180c1".equalsIgnoreCase(entry.toString())) {
+                pw.println("REJECTED: address not reviewed");
+                return;
+            }
+            byte[] original = {(byte)0x8B, (byte)0x65, (byte)0xE8};
+            for (int i = 0; i < original.length; ++i) {
+                if (currentProgram.getMemory().getByte(entry.add(i))
+                        != original[i]) {
+                    pw.println("REJECTED: PE32 bytes differ from expected");
+                    return;
+                }
+            }
+            MemoryBlock block = currentProgram.getMemory().getBlock(entry);
+            if (block == null || !block.isExecute() ||
+                currentProgram.getListing().getDefinedDataAt(entry) != null) {
+                pw.println("REJECTED: executable/code-unit guard failed");
+                return;
+            }
+            boolean decoded = currentProgram.getListing().getInstructionAt(entry)
+                    != null || disassemble(entry);
+            Instruction instruction =
+                currentProgram.getListing().getInstructionAt(entry);
+            if (!decoded || instruction == null ||
+                    instruction.getLength() != original.length) {
+                pw.println("FAILED: exact 3-byte instruction not decoded");
+                return;
+            }
+            pw.println("DECODED " + entry + " " + instruction.toString());
+            pw.println("SEH cleanup fragment only; NO function created.");
+        }
+    }
+
     private void decodeReviewedUndefinedFunction(Address entry)
             throws Exception {
         File report = new File(outDir, "DECODE_" + entry + ".txt");
