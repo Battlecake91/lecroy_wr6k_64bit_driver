@@ -15,18 +15,19 @@ LecSgStageReady(
     UNREFERENCED_PARAMETER(Irp);
 
     /*
-     * Callback can be delayed; all callback memory and the FDO reference
-     * survive until a separately authorized release.
+     * Both a synchronous callback (within GetScatterGatherList) and a
+     * delayed callback use the same lock. Completion means the fields
+     * have been stored, NOT that this callback has returned.
      */
     KeAcquireSpinLock(&stage->Lock, &irql);
-    if (!stage->CallbackComplete) {
+    if (!stage->CallbackComplete && ScatterGather != NULL &&
+        LecMapOwnerCallback(&stage->Owner)) {
         stage->List = ScatterGather;
         stage->CallbackComplete = TRUE;
-        if (!LecMapOwnerCallback(&stage->Owner)) stage->Unsafe = TRUE;
     }
     else {
-        /* Unexpected duplicate callback: never free an uncertain map. */
         stage->Unsafe = TRUE;
+        LecMapOwnerUncertain(&stage->Owner);
     }
     KeReleaseSpinLock(&stage->Lock, irql);
 }
@@ -41,6 +42,7 @@ LecSgStageMap(
 {
     PLECS65_SG_STAGE stage;
     KIRQL oldIrql;
+    KIRQL irql;
     NTSTATUS status;
 
     if (Result == NULL) return STATUS_INVALID_PARAMETER;
@@ -56,18 +58,22 @@ LecSgStageMap(
     stage = (PLECS65_SG_STAGE)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*stage), LECS65_TAG);
     if (stage == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+
     RtlZeroMemory(stage, sizeof(*stage));
     KeInitializeSpinLock(&stage->Lock);
     LecMapOwnerInit(&stage->Owner);
     (VOID)LecMapOwnerRequest(&stage->Owner);
     stage->Adapter = Adapter;
     stage->DeviceObject = DeviceObject;
-    stage->WriteToDevice = FALSE; /* WR6k acquisition writes into host RAM. */
+    stage->SourceMdl = LockedMdl;
+    stage->WriteToDevice = FALSE;  /* Acquisition: device writes host. */
     ObReferenceObject(DeviceObject);
 
     /*
-     * WDM scatter/gather operations require DISPATCH_LEVEL. The callback
-     * may run synchronously, before GetScatterGatherList returns.
+     * GetScatterGatherList expects DISPATCH_LEVEL. Callback can run
+     * inline or later; no return path can free callback context, source
+     * MDL, adapter, or FDO until an independent rundown is implemented.
+     * Therefore even a failed submission is deliberately quarantined.
      */
     KeRaiseIrql(DISPATCH_LEVEL, &oldIrql);
     status = Adapter->DmaOperations->GetScatterGatherList(
@@ -76,44 +82,61 @@ LecSgStageMap(
         LecSgStageReady, stage, stage->WriteToDevice);
     KeLowerIrql(oldIrql);
 
+    KeAcquireSpinLock(&stage->Lock, &irql);
+    stage->SubmissionReturned = TRUE;
     if (!NT_SUCCESS(status)) {
-        /*
-         * On a failed submission no callback ownership guarantee has been
-         * established for this prototype. Keep the stage and its FDO ref
-         * rather than risking a late callback into freed pool. This is an
-         * intentional conservative leak, not a finished error path.
-         */
         stage->Unsafe = TRUE;
         LecMapOwnerUncertain(&stage->Owner);
-        *Result = stage;
-        return status;
     }
+    KeReleaseSpinLock(&stage->Lock, irql);
 
-    stage->Submitted = TRUE;
     *Result = stage;
     return status;
 }
 
-BOOLEAN
-LecSgStagePeek(
+NTSTATUS
+LecSgStageCopySegments(
     _Inout_ PLECS65_SG_STAGE Stage,
-    _Outptr_result_maybenull_ PSCATTER_GATHER_LIST* List)
+    _Out_writes_to_(Capacity, *Copied) PSCATTER_GATHER_ELEMENT Elements,
+    _In_ ULONG Capacity,
+    _Out_ PULONG Copied)
 {
     KIRQL irql;
-    BOOLEAN ready;
+    ULONG count;
+    NTSTATUS status = STATUS_DEVICE_NOT_READY;
 
-    if (List == NULL) return FALSE;
-    *List = NULL;
-    if (Stage == NULL) return FALSE;
-
+    if (Copied == NULL || Elements == NULL || Capacity == 0 ||
+        Stage == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    *Copied = 0;
     KeAcquireSpinLock(&Stage->Lock, &irql);
-    ready = (BOOLEAN)(Stage->CallbackComplete &&
-        !Stage->Unsafe && !Stage->PutStarted &&
-        Stage->Owner.Phase == LecMapReady &&
-        Stage->List != NULL);
-    if (ready) *List = Stage->List;
+
+    /*
+     * Never hand out a raw pointer that could be invalidated by Put.
+     * There is currently no Put path; a future one must use the same
+     * reader/rundown barrier, not just this spin lock.
+     */
+    if (Stage->SubmissionReturned && Stage->CallbackComplete &&
+        !Stage->Unsafe && !Stage->Closing && !Stage->PutStarted &&
+        Stage->Owner.Phase == LecMapReady && Stage->List != NULL) {
+        count = Stage->List->NumberOfElements;
+        if (count == 0) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+        }
+        else if (count > Capacity) {
+            status = STATUS_BUFFER_TOO_SMALL;
+        }
+        else {
+            RtlCopyMemory(Elements, Stage->List->Elements,
+                (SIZE_T)count * sizeof(*Elements));
+            *Copied = count;
+            Stage->CopiedSegments = count;
+            status = STATUS_SUCCESS;
+        }
+    }
     KeReleaseSpinLock(&Stage->Lock, irql);
-    return ready;
+    return status;
 }
 
 NTSTATUS
@@ -122,36 +145,26 @@ LecSgStageRelease(
     _In_ BOOLEAN ProvenIdle)
 {
     KIRQL irql;
-    KIRQL oldIrql;
-    PSCATTER_GATHER_LIST list;
 
     if (Stage == NULL) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Stage->Lock, &irql);
+    Stage->Closing = TRUE;
 
     if (!ProvenIdle) {
         Stage->Unsafe = TRUE;
         LecMapOwnerUncertain(&Stage->Owner);
     }
-    if (Stage->Unsafe || !Stage->CallbackComplete ||
-        Stage->List == NULL || Stage->PutStarted ||
-        !ProvenIdle || !LecMapOwnerMayRelease(&Stage->Owner)) {
-        KeReleaseSpinLock(&Stage->Lock, irql);
-        return STATUS_DEVICE_BUSY;
-    }
 
-    Stage->PutStarted = TRUE;
-    (VOID)LecMapOwnerReleased(&Stage->Owner);
-    list = Stage->List;
+    /*
+     * Even if device idle were proven, CallbackComplete only means
+     * the callback published the list, not that WDM has returned from
+     * that callback. A borrowed adapter/MDL and async FDO remove cannot
+     * be released either. Deliberately do not call PutScatterGatherList,
+     * ObDereferenceObject, or ExFreePoolWithTag here. This stage is
+     * UNUSABLE for live DMA until an owner-wide rundown is implemented.
+     */
     KeReleaseSpinLock(&Stage->Lock, irql);
-
-    KeRaiseIrql(DISPATCH_LEVEL, &oldIrql);
-    Stage->Adapter->DmaOperations->PutScatterGatherList(
-        Stage->Adapter, list, Stage->WriteToDevice);
-    KeLowerIrql(oldIrql);
-
-    ObDereferenceObject(Stage->DeviceObject);
-    ExFreePoolWithTag(Stage, LECS65_TAG);
-    return STATUS_SUCCESS;
+    return STATUS_DEVICE_BUSY;
 }
 
 BOOLEAN
@@ -162,7 +175,8 @@ LecSgStageMarkLaunched(_Inout_ PLECS65_SG_STAGE Stage)
 
     if (Stage == NULL) return FALSE;
     KeAcquireSpinLock(&Stage->Lock, &irql);
-    result = (BOOLEAN)(!Stage->Unsafe && !Stage->PutStarted &&
+    result = (BOOLEAN)(!Stage->Unsafe && !Stage->Closing &&
+        Stage->SubmissionReturned && Stage->CallbackComplete &&
         LecMapOwnerLaunch(&Stage->Owner));
     KeReleaseSpinLock(&Stage->Lock, irql);
     return result;
@@ -176,7 +190,7 @@ LecSgStageMarkIdleProved(_Inout_ PLECS65_SG_STAGE Stage)
 
     if (Stage == NULL) return FALSE;
     KeAcquireSpinLock(&Stage->Lock, &irql);
-    result = (BOOLEAN)(!Stage->Unsafe &&
+    result = (BOOLEAN)(!Stage->Unsafe && !Stage->Closing &&
         LecMapOwnerIdleProved(&Stage->Owner));
     KeReleaseSpinLock(&Stage->Lock, irql);
     return result;
