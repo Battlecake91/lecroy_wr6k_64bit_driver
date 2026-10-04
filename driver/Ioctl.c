@@ -3932,6 +3932,14 @@ LecS65DeviceControl(
     ULONG outputPreviewLength = 0;
     PVOID type3InputBuffer =
         stack->Parameters.DeviceIoControl.Type3InputBuffer;
+    NTSTATUS lockStatus = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+
+    if (!NT_SUCCESS(lockStatus)) {
+        Irp->IoStatus.Status = lockStatus;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return lockStatus;
+    }
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
     RtlZeroMemory(outputPreview, sizeof(outputPreview));
@@ -4759,6 +4767,7 @@ LecS65DeviceControl(
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return status;
 }
