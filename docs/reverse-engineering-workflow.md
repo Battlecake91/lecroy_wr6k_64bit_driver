@@ -449,6 +449,19 @@ ambiguous, bit-sensitive, or dependent on calling-convention details.
 
 The current subsystem-level architecture is maintained in [legacy driver architecture](legacy-driver-architecture.md).
 
+**Coverage update (2026-10-04):** the original 420-function census
+was only Ghidra's first recognized-function set. Two reviewed
+recovery runs successfully created **107** additional internal
+functions, bringing the current inventory to **527**. All now
+have individual descriptions and selected pseudocode in
+[legacy-driver-function-map.md](legacy-driver-function-map.md).
+Only three previously decoded x86 SEH/filter fragments totaling
+**22 bytes** remain outside recognized function bodies, plus one
+three-byte SEH restoration instruction pending whitelisted
+disassembly. See [whole-executable audit](legacy-executable-code-coverage.md).
+Older descriptions of "420 functions" below are historical
+baseline measurements, not the current total.
+
 The reconstruction therefore has two deliverables:
 
 1. recover LeCroy-specific hardware, ABI, acquisition and firmware behavior;
