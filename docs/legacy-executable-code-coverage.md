@@ -334,3 +334,31 @@ reviewed genuine x86 function starts from EH fragments, bytes
 representing constants, and alignment.
 
 
+
+## Second-stage recovery selection (not yet executed)
+
+The second staged targets in `ghidra_scripts/targets.txt` now select
+**79** additional decoded instruction entrypoints that have independent
+incoming **DATA/vtable/callback references** in the post-recovery
+`UNOWNED_CODE_REFS.txt`. This includes the main LeCroy device
+`0x10C18..0x1151E` thunks, interrupt-mask helpers,
+the DriverWorks `0x1840A..0x184BA` virtual forwarder array,
+the PnP/power policy `0x19A1E..0x19B7A` helpers,
+completion wrappers and static-init routines.
+
+Five Ghidra-unowned exception-handling landing-pad entries in the
+`0x180xx` area were intentionally excluded from standalone
+function recovery. There are **three** additional candidates still
+classified as undefined bytes instead of instructions:
+`0x18E58`, `0x18EDB`, `0x1C280`. Their original
+opcode prefixes are verified, and the separately guarded
+`decode:` action attempts to disassemble and create them.
+This is explicit, bounded project mutation, not speculative
+bulk disassembly.
+
+The local Ghidra project is automatically backed up before
+running either `recover:` or `decode:` targets. A successful
+result must be established from new `RECOVER_*`/`DECODE_*`
+reports and the refreshed inventory, not presumed from the
+target list. The modern x64 driver remains untouched.
+
