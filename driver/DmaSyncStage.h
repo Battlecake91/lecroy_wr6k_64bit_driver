@@ -7,72 +7,69 @@
 #endif
 
 /*
- * INACTIVE bus-master DMA v3 no-callback staging.
+ * INACTIVE v3 synchronous no-callback staging only. No hardware launch
+ * function exists here. The parent owns its DMA adapter, the PDO and the
+ * pinned MDL buffers for as long as outstanding mappings remain.
  *
- * This is deliberately a NO-LAUNCH lifetime: no function can start
- * the device. Only no-launch mappings can be released. The owner of the
- * DMA adapter, MDL chain and PnP resources must keep them valid across
- * Map and Release; live PnP is NOT integrated.
- *
- * Unlike GetScatterGatherList, GetScatterGatherListEx with
- * DMA_SYNCHRONOUS_CALLBACK and NULL ExecutionRoutine never queues a
- * delayed callback. Failure cannot leave a pending mapping request.
+ * Stage allocations are never exposed as raw pointers. A monotonically
+ * increasing token plus the parent lock protects copy versus release.
+ * The parent is nonpaged and must live until STOP + quiescence.
  */
-/*
- * Parent-owned nonpaged stop gate. Real PnP integration must hold its
- * lifetime until Stop is requested and Outstanding has drained.
- * Stop never waits while holding PnP/remove locks.
- */
+struct _LECS65_SG_SYNC_STAGE;
 typedef struct _LECS65_SG_SYNC_OWNER {
-    PDMA_ADAPTER Adapter;             /* borrowed; parent retains */
-    PDEVICE_OBJECT DeviceObject;     /* parent keeps PnP resources */
+    PDMA_ADAPTER Adapter;
+    PDEVICE_OBJECT DeviceObject;
     KSPIN_LOCK Lock;
+    struct _LECS65_SG_SYNC_STAGE* Mappings;
+    ULONGLONG NextToken;
     ULONG Outstanding;
     BOOLEAN Stopping;
 } LECS65_SG_SYNC_OWNER, *PLECS65_SG_SYNC_OWNER;
+
+typedef struct _LECS65_SG_SYNC_STAGE {
+    struct _LECS65_SG_SYNC_STAGE* Next;
+    PLECS65_SG_SYNC_OWNER Parent;
+    PMDL MdlChain;                   /* borrowed and pinned by parent */
+    PSCATTER_GATHER_LIST List;       /* v3 allocation, no device launch */
+    ULONG RequestedLength;
+    ULONGLONG Token;
+    ULONG_PTR TransferContext[
+        (DMA_TRANSFER_CONTEXT_SIZE_V1 + sizeof(ULONG_PTR) - 1U) /
+        sizeof(ULONG_PTR)];
+} LECS65_SG_SYNC_STAGE, *PLECS65_SG_SYNC_STAGE;
 
 VOID LecSgSyncOwnerInit(
     _Out_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ PDMA_ADAPTER Adapter,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-/* No new mappings after Stop. BUSY means keep adapter, MDLs and owner. */
+/* STOP is nonblocking. BUSY means retain parent, adapter and MDLs. */
 NTSTATUS LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
 BOOLEAN LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
 
-typedef struct _LECS65_SG_SYNC_STAGE {
-    PLECS65_SG_SYNC_OWNER Parent;   /* parent must outlive stage */
-    PDMA_ADAPTER Adapter;                /* borrowed from parent */
-    PDEVICE_OBJECT DeviceObject;         /* referenced until released */
-    PMDL MdlChain;                       /* pinned, borrowed from parent */
-    PSCATTER_GATHER_LIST List;           /* owns v3 allocation */
-    ULONG RequestedLength;
-    ULONG_PTR TransferContext[
-        (DMA_TRANSFER_CONTEXT_SIZE_V1 + sizeof(ULONG_PTR) - 1U) /
-        sizeof(ULONG_PTR)];
-} LECS65_SG_SYNC_STAGE, *PLECS65_SG_SYNC_STAGE;
-
-/* PASSIVE_LEVEL; WDM v3 adapter and pinned MDL chain required. */
+/* PASSIVE_LEVEL; v3 adapter and pinned MDL chain, may span 32-MiB MDLs. */
 NTSTATUS LecSgSyncMapNoLaunch(
     _Inout_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ PMDL LockedMdlChain,
     _In_ ULONG Length,
-    _Outptr_ PLECS65_SG_SYNC_STAGE* Result);
+    _Out_ ULONGLONG* Token);
 
 /*
- * Copy and validate whole SG mapping. Caller buffer must be nonpaged.
- * On any invalid layout no release is implied; no hardware can launch.
+ * Copies under the parent lock into caller-owned NONPAGED memory.
+ * A concurrent release can never invalidate the SG list while copying.
  */
 NTSTATUS LecSgSyncCopySegments(
-    _In_ PLECS65_SG_SYNC_STAGE Stage,
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token,
     _Out_writes_to_(Capacity, *Copied) PSCATTER_GATHER_ELEMENT Elements,
     _In_ ULONG Capacity,
     _Out_ PULONG Copied);
 
 /*
- * ONLY releases a proven no-launch v3 allocation using FreeAdapterObject.
- * Caller must serialize accesses and own stage pointer exclusively.
- * The pointer is set to NULL to prevent sequential double release.
+ * Removes the token before unmapping, so repeated or concurrent releases
+ * cannot dereference a freed stage. A token does NOT authorize DMA launch.
+ * Releases only mappings from this strictly no-launch interface.
  */
 NTSTATUS LecSgSyncReleaseNoLaunch(
-    _Inout_ PLECS65_SG_SYNC_STAGE* Stage);
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token);
