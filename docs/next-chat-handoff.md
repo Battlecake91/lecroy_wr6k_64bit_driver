@@ -1,3 +1,67 @@
+# Legacy complete ASM analyzed; missing-function recovery prepared (2026-10-04)
+
+Full Ghidra orphan-code export:
+`d5e08317e515ea46cb525b5628ea3e67de9c5e46`.
+
+**Critical new original-driver finding:**
+
+- The 888-byte, 236-instruction code region
+  `0x11018..0x1138F`, referenced by device vtable
+  `0x1C500+0x4C`, is the **complete
+  CLecS65AcqDrvDevice::DeviceControl original dispatcher**.
+- It contains **all 27 top-level IOCTL cases**, independently
+  confirming the full legacy dispatch list in
+  [ioctl-map.md](ioctl-map.md).
+- It checks a device synchronization object at device `+0x1463`,
+  returns `STATUS_DEVICE_NOT_READY` if absent, branches to all
+  concrete IOCTL handlers through the hardware object at
+  `device+0x1E0`, releases synchronization, and completes
+  requests except the `STATUS_PENDING` path.
+- `0x00223088 -> 0x11F54` Dallas WRITE and
+  `0xCFDC2130 -> 0x11CFF` serial FPGA/GPIO programming
+  are normal reachable paths, not orphan/dead code.
+- `0xCFDC2184` returns inline success with zero Information.
+  Unknown codes use `STATUS_INVALID_PARAMETER`.
+
+**Whole decoded executable coverage:** 420 recognized internal
+functions, 87 external function-manager entries, **90 unowned
+decoded instruction clusters** (3,207 bytes / 974 instructions).
+Byte-classification of executable blocks (54,528 total bytes):
+48,035 decoded instructions, **5,377 defined data**,
+**1,116 undefined bytes**. All 90 unowned ASM clusters have
+been classified by subsystem in
+[executable code coverage](legacy-executable-code-coverage.md).
+That is not equivalent to creating/decompiling every individual
+overlooked function.
+
+The next stage is already implemented in
+`ghidra_scripts/ExportSelected.java`: explicit
+`recover:<hexaddress>` uses Ghidra `CreateFunctionCmd` to
+create only reviewed unrecognized function entries, decompile them,
+and write `RECOVER_<8-digit-address>.txt` audit records.
+The staged targets are in `ghidra_scripts/targets.txt`,
+followed by `inventory` and `coverage`.
+
+**Caution:** Unlike earlier exports, `recover:` MUTATES the local
+Ghidra project. Close interactive Ghidra first.
+`scripts/run-ghidra-analysis.ps1` now automatically copies
+a complete timestamped backup into a sibling folder outside the
+Git working tree before the first headless recovery command.
+
+On the Ghidra PC:
+
+```powershell
+git pull --rebase
+.\scripts\run-ghidra-analysis.ps1 -CommitMessage "analysis: recover original missed functions"
+```
+
+Review per-address success/failure reports, recovered pseudocode,
+new inventory function count, residual unowned decoded clusters,
+and undefined bytes. Neither modern driver code nor hardware was
+modified/tested by the above **static** analysis.
+
+---
+
 # Code coverage audit: 90 executable clusters (2026-10-04)
 
 The Ghidra `coverage` export at commit
