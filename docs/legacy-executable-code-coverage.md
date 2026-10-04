@@ -1,468 +1,137 @@
-# Executable code coverage audit (2026-10-04)
+# Legacy PE32 executable coverage
 
-This is a census of **decoded executable instructions not owned by a recognized Ghidra function**, not a claim of full binary code coverage.
+This page records **the current verified static byte/function coverage**
+for the original `LecS65AcqDrv.sys` image as analyzed by the checked-in
+Ghidra project. It does not claim source-code equivalence or dynamic
+behavioral coverage. The original 420-function inventory and subsequent
+recovery history are traceable in Git rather than preserved as competing
+current-state summaries.
 
-Evidence: full `coverage` export from commit
-`cabdc5f9f882044bb3928545278024b1aad5ac9d`,
-`ghidra_exports/selected/CODE_COVERAGE.txt` and
-`UNOWNED_CODE_REFS.txt`. Follow-up address/ASM evidence is collected in
-[legacy-driver-vtables-and-asm-audit.md](legacy-driver-vtables-and-asm-audit.md).
+## Current function inventory
 
-## Quantitative baseline
-
-| Measurement | Result |
+| Measurement | Verified result |
 |---|---:|
-| Internal Ghidra functions in `FUNCTION_INVENTORY.txt` | 420 |
-| All Ghidra function-manager entries including external functions | 507 |
-| External function-manager entries (difference) | 87 |
-| Executable memory-block bytes | 54,528 |
-| Decoded instructions inside recognized function bodies | 44,828 bytes / 15,292 instructions |
-| Decoded instructions outside recognized function bodies | 3,207 bytes / 974 instructions |
-| Distinct contiguous unowned instruction clusters | 90 |
-| Executable bytes not counted as decoded instructions | 6,493 |
+| Recognized internal functions | **527** |
+| External function-manager entries | **87** |
+| Inclusive Ghidra function-manager count | **614** |
+| Internal functions with selected pseudocode and semantic map | **527** |
+| Instruction bytes inside recognized functions | **48,086** |
+| Decoded instruction bytes outside recognized functions | **25** |
+| Instruction count outside recognized functions | **13** |
+| Distinct unowned instruction clusters | **3** |
 
-**The 6,493-byte remainder is not automatically executable code.** It may
-include literal data, tables, padding, undefined bytes or undiscovered code.
-The baseline exporter only measures decoded instructions, not whether the
-remainder is actually data. The next improved `coverage` pass also writes
-`EXECUTABLE_BYTE_CLASSIFICATION.txt`.
+Ghidra initially recognized 420 internal functions. Reviewed
+function-boundary recovery added **25** entries (commit
+`9d3ac5b10245d9c9098c3fca2642bf259d7ef507`) and then **82**
+(79 existing decoded thunks plus three opcode-checked new code functions;
+commit `7bdbd3cf797a991ab8ab3dc686e069fcc419e343`).
+All function descriptions reside in the
+[canonical function map](legacy-driver-function-map.md).
+Recovered compiler-generated virtual tail dispatches sometimes display
+a misleading `Could not recover jumptable` warning; raw
+`JMP [vtable+slot]` assembly establishes their control flow.
 
-The total of 507 is not an increase from 420 internal functions: the former
-includes 87 external/imported function-manager entries. This reconciles the
-apparently inconsistent numbers in earlier documentation.
+## Complete code-unit census of executable memory blocks
 
-## Prioritized findings
+The final targeted Ghidra export commit
+`ee9f4d86abd467927ac0985041aefacb654d75c7` produces
+`CODE_COVERAGE.txt`, `EXECUTABLE_BYTE_CLASSIFICATION.txt`,
+`UNDEFINED_EXECUTABLE_RANGES.txt` and `SEH_FRAGMENT_000180c1.txt`.
 
-- **`0x11018..0x1138F` (888 bytes, 236 instructions):** a large
-  *functionless* code region referenced directly by the LeCroy device vtable
-  at `0x1C54C`, i.e. slot `+0x4C` relative to `0x1C500`.
-  A device-control/IRP dispatch role is likely from placement and
-  surrounding handlers, but requires the actual raw ASM before assigning a
-  definitive semantic name. This is the **top priority**.
-- **`0x10EAF..0x10F2E` (128 bytes):** another main-device vtable target
-  (`0x1C518`). Requires entire-body ASM/classification.
-- **`0x1B00E..0x1B095` (136 bytes):** vtable slot `+0x104`;
-  DriverWorks power/PnP callback candidate. Must inspect instructions.
-- **`0x1C118..0x1C1C5` (174 bytes):** referenced from the SEH prolog at
-  `0x1C0A8`; likely compiler SEH machinery, but still needs verification.
-- **`0x10406..0x104A2` (156 bytes across two clusters):**
-  global DriverWorks dispatch/default callbacks, vtable entrypoints.
-- **`0x1085E..0x108D4` (six 19-byte clusters):**
-  individually referenced by ISR/DPC service routines, likely synchronous
-  interrupt helpers.
-- **`0x183EE..0x184BE` (numerous small clusters):**
-  many individually referenced addresses, likely static/runtime initializer
-  thunks. Keep these in the complete-binary audit.
-- **`0x18067..0x18156` (multiple short fragments):**
-  references from SEH scope/cleanup metadata near the transfer MDL
-  helpers; they require exception-table rather than independent-function
-  treatment where appropriate.
-- Other substantially sized unowned regions include `0x19A1E`,
-  `0x19A54`, `0x19A94`, `0x19AEC`, `0x19B22`,
-  `0x19C44`, `0x19C80`, `0x1BE72`, `0x1C204`,
-  `0x1C2D4`, `0x1D380` and `0x1D3C4`.
-
-## Complete list of all 90 decoded unowned clusters
-
-Cluster boundaries are *disassembler boundaries*, not automatically function
-boundaries. A legitimate entry may be in the middle of a cluster. Incoming
-references to every decoded orphan instruction are preserved separately in
-`UNOWNED_CODE_REFS.txt`.
-
-| Start | End | Bytes | Instructions | Start XREFs | Review |
-|---|---|---:|---:|---:|---|
-| `0x10406` | `0x1044A` | 69 | 21 | 1 | Audit |
-| `0x1044C` | `0x104A2` | 87 | 28 | 10 | Audit |
-| `0x1085E` | `0x10870` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x10872` | `0x10884` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x10886` | `0x10898` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x1089A` | `0x108AC` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x108AE` | `0x108C0` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x108C2` | `0x108D4` | 19 | 6 | 1 | Short thunk/fragment |
-| `0x10B30` | `0x10B3B` | 12 | 3 | 1 | Short thunk/fragment |
-| `0x10C18` | `0x10C32` | 27 | 6 | 79 | Short thunk/fragment |
-| `0x10C34` | `0x10C60` | 45 | 14 | 1 | Audit |
-| `0x10C62` | `0x10C8A` | 41 | 13 | 1 | Audit |
-| `0x10C8C` | `0x10C96` | 11 | 2 | 1 | Short thunk/fragment |
-| `0x10CEA` | `0x10D04` | 27 | 8 | 2 | Short thunk/fragment |
-| `0x10D06` | `0x10D45` | 64 | 27 | 1 | Audit |
-| `0x10D62` | `0x10D6C` | 11 | 2 | 1 | Short thunk/fragment |
-| `0x10D6E` | `0x10D78` | 11 | 2 | 1 | Short thunk/fragment |
-| `0x10D7A` | `0x10D84` | 11 | 2 | 1 | Short thunk/fragment |
-| `0x10D86` | `0x10D99` | 20 | 5 | 1 | Short thunk/fragment |
-| `0x10EAF` | `0x10F2E` | 128 | 38 | 1 | Priority 2 |
-| `0x11018` | `0x1138F` | 888 | 236 | 1 | **Priority 1** |
-| `0x114F2` | `0x11508` | 23 | 6 | 1 | Short thunk/fragment |
-| `0x1150A` | `0x1151C` | 19 | 5 | 2 | Short thunk/fragment |
-| `0x1151E` | `0x11531` | 20 | 5 | 1 | Short thunk/fragment |
-| `0x118E4` | `0x11912` | 47 | 18 | 2 | Audit |
-| `0x11A7A` | `0x11A87` | 14 | 6 | 1 | Short thunk/fragment |
-| `0x12EC2` | `0x12EDC` | 27 | 8 | 1 | Short thunk/fragment |
-| `0x13914` | `0x13932` | 31 | 12 | 2 | Audit |
-| `0x13934` | `0x13952` | 31 | 12 | 2 | Audit |
-| `0x16C74` | `0x16C90` | 29 | 10 | 1 | Short thunk/fragment |
-| `0x170D0` | `0x170EC` | 29 | 10 | 1 | Short thunk/fragment |
-| `0x170EE` | `0x170F8` | 11 | 2 | 3 | Short thunk/fragment |
-| `0x18067` | `0x1806D` | 7 | 4 | 1 | SEH review |
-| `0x180BD` | `0x180C0` | 4 | 3 | 1 | SEH review |
-| `0x1814C` | `0x18156` | 11 | 5 | 1 | SEH review |
-| `0x183EE` | `0x18408` | 27 | 10 | 1 | Short thunk/fragment |
-| `0x1840A` | `0x1840E` | 5 | 2 | 1 | Initializer audit |
-| `0x18410` | `0x18414` | 5 | 2 | 1 | Initializer audit |
-| `0x18416` | `0x1841A` | 5 | 2 | 1 | Initializer audit |
-| `0x1841C` | `0x18420` | 5 | 2 | 1 | Initializer audit |
-| `0x18422` | `0x18426` | 5 | 2 | 1 | Initializer audit |
-| `0x18428` | `0x18434` | 13 | 4 | 1 | Initializer audit |
-| `0x18436` | `0x1843A` | 5 | 2 | 1 | Initializer audit |
-| `0x1843C` | `0x18440` | 5 | 2 | 1 | Initializer audit |
-| `0x18442` | `0x18446` | 5 | 2 | 1 | Initializer audit |
-| `0x18448` | `0x1844C` | 5 | 2 | 1 | Initializer audit |
-| `0x1844E` | `0x18452` | 5 | 2 | 1 | Initializer audit |
-| `0x18454` | `0x18458` | 5 | 2 | 1 | Initializer audit |
-| `0x1845A` | `0x1845E` | 5 | 2 | 1 | Initializer audit |
-| `0x18460` | `0x18464` | 5 | 2 | 1 | Initializer audit |
-| `0x18466` | `0x1846A` | 5 | 2 | 1 | Initializer audit |
-| `0x1846C` | `0x18470` | 5 | 2 | 1 | Initializer audit |
-| `0x18472` | `0x18476` | 5 | 2 | 1 | Initializer audit |
-| `0x18478` | `0x1847C` | 5 | 2 | 1 | Initializer audit |
-| `0x1847E` | `0x18482` | 5 | 2 | 1 | Initializer audit |
-| `0x18484` | `0x18488` | 5 | 2 | 1 | Initializer audit |
-| `0x1848A` | `0x1848E` | 5 | 2 | 1 | Initializer audit |
-| `0x18490` | `0x18494` | 5 | 2 | 1 | Initializer audit |
-| `0x18496` | `0x1849A` | 5 | 2 | 1 | Initializer audit |
-| `0x1849C` | `0x184A0` | 5 | 2 | 1 | Initializer audit |
-| `0x184A2` | `0x184A6` | 5 | 2 | 1 | Initializer audit |
-| `0x184A8` | `0x184AC` | 5 | 2 | 1 | Initializer audit |
-| `0x184AE` | `0x184B2` | 5 | 2 | 1 | Initializer audit |
-| `0x184B4` | `0x184B8` | 5 | 2 | 1 | Initializer audit |
-| `0x184BA` | `0x184BE` | 5 | 2 | 1 | Initializer audit |
-| `0x184F6` | `0x184F8` | 3 | 1 | 2 | Initializer audit |
-| `0x197D0` | `0x197EC` | 29 | 8 | 2 | Short thunk/fragment |
-| `0x19A1E` | `0x19A52` | 53 | 14 | 1 | Audit |
-| `0x19A54` | `0x19A72` | 31 | 8 | 2 | Audit |
-| `0x19A74` | `0x19A92` | 31 | 8 | 1 | Audit |
-| `0x19A94` | `0x19AEA` | 87 | 23 | 2 | Audit |
-| `0x19AEC` | `0x19B20` | 53 | 14 | 2 | Audit |
-| `0x19B22` | `0x19B81` | 96 | 26 | 2 | Priority 2 |
-| `0x19C44` | `0x19C7E` | 59 | 16 | 1 | Audit |
-| `0x19C80` | `0x19C9A` | 27 | 8 | 3 | Short thunk/fragment |
-| `0x19D38` | `0x19D43` | 12 | 6 | 4 | Short thunk/fragment |
-| `0x1A07E` | `0x1A098` | 27 | 8 | 1 | Short thunk/fragment |
-| `0x1A09A` | `0x1A0B4` | 27 | 8 | 1 | Short thunk/fragment |
-| `0x1A3FC` | `0x1A40E` | 19 | 5 | 1 | Short thunk/fragment |
-| `0x1A410` | `0x1A41F` | 16 | 4 | 1 | Short thunk/fragment |
-| `0x1B00E` | `0x1B095` | 136 | 42 | 2 | Priority 2 |
-| `0x1BC86` | `0x1BC9C` | 23 | 7 | 2 | Short thunk/fragment |
-| `0x1BC9E` | `0x1BCB8` | 27 | 8 | 2 | Short thunk/fragment |
-| `0x1BE72` | `0x1BED0` | 95 | 37 | 2 | Priority 2 |
-| `0x1C118` | `0x1C1C5` | 174 | 70 | 1 | SEH review |
-| `0x1C204` | `0x1C225` | 34 | 9 | 1 | Audit |
-| `0x1C2D4` | `0x1C2F1` | 30 | 5 | 1 | Audit |
-| `0x1D380` | `0x1D3A3` | 36 | 9 | 2 | Audit |
-| `0x1D3C4` | `0x1D3DB` | 24 | 8 | 1 | Short thunk/fragment |
-| `0x1DE3C` | `0x1DE44` | 9 | 3 | 1 | Short thunk/fragment |
-
-## Verification plan
-
-1. Export raw instruction text for **every** orphan cluster, not only
-   hand-picked address windows, in `UNOWNED_CODE_ASM.txt`.
-2. Identify direct-call, vtable, exception-unwind, constructor/destructor
-   and callback entrypoints in each cluster; do not merge unrelated functions.
-3. Classify executable-block bytes as decoded instructions, defined data
-   and undefined bytes. Manually audit any plausible code hidden in data or
-   undefined regions.
-4. Only after the code boundaries are proven, create/rename functions in a
-   dedicated Ghidra analysis copy and export additional pseudocode.
-5. Re-run the inventory to ensure no new function remains unclassified.
-
-The next `targets.txt` uses `coverage` and `inventory` with the expanded
-coverage exporter. Hardware is not involved in these steps.
-
-## Full orphan-ASM analysis (2026-10-04)
-
-Export commit `d5e08317e515ea46cb525b5628ea3e67de9c5e46`
-added `UNOWNED_CODE_ASM.txt` for all 90 orphan decoded instruction clusters
-and `EXECUTABLE_BYTE_CLASSIFICATION.txt` for executable section contents.
-
-### Decoded bytes versus defined data
-
-| Executable block | Size | Decoded instructions | Defined data | Undefined |
+| Executable block | Total | Decoded instructions | Defined data | Undefined |
 |---|---:|---:|---:|---:|
-| `.text` | 49,024 | 45,483 | 2,615 | 926 |
+| `.text` | 49,024 | 45,559 | 2,615 | 850 |
 | `PAGE` | 2,560 | 1,967 | 508 | 85 |
 | `INIT` | 2,944 | 585 | 2,254 | 105 |
-| **Total** | **54,528** | **48,035** | **5,377** | **1,116** |
+| **All executable blocks** | **54,528** | **48,111** | **5,377** | **1,040** |
 
-Thus the previously unaccounted **6,493** bytes split into **5,377 bytes
-of defined data** and **1,116 still-undefined bytes**. The latter require
-separate examination for possible hidden code, padding, or tables. In
-particular, executable permissions do not imply every byte holds instructions.
+The decoded-instruction total is **48,086 + 25 = 48,111**
+bytes. The executable blocks total
+**48,111 + 5,377 + 1,040 = 54,528** bytes.
 
-### Master IOCTL dispatcher: 0x11018..0x1138F (confirmed)
+### Three legitimate unowned SEH instruction clusters
 
-This is not an opaque control routine but the full LeCroy device-control
-dispatcher, referenced by the main-device vtable `0x1C500+0x4C` at
-`0x1C54C`. The raw instruction sequence establishes:
-
-1. check device synchronization object at device `+0x1463`; absent state
-   produces `STATUS_DEVICE_NOT_READY (0xC00000A3)`;
-2. wait via an imported five-argument kernel synchronization function;
-3. read the IOCTL from `IRP->Tail.Overlay.CurrentStackLocation` at
-   stack location `+0x0C`;
-4. dispatch to the matching handler using the embedded hardware object at
-   `device+0x1E0`;
-5. release the synchronization object;
-6. complete the IRP through `0x10798`, **except** when the resulting status
-   is `STATUS_PENDING (0x103)` (completion is deferred);
-7. log errors and return `STATUS_INVALID_PARAMETER (0xC000000D)` for
-   unknown IOCTL codes.
-
-The switch covers all **27** original top-level IOCTL cases. Its exact
-case-to-handler mapping is now reproduced in
-[ioctl-map.md](ioctl-map.md). Dallas WRITE (`0x00223088`) and serial
-FPGA programming (`0xCFDC2130`) are confirmed regular, reachable
-handlers, not experimental or detached helper code.
-
-The `0xCFDC2184` case is handled inline as success with
-`IoStatus.Status=0` and `IoStatus.Information=0`; other branches call
-dedicated handlers. `0xCFDC2110`, `0xCFDC2138`, and `0xCFDD219F`
-collect the IRP status from their specialized frontends rather than
-assuming a generic success result.
-
-### Recovered semantic classes among the 90 clusters
-
-The cluster number is **not** equal to the function count: many clusters
-contain multiple independent routines or EH landing pads.
-
-| Unowned code range or region | Static classification |
-|---|---|
-| `0x10406..0x1044A` | two global DriverWorks virtual dispatch/driver-state callbacks at `0x10406`, `0x1041C` |
-| `0x1044C..0x104A2` | global DriverWorks IRP dispatcher/default trampoline (`0x1044C`), virtual forwarder (`0x10490`), zero-return default (`0x104A0`) |
-| `0x1085E..0x108D4` | six **separate** DPC pending-bit conditional wrappers; gate `0x11DD8`, `0x11DC2`, `0x11DEE`, `0x11E04`, `0x11E1A`, `0x11E30` on a nonzero argument |
-| `0x10B30` | short ISR trampoline to `0x108D6` |
-| `0x10C18..0x10D99` | missing virtual/default callbacks, IRP completion and forwarding, embedded helper selectors, DPC callback, power forwarding, deleting-destructor and `this` adjustment thunks, already detailed in the [vtable audit](legacy-driver-vtables-and-asm-audit.md) |
-| `0x10EAF..0x10F2E` | device close/cleanup-state path: decrements global `0x1CE0C` usage counter when nonzero; at zero clears hardware registers/shadows and completes an IRP; exact public lifecycle callback name needs calling-context audit |
-| `0x11018..0x1138F` | full 27-case original device-control IOCTL dispatcher |
-| `0x114F2..0x11531` | DPC forwarding and cancel/ISR callback adapters (`0x114F2`, `0x1150A`, `0x1151E`) |
-| `0x118E4..0x11912` | IRP queuing/packet-start helper with zero-length completion path and cancel routine `0x1150A` |
-| `0x11A7A` | zero DWORD at object start |
-| `0x12EC2` | conditional ISR/DPC pending-latch helper updating globals `0x1CE10` from `0x1CE1C` |
-| `0x13914`, `0x13934` | synchronized global interrupt-mask bit-0 set and clear |
-| `0x16C74`, `0x170D0`, `0x170EE` | optional pool-free deleting destructors and transfer-list cleanup thunk |
-| `0x18067`, `0x180BD`, `0x1814C` | x86 SEH exception handler/landing-pad fragments in MDL/transfer code; do not blindly promote each sub-fragment to a standalone function |
-| `0x183EE` | DriverWorks table dispatch by `IO_STACK_LOCATION.MajorFunction`, using table at `0x1CD10` |
-| `0x1840A..0x184BE` | **multiple** short virtual dispatch trampolines (`MOV EAX,[ECX]`, tail jump to vtable slot); these address clusters often contain more than one routine |
-| `0x184F6` | trivial return/default handler |
-| `0x197D0` | read cached system/device power value with fallback from `this+0x1A4` |
-| `0x19A1E..0x19B81` | multiple PnP/power policy gating methods: examine bitfields `this+0xFC/+0x100/+0x138`, then tail-call virtual slot `+0xFC` or `+0x100` |
-| `0x19C44..0x19C9A`, `0x1A07E..0x1A0B4` | short completion/callback adapters forwarding to power completion methods `0x197EE`, `0x196B4`, `0x199AA`, `0x19966`, `0x19D44`, `0x19D84` |
-| `0x19D38` | null-tolerant virtual deleting-destructor call |
-| `0x1A3FC..0x1A41F` | cancel/Power callback thunks toward `0x1A196` and `0x1A342` |
-| `0x1B00E..0x1B095` | queued IRP cancellation/requeue helper, owns cancel-spinlock path, returns `STATUS_CANCELLED (0xC0000120)` or `STATUS_PENDING (0x103)`; invokes `0x19FE0` and installs cancellation callback at `0x1A3FC` |
-| `0x1BC86..0x1BCB8` | two separate timer wrappers: `KeSetTimer`, `KeSetTimerEx` |
-| `0x1BE72..0x1BED0` | DriverWorks synchronous/forward-completion support: optional callback invocation, `STATUS_MORE_PROCESSING_REQUIRED (0xC0000016)` path, completion-status copy and event signaling |
-| `0x1C118..0x1C1C5` | x86 compiler exception-frame handler/unwind dispatcher; follows SEH scope tables and calls `0x1C1E4`/`0x1C226` |
-| `0x1C204..0x1C225` | exception-filter flag handler, returns 1 or 3 depending on exception flags |
-| `0x1C2D4..0x1C2F1` | two static initializer/teardown registration thunks |
-| `0x1D380..0x1D3A3` | global DriverWorks singleton shutdown plus static destructor runner |
-| `0x1D3C4..0x1D3DB` | object ownership/conditional destruction helpers, two short entrypoints |
-| `0x1DE3C` | DriverWorks default reset of `this+0x18`, returns success |
-
-The original 90 clusters can be fully categorized into these groups on
-the available raw ASM. That is **semantic classification**, not yet
-individually decompiled C or verified function-boundary coverage. Some
-clusters contain multiple tiny callable functions. The next stage should
-recover high-confidence function boundaries in Ghidra and export decompiled
-C for each, while inspecting still-undefined executable bytes separately.
-
-
-## First missing-function recovery results (2026-10-04)
-
-The explicit `recover:` pass succeeded in commit
-`9d3ac5b10245d9c9098c3fca2642bf259d7ef507`. All **25
-curated entrypoints** now appear as independent Ghidra functions,
-with new selected decompiled C and compact reference summaries.
-The master `0x11018..0x1138F` IOCTL dispatcher has been independently
-verified in both raw ASM and recovered C. Complete function semantics
-are maintained in the [445-entry function map](legacy-driver-function-map.md).
-
-| Metric | Before | After |
-|---|---:|---:|
-| Recognized internal functions | 420 | **445** |
-| Ghidra function-manager entries including external imports | 507 | **532** |
-| Decoded code bytes assigned to functions | 44,828 | **46,755** |
-| Decoded code bytes outside functions | 3,207 | **1,280** |
-| Unowned decoded instructions | 974 | **393** |
-| Unowned contiguous clusters | 90 | **69** |
-| Executable-section decoded instructions (total) | 48,035 | **48,035** |
-| Executable-section undefined bytes | 1,116 | **1,116** |
-
-Thus 1,927 bytes and 581 instructions gained function ownership, while
-the total decoded-instruction bytes stayed unchanged. This is an
-improved **function-boundary inventory**, not newly decoded instructions.
-
-### Undefined-byte triage
-
-`UNDEFINED_EXECUTABLE_RANGES.txt` contains 424 ranges totaling 1,116
-bytes, many representing single-byte `CC` alignment, zero padding,
-register-name strings and embedded constants. Notable findings:
-
-- `0x145FA..0x14846` and `0x17800..`: visible ASCII register
-  names including `BAR0`, `BAR1`, `BAR2`, `ERRS`, `ERRM`,
-  `SGTA`; these are embedded constant data, **not x86 instructions**.
-- `0x18E58..0x18E6B` (20 bytes): likely executable helper that
-  range-checks a selector `EAX <= 0x17` and returns a lookup-table
-  entry from `0x1CD88`, or a default string address. The
-  `0x17` limit is consistent with PnP minor-function names.
-- `0x18EDB..0x18EED` (19 bytes): similar lookup helper comparing
-  `EAX <= 3` and indexing table `0x1CDE8`, consistent with
-  power minor-function names.
-- `0x1C280..0x1C2A3` (36 bytes): appears to be real x86
-  exception-chain/filter support: `XOR EAX,EAX`,
-  `MOV ECX,FS:[0]`, comparisons against SEH handler state. It
-  requires controlled disassembly.
-- `0x180C1..0x180C3` (three bytes `8B 65 E8`):
-  an exception-frame/stack-restoration landing pad, **not
-  necessarily** a standalone function.
-- `0x1DD4A..0x1DD7F`, `0x1E010..` and `0x1E8E4..`:
-  large zero-filled reserved/alignment areas.
-
-Crucially, **undefined does not imply unreachable code**, and it is
-incorrect to claim 100% binary coverage when actual executable code
-sequences remain undefined. The next stage explicitly separates
-reviewed genuine x86 function starts from EH fragments, bytes
-representing constants, and alignment.
-
-
-
-## Second-stage recovery selection (not yet executed)
-
-The second staged targets in `ghidra_scripts/targets.txt` now select
-**79** additional decoded instruction entrypoints that have independent
-incoming **DATA/vtable/callback references** in the post-recovery
-`UNOWNED_CODE_REFS.txt`. This includes the main LeCroy device
-`0x10C18..0x1151E` thunks, interrupt-mask helpers,
-the DriverWorks `0x1840A..0x184BA` virtual forwarder array,
-the PnP/power policy `0x19A1E..0x19B7A` helpers,
-completion wrappers and static-init routines.
-
-Five Ghidra-unowned exception-handling landing-pad entries in the
-`0x180xx` area were intentionally excluded from standalone
-function recovery. There are **three** additional candidates still
-classified as undefined bytes instead of instructions:
-`0x18E58`, `0x18EDB`, `0x1C280`. Their original
-opcode prefixes are verified, and the separately guarded
-`decode:` action attempts to disassemble and create them.
-This is explicit, bounded project mutation, not speculative
-bulk disassembly.
-
-The local Ghidra project is automatically backed up before
-running either `recover:` or `decode:` targets. A successful
-result must be established from new `RECOVER_*`/`DECODE_*`
-reports and the refreshed inventory, not presumed from the
-target list. The modern x64 driver remains untouched.
-
-
-
-## Second-stage recovery results: 527 functions (2026-10-04)
-
-Commit `7bdbd3cf797a991ab8ab3dc686e069fcc419e343` confirms that
-all **79** previously decoded, separately referenced virtual/callback
-targets were successfully created as Ghidra functions and all **three**
-reviewed undefined-code candidates were disassembled and recovered.
-All 82 have `RECOVER_*.txt` records with `CREATED`, selected
-decompiled C and compact reference exports. The three `DECODE_*.txt`
-records confirm successful disassembly.
-
-| Coverage metric | Original census | After 25 recoveries | After 82 further recoveries |
-|---|---:|---:|---:|
-| Internal recognized functions | 420 | 445 | **527** |
-| Including external function-manager entries | 507 | 532 | **614** |
-| Owned decoded instruction bytes | 44,828 | 46,755 | **48,086** |
-| Unowned decoded instruction bytes | 3,207 | 1,280 | **22** |
-| Unowned decoded instructions | 974 | 393 | **12** |
-| Unowned clusters | 90 | 69 | **3** |
-| All decoded instruction bytes | 48,035 | 48,035 | **48,108** |
-| Defined data in executable memory | 5,377 | 5,377 | **5,377** |
-| Undefined bytes in executable memory | 1,116 | 1,116 | **1,043** |
-
-The 82 new functions account for another **1,331** bytes formerly
-decoded but unowned, plus **73 bytes** newly decoded in the three
-reviewed undefined-code areas. Combined, the recovered-inventory
-increase from 420 to 527 accounts for all but **22 bytes** of
-previously disassembled unowned code.
-
-### Exact remaining decoded-but-unowned instructions
-
-Only three clusters remain in `CODE_COVERAGE.txt`:
-
-| Start | End | Bytes | Instructions | Interpretation |
-|---|---|---:|---:|---|
-| `0x18067` | `0x1806D` | 7 | 4 | short x86 SEH filter return and stack/frame restoration |
-| `0x180BD` | `0x180C0` | 4 | 3 | x86 SEH filter return |
-| `0x1814C` | `0x18156` | 11 | 5 | x86 SEH filter return and stack/frame restoration |
-
-These appear in the MDL probe/lock section and are reached as
-exception handling landing/filter paths; they should not be promoted
-to ordinary callable functions without proof of their exception
-scope table ownership. A separate undefined three-byte span at
-`0x180C1..0x180C3` is `8B 65 E8`
-(`MOV ESP,[EBP-0x18]`), consistent with the adjacent SEH
-stack restoration epilog. It is **not** an unrelated fourth
-conventional function.
-
-### Three decoded former unknown-code candidates
-
-Recovered C makes these functions unambiguous:
-
-- `0x18E58`: PnP minor-function name lookup via
-  `PTR_s_IRP_MN_START_DEVICE_0001CD88[minor]`; accepts
-  minor 0..23, else the unknown-minor-function string.
-- `0x18EDB`: power IRP minor-function name lookup via
-  `PTR_s_IRP_MN_WAIT_WAKE_0001CDE8[minor]`; accepts 0..3.
-- `0x1C280`: x86 compiler SEH status helper that inspects
-  `FS:[0]` (active exception chain) and verifies the handler
-  and stack/scope frame state.
-
-The other 79 are concrete LeCroy device lifecycle/IRP/DPC thunks,
-30 DriverWorks major-IRP vtable forwarders, policy-gated PnP/power
-callbacks, timer wrappers, completion adapters and static runtime
-registration helpers. Full per-address semantics are recorded in
-[legacy-driver-function-map.md](legacy-driver-function-map.md).
-
-Forty-four recovered `0x184xx` and `0x19Axx/0x19Bxx`
-forwarders emit Ghidra's `Could not recover jumptable`
-or `Treating indirect jump as call` warnings. Direct raw x86
-inspection shows deliberate **virtual tail jumps** (`JMP [EAX+slot]`),
-not a missing dynamic jump table. These are expected decompiler
-limitations and must not be mistranslated into ordinary call/return
-semantics.
-
-### Classification of remaining 1,043 undefined bytes
-
-The refreshed `UNDEFINED_EXECUTABLE_RANGES.txt` has **423**
-distinct ranges. Categorizing by exact byte patterns:
-
-| Evident pattern | Bytes | Interpretation |
+| Region | Decoded bytes | Incoming metadata |
 |---|---:|---|
-| `CC` padding/trap markers | 282 | alignment/breakpoint padding |
-| Zero-filled bytes | 281 | padding, reserved bytes, zeros |
-| ASCII/text or small inline constants | 458 | register labels (BAR0/1/2), format strings, small literals |
-| Mixed `CC` and `0A 00 00 00` | 19 | padding followed by literal value 10 (three short ranges) |
-| `8B 65 E8` | 3 | x86 SEH frame restoration instruction |
+| `0x18067..0x1806D` | 7 | references from `0x1C9D4`, `0x1C9D8` |
+| `0x180BD..0x180C3` | 7 | references from `0x1C9E4`, `0x1C9E8` |
+| `0x1814C..0x18156` | 11 | references from `0x1C9F0`, `0x1C9F4` |
 
-Together these categories account for all 1,043 bytes by
-observed prefix/content. **Pattern recognition is not equivalent
-to a proof that every byte is non-executable**; the 1,040
-padding/data-like bytes are high-confidence classifications,
-not forced Ghidra-defined data. Do not blindly disassemble
-embedded `BAR0`/register strings.
+All six relevant incoming references are **DATA** references from
+compiler x86 structured exception handling (SEH) scope records,
+not ordinary calls. These fragments are associated with the
+transfer/MDL probe/lock and cleanup handlers and do **not**
+constitute three ordinary missing C++ functions. The
+`0x180C1..0x180C3` bytes `8B 65 E8` were successfully
+disassembled to `MOV ESP,[EBP-0x18]` in the final targeted run.
+No artificial function was created. These instructions are
+part of exception filter/cleanup and frame restoration.
 
-The final precise code-boundary check should:
-1. examine the SEH scope/exception dispatch links for the three
-   remaining decoded clusters;
-2. optionally disassemble only `0x180C1` as a reviewed
-   *fragment*, without manufacturing a normal function;
-3. reconstruct the indexed `IRP_MJ` dispatch table at `0x1CD10`,
-   with PnP/power name arrays at `0x1CD88`/`0x1CDE8`,
-   to document framework dispatch-slot ownership.
+### Remaining 1,040 undefined bytes
+
+The 423 undefined memory ranges from Ghidra have been reviewed
+by contents and grouped as follows:
+
+| Byte pattern/class | Bytes | Interpretation |
+|---|---:|---|
+| `CC` bytes | 282 | break/padding/alignment |
+| Zero-filled bytes | 281 | zero padding, reserved storage |
+| Printable strings or small inline constants | 458 | e.g. BAR0/BAR1/BAR2, ERRS/ERRM, format strings and integer constants |
+| Mixed `CC` plus `0A 00 00 00` | 19 | mixed alignment and literal decimal 10 |
+| **Total** | **1,040** | |
+
+This is a **byte-pattern classification**, not an instruction by
+instruction proof that every undefined byte is noncode. No
+additional plausible self-contained ordinary function was found
+in the checked ranges; any new evidence of an indirect entrypoint
+must still be investigated. Three earlier suspicious undefined
+sequences were explicitly disassembled and recovered as functions:
+
+- `0x18E58`: PnP minor-code name lookup, 24 slots (0..23);
+- `0x18EDB`: Power minor-code name lookup, four slots (0..3);
+- `0x1C280`: compiler SEH exception-frame/status check.
+
+## WDM dispatch table and source evidence
+
+The [architecture map](legacy-driver-architecture.md) records the
+complete **28-entry IRP_MJ dispatch table** at `0x1CD10..0x1CD7F`,
+including each indexed trampoline, device vtable slot and concrete
+handler. The two subsequent DWORDs, `0x00000004` at `0x1CD80`
+and zero at `0x1CD84`, are **not** dispatch entries.
+The PnP minor-name pointer table begins at `0x1CD88` and has
+24 entries; the four Power minor-name pointers start at
+`0x1CDE8`.
+
+The original complete 27-case device-control dispatcher is
+`0x11018..0x1138F`. The original raw assembly was captured in
+`UNOWNED_CODE_ASM.txt` at commit `d5e08317e515ea46cb525b5628ea3e67de9c5e46`,
+and the recovered pseudocode is in
+`ghidra_exports/selected/00011018_FUN_00011018.c`.
+The independently recovered
+[original IOCTL map](ioctl-map.md) includes the legacy
+unknown-IOCTL success-status overwrite defect and all existing
+Dallas/FPGA writer dispatch paths.
+
+## Scope of completion
+
+**Static Ghidra executable-instruction ownership is accounted for**:
+527 internal functions plus three explicitly identified
+compiler SEH-scope instruction clusters. The remaining undefined
+bytes have plausible padding/data signatures, but have not been
+automatically forced into false code or data types.
+
+This does **not** mean a bit-identical original source
+reconstruction or fully verified x64-driver replacement. Open
+behavioral work includes:
+
+- matching original IRP completion, queuing, cancel, power and
+  PnP lifetime semantics with safe modern x64 implementations;
+- verifying actual acquisition, probing, IOCTL ABI and application
+  behavior on hardware with controlled regressions;
+- proving FPGA/GPIO and Dallas write sequencing only using safe,
+  recoverable conditions, not the production licensed chip;
+- revisiting any yet-undiscovered dynamic/indirect target
+  indicated by traces or additional binary evidence.
+
+No physical WR6k hardware or modern x64 driver was exercised or
+modified by this static coverage effort.
