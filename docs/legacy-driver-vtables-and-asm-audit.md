@@ -206,3 +206,86 @@ mechanically translate x86 SEH-frame setup.
   from `0x10C18` through `0x10D90`.
 - Continue class/vtable coverage audits. **420/420 classified means coverage
   of Ghidra-recognized entries, not full binary code coverage.**
+
+## Follow-up: unrecognized virtual functions (2026-10-04)
+
+Focused Ghidra pass `9b6d3ccad7865a79efccd6343ae9fe697c1e6ec8`
+verified virtual targets that were executable but absent as independent
+functions from the original 420-entry inventory. Raw-window results are
+authoritative at the shown instruction boundaries, not automatic decompiler
+source.
+
+### Hardware virtual method table
+
+Derived hardware table `0x1C62C` overrides **four** entries relative to
+base `0x1C8BC`, not just the three normal callback methods: deleting
+destructor at `+0x10`, plus `+0x1C`, `+0x20`, `+0x24`.
+
+| Derived slot | Function | ASM-verified behavior |
+|---|---|---|
+| `+0x10` | `0x10C8C` | `ECX -= 0x1E0`; jump to device deleting destructor `0x11532` |
+| `+0x14` | `0x13914` | set global `DAT_0001CE18` bit 0; call synchronization object with `FUN_00012EAE` |
+| `+0x18` | `0x13934` | clear global bit 0; perform the same synchronized callback |
+| `+0x1C` | `0x10C62` | return pointer at `this+0x12D5` (default/type 0), `+0x12F5` (type 1) or `+0x1315` (type 2) |
+| `+0x20` | `0x10C34` | adjust `this -= 0x1E0`, call `IoStartNextPacket(device+4, TRUE)`; if IRP nonnull, complete IRP and decrement outstanding-I/O through `0x1955A` |
+| `+0x24` | `0x114F2` | adjust `this -= 0x1E0`; call `0x11390` DPC dispatcher |
+
+The `+0x14/+0x18` implementations are **shared** with base hardware
+rather than derived overrides. They directly explain how global
+`DAT_0001CE18` bit 0 is toggled before synchronizing the device.
+The `+0x1C` object pointers are spaced by 0x20 bytes. They are
+plausibly event or control helper records, but their concrete field/class
+types require caller/layout corroboration; their addresses are proven.
+
+### Main-device vtable tail and non-inventory thunks
+
+The fixed-length dump from `0x1C600` confirms additional entries **up to
+`0x1C628`**; the next table starts at `0x1C62C`.
+
+| Actual slot in `0x1C500` | Target | Inferred role |
+|---|---|---|
+| `+0x100` | `0x10D06` | `PoStartNextPowerIrp` and forward power IRP to lower device |
+| `+0x104` | `0x1B00E` | framework power-related path; further audit |
+| `+0x108` | `0x1A1D4` | queue drain/cancellation |
+| `+0x10C` | `0x19614` | outstanding-I/O wait helper |
+| `+0x110` | `0x19662` | outstanding-I/O wait helper |
+| `+0x114` | `0x10D86` | `this += 0x1E0` and no-op helper `0x10D9A` |
+| `+0x118` | `0x10D9A` | no-op, returns zero |
+| `+0x11C` | `0x10D62` | `this += 0x1E0`, jump to hardware resume `0x138B2` |
+| `+0x120` | `0x10D6E` | `this += 0x1E0`, jump to hardware quiesce `0x138D4` |
+| `+0x124` | `0x197D0` | access cached power-state array/fallback |
+| `+0x128` | `0x19734` | initialize power-policy state |
+
+These offsets are relative to the **main-device vtable** at `0x1C500`.
+The `0x1C62C` DWORD is already the first slot of a *different* vtable.
+Other confirmed non-inventory thunks:
+
+- `0x10C18`: complete an IRP with `STATUS_NOT_IMPLEMENTED`.
+- `0x10CEA`: advance IRP stack pointer and pass IRP to lower device.
+- `0x10D3C`: resource cleanup through `0x1082E`.
+- `0x10D7A`: adjust `this += 0x1E0` then delegate to `0x11B70`.
+- `0x170EE`: adjust `this += 0x100` and jump to `0x1829A`,
+  which frees an entire transfer list.
+
+Additional `0x19A54..` through `0x19B7A` short virtual targets
+perform DriverWorks PnP/power policy-flag checks (primarily offsets
+`+0xFC`, `+0x100`, `+0x138`) before tail-dispatching to further
+virtual handlers; the method-level Windows minor-code mapping is a further
+cross-reference task.
+
+The 420-function Ghidra census **under-counts executable call targets**.
+Future census improvements should enumerate executable addresses referenced
+by virtual tables/dispatch tables, distinguish import thunks from actual
+internal functions, and identify short `this`-adjuster regions.
+
+### Open detailed verification
+
+- Confirm which public/callback operations select the three pointers
+  returned from `0x10C62`.
+- Trace the main `0x1B00E` power callback and the `0x19A54..`
+  policy-gated forwarders to their owning PnP/power minor codes.
+- Re-inventory actual executable function starts not recovered by
+  Ghidra, particularly the short non-inventory thunks.
+- Do not claim complete binary reverse engineering from the
+  **420/420 recognized-function semantic classification** alone.
+
