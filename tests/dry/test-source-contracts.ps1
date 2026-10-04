@@ -15,13 +15,14 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $publicHeader = Join-Path $repo "include\LecS65LegacyIoctl.h"
 $driverHeader = Join-Path $repo "driver\LecS65Drv.h"
+$driverSource = Join-Path $repo "driver\Driver.c"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
 $deviceSource = Join-Path $repo "driver\Device.c"
 $acquisitionSource = Join-Path $repo "driver\Acquisition.c"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $deviceSource, $acquisitionSource, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -29,6 +30,7 @@ foreach ($path in @($publicHeader, $driverHeader, $ioctlSource, $deviceSource, $
 
 $publicText = Get-Content -LiteralPath $publicHeader -Raw
 $driverText = Get-Content -LiteralPath $driverHeader -Raw
+$driverSourceText = Get-Content -LiteralPath $driverSource -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
 $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
@@ -178,6 +180,27 @@ Test-Contract "both native DMA launch paths reject absent interrupts" {
     $gate = 'if\s*\(!DevExt->Started\s*\|\|\s*!DevExt->InterruptConnected\)\s*\{\s*return STATUS_DEVICE_NOT_READY;'
     $mttr.Success -and $buffered.Success -and
     $mttr.Value -match $gate -and $buffered.Value -match $gate
+}
+
+Test-Contract "all dispatch paths participate in remove-lock ownership" {
+    $driverText -match 'IO_REMOVE_LOCK RemoveLock' -and
+    $driverSourceText -match 'IoInitializeRemoveLock\(' -and
+    ([regex]::Matches($driverSourceText, 'IoAcquireRemoveLock\(').Count -ge 3) -and
+    $driverSourceText -match 'LecReleaseForwardedIrpLock' -and
+    $driverSourceText -match 'STATUS_CONTINUE_COMPLETION' -and
+    $deviceText -match 'IoAcquireRemoveLock\(' -and
+    $deviceText -match 'IoReleaseRemoveLockAndWait\(' -and
+    $ioctlText -match 'IoAcquireRemoveLock\(' -and
+    $ioctlText -match 'IoReleaseRemoveLock\('
+}
+
+Test-Contract "IOCTL admission counter releases at dispatch completion" {
+    $driverSourceText -match 'LecEnterIoctl' -and
+    $driverSourceText -match 'LecLeaveIoctl' -and
+    $driverSourceText -match 'LecDrainIoctls' -and
+    $ioctlText -match 'if \(!LecEnterIoctl\(devExt\)\)' -and
+    $ioctlText -match 'LecLeaveIoctl\(devExt\)' -and
+    $driverSourceText -match 'KeWaitForSingleObject\(\s*&DevExt->IoIdleEvent'
 }
 
 Test-Contract "PnP remove is drained before deleting device" {
