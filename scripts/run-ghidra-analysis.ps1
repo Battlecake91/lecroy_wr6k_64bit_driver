@@ -66,7 +66,7 @@ if ($targets.Count -eq 0) {
 # Explicit recover: targets modify the *local* analyzed Ghidra project
 # (unlike normal read-only exports). Create an automatic sibling backup.
 # Close the Ghidra GUI before running recovery so the copy is consistent.
-$recoverTargets = @($targets | Where-Object { $_ -like "recover:*" })
+$recoverTargets = @($targets | Where-Object { ($_ -like "recover:*") -or ($_ -like "decode:*") })
 if ($recoverTargets.Count -gt 0) {
     $ghidraProject = Join-Path $repo "ghidra_reverse_engineering_lecroy"
     if (-not (Test-Path -LiteralPath $ghidraProject)) {
