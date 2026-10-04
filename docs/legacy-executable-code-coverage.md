@@ -177,3 +177,101 @@ references to every decoded orphan instruction are preserved separately in
 
 The next `targets.txt` uses `coverage` and `inventory` with the expanded
 coverage exporter. Hardware is not involved in these steps.
+
+## Full orphan-ASM analysis (2026-10-04)
+
+Export commit `d5e08317e515ea46cb525b5628ea3e67de9c5e46`
+added `UNOWNED_CODE_ASM.txt` for all 90 orphan decoded instruction clusters
+and `EXECUTABLE_BYTE_CLASSIFICATION.txt` for executable section contents.
+
+### Decoded bytes versus defined data
+
+| Executable block | Size | Decoded instructions | Defined data | Undefined |
+|---|---:|---:|---:|---:|
+| `.text` | 49,024 | 45,483 | 2,615 | 926 |
+| `PAGE` | 2,560 | 1,967 | 508 | 85 |
+| `INIT` | 2,944 | 585 | 2,254 | 105 |
+| **Total** | **54,528** | **48,035** | **5,377** | **1,116** |
+
+Thus the previously unaccounted **6,493** bytes split into **5,377 bytes
+of defined data** and **1,116 still-undefined bytes**. The latter require
+separate examination for possible hidden code, padding, or tables. In
+particular, executable permissions do not imply every byte holds instructions.
+
+### Master IOCTL dispatcher: 0x11018..0x1138F (confirmed)
+
+This is not an opaque control routine but the full LeCroy device-control
+dispatcher, referenced by the main-device vtable `0x1C500+0x4C` at
+`0x1C54C`. The raw instruction sequence establishes:
+
+1. check device synchronization object at device `+0x1463`; absent state
+   produces `STATUS_DEVICE_NOT_READY (0xC00000A3)`;
+2. wait via an imported five-argument kernel synchronization function;
+3. read the IOCTL from `IRP->Tail.Overlay.CurrentStackLocation` at
+   stack location `+0x0C`;
+4. dispatch to the matching handler using the embedded hardware object at
+   `device+0x1E0`;
+5. release the synchronization object;
+6. complete the IRP through `0x10798`, **except** when the resulting status
+   is `STATUS_PENDING (0x103)` (completion is deferred);
+7. log errors and return `STATUS_INVALID_PARAMETER (0xC000000D)` for
+   unknown IOCTL codes.
+
+The switch covers all **27** original top-level IOCTL cases. Its exact
+case-to-handler mapping is now reproduced in
+[ioctl-map.md](ioctl-map.md). Dallas WRITE (`0x00223088`) and serial
+FPGA programming (`0xCFDC2130`) are confirmed regular, reachable
+handlers, not experimental or detached helper code.
+
+The `0xCFDC2184` case is handled inline as success with
+`IoStatus.Status=0` and `IoStatus.Information=0`; other branches call
+dedicated handlers. `0xCFDC2110`, `0xCFDC2138`, and `0xCFDD219F`
+collect the IRP status from their specialized frontends rather than
+assuming a generic success result.
+
+### Recovered semantic classes among the 90 clusters
+
+The cluster number is **not** equal to the function count: many clusters
+contain multiple independent routines or EH landing pads.
+
+| Unowned code range or region | Static classification |
+|---|---|
+| `0x10406..0x1044A` | two global DriverWorks virtual dispatch/driver-state callbacks at `0x10406`, `0x1041C` |
+| `0x1044C..0x104A2` | global DriverWorks IRP dispatcher/default trampoline (`0x1044C`), virtual forwarder (`0x10490`), zero-return default (`0x104A0`) |
+| `0x1085E..0x108D4` | six **separate** DPC pending-bit conditional wrappers; gate `0x11DD8`, `0x11DC2`, `0x11DEE`, `0x11E04`, `0x11E1A`, `0x11E30` on a nonzero argument |
+| `0x10B30` | short ISR trampoline to `0x108D6` |
+| `0x10C18..0x10D99` | missing virtual/default callbacks, IRP completion and forwarding, embedded helper selectors, DPC callback, power forwarding, deleting-destructor and `this` adjustment thunks, already detailed in the [vtable audit](legacy-driver-vtables-and-asm-audit.md) |
+| `0x10EAF..0x10F2E` | device close/cleanup-state path: decrements global `0x1CE0C` usage counter when nonzero; at zero clears hardware registers/shadows and completes an IRP; exact public lifecycle callback name needs calling-context audit |
+| `0x11018..0x1138F` | full 27-case original device-control IOCTL dispatcher |
+| `0x114F2..0x11531` | DPC forwarding and cancel/ISR callback adapters (`0x114F2`, `0x1150A`, `0x1151E`) |
+| `0x118E4..0x11912` | IRP queuing/packet-start helper with zero-length completion path and cancel routine `0x1150A` |
+| `0x11A7A` | zero DWORD at object start |
+| `0x12EC2` | conditional ISR/DPC pending-latch helper updating globals `0x1CE10` from `0x1CE1C` |
+| `0x13914`, `0x13934` | synchronized global interrupt-mask bit-0 set and clear |
+| `0x16C74`, `0x170D0`, `0x170EE` | optional pool-free deleting destructors and transfer-list cleanup thunk |
+| `0x18067`, `0x180BD`, `0x1814C` | x86 SEH exception handler/landing-pad fragments in MDL/transfer code; do not blindly promote each sub-fragment to a standalone function |
+| `0x183EE` | DriverWorks table dispatch by `IO_STACK_LOCATION.MajorFunction`, using table at `0x1CD10` |
+| `0x1840A..0x184BE` | **multiple** short virtual dispatch trampolines (`MOV EAX,[ECX]`, tail jump to vtable slot); these address clusters often contain more than one routine |
+| `0x184F6` | trivial return/default handler |
+| `0x197D0` | read cached system/device power value with fallback from `this+0x1A4` |
+| `0x19A1E..0x19B81` | multiple PnP/power policy gating methods: examine bitfields `this+0xFC/+0x100/+0x138`, then tail-call virtual slot `+0xFC` or `+0x100` |
+| `0x19C44..0x19C9A`, `0x1A07E..0x1A0B4` | short completion/callback adapters forwarding to power completion methods `0x197EE`, `0x196B4`, `0x199AA`, `0x19966`, `0x19D44`, `0x19D84` |
+| `0x19D38` | null-tolerant virtual deleting-destructor call |
+| `0x1A3FC..0x1A41F` | cancel/Power callback thunks toward `0x1A196` and `0x1A342` |
+| `0x1B00E..0x1B095` | queued IRP cancellation/requeue helper, owns cancel-spinlock path, returns `STATUS_CANCELLED (0xC0000120)` or `STATUS_PENDING (0x103)`; invokes `0x19FE0` and installs cancellation callback at `0x1A3FC` |
+| `0x1BC86..0x1BCB8` | two separate timer wrappers: `KeSetTimer`, `KeSetTimerEx` |
+| `0x1BE72..0x1BED0` | DriverWorks synchronous/forward-completion support: optional callback invocation, `STATUS_MORE_PROCESSING_REQUIRED (0xC0000016)` path, completion-status copy and event signaling |
+| `0x1C118..0x1C1C5` | x86 compiler exception-frame handler/unwind dispatcher; follows SEH scope tables and calls `0x1C1E4`/`0x1C226` |
+| `0x1C204..0x1C225` | exception-filter flag handler, returns 1 or 3 depending on exception flags |
+| `0x1C2D4..0x1C2F1` | two static initializer/teardown registration thunks |
+| `0x1D380..0x1D3A3` | global DriverWorks singleton shutdown plus static destructor runner |
+| `0x1D3C4..0x1D3DB` | object ownership/conditional destruction helpers, two short entrypoints |
+| `0x1DE3C` | DriverWorks default reset of `this+0x18`, returns success |
+
+The original 90 clusters can be fully categorized into these groups on
+the available raw ASM. That is **semantic classification**, not yet
+individually decompiled C or verified function-boundary coverage. Some
+clusters contain multiple tiny callable functions. The next stage should
+recover high-confidence function boundaries in Ghidra and export decompiled
+C for each, while inspecting still-undefined executable bytes separately.
+
