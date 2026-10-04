@@ -278,6 +278,23 @@ Future census improvements should enumerate executable addresses referenced
 by virtual tables/dispatch tables, distinguish import thunks from actual
 internal functions, and identify short `this`-adjuster regions.
 
+### Auxiliary virtual timer/destructor thunks
+
+- `0x1BC86`: adjust `this+0x18` and invoke `KeSetTimer`.
+- `0x1BC9E`: adjust `this+0x18` and invoke `KeSetTimerEx`.
+- `0x16C74`: 1-Wire object deleting-destructor wrapper, optionally `ExFreePool`.
+- `0x170D0`: acquisition helper deleting-destructor wrapper, optionally
+  `ExFreePool`.
+- `0x19D38`: null-tolerant virtual deleting-destructor dispatcher.
+- `0x1DE3C`: zero state at `this+0x18` and return success.
+- `0x19B7A`: unconditional virtual tail-forward to slot `+0xFC`.
+
+The `0x19A54`, `0x19A94`, `0x19AB6`, `0x19ACC`,
+`0x19AEC`, `0x19B02`, `0x19B22`, `0x19B38` and
+`0x19B4E` gate further virtual callbacks based on policy bits in
+`this+0xFC/+0x100/+0x138`; individual WDM minor-code identities are
+not yet attributed.
+
 ### Open detailed verification
 
 - Confirm which public/callback operations select the three pointers
