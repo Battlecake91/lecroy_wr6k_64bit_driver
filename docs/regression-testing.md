@@ -105,8 +105,17 @@ START within the same FDO. It deliberately leaks locked memory until
 system restart because safe abort/idle has **not** been proven. Read
 [detailed DMA evidence](dma-lifetime-and-timeout.md).
 
-**This new revision has not been Windows-built, Dry-tested, or tested on
-PCI hardware.** Regression requirements include rejecting software
+Owner-reported Windows 10 x64 Dry run on 2026-10-04 at 19:38:25:
+driver Debug|x64 compiled and linked successfully with **0 errors**
+and the same **2 LNK4075** configuration warnings; x64 `lecdiag`
+built successfully. **19/20 source contracts passed**. The one
+failure was a stale regex requiring exactly the old
+`Started || InterruptConnected` gate without the newly added
+`DmaUnknownActive` guard. The test was updated in commit
+`87bea88` to require all three checks in both launch paths.
+
+**The updated regex has not yet been Windows-retested**, and the new
+DMA containment has not been PCI hardware-tested. Regression requirements include rejecting software
 completion without affecting the existing `CFDC2400` zero-mask
 contract, 5-second simulated timeout, poisoned-transfer unregister
 refusal, process-CLOSE, STOP/REMOVE quarantine ownership and
