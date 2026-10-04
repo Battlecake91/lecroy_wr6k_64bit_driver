@@ -80,10 +80,16 @@ contracts passed. The one failed `START_DEVICE` contract used an outdated
 regular expression expecting direct adjacency between `Started=TRUE`
 and `LecEnableInterfaces`; correct source now inserts
 `LecSetIoctlAdmission(devExt, TRUE)` between these lines.
-The test regex was updated in commit `07653b9` and still requires
-another owner-executed Dry run. No claim of 17/17 is made yet.
+The test regex was updated in commit `07653b9`.
 
-**The revised implementation has no verified full Dry pass, PnP fault
+Owner-reported rerun on 2026-10-04 at 18:34:52 after the regex fix:
+`scripts/test-driver.ps1 -Mode Dry` **PASS**, x64 driver build
+**success** (incremental, 0 warnings, 0 errors), x64 `lecdiag`
+build **success**, and all source/ABI contracts **17/17 PASS**.
+The zero-warning result describes the incremental build, not a clean
+rebuild (which previously reported two `LNK4075` warnings).
+
+**The revised implementation has a verified Dry pass, but no PnP fault
 injection or hardware validation yet.** The prior 12/12 result belongs to
 the earlier IRQ gating commit only. The added source contracts are
 assertions about call presence and ordering, not proofs of concurrency safety.
