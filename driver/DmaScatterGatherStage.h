@@ -20,6 +20,7 @@ typedef struct _LECS65_SG_STAGE {
     PDMA_ADAPTER Adapter;             /* Borrowed, not reference-counted. */
     PDEVICE_OBJECT DeviceObject;     /* Object-ref retained on submission. */
     PMDL SourceMdl;                  /* Borrowed; owner must keep pinned. */
+    ULONG RequestedLength;            /* The complete mapped MDL byte span. */
     PSCATTER_GATHER_LIST List;
     KSPIN_LOCK Lock;
     BOOLEAN CallbackComplete;        /* Notification, not callback retirement. */
