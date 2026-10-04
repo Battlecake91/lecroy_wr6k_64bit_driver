@@ -167,7 +167,7 @@ Test-Contract "START_DEVICE requires a connected IRQ before publishing device in
     $startMatch.Groups[1].Value -match 'irqStatus = LecConnectInterrupt\(devExt\)' -and
     $startMatch.Groups[1].Value -match 'status = irqStatus' -and
     $startMatch.Groups[1].Value -match 'LecUnmapBars\(devExt\)' -and
-    $startMatch.Groups[1].Value -match '(?s)else\s*\{\s*devExt->Started = TRUE;\s*LecEnableInterfaces\(devExt\)'
+    $startMatch.Groups[1].Value -match '(?s)else\s*\{\s*devExt->Started = TRUE;\s*LecSetIoctlAdmission\(devExt, TRUE\);\s*LecEnableInterfaces\(devExt\)'
 }
 
 Test-Contract "both native DMA launch paths reject absent interrupts" {
