@@ -1,64 +1,10 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: 66d20f59324d2b6c6c60883819521ac845a89d69
+Source commit: e5730de95c22aff8149c7e5c980e442d3249d5ca
 Program: LecS65AcqDrv.sys
 
 Targets:
-  10c34
-  asm:10c34
-  xref:10c34
-  10c62
-  asm:10c62
-  xref:10c62
-  10c8c
-  asm:10c8c
-  xref:10c8c
-  170ee
-  asm:170ee
-  xref:170ee
-  13914
-  asm:13914
-  xref:13914
-  13934
-  asm:13934
-  xref:13934
-  dwords:1c600:12
-  10c18
-  10cea
-  10d06
-  10d3c
-  10d62
-  10d6e
-  10d7a
-  10d86
-  10eaf
-  11018
-  1150a
-  19a54
-  19a94
-  19ab6
-  19acc
-  19aec
-  19b02
-  19b22
-  19b38
-  19b4e
-  19b7a
-  19d38
-  1de3c
-  dwords:1c4c4:5
-  dwords:1c4d8:6
-  dwords:1c990:1
-  dwords:1c994:4
-  dwords:1c9a4:1
-  dwords:1c9a8:1
-  dwords:1cbb4:4
-  1bc86
-  1bc9e
-  16c74
-  170d0
-  xref:1c500
-  xref:1c62c
-  xref:1c8bc
+  coverage
+  inventory
 
 Exported files:
   00010380_FUN_00010380.c
@@ -1029,6 +975,7 @@ Exported files:
   asm_asm_18194.txt
   asm_asm_19bb8.txt
   asm_asm_1c0a8.txt
+  CODE_COVERAGE.txt
   dwords_dwords_1c4c4_16.txt
   dwords_dwords_1c4c4_5.txt
   dwords_dwords_1c4d8_6.txt
@@ -1203,6 +1150,7 @@ Exported files:
   symbol_KeSetEvent_0.refs.txt
   symbol_PTR_FUN_0001c8bc_0.refs.txt
   symbol_PTR_LAB_0001c9ac_0.refs.txt
+  UNOWNED_CODE_REFS.txt
   xref_xref_107fe.txt
   xref_xref_10c34.txt
   xref_xref_10c62.txt
