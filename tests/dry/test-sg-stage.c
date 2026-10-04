@@ -47,7 +47,7 @@ static void init(void) {
     ops.GetScatterGatherList=fakeGet;
     ops.PutScatterGatherList=fakePut;
     adapter.DmaOperations=&ops;
-    mdl.Va=bytes; mdl.Size=sizeof(bytes); mdl.MdlFlags=MDL_PAGES_LOCKED;
+    mdl.Va=bytes; mdl.Size=(ULONG)sizeof(bytes); mdl.MdlFlags=MDL_PAGES_LOCKED;
     sg.NumberOfElements=2;
     sg.Elements[0].Address.QuadPart=0x10000;
     sg.Elements[0].Length=64;
@@ -75,7 +75,7 @@ int main(void) {
           count==0);
     check("stage launch requires completed mapping",
           LecSgStageMarkLaunched(stage) &&
-          !LecSgStageCopySegments(stage,copy,3,&count));
+          LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS);
     check("active mapping refuses release",
           LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY && puts==0);
     check("closed stage cannot relaunch",!LecSgStageMarkLaunched(stage));
