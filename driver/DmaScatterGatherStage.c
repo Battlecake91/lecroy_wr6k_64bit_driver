@@ -148,12 +148,14 @@ LecSgStageRelease(
 
     if (Stage == NULL) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Stage->Lock, &irql);
+    /*
+     * The caller's ProposedIdle does not certify callback retirement.
+     * Until a joint rundown exists, EVERY release request quarantines.
+     */
+    UNREFERENCED_PARAMETER(ProvenIdle);
     Stage->Closing = TRUE;
-
-    if (!ProvenIdle) {
-        Stage->Unsafe = TRUE;
-        LecMapOwnerUncertain(&Stage->Owner);
-    }
+    Stage->Unsafe = TRUE;
+    LecMapOwnerUncertain(&Stage->Owner);
 
     /*
      * Even if device idle were proven, CallbackComplete only means
