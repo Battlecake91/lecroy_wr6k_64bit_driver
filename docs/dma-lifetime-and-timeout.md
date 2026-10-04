@@ -104,8 +104,8 @@ and boundary crossings rather than truncating pointers.
 A standalone MSVC test binary (`tests/dry/test-dma-layout.c`) is now
 part of the Dry regression runner. It exercises synthetic mapped
 device-address segments only; **it proves neither actual adapter
-mapping nor physical bus-idle**. The new version is not yet validated
-on Windows. Next implementation milestone: acquire and retain the
+mapping nor physical bus-idle**. The encoder passed the owner's 2026-10-04 Windows Dry run
+(13/13 native layout tests); this is not an actual DMA mapping test. Next implementation milestone: acquire and retain the
 appropriate `DMA_ADAPTER`, obtain mappings for user buffer MDLs
 and common-buffer descriptor pages, and replace the old PFN table
 builder only when resource ownership and abort/idle guarantees
@@ -132,7 +132,8 @@ no transfer MDL scatter/gather mapping or `GetScatterGatherList` callback
 lifetime has been introduced. The existing PFN-based active path is still
 unmodified. Review callback IRQL, limited map registers, owner lifetimes,
 STOP/REMOVE and reset/idle requirements before wiring this into DMA.
-The new source is pending Windows WDK compilation and Dry verification.
+The adapter stage compiled successfully in the owner's Windows WDK Dry
+run (2026-10-04). It has not been exercised by runtime DMA requests.
 
 Windows references: [IoGetDmaAdapter](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdmaadapter),
 [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
@@ -158,9 +159,10 @@ Its methods are deliberately **not connected** to the active driver
 or to the staged WDM `GetScatterGatherList` implementation. The
 callback ownership and serialization protocol (including IRQL and
 device/remove lifetime references) must be reviewed before actual
-WDM integration. Tests and WDK build of this new revision are pending.
+WDM integration. Owner's Windows WDK/Dry run verified this inactive model on
+2026-10-04 (17/17 native ownership tests), not concurrent DMA/DDI behavior.
 
-## Inactive WDM scatter/gather callback bridge (pending WDK validation)
+## Inactive WDM scatter/gather callback bridge (WDK compiled; runtime unverified)
 
 The newly staged `DmaScatterGatherStage.c/.h` wraps the WDM
 `GetScatterGatherList` / `PutScatterGatherList` functions without
@@ -191,8 +193,13 @@ Before enabling this code, the following blockers must be resolved:
 - Observe that `PutScatterGatherList` flushes/unmaps resources, so
   it may only be used after real hardware DMA is demonstrably finished.
 
-The source stage itself has **not** been Windows-built or Dry tested
-at this revision. It provides no supported PCI or IOMMU path yet.
+The source stage was compiled and linked by the Windows WDK on
+2026-10-04; the full Dry runner reported 24/24 source contracts,
+13/13 layout tests and 17/17 mapping-ownership tests.
+**No actual WDM SG callback was exercised.** The unresolved detailed
+callback/removal contract is isolated in the read-only workstream
+`docs/handoffs/wdm-sg-callback-ownership.md`. Do not activate staged
+code until that review is implemented and validated.
 
 ## Remaining P0 work, no shortcuts
 
