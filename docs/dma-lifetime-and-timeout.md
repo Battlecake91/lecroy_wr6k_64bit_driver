@@ -215,7 +215,7 @@ quarantined rather than being truncated. Both synchronous and delayed
 callbacks, submitted
 status and submission failure transition under the same spin lock.
 `LecSgStageRelease` marks closing and permanently quarantines unknown
-DMA. **It currently refuses ALL releases**, even `ProvenIdle=TRUE`:
+DMA. **It also refuses ALL DMA launches and ALL releases**, even `ProvenIdle=TRUE`:
 callback publication is not proof of callback retirement and there is
 no verified joint MDL/adapter/FDO rundown. Therefore it never calls
 `PutScatterGatherList` or deallocates a stage or device-object
