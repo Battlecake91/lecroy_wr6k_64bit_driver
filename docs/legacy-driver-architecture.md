@@ -8,10 +8,12 @@ the complete legacy driver is being classified, including LeCroy-specific
 hardware logic, WDM/DriverWorks infrastructure, PnP/power state machines,
 allocation/string/container helpers and compiler/runtime support.
 
-A complete pseudocode snapshot for every function currently recognized by
-Ghidra was exported in commit
-`4e622dc2528127cce13ae35146554a9b2ada2982`. Ghidra currently recognizes
-420 functions. Raw x86 assembly remains the authority when the decompiler loses
+The original **420 recognized internal functions** were snapshotted in commit
+`4e622dc2528127cce13ae35146554a9b2ada2982`.
+The first missing-function recovery pass (`9d3ac5b1`) added **25
+new functions**, bringing Ghidra's current internal count to **445**.
+All 445 have selected pseudocode and a [semantic function-map entry](legacy-driver-function-map.md).
+Raw x86 assembly remains the authority when the decompiler loses
 calling-convention, stack-argument, fallthrough or bit-level detail.
 
 ## Top-level architecture
@@ -633,3 +635,35 @@ The first whole-executable byte-classification pass shows
 categorized by family, but short independent functions/virtual thunks
 still require function-boundary recovery and separate decompilation.
 This is not yet 100% executable-byte provenance.
+
+## First recovered-function pass: ABI and code-coverage implications
+
+The curated Ghidra `recover:` run at `9d3ac5b1` created
+25 additional functions from separately referenced orphan ASM
+boundaries, including the complete master device-control dispatcher
+`0x11018` and its associated IRP, DPC, DriverWorks and SEH
+routines. Of the **48,035** decoded instruction bytes in executable
+memory blocks, **46,755** are now owned by internal functions;
+**1,280** remain outside recognized bodies in **69** clusters.
+
+The recovered decompiler code confirms
+`KeWaitForSingleObject` / `KeReleaseMutex` serialization around
+all 27 original top-level IOCTL cases. The unknown-IOCTL default
+contains a **real legacy completion-status bug**: it first writes
+`STATUS_INVALID_PARAMETER`, then allows `FUN_00010798`
+to overwrite the status with the successful mutex-wait result
+`STATUS_SUCCESS`. This is documented with the exact x86
+branches and completion helper in [ioctl-map.md](ioctl-map.md).
+It must be treated as a known legacy quirk, not as a requirement
+for a safe x64 implementation.
+
+`UNDEFINED_EXECUTABLE_RANGES.txt` identifies 424 still-undefined
+intervals (1,116 bytes). Most sampled spans are `CC` alignment,
+zero padding, or embedded strings/register names, but there are at
+least three plausible **real unrecognized code routines** at
+`0x18E58`, `0x18EDB`, `0x1C280`, likely PnP/power
+string-table lookup and SEH exception helper code. The second staged
+recovery now chooses 79 additional directly referenced thunks plus
+whitelisted decode of just those three candidates. Successful
+decode and creation have not yet been tested; their results must be
+checked before claiming any new coverage.
