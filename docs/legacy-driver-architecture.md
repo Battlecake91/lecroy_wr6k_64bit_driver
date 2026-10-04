@@ -247,8 +247,8 @@ Known descriptors include:
 
 ```text
 +0x000  START / acquisition firmware/start register
-+0x004  CLRERR
-+0x008  CLRIRQ
++0x004  ERRS
++0x008  ERRM
 +0x040  SGTA / acquisition DMA descriptor-table address
 +0x044  IIMTC
 +0x048  IIMCL
@@ -260,6 +260,8 @@ Known descriptors include:
 ### BAR1 / acquisition-control region
 
 ```text
++0x004  CLRERR
++0x008  CLRIRQ
 +0x00   ITMODE
 +0x0C   ACQFVER
 +0x20   JTAGNUM
@@ -426,7 +428,7 @@ The full family/opcode and TX/RX protocol reconstruction is documented in
 For every input byte it:
 
 1. reads BAR1 GPIODAT;
-2. replaces only mask `0x0E00` (bits 15:13);
+2. replaces only mask `0xE000` (bits 15:13);
 3. takes input bits 7:5 and shifts them into that field;
 4. writes the resulting full GPIODAT DWORD.
 
