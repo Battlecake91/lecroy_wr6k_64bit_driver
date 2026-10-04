@@ -32,6 +32,56 @@ This is **partial damage containment**, not DMA engine stop/recovery:
 
 The defensive patch has not been executed under Driver Verifier, in a DMA fault injection simulation, or on real PCI hardware. The previously owner-verified 17/17 Dry pass **predates** this new patch; do not assign it to the modified code.
 
+## Windows DMA-adapter migration design (unimplemented)
+
+Current descriptor builder: `driver/Acquisition.c:LecBuildDescriptorTable`.
+The board consumes an 8-byte descriptor (`CountDwords` and a **32-bit device
+address**) and a page-chained descriptor table. Each 4 KiB descriptor page has
+512 slots; slot 511 chains to the **next device-visible table page** with a
+zero count. Both data slots and chain slots currently derive addresses
+directly from `MmGetMdlPfnArray`, assuming CPU PFN addresses are usable on
+the PCI bus. Checking `<= 0xFFFFFFFF` does not establish this.
+
+Migration implementation sequence, contingent on driver/DMA model review:
+
+1. At device setup, establish a `DEVICE_DESCRIPTION` that matches the
+   WR6k's 32-bit bus-master addressing and maximum fragment/transfer limits.
+   Use `IoGetDmaAdapter`; release its reference only after no DMA mappings,
+   buffers or asynchronous callbacks remain.
+2. Keep each requested transfer's MDL lifetime separate from its DMA mapping
+   lifetime. Use DMA-operations scatter/gather mapping (for example,
+   `GetScatterGatherList`/`PutScatterGatherList`) and populate the board
+   descriptors from the returned **logical/device** addresses and lengths,
+   not from PFNs. Handle callbacks, alignment, fragmentation, allocation
+   failure, buffer offsets and the board's dword unit restrictions. Preserve
+   the x86-compatible command and opaque-token ABI.
+3. Allocate a suitable DMA-visible common buffer (or another fully verified
+   mapping) for hardware-read descriptor pages. The current `0x33000` byte
+   nonpaged-pool buffer and its PFN-linked pages are not guaranteed to be
+   device contiguous or mapped for DMA. Prove each chain link and initial
+   SGTA device address, maintain device-address bounds and prevent table
+   overflow. Avoid assuming a common buffer is inherently cache coherent
+   without the platform's DMA API contract.
+4. Map once per valid DMA ownership period, and unmap only after physical
+   DMA inactivity is established. An unknown-active transfer must **retain
+   DMA mapping objects and descriptor pages** along with locked MDLs;
+   `PutScatterGatherList` is not a substitute for abort. The existing
+   emergency pinned-page quarantine is not sufficient once an IOMMU mapping
+   is in use. Plan owner state that cannot disappear at FDO REMOVE.
+5. Software-only verification should use an injectable/mockable mapping
+   boundary: discontiguous and above-4-GiB CPU PFNs mapped to legal
+   below-4-GiB device addresses, segment splits, table-page chaining,
+   capacity errors, mapping callbacks racing with STOP, and unknown-active
+   quarantine without unmapping. Runtime behavior under IOMMU and the
+   physical DMA-idle guarantee still require recoverable hardware.
+
+References: Microsoft Learn,
+[Using Scatter/Gather DMA](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-scatter-gather-dma),
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list),
+[Map Registers](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/map-registers).
+This section is a **design plan only**. No DMA adapter was added and no
+IOMMU compatibility is claimed.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
