@@ -19,10 +19,13 @@ $driverSource = Join-Path $repo "driver\Driver.c"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
 $deviceSource = Join-Path $repo "driver\Device.c"
 $acquisitionSource = Join-Path $repo "driver\Acquisition.c"
+$layoutSource = Join-Path $repo "driver\DmaLayout.c"
+$layoutHeader = Join-Path $repo "driver\DmaLayout.h"
+$driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -34,6 +37,9 @@ $driverSourceText = Get-Content -LiteralPath $driverSource -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
 $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
+$layoutText = Get-Content -LiteralPath $layoutSource -Raw
+$layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
+$driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
 $script:Checks = 0
@@ -256,6 +262,16 @@ Test-Contract "unknown DMA memory cannot be released by cleanup" {
 Test-Contract "synthetic completion bit cannot satisfy a DMA wait" {
     $acquisitionText -match 'if \(\(PendingMask & 0x01UL\) != 0\)\s*\{\s*return STATUS_INVALID_PARAMETER;' -and
     $acquisitionText -match 'LecInjectLegacyPendingAndDispatch'
+}
+
+Test-Contract "adapter-logical descriptor encoder is compiled but not activated" {
+    $driverProjectText -match 'ClCompile Include="DmaLayout.c"' -and
+    $layoutHeaderText -match 'LecDmaEncodeMappedSegments' -and
+    $layoutText -match 'LECS65_DMA_LAYOUT_SLOTS_PER_PAGE' -and
+    $layoutText -match 'TableDeviceAddress' -and
+    $layoutText -notmatch 'MmGetMdlPfnArray|MmGetPhysicalAddress' -and
+    $acquisitionText -match 'MmGetMdlPfnArray' -and
+    $ioctlText -notmatch 'LecDmaEncodeMappedSegments'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
