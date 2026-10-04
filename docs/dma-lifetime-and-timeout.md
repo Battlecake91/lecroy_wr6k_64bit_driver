@@ -82,6 +82,35 @@ References: Microsoft Learn,
 This section is a **design plan only**. No DMA adapter was added and no
 IOMMU compatibility is claimed.
 
+## Hardware-independent encoder staging
+
+A pure `LecDmaEncodeMappedSegments` function is now provided in
+`driver/DmaLayout.c` and `driver/DmaLayout.h`. The driver project
+compiles the new source, but does **not** call it from the live
+acquisition paths: existing `LecBuildDescriptorTable` still derives
+PFNs. This separation permits validating the descriptor-ABI encoder
+before committing to a DMA adapter lifetime redesign.
+
+Inputs are **already mapped device-logical** scatter/gather segments,
+not CPU PFNs. A contiguous, 4-KiB-aligned common-buffer logical base
+is required for the encoded descriptor table; 512 descriptor slots
+occupy each 4-KiB page, slot 511 is used as a link to the next page
+when needed (including before the end marker), and the terminator
+has zero count and zero address. Entries are restricted to 4-byte
+alignment, 32-bit device addresses and 4-KiB-bounded fragments.
+The encoder rejects wrong totals, incomplete tables, invalid addresses
+and boundary crossings rather than truncating pointers.
+
+A standalone MSVC test binary (`tests/dry/test-dma-layout.c`) is now
+part of the Dry regression runner. It exercises synthetic mapped
+device-address segments only; **it proves neither actual adapter
+mapping nor physical bus-idle**. The new version is not yet validated
+on Windows. Next implementation milestone: acquire and retain the
+appropriate `DMA_ADAPTER`, obtain mappings for user buffer MDLs
+and common-buffer descriptor pages, and replace the old PFN table
+builder only when resource ownership and abort/idle guarantees
+are satisfactorily modeled.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
