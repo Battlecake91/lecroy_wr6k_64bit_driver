@@ -138,6 +138,10 @@ LecS65AddDevice(
     devExt = (PLECS65_DEVICE_EXTENSION)deviceObject->DeviceExtension;
     RtlZeroMemory(devExt, sizeof(*devExt));
     IoInitializeRemoveLock(&devExt->RemoveLock, LECS65_TAG, 0, 0);
+    KeInitializeSpinLock(&devExt->IoAdmissionLock);
+    KeInitializeEvent(&devExt->IoIdleEvent, NotificationEvent, TRUE);
+    devExt->ActiveIoctls = 0;
+    devExt->AcceptIoctls = FALSE;
     /* Original BAR0 ERRM register wrapper starts with cached 0xFFFFFFFF. */
     devExt->LegacyErrmShadow = (LONG)0xFFFFFFFFUL;
     KeInitializeMutex(&devExt->DallasMutex, 0);
@@ -210,6 +214,59 @@ LecS65Unload(
 {
     UNREFERENCED_PARAMETER(DriverObject);
     LecTrace("Unload\n");
+}
+
+/*
+ * The admission lock gives STOP an atomic boundary: once disabled,
+ * no new IOCTL may enter the hardware/transfer/event paths. STOP waits
+ * for already admitted synchronous IOCTLs before freeing their resources.
+ * This is distinct from the remove lock, which protects the device object.
+ */
+BOOLEAN
+LecEnterIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    KIRQL irql;
+    BOOLEAN accepted;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    accepted = DevExt->AcceptIoctls;
+    if (accepted) {
+        if (DevExt->ActiveIoctls++ == 0) {
+            KeClearEvent(&DevExt->IoIdleEvent);
+        }
+    }
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+    return accepted;
+}
+
+VOID
+LecLeaveIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    NT_ASSERT(DevExt->ActiveIoctls != 0);
+    if (--DevExt->ActiveIoctls == 0) {
+        KeSetEvent(&DevExt->IoIdleEvent, IO_NO_INCREMENT, FALSE);
+    }
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+}
+
+VOID
+LecSetIoctlAdmission(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN Enable)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    DevExt->AcceptIoctls = Enable;
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+}
+
+VOID
+LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    /* Called at PASSIVE_LEVEL only after admission has been disabled. */
+    (VOID)KeWaitForSingleObject(
+        &DevExt->IoIdleEvent, Executive, KernelMode, FALSE, NULL);
 }
 
 /*
