@@ -198,6 +198,19 @@ scheduling was exercised.
 The existing active acquisition still derives 32-bit addresses from
 CPU PFNs. WDM scatter/gather mapping and actual recovery remain unimplemented.
 
+### WDM SG callback bridge (new, unverified)
+
+The current draft additionally compiles `DmaScatterGatherStage.c`,
+an **inactive** per-MDL `GetScatterGatherList` callback bridge.
+It records the returned SG mapping under a spin lock and holds a device
+reference until mapping release. `PutScatterGatherList` is guarded
+against missing callback or unknown DMA idle. The synthetic state
+model remains separate from real physical bus-stop proof.
+A source contract asserts that PnP, IOCTL and acquisition do not
+call the bridge. Its WDK build and Dry regression have **not yet been
+run**. The last verified full Dry suite is 23/23 source contracts,
+13/13 layout tests and 17/17 ownership tests on the previous revision.
+
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
   software pointers and descriptors are released. Establish a proven
