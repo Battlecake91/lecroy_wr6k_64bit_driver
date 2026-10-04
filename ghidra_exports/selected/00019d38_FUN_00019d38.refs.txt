@@ -1,0 +1,7 @@
+FUNCTION 00019d38 FUN_00019d38
+INCOMING
+0001c500 <no-function>
+0001c9f8 <no-function>
+0001ca88 <no-function>
+0001ca00 <no-function>
+OUTGOING_FUNCTIONS

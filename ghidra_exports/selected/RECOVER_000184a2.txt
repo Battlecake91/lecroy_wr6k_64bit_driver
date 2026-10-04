@@ -1,0 +1,4 @@
+REVIEWED_ORPHAN_FUNCTION_RECOVERY 000184a2
+CREATED FUN_000184a2
+BODY_ADDRESSES 5
+This recovery updates the local Ghidra project.

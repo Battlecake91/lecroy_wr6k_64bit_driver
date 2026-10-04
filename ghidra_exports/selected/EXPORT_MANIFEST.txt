@@ -1,33 +1,90 @@
 ﻿LeCroy Ghidra selected export manifest
-Source commit: bb1db429c50a5d167fc14bb0964247e6b2ea28c7
+Source commit: 81f409c50a7e452bab9426644677a3b336a02439
 Program: LecS65AcqDrv.sys
 
 Targets:
-  recover:10406
-  recover:1041c
-  recover:1044c
-  recover:10490
-  recover:104a0
-  recover:183ee
-  recover:1085e
-  recover:10872
-  recover:10886
-  recover:1089a
-  recover:108ae
-  recover:108c2
-  recover:10b30
-  recover:10eaf
-  recover:11018
-  recover:118e4
-  recover:12ec2
-  recover:197d0
-  recover:1b00e
-  recover:1be72
-  recover:1c118
-  recover:1c204
-  recover:1d380
-  recover:1d3c4
-  recover:1d3d0
+  recover:10c18
+  recover:10c34
+  recover:10c62
+  recover:10c8c
+  recover:10cea
+  recover:10d06
+  recover:10d3c
+  recover:10d62
+  recover:10d6e
+  recover:10d7a
+  recover:10d86
+  recover:114f2
+  recover:1150a
+  recover:1151e
+  recover:11a7a
+  recover:13914
+  recover:13934
+  recover:16c74
+  recover:170d0
+  recover:170ee
+  recover:1840a
+  recover:18410
+  recover:18416
+  recover:1841c
+  recover:18422
+  recover:18428
+  recover:18430
+  recover:18436
+  recover:1843c
+  recover:18442
+  recover:18448
+  recover:1844e
+  recover:18454
+  recover:1845a
+  recover:18460
+  recover:18466
+  recover:1846c
+  recover:18472
+  recover:18478
+  recover:1847e
+  recover:18484
+  recover:1848a
+  recover:18490
+  recover:18496
+  recover:1849c
+  recover:184a2
+  recover:184a8
+  recover:184ae
+  recover:184b4
+  recover:184ba
+  recover:184f6
+  recover:19a1e
+  recover:19a34
+  recover:19a54
+  recover:19a74
+  recover:19a94
+  recover:19ab6
+  recover:19acc
+  recover:19aec
+  recover:19b02
+  recover:19b22
+  recover:19b38
+  recover:19b4e
+  recover:19b64
+  recover:19b7a
+  recover:19c44
+  recover:19c54
+  recover:19c64
+  recover:19c80
+  recover:19d38
+  recover:1a07e
+  recover:1a09a
+  recover:1a3fc
+  recover:1a410
+  recover:1bc86
+  recover:1bc9e
+  recover:1c2d4
+  recover:1c2e8
+  recover:1de3c
+  decode:18e58
+  decode:18edb
+  decode:1c280
   inventory
   coverage
 
@@ -122,10 +179,32 @@ Exported files:
   00010b30_FUN_00010b30.refs.txt
   00010b3c_FUN_00010b3c.c
   00010b3c_FUN_00010b3c.refs.txt
+  00010c18_FUN_00010c18.c
+  00010c18_FUN_00010c18.refs.txt
+  00010c34_FUN_00010c34.c
+  00010c34_FUN_00010c34.refs.txt
+  00010c62_FUN_00010c62.c
+  00010c62_FUN_00010c62.refs.txt
+  00010c8c_FUN_00010c8c.c
+  00010c8c_FUN_00010c8c.refs.txt
   00010c98_FUN_00010c98.c
   00010c98_FUN_00010c98.refs.txt
+  00010cea_FUN_00010cea.c
+  00010cea_FUN_00010cea.refs.txt
+  00010d06_FUN_00010d06.c
+  00010d06_FUN_00010d06.refs.txt
+  00010d3c_FUN_00010d3c.c
+  00010d3c_FUN_00010d3c.refs.txt
   00010d46_FUN_00010d46.c
   00010d46_FUN_00010d46.refs.txt
+  00010d62_FUN_00010d62.c
+  00010d62_FUN_00010d62.refs.txt
+  00010d6e_FUN_00010d6e.c
+  00010d6e_FUN_00010d6e.refs.txt
+  00010d7a_FUN_00010d7a.c
+  00010d7a_FUN_00010d7a.refs.txt
+  00010d86_FUN_00010d86.c
+  00010d86_FUN_00010d86.refs.txt
   00010d9a_FUN_00010d9a.c
   00010d9a_FUN_00010d9a.refs.txt
   00010da0_FUN_00010da0.c
@@ -140,6 +219,12 @@ Exported files:
   00011018_FUN_00011018.refs.txt
   00011390_FUN_00011390.c
   00011390_FUN_00011390.refs.txt
+  000114f2_FUN_000114f2.c
+  000114f2_FUN_000114f2.refs.txt
+  0001150a_FUN_0001150a.c
+  0001150a_FUN_0001150a.refs.txt
+  0001151e_FUN_0001151e.c
+  0001151e_FUN_0001151e.refs.txt
   00011532_FUN_00011532.c
   00011532_FUN_00011532.refs.txt
   000115c4_FUN_000115c4.c
@@ -162,6 +247,8 @@ Exported files:
   00011a00_FUN_00011a00.refs.txt
   00011a30_FUN_00011a30.c
   00011a30_FUN_00011a30.refs.txt
+  00011a7a_FUN_00011a7a.c
+  00011a7a_FUN_00011a7a.refs.txt
   00011a88_FUN_00011a88.c
   00011a88_FUN_00011a88.refs.txt
   00011aa6_FUN_00011aa6.c
@@ -306,6 +393,10 @@ Exported files:
   000138b2_FUN_000138b2.refs.txt
   000138d4_FUN_000138d4.c
   000138d4_FUN_000138d4.refs.txt
+  00013914_FUN_00013914.c
+  00013914_FUN_00013914.refs.txt
+  00013934_FUN_00013934.c
+  00013934_FUN_00013934.refs.txt
   00013954_FUN_00013954.c
   00013954_FUN_00013954.refs.txt
   00013a2e_FUN_00013a2e.c
@@ -498,6 +589,8 @@ Exported files:
   00016c62_FUN_00016c62.refs.txt
   00016c6a_FUN_00016c6a.c
   00016c6a_FUN_00016c6a.refs.txt
+  00016c74_FUN_00016c74.c
+  00016c74_FUN_00016c74.refs.txt
   00016c92_FUN_00016c92.c
   00016c92_FUN_00016c92.refs.txt
   00016ca4_FUN_00016ca4.c
@@ -522,6 +615,10 @@ Exported files:
   000170ba_FUN_000170ba.refs.txt
   000170c8_FUN_000170c8.c
   000170c8_FUN_000170c8.refs.txt
+  000170d0_FUN_000170d0.c
+  000170d0_FUN_000170d0.refs.txt
+  000170ee_FUN_000170ee.c
+  000170ee_FUN_000170ee.refs.txt
   000170fa_FUN_000170fa.c
   000170fa_FUN_000170fa.refs.txt
   00017184_FUN_00017184.c
@@ -616,8 +713,70 @@ Exported files:
   000183ce_FUN_000183ce.refs.txt
   000183ee_FUN_000183ee.c
   000183ee_FUN_000183ee.refs.txt
+  0001840a_FUN_0001840a.c
+  0001840a_FUN_0001840a.refs.txt
+  00018410_FUN_00018410.c
+  00018410_FUN_00018410.refs.txt
+  00018416_FUN_00018416.c
+  00018416_FUN_00018416.refs.txt
+  0001841c_FUN_0001841c.c
+  0001841c_FUN_0001841c.refs.txt
+  00018422_FUN_00018422.c
+  00018422_FUN_00018422.refs.txt
+  00018428_FUN_00018428.c
+  00018428_FUN_00018428.refs.txt
+  00018430_FUN_00018430.c
+  00018430_FUN_00018430.refs.txt
+  00018436_FUN_00018436.c
+  00018436_FUN_00018436.refs.txt
+  0001843c_FUN_0001843c.c
+  0001843c_FUN_0001843c.refs.txt
+  00018442_FUN_00018442.c
+  00018442_FUN_00018442.refs.txt
+  00018448_FUN_00018448.c
+  00018448_FUN_00018448.refs.txt
+  0001844e_FUN_0001844e.c
+  0001844e_FUN_0001844e.refs.txt
+  00018454_FUN_00018454.c
+  00018454_FUN_00018454.refs.txt
+  0001845a_FUN_0001845a.c
+  0001845a_FUN_0001845a.refs.txt
+  00018460_FUN_00018460.c
+  00018460_FUN_00018460.refs.txt
+  00018466_FUN_00018466.c
+  00018466_FUN_00018466.refs.txt
+  0001846c_FUN_0001846c.c
+  0001846c_FUN_0001846c.refs.txt
+  00018472_FUN_00018472.c
+  00018472_FUN_00018472.refs.txt
+  00018478_FUN_00018478.c
+  00018478_FUN_00018478.refs.txt
+  0001847e_FUN_0001847e.c
+  0001847e_FUN_0001847e.refs.txt
+  00018484_FUN_00018484.c
+  00018484_FUN_00018484.refs.txt
+  0001848a_FUN_0001848a.c
+  0001848a_FUN_0001848a.refs.txt
+  00018490_FUN_00018490.c
+  00018490_FUN_00018490.refs.txt
+  00018496_FUN_00018496.c
+  00018496_FUN_00018496.refs.txt
+  0001849c_FUN_0001849c.c
+  0001849c_FUN_0001849c.refs.txt
+  000184a2_FUN_000184a2.c
+  000184a2_FUN_000184a2.refs.txt
+  000184a8_FUN_000184a8.c
+  000184a8_FUN_000184a8.refs.txt
+  000184ae_FUN_000184ae.c
+  000184ae_FUN_000184ae.refs.txt
+  000184b4_FUN_000184b4.c
+  000184b4_FUN_000184b4.refs.txt
+  000184ba_FUN_000184ba.c
+  000184ba_FUN_000184ba.refs.txt
   000184c0_FUN_000184c0.c
   000184c0_FUN_000184c0.refs.txt
+  000184f6_FUN_000184f6.c
+  000184f6_FUN_000184f6.refs.txt
   000184fa_FUN_000184fa.c
   000184fa_FUN_000184fa.refs.txt
   0001851c_FUN_0001851c.c
@@ -654,6 +813,10 @@ Exported files:
   00018a1c_FUN_00018a1c.refs.txt
   00018b9e_FUN_00018b9e.c
   00018b9e_FUN_00018b9e.refs.txt
+  00018e58_FUN_00018e58.c
+  00018e58_FUN_00018e58.refs.txt
+  00018edb_FUN_00018edb.c
+  00018edb_FUN_00018edb.refs.txt
   00018fbf_FUN_00018fbf.c
   00018fbf_FUN_00018fbf.refs.txt
   000190ad_FUN_000190ad.c
@@ -702,6 +865,34 @@ Exported files:
   000199aa_FUN_000199aa.refs.txt
   00019a00_FUN_00019a00.c
   00019a00_FUN_00019a00.refs.txt
+  00019a1e_FUN_00019a1e.c
+  00019a1e_FUN_00019a1e.refs.txt
+  00019a34_FUN_00019a34.c
+  00019a34_FUN_00019a34.refs.txt
+  00019a54_FUN_00019a54.c
+  00019a54_FUN_00019a54.refs.txt
+  00019a74_FUN_00019a74.c
+  00019a74_FUN_00019a74.refs.txt
+  00019a94_FUN_00019a94.c
+  00019a94_FUN_00019a94.refs.txt
+  00019ab6_FUN_00019ab6.c
+  00019ab6_FUN_00019ab6.refs.txt
+  00019acc_FUN_00019acc.c
+  00019acc_FUN_00019acc.refs.txt
+  00019aec_FUN_00019aec.c
+  00019aec_FUN_00019aec.refs.txt
+  00019b02_FUN_00019b02.c
+  00019b02_FUN_00019b02.refs.txt
+  00019b22_FUN_00019b22.c
+  00019b22_FUN_00019b22.refs.txt
+  00019b38_FUN_00019b38.c
+  00019b38_FUN_00019b38.refs.txt
+  00019b4e_FUN_00019b4e.c
+  00019b4e_FUN_00019b4e.refs.txt
+  00019b64_FUN_00019b64.c
+  00019b64_FUN_00019b64.refs.txt
+  00019b7a_FUN_00019b7a.c
+  00019b7a_FUN_00019b7a.refs.txt
   00019b82_FUN_00019b82.c
   00019b82_FUN_00019b82.refs.txt
   00019ba6_FUN_00019ba6.c
@@ -716,10 +907,20 @@ Exported files:
   00019c08_FUN_00019c08.refs.txt
   00019c26_FUN_00019c26.c
   00019c26_FUN_00019c26.refs.txt
+  00019c44_FUN_00019c44.c
+  00019c44_FUN_00019c44.refs.txt
+  00019c54_FUN_00019c54.c
+  00019c54_FUN_00019c54.refs.txt
+  00019c64_FUN_00019c64.c
+  00019c64_FUN_00019c64.refs.txt
+  00019c80_FUN_00019c80.c
+  00019c80_FUN_00019c80.refs.txt
   00019c9c_FUN_00019c9c.c
   00019c9c_FUN_00019c9c.refs.txt
   00019ccc_FUN_00019ccc.c
   00019ccc_FUN_00019ccc.refs.txt
+  00019d38_FUN_00019d38.c
+  00019d38_FUN_00019d38.refs.txt
   00019d44_FUN_00019d44.c
   00019d44_FUN_00019d44.refs.txt
   00019d84_FUN_00019d84.c
@@ -746,6 +947,10 @@ Exported files:
   0001a05e_FUN_0001a05e.refs.txt
   0001a07c_FUN_0001a07c.c
   0001a07c_FUN_0001a07c.refs.txt
+  0001a07e_FUN_0001a07e.c
+  0001a07e_FUN_0001a07e.refs.txt
+  0001a09a_FUN_0001a09a.c
+  0001a09a_FUN_0001a09a.refs.txt
   0001a0b6_FUN_0001a0b6.c
   0001a0b6_FUN_0001a0b6.refs.txt
   0001a17a_FUN_0001a17a.c
@@ -758,6 +963,10 @@ Exported files:
   0001a276_FUN_0001a276.refs.txt
   0001a342_FUN_0001a342.c
   0001a342_FUN_0001a342.refs.txt
+  0001a3fc_FUN_0001a3fc.c
+  0001a3fc_FUN_0001a3fc.refs.txt
+  0001a410_FUN_0001a410.c
+  0001a410_FUN_0001a410.refs.txt
   0001a420_FUN_0001a420.c
   0001a420_FUN_0001a420.refs.txt
   0001a6ea_FUN_0001a6ea.c
@@ -792,6 +1001,10 @@ Exported files:
   0001bc0e_FUN_0001bc0e.refs.txt
   0001bc5e_FUN_0001bc5e.c
   0001bc5e_FUN_0001bc5e.refs.txt
+  0001bc86_FUN_0001bc86.c
+  0001bc86_FUN_0001bc86.refs.txt
+  0001bc9e_FUN_0001bc9e.c
+  0001bc9e_FUN_0001bc9e.refs.txt
   0001bcba_FUN_0001bcba.c
   0001bcba_FUN_0001bcba.refs.txt
   0001bcce_FUN_0001bcce.c
@@ -858,12 +1071,18 @@ Exported files:
   0001c204_FUN_0001c204.refs.txt
   0001c226_FUN_0001c226.c
   0001c226_FUN_0001c226.refs.txt
+  0001c280_FUN_0001c280.c
+  0001c280_FUN_0001c280.refs.txt
   0001c2a4_RtlUnwind.c
   0001c2a4_RtlUnwind.refs.txt
   0001c2aa_FUN_0001c2aa.c
   0001c2aa_FUN_0001c2aa.refs.txt
   0001c2b6_FUN_0001c2b6.c
   0001c2b6_FUN_0001c2b6.refs.txt
+  0001c2d4_FUN_0001c2d4.c
+  0001c2d4_FUN_0001c2d4.refs.txt
+  0001c2e8_FUN_0001c2e8.c
+  0001c2e8_FUN_0001c2e8.refs.txt
   0001d380_FUN_0001d380.c
   0001d380_FUN_0001d380.refs.txt
   0001d3a4_FUN_0001d3a4.c
@@ -918,6 +1137,8 @@ Exported files:
   0001dd98_FUN_0001dd98.refs.txt
   0001ddc6_FUN_0001ddc6.c
   0001ddc6_FUN_0001ddc6.refs.txt
+  0001de3c_FUN_0001de3c.c
+  0001de3c_FUN_0001de3c.refs.txt
   0001de46_FUN_0001de46.c
   0001de46_FUN_0001de46.refs.txt
   0001df42_entry.c
@@ -1051,6 +1272,9 @@ Exported files:
   asm_asm_19bb8.txt
   asm_asm_1c0a8.txt
   CODE_COVERAGE.txt
+  DECODE_00018e58.txt
+  DECODE_00018edb.txt
+  DECODE_0001c280.txt
   dwords_dwords_1c4c4_16.txt
   dwords_dwords_1c4c4_5.txt
   dwords_dwords_1c4d8_6.txt
@@ -1231,19 +1455,101 @@ Exported files:
   RECOVER_000108ae.txt
   RECOVER_000108c2.txt
   RECOVER_00010b30.txt
+  RECOVER_00010c18.txt
+  RECOVER_00010c34.txt
+  RECOVER_00010c62.txt
+  RECOVER_00010c8c.txt
+  RECOVER_00010cea.txt
+  RECOVER_00010d06.txt
+  RECOVER_00010d3c.txt
+  RECOVER_00010d62.txt
+  RECOVER_00010d6e.txt
+  RECOVER_00010d7a.txt
+  RECOVER_00010d86.txt
   RECOVER_00010eaf.txt
   RECOVER_00011018.txt
+  RECOVER_000114f2.txt
+  RECOVER_0001150a.txt
+  RECOVER_0001151e.txt
   RECOVER_000118e4.txt
+  RECOVER_00011a7a.txt
   RECOVER_00012ec2.txt
+  RECOVER_00013914.txt
+  RECOVER_00013934.txt
+  RECOVER_00016c74.txt
+  RECOVER_000170d0.txt
+  RECOVER_000170ee.txt
   RECOVER_000183ee.txt
+  RECOVER_0001840a.txt
+  RECOVER_00018410.txt
+  RECOVER_00018416.txt
+  RECOVER_0001841c.txt
+  RECOVER_00018422.txt
+  RECOVER_00018428.txt
+  RECOVER_00018430.txt
+  RECOVER_00018436.txt
+  RECOVER_0001843c.txt
+  RECOVER_00018442.txt
+  RECOVER_00018448.txt
+  RECOVER_0001844e.txt
+  RECOVER_00018454.txt
+  RECOVER_0001845a.txt
+  RECOVER_00018460.txt
+  RECOVER_00018466.txt
+  RECOVER_0001846c.txt
+  RECOVER_00018472.txt
+  RECOVER_00018478.txt
+  RECOVER_0001847e.txt
+  RECOVER_00018484.txt
+  RECOVER_0001848a.txt
+  RECOVER_00018490.txt
+  RECOVER_00018496.txt
+  RECOVER_0001849c.txt
+  RECOVER_000184a2.txt
+  RECOVER_000184a8.txt
+  RECOVER_000184ae.txt
+  RECOVER_000184b4.txt
+  RECOVER_000184ba.txt
+  RECOVER_000184f6.txt
+  RECOVER_00018e58.txt
+  RECOVER_00018edb.txt
   RECOVER_000197d0.txt
+  RECOVER_00019a1e.txt
+  RECOVER_00019a34.txt
+  RECOVER_00019a54.txt
+  RECOVER_00019a74.txt
+  RECOVER_00019a94.txt
+  RECOVER_00019ab6.txt
+  RECOVER_00019acc.txt
+  RECOVER_00019aec.txt
+  RECOVER_00019b02.txt
+  RECOVER_00019b22.txt
+  RECOVER_00019b38.txt
+  RECOVER_00019b4e.txt
+  RECOVER_00019b64.txt
+  RECOVER_00019b7a.txt
+  RECOVER_00019c44.txt
+  RECOVER_00019c54.txt
+  RECOVER_00019c64.txt
+  RECOVER_00019c80.txt
+  RECOVER_00019d38.txt
+  RECOVER_0001a07e.txt
+  RECOVER_0001a09a.txt
+  RECOVER_0001a3fc.txt
+  RECOVER_0001a410.txt
   RECOVER_0001b00e.txt
+  RECOVER_0001bc86.txt
+  RECOVER_0001bc9e.txt
   RECOVER_0001be72.txt
   RECOVER_0001c118.txt
   RECOVER_0001c204.txt
+  RECOVER_0001c280.txt
+  RECOVER_0001c2d4.txt
+  RECOVER_0001c2e8.txt
   RECOVER_0001d380.txt
   RECOVER_0001d3c4.txt
   RECOVER_0001d3d0.txt
+  RECOVER_0001de3c.txt
   symbol_IoConnectInterrupt_0.refs.txt
   symbol_IoGetCurrentProcess_0.refs.txt
   symbol_KeInitializeDpc_0.refs.txt

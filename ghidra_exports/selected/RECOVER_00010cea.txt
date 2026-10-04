@@ -1,0 +1,4 @@
+REVIEWED_ORPHAN_FUNCTION_RECOVERY 00010cea
+CREATED FUN_00010cea
+BODY_ADDRESSES 27
+This recovery updates the local Ghidra project.
