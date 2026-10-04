@@ -164,8 +164,16 @@ device-logical address, and refuses to return mappings without a
 proven-idle predicate. A Dry source contract asserts that the WDM
 adapter stage is not invoked by live PnP/acquisition/IOCTL paths.
 
-The newly added stage has **not** yet been built with Windows WDK or
-runtime-tested; all prior passing counts exclude it. The adapter is
+Owner-verified Windows 10 x64 full Dry run on 2026-10-04 at 20:18:24:
+- WDK Debug|x64 compile and link **PASS**, 0 errors, 2 known LNK4075
+  linker-option warnings; `DmaAdapterStage.c` compiled and linked.
+- x64 lecdiag **PASS**.
+- Source/ABI contracts **22/22 PASS**.
+- Native DMA logical layout unit tests **13/13 PASS**.
+- Overall `REGRESSION SUITE PASS: Dry`.
+
+This is an owner-reported source/build and synthetic-layout result,
+**not** a runtime DMA mapping, kernel fault-injection or PCI hardware test. The adapter is
 not yet used for transfer mappings and the PCI hardware path is
 unchanged. Do not install the branch.
 
