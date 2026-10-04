@@ -187,7 +187,14 @@ hardware ownership cannot return mappings. Synthetic completion alone
 never proves idle. A separate MSVC unit test suite exercises lifecycle
 and callback timing without making DMA DDI calls; the Dry runner invokes it.
 
-**This latest revision has not been Windows-built or tested yet.**
+Owner-verified Windows 10 x64 Dry run on 2026-10-04 at 20:55:02:
+Debug|x64 build successful (0 errors, 2 known LNK4075 warnings),
+`lecdiag` x64 built, source/ABI contracts **23/23 PASS**, native
+DMA-layout tests **13/13 PASS**, and mapping-ownership transition
+tests **17/17 PASS**. Overall runner: `REGRESSION SUITE PASS: Dry`.
+These are software-only results; no mapped PCI DMA or callback
+scheduling was exercised.
+
 The existing active acquisition still derives 32-bit addresses from
 CPU PFNs. WDM scatter/gather mapping and actual recovery remain unimplemented.
 
