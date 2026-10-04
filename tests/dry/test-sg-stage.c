@@ -110,6 +110,20 @@ int main(void) {
     check("FDO references deliberately persist for late callbacks",
           dev.References==3);
 
+    mode=0;
+    st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+    worker=CreateThread(NULL,0,delayedCallback,NULL,0,NULL);
+    /* This races release against callback notification under Stage->Lock. */
+    check("concurrent REMOVE and delayed callback never unmap",
+          NT_SUCCESS(st) &&
+          LecSgStageRelease(stage,FALSE)==STATUS_DEVICE_BUSY);
+    WaitForSingleObject(worker,INFINITE);
+    CloseHandle(worker);
+    check("concurrent callback cannot revive REMOVE stage",
+          stage->Unsafe &&
+          LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS &&
+          puts==0);
+
     mode=3;
     st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
     check("failed Get submission retains callback stage",
