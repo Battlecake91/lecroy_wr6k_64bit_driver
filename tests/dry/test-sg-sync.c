@@ -1,6 +1,7 @@
 /* Actual inactive synchronous DMA v3 bridge under fake WDM DDIs. */
 #include <stdio.h>
 #include "../../driver/DmaSyncStage.h"
+#include "../../driver/DmaLayout.h"
 
 enum {
     MODE_NORMAL,
@@ -22,8 +23,17 @@ static PDMA_ADAPTER ioAdapterResult;
 static ULONG ioMapRegisters;
 static DEVICE_DESCRIPTION lastDescription;
 static BOOLEAN commonAvailable;
+static BOOLEAN commonMisaligned;
 static PHYSICAL_ADDRESS commonLogical;
-static char commonBuffer[4096];
+static __declspec(align(4096)) char commonBuffer[4096];
+static __declspec(align(4096)) char mainDescriptorTable[40U * 4096U];
+static __declspec(align(4096)) char otherDescriptorTable[8192];
+static __declspec(align(4096)) char drainDescriptorTable[4096];
+static __declspec(align(4096)) char repeatDescriptorTable[4096];
+static __declspec(align(4096)) char capacityDescriptorTable[4096];
+static __declspec(align(4096)) char sameDeviceDescriptorTable[4096];
+static __declspec(align(4096)) char initRaceDescriptorTable[4096];
+static __declspec(align(4096)) char initBlockDescriptorTable[4096];
 static HANDLE getEntered, allowGet, freeEntered, allowFree;
 static DMA_ADAPTER adapter, otherAdapter;
 static DMA_OPERATIONS ops, otherOps;
@@ -174,7 +184,7 @@ fakeAllocateCommon(
         return NULL;
     }
     *logical = commonLogical;
-    return commonBuffer;
+    return commonBuffer + (commonMisaligned ? 8 : 0);
 }
 
 static VOID
@@ -208,12 +218,18 @@ static void initOperations(PDMA_OPERATIONS operations)
 static void initAdapterContext(
     PLECS65_DMA_ADAPTER_CONTEXT context,
     PDMA_ADAPTER dmaAdapter,
-    PDEVICE_OBJECT deviceObject)
+    PDEVICE_OBJECT deviceObject,
+    PVOID table,
+    ULONG tableLength,
+    ULONGLONG tableLogical)
 {
     memset(context, 0, sizeof(*context));
     context->Adapter = dmaAdapter;
     context->PhysicalDeviceObject = deviceObject;
     context->NumberOfMapRegisters = 20000;
+    context->TableVirtual = table;
+    context->TableLength = tableLength;
+    context->TableLogical.QuadPart = tableLogical;
     KeInitializeSpinLock(&context->Lock);
 }
 
@@ -229,8 +245,10 @@ static void setup(void)
     initOperations(&otherOps);
     adapter.DmaOperations = &ops;
     otherAdapter.DmaOperations = &otherOps;
-    initAdapterContext(&adapterContext, &adapter, &device);
-    initAdapterContext(&otherAdapterContext, &otherAdapter, &otherDevice);
+    initAdapterContext(&adapterContext, &adapter, &device,
+        mainDescriptorTable, sizeof(mainDescriptorTable), 0x30000);
+    initAdapterContext(&otherAdapterContext, &otherAdapter, &otherDevice,
+        otherDescriptorTable, sizeof(otherDescriptorTable), 0x40000);
     mdls[0].Va = bytes;
     mdls[0].Size = 128;
     mdls[0].MdlFlags = MDL_PAGES_LOCKED;
@@ -253,6 +271,7 @@ static void setup(void)
     ioMapRegisters = 0;
     memset(&lastDescription, 0, sizeof(lastDescription));
     commonAvailable = FALSE;
+    commonMisaligned = FALSE;
     commonLogical.QuadPart = 0;
     mode = MODE_NORMAL;
 }
@@ -304,11 +323,55 @@ typedef struct _MAP_THREAD {
     NTSTATUS Status;
 } MAP_THREAD;
 
+typedef struct _INIT_THREAD {
+    PLECS65_SG_SYNC_OWNER Owner;
+    PLECS65_DMA_ADAPTER_CONTEXT Context;
+    NTSTATUS Status;
+} INIT_THREAD;
+
+typedef struct _OWNER_THREAD {
+    PLECS65_SG_SYNC_OWNER Owner;
+    NTSTATUS Status;
+} OWNER_THREAD;
+
 static DWORD WINAPI concurrentMap(void* argument)
 {
     MAP_THREAD* map = (MAP_THREAD*)argument;
     map->Status = LecSgSyncMapNoLaunch(
         map->Owner, map->Mdl, map->Length, &map->Token);
+    return 0;
+}
+
+static DWORD WINAPI concurrentInit(void* argument)
+{
+    INIT_THREAD* init = (INIT_THREAD*)argument;
+    init->Status = LecSgSyncOwnerInit(init->Owner, init->Context);
+    return 0;
+}
+
+static DWORD WINAPI concurrentDestroy(void* argument)
+{
+    OWNER_THREAD* destroy = (OWNER_THREAD*)argument;
+    destroy->Status = LecSgSyncOwnerDestroy(destroy->Owner);
+    return 0;
+}
+
+static int waitForOwnerState(
+    PLECS65_SG_SYNC_OWNER target,
+    LECS65_SG_SYNC_OWNER_STATE expected)
+{
+    unsigned attempt;
+    for (attempt = 0; attempt < 5000; ++attempt) {
+        KIRQL irql;
+        LECS65_SG_SYNC_OWNER_STATE current;
+        KeAcquireSpinLock(&target->Lock, &irql);
+        current = target->State;
+        KeReleaseSpinLock(&target->Lock, irql);
+        if (current == expected) {
+            return 1;
+        }
+        Sleep(1);
+    }
     return 0;
 }
 
@@ -325,7 +388,19 @@ int main(void)
     LONG freesBefore;
     LECS65_SG_SYNC_OWNER rejectedOwner;
     LECS65_SG_SYNC_OWNER drainOwner;
+    LECS65_SG_SYNC_OWNER invalidOwner;
+    LECS65_SG_SYNC_OWNER repeatOwner;
+    LECS65_SG_SYNC_OWNER capacityOwner;
+    LECS65_SG_SYNC_OWNER sameDeviceOwner;
+    LECS65_SG_SYNC_OWNER initRaceOwner;
+    LECS65_SG_SYNC_OWNER initBlockOwner;
     LECS65_DMA_ADAPTER_CONTEXT drainContext;
+    LECS65_DMA_ADAPTER_CONTEXT invalidContext;
+    LECS65_DMA_ADAPTER_CONTEXT repeatContext;
+    LECS65_DMA_ADAPTER_CONTEXT capacityContext;
+    LECS65_DMA_ADAPTER_CONTEXT sameDeviceContext;
+    LECS65_DMA_ADAPTER_CONTEXT initRaceContext;
+    LECS65_DMA_ADAPTER_CONTEXT initBlockContext;
     DMA_ADAPTER drainAdapter;
     DMA_OPERATIONS drainOps;
     FAKE_DEVICE drainDevice;
@@ -335,8 +410,26 @@ int main(void)
     ULONG fullOperationsSize;
     LONG putsBefore;
     LONG commonFreesBefore;
+    ULONG ignoredCapacity = 0;
+    ULONG savedOutstanding;
+    ULONGLONG savedToken;
+    PLECS65_SG_SYNC_STAGE savedMappings;
+    INIT_THREAD initA, initB;
+    INIT_THREAD blockedInit;
+    OWNER_THREAD blockedDestroy;
+    KIRQL heldIrql;
 
     setup();
+    LecSgSyncOwnerConstruct(&owner);
+    LecSgSyncOwnerConstruct(&otherOwner);
+    LecSgSyncOwnerConstruct(&rejectedOwner);
+    LecSgSyncOwnerConstruct(&drainOwner);
+    LecSgSyncOwnerConstruct(&invalidOwner);
+    LecSgSyncOwnerConstruct(&repeatOwner);
+    LecSgSyncOwnerConstruct(&capacityOwner);
+    LecSgSyncOwnerConstruct(&sameDeviceOwner);
+    LecSgSyncOwnerConstruct(&initRaceOwner);
+    LecSgSyncOwnerConstruct(&initBlockOwner);
     memset(&createDevice, 0, sizeof(createDevice));
     check("adapter creation rejects unavailable v3 adapter",
         LecDmaCreateAdapterContext(&createDevice, 0x100000,
@@ -384,6 +477,14 @@ int main(void)
         commonFreeCalls == commonFreesBefore + 1 &&
         createdContext->TableVirtual == NULL);
     commonLogical.QuadPart = 0x30000;
+    commonMisaligned = TRUE;
+    commonFreesBefore = commonFreeCalls;
+    check("misaligned common buffer is returned immediately",
+        LecDmaAllocateCommonTable(createdContext, 4096) ==
+            STATUS_NOT_SUPPORTED &&
+        commonFreeCalls == commonFreesBefore + 1 &&
+        createdContext->TableVirtual == NULL);
+    commonMisaligned = FALSE;
     check("valid common buffer is retained by adapter context",
         LecDmaAllocateCommonTable(createdContext, 4096) ==
             STATUS_SUCCESS &&
@@ -399,19 +500,56 @@ int main(void)
         poolOutstanding == 0);
     createdContext = NULL;
 
-    initAdapterContext(&quarantineContext, &adapter, &createDevice);
+    initAdapterContext(&quarantineContext, &adapter, &createDevice,
+        mainDescriptorTable, sizeof(mainDescriptorTable), 0x30000);
     check("unproven adapter teardown quarantines permanently",
         LecDmaReleaseAdapterContext(&quarantineContext, FALSE) ==
             STATUS_DEVICE_BUSY && quarantineContext.Quarantined &&
-        LecDmaClaimSynchronousOwner(&quarantineContext, &owner) ==
+        LecDmaClaimSynchronousOwner(
+            &quarantineContext, &owner, &ignoredCapacity) ==
             STATUS_DEVICE_BUSY);
 
+    initAdapterContext(&invalidContext, &adapter, &device,
+        NULL, 0, 0);
+    check("owner rejects a missing descriptor table",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_DEVICE_STATE &&
+        invalidOwner.State == LecSgSyncOwnerConstructed &&
+        invalidContext.SynchronousOwner == NULL);
+    invalidContext.TableVirtual = mainDescriptorTable;
+    invalidContext.TableLength = 8;
+    invalidContext.TableLogical.QuadPart = 0x30000;
+    check("owner rejects an undersized descriptor table",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_BUFFER_SIZE &&
+        invalidOwner.State == LecSgSyncOwnerConstructed);
+    invalidContext.TableLength = 4097;
+    check("owner rejects a non-page descriptor length",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_BUFFER_SIZE);
+    invalidContext.TableLength = 0xFFFFF000U;
+    check("owner rejects capacity inconsistent with 32-bit backing",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_BUFFER_SIZE);
+    invalidContext.TableLength = 4096;
+    invalidContext.TableVirtual = mainDescriptorTable + 8;
+    check("owner rejects a misaligned descriptor virtual base",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_BUFFER_SIZE);
+    invalidContext.TableVirtual = mainDescriptorTable;
+    invalidContext.TableLogical.QuadPart = 0x30008;
+    check("owner rejects a misaligned descriptor logical base",
+        LecSgSyncOwnerInit(&invalidOwner, &invalidContext) ==
+            STATUS_INVALID_BUFFER_SIZE);
+
     check("owner claims central adapter context",
-        LecSgSyncOwnerInit(&owner, &adapterContext, 20000) ==
+        LecSgSyncOwnerInit(&owner, &adapterContext) ==
             STATUS_SUCCESS &&
-        adapterContext.SynchronousOwner == &owner);
+        adapterContext.SynchronousOwner == &owner &&
+        owner.DescriptorSlotCapacity ==
+            sizeof(mainDescriptorTable) / sizeof(LECS65_DMA_LAYOUT_ENTRY));
     check("second owner cannot claim same adapter context",
-        LecSgSyncOwnerInit(&rejectedOwner, &adapterContext, 20000) ==
+        LecSgSyncOwnerInit(&rejectedOwner, &adapterContext) ==
             STATUS_DEVICE_BUSY);
     check("adapter teardown blocked while owner is claimed",
         LecDmaReleaseAdapterContext(&adapterContext, TRUE) ==
@@ -432,20 +570,50 @@ int main(void)
         LecSgSyncMapNoLaunch(&owner, &mdls[0], 128, &second) ==
             STATUS_DEVICE_BUSY && second == 0);
 
+    initAdapterContext(&repeatContext, &otherAdapter, &otherDevice,
+        repeatDescriptorTable, sizeof(repeatDescriptorTable), 0x50000);
+    check("repeat-init owner starts with table-derived capacity",
+        LecSgSyncOwnerInit(&repeatOwner, &repeatContext) == STATUS_SUCCESS &&
+        repeatOwner.DescriptorSlotCapacity == 512);
+    status = LecSgSyncMapNoLaunch(&repeatOwner, &mdls[0], 128, &savedToken);
+    savedOutstanding = repeatOwner.Outstanding;
+    savedMappings = repeatOwner.Mappings;
+    check("repeated init with mapping fails without mutation",
+        NT_SUCCESS(status) && savedToken != 0 &&
+        LecSgSyncOwnerInit(&repeatOwner, &repeatContext) ==
+            STATUS_DEVICE_BUSY &&
+        repeatOwner.Outstanding == savedOutstanding &&
+        repeatOwner.Mappings == savedMappings &&
+        repeatOwner.Mappings->Token == savedToken &&
+        repeatOwner.AdapterContext == &repeatContext &&
+        repeatContext.SynchronousOwner == &repeatOwner);
+    check("copy survives rejected repeated init",
+        LecSgSyncCopySegments(
+            &repeatOwner, savedToken, elements, 3, &count) ==
+            STATUS_SUCCESS && count == 2);
+    check("STOP survives rejected repeated init",
+        LecSgSyncOwnerStop(&repeatOwner) == STATUS_DEVICE_BUSY);
+    check("release drain and destroy survive rejected repeated init",
+        LecSgSyncReleaseNoLaunch(&repeatOwner, savedToken) == STATUS_SUCCESS &&
+        LecSgSyncOwnerDrainNoLaunch(&repeatOwner) == STATUS_SUCCESS &&
+        LecSgSyncOwnerDestroy(&repeatOwner) == STATUS_SUCCESS &&
+        repeatContext.SynchronousOwner == NULL);
+
     copyRace.Owner = &owner;
     copyRace.Token = id;
     copyRace.Errors = 0;
     worker = CreateThread(NULL, 0, concurrentCopy, &copyRace, 0, NULL);
+    freesBefore = freeCalls;
     check("first release unmaps exactly once",
         LecSgSyncReleaseNoLaunch(&owner, id) == STATUS_SUCCESS &&
-        freeCalls == 1);
+        freeCalls == freesBefore + 1);
     WaitForSingleObject(worker, INFINITE);
     CloseHandle(worker);
     check("copy versus release cannot see freed mapping",
         copyRace.Errors == 0);
     check("sequential double release rejects stale token",
         LecSgSyncReleaseNoLaunch(&owner, id) == STATUS_INVALID_PARAMETER &&
-        freeCalls == 1);
+        freeCalls == freesBefore + 1);
     check("arbitrary invalid token is rejected",
         LecSgSyncReleaseNoLaunch(&owner, 0xFEDCBA9876543210ULL) ==
             STATUS_INVALID_PARAMETER);
@@ -535,32 +703,31 @@ int main(void)
         freeCalls == freesBefore + 1);
     sg.Elements[1].Address.QuadPart = 0x20000;
 
-    owner.DescriptorSlotCapacity = 2;
-    mdls[0].Size = 8192;
+    initAdapterContext(&capacityContext, &adapter, &device,
+        capacityDescriptorTable, sizeof(capacityDescriptorTable), 0x60000);
+    check("one-page owner derives exactly 512 descriptor slots",
+        LecSgSyncOwnerInit(&capacityOwner, &capacityContext) ==
+            STATUS_SUCCESS &&
+        capacityOwner.DescriptorSlotCapacity == 512);
+    mdls[0].Size = 511U * PAGE_SIZE;
     mdls[0].Next = NULL;
     sg.NumberOfElements = 1;
     sg.Elements[0].Address.QuadPart = 0x10000;
-    sg.Elements[0].Length = 8192;
-    freesBefore = freeCalls;
-    status = LecSgSyncMapNoLaunch(&owner, mdls, 8192, &id);
-    check("descriptor capacity includes split entries and terminator",
-        status == STATUS_BUFFER_TOO_SMALL && id == 0 &&
-        freeCalls == freesBefore + 1 && owner.Outstanding == 0);
-
-    mdls[0].Size = 511U * PAGE_SIZE;
     sg.Elements[0].Length = 511U * PAGE_SIZE;
-    owner.DescriptorSlotCapacity = 512;
     status = LecSgSyncMapNoLaunch(
-        &owner, mdls, 511U * PAGE_SIZE, &id);
+        &capacityOwner, mdls, 511U * PAGE_SIZE, &id);
     check("descriptor capacity reserves chain slot before terminator",
         status == STATUS_BUFFER_TOO_SMALL && id == 0);
-    owner.DescriptorSlotCapacity = 513;
+    (void)LecSgSyncOwnerStop(&capacityOwner);
+    check("capacity failure leaves one-page owner destroyable",
+        LecSgSyncOwnerDrainNoLaunch(&capacityOwner) == STATUS_SUCCESS &&
+        LecSgSyncOwnerDestroy(&capacityOwner) == STATUS_SUCCESS);
+
     status = LecSgSyncMapNoLaunch(
         &owner, mdls, 511U * PAGE_SIZE, &id);
-    check("descriptor capacity accepts chained terminator page",
+    check("two-page backing accepts chained terminator page",
         NT_SUCCESS(status) && id != 0 &&
         LecSgSyncReleaseNoLaunch(&owner, id) == STATUS_SUCCESS);
-    owner.DescriptorSlotCapacity = 20000;
 
     mdls[0].Size = 128;
     sg.NumberOfElements = 2;
@@ -589,7 +756,7 @@ int main(void)
         releaseA.Status == STATUS_SUCCESS && owner.Outstanding == 0);
 
     check("second adapter context has independent ownership",
-        LecSgSyncOwnerInit(&otherOwner, &otherAdapterContext, 20000) ==
+        LecSgSyncOwnerInit(&otherOwner, &otherAdapterContext) ==
             STATUS_SUCCESS);
     status = LecSgSyncMapNoLaunch(&owner, mdls, 128, &id);
     check("first adapter can hold its own mapping",
@@ -601,7 +768,7 @@ int main(void)
     (void)LecSgSyncReleaseNoLaunch(&owner, id);
     (void)LecSgSyncReleaseNoLaunch(&otherOwner, otherId);
     check("each adapter mapping frees through its own adapter",
-        mainFreeCalls > 0 && otherFreeCalls == 1 &&
+        mainFreeCalls > 0 && otherFreeCalls > 0 &&
         device.References == 0 && otherDevice.References == 0);
     (void)LecSgSyncOwnerStop(&otherOwner);
     check("independent owner destroys after STOP and drain",
@@ -609,13 +776,108 @@ int main(void)
         LecSgSyncOwnerDestroy(&otherOwner) == STATUS_SUCCESS &&
         otherAdapterContext.SynchronousOwner == NULL);
 
+    initAdapterContext(&sameDeviceContext, &adapter, &device,
+        sameDeviceDescriptorTable, sizeof(sameDeviceDescriptorTable),
+        0x80000);
+    check("separate context claim is only context-local",
+        LecSgSyncOwnerInit(&sameDeviceOwner, &sameDeviceContext) ==
+            STATUS_SUCCESS &&
+        adapterContext.SynchronousOwner == &owner &&
+        sameDeviceContext.SynchronousOwner == &sameDeviceOwner);
+    status = LecSgSyncMapNoLaunch(&owner, mdls, 128, &id);
+    status = NT_SUCCESS(status) ?
+        LecSgSyncMapNoLaunch(&sameDeviceOwner, mdls, 128, &otherId) : status;
+    check("same physical adapter contexts are not device-wide serialized",
+        NT_SUCCESS(status) && id != 0 && otherId != 0 &&
+        owner.Outstanding == 1 && sameDeviceOwner.Outstanding == 1);
+    (void)LecSgSyncReleaseNoLaunch(&owner, id);
+    (void)LecSgSyncReleaseNoLaunch(&sameDeviceOwner, otherId);
+    (void)LecSgSyncOwnerStop(&sameDeviceOwner);
+    check("context-local scope remains explicitly drainable",
+        LecSgSyncOwnerDrainNoLaunch(&sameDeviceOwner) == STATUS_SUCCESS &&
+        LecSgSyncOwnerDestroy(&sameDeviceOwner) == STATUS_SUCCESS);
+
+    initAdapterContext(&initRaceContext, &otherAdapter, &otherDevice,
+        initRaceDescriptorTable, sizeof(initRaceDescriptorTable), 0x90000);
+    initA.Owner = initB.Owner = &initRaceOwner;
+    initA.Context = initB.Context = &initRaceContext;
+    initA.Status = initB.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(NULL, 0, concurrentInit, &initA, 0, NULL);
+    worker2 = CreateThread(NULL, 0, concurrentInit, &initB, 0, NULL);
+    WaitForSingleObject(worker, INFINITE);
+    WaitForSingleObject(worker2, INFINITE);
+    CloseHandle(worker);
+    CloseHandle(worker2);
+    check("concurrent owner initialization has exactly one winner",
+        ((initA.Status == STATUS_SUCCESS &&
+          initB.Status == STATUS_DEVICE_BUSY) ||
+         (initB.Status == STATUS_SUCCESS &&
+          initA.Status == STATUS_DEVICE_BUSY)) &&
+        initRaceOwner.State == LecSgSyncOwnerActive &&
+        initRaceContext.SynchronousOwner == &initRaceOwner);
+    (void)LecSgSyncOwnerStop(&initRaceOwner);
+    check("concurrently initialized owner remains destroyable",
+        LecSgSyncOwnerDrainNoLaunch(&initRaceOwner) == STATUS_SUCCESS &&
+        LecSgSyncOwnerDestroy(&initRaceOwner) == STATUS_SUCCESS);
+
+    initAdapterContext(&initBlockContext, &otherAdapter, &otherDevice,
+        initBlockDescriptorTable, sizeof(initBlockDescriptorTable), 0xA0000);
+    blockedInit.Owner = &initBlockOwner;
+    blockedInit.Context = &initBlockContext;
+    blockedInit.Status = STATUS_INTERNAL_ERROR;
+    KeAcquireSpinLock(&initBlockContext.Lock, &heldIrql);
+    worker = CreateThread(NULL, 0, concurrentInit, &blockedInit, 0, NULL);
+    check("owner exposes a stable initializing state",
+        waitForOwnerState(
+            &initBlockOwner, LecSgSyncOwnerInitializing));
+    check("STOP map and destroy safely reject concurrent initialization",
+        LecSgSyncOwnerStop(&initBlockOwner) == STATUS_DEVICE_BUSY &&
+        LecSgSyncMapNoLaunch(
+            &initBlockOwner, mdls, 128, &second) == STATUS_DEVICE_BUSY &&
+        second == 0 &&
+        LecSgSyncOwnerDestroy(&initBlockOwner) == STATUS_DEVICE_BUSY);
+    KeReleaseSpinLock(&initBlockContext.Lock, heldIrql);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    check("blocked initialization completes without lost ownership",
+        blockedInit.Status == STATUS_SUCCESS &&
+        initBlockOwner.State == LecSgSyncOwnerActive &&
+        initBlockContext.SynchronousOwner == &initBlockOwner);
+
+    check("blocked-destroy owner enters STOP cleanly",
+        LecSgSyncOwnerStop(&initBlockOwner) == STATUS_SUCCESS);
+    blockedDestroy.Owner = &initBlockOwner;
+    blockedDestroy.Status = STATUS_INTERNAL_ERROR;
+    KeAcquireSpinLock(&initBlockContext.Lock, &heldIrql);
+    worker = CreateThread(
+        NULL, 0, concurrentDestroy, &blockedDestroy, 0, NULL);
+    check("owner exposes a stable destroying state",
+        waitForOwnerState(&initBlockOwner, LecSgSyncOwnerDestroying));
+    check("APIs safely reject concurrent owner destruction",
+        LecSgSyncOwnerStop(&initBlockOwner) == STATUS_DEVICE_BUSY &&
+        LecSgSyncMapNoLaunch(
+            &initBlockOwner, mdls, 128, &second) == STATUS_DEVICE_BUSY &&
+        LecSgSyncCopySegments(
+            &initBlockOwner, 1, elements, 3, &count) ==
+                STATUS_INVALID_PARAMETER &&
+        LecSgSyncReleaseNoLaunch(&initBlockOwner, 1) ==
+            STATUS_INVALID_PARAMETER);
+    KeReleaseSpinLock(&initBlockContext.Lock, heldIrql);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    check("blocked destruction relinquishes the claim once",
+        blockedDestroy.Status == STATUS_SUCCESS &&
+        initBlockOwner.State == LecSgSyncOwnerDestroyed &&
+        initBlockContext.SynchronousOwner == NULL);
+
     memset(&drainAdapter, 0, sizeof(drainAdapter));
     memset(&drainDevice, 0, sizeof(drainDevice));
     initOperations(&drainOps);
     drainAdapter.DmaOperations = &drainOps;
-    initAdapterContext(&drainContext, &drainAdapter, &drainDevice);
+    initAdapterContext(&drainContext, &drainAdapter, &drainDevice,
+        drainDescriptorTable, sizeof(drainDescriptorTable), 0x70000);
     check("teardown owner initializes",
-        LecSgSyncOwnerInit(&drainOwner, &drainContext, 20000) ==
+        LecSgSyncOwnerInit(&drainOwner, &drainContext) ==
             STATUS_SUCCESS);
     status = LecSgSyncMapNoLaunch(&drainOwner, mdls, 128, &id);
     check("destroy refuses a live mapping",
@@ -627,6 +889,12 @@ int main(void)
         LecSgSyncOwnerDrainNoLaunch(&drainOwner) == STATUS_SUCCESS &&
         LecSgSyncOwnerCanTeardown(&drainOwner) &&
         drainDevice.References == 0);
+    drainContext.SynchronousOwner = &rejectedOwner;
+    check("failed central release restores stopping owner state",
+        LecSgSyncOwnerDestroy(&drainOwner) == STATUS_INVALID_PARAMETER &&
+        drainOwner.State == LecSgSyncOwnerStopping &&
+        drainOwner.AdapterContext == &drainContext);
+    drainContext.SynchronousOwner = &drainOwner;
     check("destroy relinquishes central adapter claim",
         LecSgSyncOwnerDestroy(&drainOwner) == STATUS_SUCCESS &&
         drainContext.SynchronousOwner == NULL);

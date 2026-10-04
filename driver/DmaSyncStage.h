@@ -12,6 +12,16 @@
  * The parent is nonpaged and must live until STOP + quiescence.
  */
 struct _LECS65_SG_SYNC_STAGE;
+typedef enum _LECS65_SG_SYNC_OWNER_STATE {
+    LecSgSyncOwnerUnconstructed = 0,
+    LecSgSyncOwnerConstructed,
+    LecSgSyncOwnerInitializing,
+    LecSgSyncOwnerActive,
+    LecSgSyncOwnerStopping,
+    LecSgSyncOwnerDestroying,
+    LecSgSyncOwnerDestroyed
+} LECS65_SG_SYNC_OWNER_STATE;
+
 typedef struct _LECS65_SG_SYNC_OWNER {
     PLECS65_DMA_ADAPTER_CONTEXT AdapterContext;
     KSPIN_LOCK Lock;
@@ -19,8 +29,7 @@ typedef struct _LECS65_SG_SYNC_OWNER {
     ULONGLONG NextToken;
     ULONG Outstanding;
     ULONG DescriptorSlotCapacity;
-    BOOLEAN Stopping;
-    BOOLEAN Destroying;
+    LECS65_SG_SYNC_OWNER_STATE State;
 } LECS65_SG_SYNC_OWNER, *PLECS65_SG_SYNC_OWNER;
 
 typedef struct _LECS65_SG_SYNC_STAGE {
@@ -35,10 +44,18 @@ typedef struct _LECS65_SG_SYNC_STAGE {
         sizeof(ULONG_PTR)];
 } LECS65_SG_SYNC_STAGE, *PLECS65_SG_SYNC_STAGE;
 
+/*
+ * Construct exactly once before publishing the caller-owned storage or
+ * calling any other owner API. Construct does not inspect the prior bytes.
+ * The storage and its lock must remain resident until all callers have
+ * completed, including after LecSgSyncOwnerDestroy returns.
+ */
+VOID LecSgSyncOwnerConstruct(_Out_ PLECS65_SG_SYNC_OWNER Owner);
+
+/* Attaches a constructed/destroyed owner; capacity comes from the table. */
 NTSTATUS LecSgSyncOwnerInit(
-    _Out_ PLECS65_SG_SYNC_OWNER Owner,
-    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT AdapterContext,
-    _In_ ULONG DescriptorSlotCapacity);
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT AdapterContext);
 
 /* STOP is nonblocking. BUSY means retain parent, adapter and MDLs. */
 NTSTATUS LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner);

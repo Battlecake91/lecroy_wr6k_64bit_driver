@@ -1,6 +1,8 @@
 #include "DmaSyncStage.h"
+#include "DmaLayout.h"
 
-#define LECS65_DMA_DESCRIPTOR_SLOTS_PER_PAGE 512U
+#define LECS65_DMA_DESCRIPTOR_SLOTS_PER_PAGE \
+    LECS65_DMA_LAYOUT_SLOTS_PER_PAGE
 
 static NTSTATUS
 LecSgSyncValidateMdlRange(
@@ -132,26 +134,58 @@ LecSgSyncFreeStage(_Inout_ PLECS65_SG_SYNC_STAGE Stage)
 }
 
 /* All functions below are unreachable from current live PCI paths. */
-NTSTATUS
-LecSgSyncOwnerInit(
-    _Out_ PLECS65_SG_SYNC_OWNER Owner,
-    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT AdapterContext,
-    _In_ ULONG DescriptorSlotCapacity)
+VOID
+LecSgSyncOwnerConstruct(_Out_ PLECS65_SG_SYNC_OWNER Owner)
 {
-    NTSTATUS status;
-
-    if (Owner == NULL || AdapterContext == NULL ||
-        DescriptorSlotCapacity < 2) {
-        return STATUS_INVALID_PARAMETER;
+    if (Owner == NULL) {
+        return;
     }
+
+    /* One-time construction never reads possibly uninitialized storage. */
     RtlZeroMemory(Owner, sizeof(*Owner));
     KeInitializeSpinLock(&Owner->Lock);
-    Owner->AdapterContext = AdapterContext;
-    Owner->DescriptorSlotCapacity = DescriptorSlotCapacity;
-    status = LecDmaClaimSynchronousOwner(AdapterContext, Owner);
-    if (!NT_SUCCESS(status)) {
-        Owner->AdapterContext = NULL;
+    Owner->State = LecSgSyncOwnerConstructed;
+}
+
+NTSTATUS
+LecSgSyncOwnerInit(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _Inout_ PLECS65_DMA_ADAPTER_CONTEXT AdapterContext)
+{
+    LECS65_SG_SYNC_OWNER_STATE priorState;
+    ULONG descriptorSlotCapacity;
+    KIRQL irql;
+    NTSTATUS status;
+
+    if (Owner == NULL || AdapterContext == NULL) {
+        return STATUS_INVALID_PARAMETER;
     }
+
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    priorState = Owner->State;
+    if ((priorState != LecSgSyncOwnerConstructed &&
+         priorState != LecSgSyncOwnerDestroyed) ||
+        Owner->AdapterContext != NULL || Owner->Outstanding != 0 ||
+        Owner->Mappings != NULL) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    Owner->State = LecSgSyncOwnerInitializing;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+
+    status = LecDmaClaimSynchronousOwner(
+        AdapterContext, Owner, &descriptorSlotCapacity);
+
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (!NT_SUCCESS(status)) {
+        Owner->State = priorState;
+    }
+    else {
+        Owner->AdapterContext = AdapterContext;
+        Owner->DescriptorSlotCapacity = descriptorSlotCapacity;
+        Owner->State = LecSgSyncOwnerActive;
+    }
+    KeReleaseSpinLock(&Owner->Lock, irql);
     return status;
 }
 
@@ -160,9 +194,19 @@ LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
     KIRQL irql;
     ULONG pending;
-    if (!Owner || !Owner->AdapterContext) return STATUS_INVALID_PARAMETER;
+    if (!Owner) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    Owner->Stopping = TRUE;
+    if (Owner->State == LecSgSyncOwnerInitializing ||
+        Owner->State == LecSgSyncOwnerDestroying) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    if (Owner->State != LecSgSyncOwnerActive &&
+        Owner->State != LecSgSyncOwnerStopping) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+    Owner->State = LecSgSyncOwnerStopping;
     pending = Owner->Outstanding;
     KeReleaseSpinLock(&Owner->Lock, irql);
     return pending ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
@@ -173,9 +217,10 @@ LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
     KIRQL irql;
     BOOLEAN ready;
-    if (!Owner || !Owner->AdapterContext) return FALSE;
+    if (!Owner) return FALSE;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    ready = (BOOLEAN)(Owner->Stopping && Owner->Outstanding == 0 &&
+    ready = (BOOLEAN)(Owner->State == LecSgSyncOwnerStopping &&
+                       Owner->Outstanding == 0 &&
                        Owner->Mappings == NULL);
     KeReleaseSpinLock(&Owner->Lock, irql);
     return ready;
@@ -208,7 +253,7 @@ LecSgSyncMapNoLaunch(
 
     if (!Token) return STATUS_INVALID_PARAMETER;
     *Token = 0;
-    if (!Owner || !Owner->AdapterContext || !LockedMdlChain ||
+    if (!Owner || !LockedMdlChain ||
         !Length || (Length & 3U))
         return STATUS_INVALID_PARAMETER;
 
@@ -223,7 +268,8 @@ LecSgSyncMapNoLaunch(
      * Until channel-sharing semantics are proven, allow at most ONE
      * outstanding allocation for this DMA adapter.
      */
-    if (Owner->Stopping || Owner->Outstanding != 0 ||
+    if (Owner->State != LecSgSyncOwnerActive ||
+        Owner->AdapterContext == NULL || Owner->Outstanding != 0 ||
         Owner->NextToken == (ULONGLONG)-1) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
@@ -247,7 +293,7 @@ LecSgSyncMapNoLaunch(
     }
 
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->Stopping) {
+    if (Owner->State != LecSgSyncOwnerActive) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         status = STATUS_DELETE_PENDING;
         goto FailReservation;
@@ -294,7 +340,7 @@ LecSgSyncMapNoLaunch(
     }
 
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->Stopping) {
+    if (Owner->State != LecSgSyncOwnerActive) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         LecSgSyncFreeStage(stage);
         LecSgSyncOwnerDone(Owner);
@@ -324,11 +370,16 @@ LecSgSyncCopySegments(
     ULONG count;
     NTSTATUS status = STATUS_INVALID_PARAMETER;
 
-    if (!Owner || !Owner->AdapterContext || !Token || !Copied ||
+    if (!Owner || !Token || !Copied ||
         !Elements || !Capacity)
         return STATUS_INVALID_PARAMETER;
     *Copied = 0;
     KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (Owner->State != LecSgSyncOwnerActive &&
+        Owner->State != LecSgSyncOwnerStopping) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
     for (stage = Owner->Mappings; stage != NULL; stage = stage->Next)
         if (stage->Token == Token) break;
 
@@ -355,7 +406,7 @@ LecSgSyncReleaseNoLaunch(
 {
     PLECS65_SG_SYNC_STAGE stage, *link;
     KIRQL irql;
-    if (!Owner || !Owner->AdapterContext || !Token)
+    if (!Owner || !Token)
         return STATUS_INVALID_PARAMETER;
 
     /*
@@ -364,6 +415,11 @@ LecSgSyncReleaseNoLaunch(
      * never resolve to a different mapping (tokens aren't reused).
      */
     KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (Owner->State != LecSgSyncOwnerActive &&
+        Owner->State != LecSgSyncOwnerStopping) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
     for (link = &Owner->Mappings; *link; link = &(*link)->Next)
         if ((*link)->Token == Token) break;
     stage = *link;
@@ -391,13 +447,13 @@ LecSgSyncOwnerDrainNoLaunch(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     ULONGLONG token;
     NTSTATUS status;
 
-    if (Owner == NULL || Owner->AdapterContext == NULL) {
+    if (Owner == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
     for (;;) {
         KeAcquireSpinLock(&Owner->Lock, &irql);
-        if (!Owner->Stopping) {
+        if (Owner->State != LecSgSyncOwnerStopping) {
             KeReleaseSpinLock(&Owner->Lock, irql);
             return STATUS_INVALID_DEVICE_STATE;
         }
@@ -424,17 +480,22 @@ LecSgSyncOwnerDestroy(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     KIRQL irql;
     NTSTATUS status;
 
-    if (Owner == NULL || Owner->AdapterContext == NULL) {
+    if (Owner == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->Destroying || !Owner->Stopping || Owner->Outstanding != 0 ||
+    if (Owner->State == LecSgSyncOwnerDestroyed) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+    if (Owner->State != LecSgSyncOwnerStopping ||
+        Owner->AdapterContext == NULL || Owner->Outstanding != 0 ||
         Owner->Mappings != NULL) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
     }
-    Owner->Destroying = TRUE;
+    Owner->State = LecSgSyncOwnerDestroying;
     context = Owner->AdapterContext;
     KeReleaseSpinLock(&Owner->Lock, irql);
 
@@ -442,9 +503,11 @@ LecSgSyncOwnerDestroy(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     KeAcquireSpinLock(&Owner->Lock, &irql);
     if (NT_SUCCESS(status)) {
         Owner->AdapterContext = NULL;
+        Owner->DescriptorSlotCapacity = 0;
+        Owner->State = LecSgSyncOwnerDestroyed;
     }
     else {
-        Owner->Destroying = FALSE;
+        Owner->State = LecSgSyncOwnerStopping;
     }
     KeReleaseSpinLock(&Owner->Lock, irql);
     return status;

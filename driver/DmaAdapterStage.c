@@ -1,4 +1,5 @@
 #include "DmaAdapterStage.h"
+#include "DmaLayout.h"
 
 static BOOLEAN
 LecDmaHasOperation(
@@ -139,7 +140,8 @@ LecDmaAllocateCommonTable(
     }
 
     /* SGTA and every page-chain target are legacy 32-bit dword addresses. */
-    if ((logical.QuadPart & (PAGE_SIZE - 1U)) != 0 ||
+    if ((((ULONG_PTR)buffer) & (PAGE_SIZE - 1U)) != 0 ||
+        (logical.QuadPart & (PAGE_SIZE - 1U)) != 0 ||
         logical.QuadPart < 0 ||
         (ULONGLONG)logical.QuadPart > MAXULONG ||
         (ULONGLONG)Length - 1U >
@@ -213,14 +215,17 @@ LecDmaReleaseAdapterContext(
 NTSTATUS
 LecDmaClaimSynchronousOwner(
     _Inout_ PLECS65_DMA_ADAPTER_CONTEXT Context,
-    _In_ PVOID Owner)
+    _In_ PVOID Owner,
+    _Out_ PULONG DescriptorSlotCapacity)
 {
     KIRQL irql;
+    ULONG capacity;
 
-    if (Context == NULL || Owner == NULL || Context->Adapter == NULL ||
-        Context->PhysicalDeviceObject == NULL) {
+    if (Context == NULL || Owner == NULL || DescriptorSlotCapacity == NULL ||
+        Context->Adapter == NULL || Context->PhysicalDeviceObject == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
+    *DescriptorSlotCapacity = 0;
 
     KeAcquireSpinLock(&Context->Lock, &irql);
     if (Context->Quarantined || Context->Releasing ||
@@ -229,7 +234,34 @@ LecDmaClaimSynchronousOwner(
         KeReleaseSpinLock(&Context->Lock, irql);
         return STATUS_DEVICE_BUSY;
     }
+
+    if (Context->TableVirtual == NULL || Context->TableLength == 0) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    if ((((ULONG_PTR)Context->TableVirtual) &
+            (LECS65_DMA_LAYOUT_PAGE_BYTES - 1U)) != 0 ||
+        (Context->TableLogical.QuadPart &
+            (LECS65_DMA_LAYOUT_PAGE_BYTES - 1U)) != 0 ||
+        Context->TableLogical.QuadPart < 0 ||
+        (ULONGLONG)Context->TableLogical.QuadPart > MAXULONG ||
+        Context->TableLength < LECS65_DMA_LAYOUT_PAGE_BYTES ||
+        (Context->TableLength % LECS65_DMA_LAYOUT_PAGE_BYTES) != 0 ||
+        (ULONGLONG)Context->TableLength - 1U >
+            MAXULONG - (ULONGLONG)Context->TableLogical.QuadPart) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    capacity = Context->TableLength /
+        (ULONG)sizeof(LECS65_DMA_LAYOUT_ENTRY);
+    if (capacity < LECS65_DMA_LAYOUT_SLOTS_PER_PAGE) {
+        KeReleaseSpinLock(&Context->Lock, irql);
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+
     Context->SynchronousOwner = Owner;
+    *DescriptorSlotCapacity = capacity;
     KeReleaseSpinLock(&Context->Lock, irql);
     return STATUS_SUCCESS;
 }

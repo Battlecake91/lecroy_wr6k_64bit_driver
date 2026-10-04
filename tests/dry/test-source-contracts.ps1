@@ -350,7 +350,8 @@ Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
     $syncText -match 'FreeAdapterObject' -and
     $syncText -match 'LecSgSyncOwnerStop' -and
     $syncText -match 'Owner->Outstanding' -and
-    $syncText -match 'Owner->Stopping' -and
+    $syncText -match 'LecSgSyncOwnerStopping' -and
+    $syncText -match 'LecSgSyncOwnerConstruct' -and
     $syncText -match 'LecSgSyncOwnerDrainNoLaunch' -and
     $syncText -match 'LecSgSyncOwnerDestroy' -and
     $syncText -match 'NumberOfMapRegisters' -and
