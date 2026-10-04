@@ -3940,6 +3940,13 @@ LecS65DeviceControl(
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return lockStatus;
     }
+    if (!LecEnterIoctl(devExt)) {
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_DEVICE_NOT_READY;
+    }
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
     RtlZeroMemory(outputPreview, sizeof(outputPreview));
@@ -4767,6 +4774,7 @@ LecS65DeviceControl(
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
+    LecLeaveIoctl(devExt);
     IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return status;
