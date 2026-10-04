@@ -399,20 +399,20 @@ This is the semantic coverage map for every function currently recognized by Ghi
 | `0x19966` | `FUN_00019966` | DriverWorks/WDM support | power request completion callback | High |
 | `0x199AA` | `FUN_000199aa` | DriverWorks/WDM support | power-request completion callback; continue device-power transition and release context | High |
 | `0x19A00` | `FUN_00019a00` | DriverWorks/WDM support | cancel pending power IRP | High |
-| `0x19A1E` | `FUN_00019a1e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x1 and byte ptr [ECX + 0x100],0x2 and byte ptr [ECX + 0xfc],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19A34` | `FUN_00019a34` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x2 and byte ptr [ECX + 0xfc],0x10 and byte ptr [ECX + 0x100],0x4); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19A54` | `FUN_00019a54` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x4 and byte ptr [ECX + 0xfc],0x20 and byte ptr [ECX + 0x100],0x40); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19A74` | `FUN_00019a74` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x40 and byte ptr [ECX + 0xfc],0x40 and dword ptr [ECX + 0x100],EDX); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19A94` | `FUN_00019a94` | DriverWorks / PnP | policy-bit gate (dword ptr [ECX + 0x100],EDX and dword ptr [ECX + 0xfc],EDX and byte ptr [ECX + 0x100],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19AB6` | `FUN_00019ab6` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x10 and byte ptr [ECX + 0x100],0x8 and byte ptr [ECX + 0xfc],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19ACC` | `FUN_00019acc` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x8 and byte ptr [ECX + 0xfc],0x8 and byte ptr [ECX + 0x100],0x20); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19AEC` | `FUN_00019aec` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x20 and byte ptr [ECX + 0x100],0x80 and byte ptr [ECX + 0xfc],0x80); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19B02` | `FUN_00019b02` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x80 and byte ptr [ECX + 0xfc],0x80 and byte ptr [ECX + 0x138],0x4); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
-| `0x19B22` | `FUN_00019b22` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x4 and byte ptr [ECX + 0x138],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
-| `0x19B38` | `FUN_00019b38` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x8 and byte ptr [ECX + 0x138],0x1); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
-| `0x19B4E` | `FUN_00019b4e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x1 and byte ptr [ECX + 0x138],0x2); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19A1E` | `FUN_00019a1e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x1); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A34` | `FUN_00019a34` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x2 and byte ptr [ECX + 0xfc],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A54` | `FUN_00019a54` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x4 and byte ptr [ECX + 0xfc],0x20); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A74` | `FUN_00019a74` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x40 and byte ptr [ECX + 0xfc],0x40); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19A94` | `FUN_00019a94` | DriverWorks / PnP | policy-bit gate (dword ptr [ECX + 0x100],EDX and dword ptr [ECX + 0xfc],EDX); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19AB6` | `FUN_00019ab6` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x10); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19ACC` | `FUN_00019acc` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x8 and byte ptr [ECX + 0xfc],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19AEC` | `FUN_00019aec` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x20); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19B02` | `FUN_00019b02` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x100],0x80 and byte ptr [ECX + 0xfc],0x80); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19B22` | `FUN_00019b22` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x4); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B38` | `FUN_00019b38` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x8); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
+| `0x19B4E` | `FUN_00019b4e` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x1); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
 | `0x19B64` | `FUN_00019b64` | DriverWorks / PnP | policy-bit gate (byte ptr [ECX + 0x138],0x2); returns success if suppressed, otherwise tail-forwards to virtual +0x100 | High |
-| `0x19B7A` | `FUN_00019b7a` | DriverWorks / PnP | policy-bit gate (); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
+| `0x19B7A` | `FUN_00019b7a` | DriverWorks / PnP | policy-bit gate (unconditional); returns success if suppressed, otherwise tail-forwards to virtual +0xFC | High |
 | `0x19B82` | `FUN_00019b82` | DriverWorks/WDM support | framework spinlock/list object constructor | High |
 | `0x19BA6` | `FUN_00019ba6` | DriverWorks/WDM support | spinlock acquire wrapper | High |
 | `0x19BB8` | `FUN_00019bb8` | DriverWorks/WDM support | ASM-verified tail-jump to KfReleaseSpinLock with lock at this+0x0C and saved KIRQL from this+0x10 | High |
