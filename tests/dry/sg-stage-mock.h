@@ -108,8 +108,12 @@ static inline void* ExAllocatePool2(ULONG flags, size_t bytes, ULONG tag) {
     UNREFERENCED_PARAMETER(tag);
     return malloc(bytes);
 }
-static inline VOID RtlZeroMemory(void* p, size_t n) { memset(p, 0, n); }
-static inline VOID RtlCopyMemory(void* d, const void* s, size_t n) { memcpy(d,s,n); }
+#ifndef RtlZeroMemory
+#define RtlZeroMemory(p,n) memset((p),0,(n))
+#endif
+#ifndef RtlCopyMemory
+#define RtlCopyMemory(d,s,n) memcpy((d),(s),(n))
+#endif
 static inline VOID KeInitializeSpinLock(KSPIN_LOCK* p) { InitializeCriticalSection(p); }
 static inline VOID KeAcquireSpinLock(KSPIN_LOCK* p, KIRQL* irql) {
     *irql = 0; EnterCriticalSection(p);
