@@ -1,6 +1,6 @@
 #include "DmaSyncStage.h"
 
-/* All functions are staging-only. PnP does not currently invoke them. */
+/* All functions below are unreachable from current live PCI paths. */
 VOID
 LecSgSyncOwnerInit(
     _Out_ PLECS65_SG_SYNC_OWNER Owner,
@@ -17,13 +17,13 @@ NTSTATUS
 LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
     KIRQL irql;
-    ULONG outstanding;
-    if (Owner == NULL) return STATUS_INVALID_PARAMETER;
+    ULONG pending;
+    if (!Owner) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Owner->Lock, &irql);
     Owner->Stopping = TRUE;
-    outstanding = Owner->Outstanding;
+    pending = Owner->Outstanding;
     KeReleaseSpinLock(&Owner->Lock, irql);
-    return outstanding ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
+    return pending ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }
 
 BOOLEAN
@@ -31,9 +31,10 @@ LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
     KIRQL irql;
     BOOLEAN ready;
-    if (Owner == NULL) return FALSE;
+    if (!Owner) return FALSE;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    ready = (BOOLEAN)(Owner->Stopping && Owner->Outstanding == 0);
+    ready = (BOOLEAN)(Owner->Stopping && Owner->Outstanding == 0 &&
+                       Owner->Mappings == NULL);
     KeReleaseSpinLock(&Owner->Lock, irql);
     return ready;
 }
@@ -43,7 +44,6 @@ LecSgSyncOwnerDone(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
     KIRQL irql;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    /* Every successful enter owns exactly one count. */
     --Owner->Outstanding;
     KeReleaseSpinLock(&Owner->Lock, irql);
 }
@@ -53,166 +53,206 @@ LecSgSyncMapNoLaunch(
     _Inout_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ PMDL LockedMdlChain,
     _In_ ULONG Length,
-    _Outptr_ PLECS65_SG_SYNC_STAGE* Result)
+    _Out_ ULONGLONG* Token)
 {
     PLECS65_SG_SYNC_STAGE stage;
     PMDL mdl;
-    ULONGLONG available = 0;
+    ULONGLONG available = 0, id;
     NTSTATUS status;
-    PDMA_ADAPTER Adapter;
-    PDEVICE_OBJECT DeviceObject;
+    PDMA_ADAPTER adapter;
+    PDEVICE_OBJECT device;
     KIRQL irql;
 
-    if (Result == NULL) return STATUS_INVALID_PARAMETER;
-    *Result = NULL;
-    if (Owner == NULL) return STATUS_INVALID_PARAMETER;
-    Adapter = Owner->Adapter;
-    DeviceObject = Owner->DeviceObject;
-    if (Adapter == NULL || Adapter->DmaOperations == NULL ||
-        Adapter->DmaOperations->GetScatterGatherListEx == NULL ||
-        Adapter->DmaOperations->InitializeDmaTransferContext == NULL ||
-        Adapter->DmaOperations->FreeAdapterObject == NULL ||
-        DeviceObject == NULL || LockedMdlChain == NULL ||
-        Length == 0 || (Length & 3U) != 0) {
+    if (!Token) return STATUS_INVALID_PARAMETER;
+    *Token = 0;
+    if (!Owner || !LockedMdlChain || !Length || (Length & 3U))
         return STATUS_INVALID_PARAMETER;
+
+    /*
+     * Reserve BEFORE inspecting MDLs. Once STOP is requested it must
+     * not observe a quiescent parent while an in-flight request is
+     * starting to access the adapter or pinned buffers.
+     */
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (Owner->Stopping || Owner->Outstanding == MAXULONG ||
+        Owner->NextToken == (ULONGLONG)-1) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
     }
+    adapter = Owner->Adapter;
+    device = Owner->DeviceObject;
+    if (!adapter || !adapter->DmaOperations ||
+        !adapter->DmaOperations->InitializeDmaTransferContext ||
+        !adapter->DmaOperations->GetScatterGatherListEx ||
+        !adapter->DmaOperations->FreeAdapterObject || !device) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_NOT_SUPPORTED;
+    }
+    ++Owner->Outstanding;
+    id = ++Owner->NextToken; /* Never reused, including failed requests. */
+    KeReleaseSpinLock(&Owner->Lock, irql);
 
     for (mdl = LockedMdlChain; mdl != NULL; mdl = mdl->Next) {
-        if ((mdl->MdlFlags & MDL_PAGES_LOCKED) == 0 ||
+        if (!(mdl->MdlFlags & MDL_PAGES_LOCKED) ||
             MmGetMdlByteCount(mdl) == 0) {
-            return STATUS_INVALID_PARAMETER;
+            status = STATUS_INVALID_PARAMETER;
+            goto FailReservation;
         }
         available += MmGetMdlByteCount(mdl);
         if (available >= Length) break;
     }
-    if (available < Length) return STATUS_INVALID_BUFFER_SIZE;
-
-    /*
-     * Reserve a parent mapping slot BEFORE any WDM resource request.
-     * STOP flips Stopping under the same lock and cannot mistake an
-     * in-flight submission for a quiescent adapter.
-     */
-    KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->Stopping || Owner->Outstanding == MAXULONG) {
-        KeReleaseSpinLock(&Owner->Lock, irql);
-        return STATUS_DEVICE_BUSY;
+    if (available < Length) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto FailReservation;
     }
-    ++Owner->Outstanding;
-    KeReleaseSpinLock(&Owner->Lock, irql);
 
     stage = (PLECS65_SG_SYNC_STAGE)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*stage), LECS65_TAG);
     if (!stage) {
-        LecSgSyncOwnerDone(Owner);
-        return STATUS_INSUFFICIENT_RESOURCES;
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto FailReservation;
     }
     RtlZeroMemory(stage, sizeof(*stage));
     stage->Parent = Owner;
-    stage->Adapter = Adapter;
-    stage->DeviceObject = DeviceObject;
     stage->MdlChain = LockedMdlChain;
     stage->RequestedLength = Length;
+    stage->Token = id;
 
     /*
-     * No queued callback, no external device operation, no outstanding
-     * async submission after return. References remain owned through
-     * FreeAdapterObject. No bus-master launch API exists in this module.
+     * Version 3 guarantees no delayed callback in this mode.
+     * No code in this stage is allowed to launch DMA on this device.
      */
-    ObReferenceObject(DeviceObject);
-    status = Adapter->DmaOperations->InitializeDmaTransferContext(
-        Adapter, stage->TransferContext);
+    ObReferenceObject(device);
+    status = adapter->DmaOperations->InitializeDmaTransferContext(
+        adapter, stage->TransferContext);
     if (NT_SUCCESS(status)) {
-        status = Adapter->DmaOperations->GetScatterGatherListEx(
-            Adapter, DeviceObject, stage->TransferContext,
-            LockedMdlChain, 0, Length,
-            DMA_SYNCHRONOUS_CALLBACK, NULL, NULL, FALSE,
+        status = adapter->DmaOperations->GetScatterGatherListEx(
+            adapter, device, stage->TransferContext, LockedMdlChain,
+            0, Length, DMA_SYNCHRONOUS_CALLBACK, NULL, NULL, FALSE,
             NULL, NULL, &stage->List);
     }
-
     if (!NT_SUCCESS(status)) {
-        /*
-         * By the synchronous DDI contract, failure never queues a later
-         * callback or adapter-resource allocation. No FreeAdapterObject
-         * is required, and no hardware transaction has started.
-         */
-        ObDereferenceObject(DeviceObject);
+        /* No queued callback or allocation on synchronous failure. */
+        ObDereferenceObject(device);
         ExFreePoolWithTag(stage, LECS65_TAG);
-        LecSgSyncOwnerDone(Owner);
-        return status;
+        goto FailReservation;
     }
 
-    if (stage->List == NULL) {
+    if (!stage->List) {
         /*
-         * A successful DDI must return the mapping. Treat a violated
-         * contract as fatal/unsafe rather than guessing at cleanup.
+         * Inconsistent success from DMA DDI: retain all resources,
+         * stage and parent count. No valid list to free safely.
          */
         return STATUS_INTERNAL_ERROR;
     }
 
-    *Result = stage;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    stage->Next = Owner->Mappings;
+    Owner->Mappings = stage;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    *Token = id;
     return STATUS_SUCCESS;
+
+FailReservation:
+    LecSgSyncOwnerDone(Owner);
+    return status;
 }
 
 NTSTATUS
 LecSgSyncCopySegments(
-    _In_ PLECS65_SG_SYNC_STAGE Stage,
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token,
     _Out_writes_to_(Capacity, *Copied) PSCATTER_GATHER_ELEMENT Elements,
     _In_ ULONG Capacity,
     _Out_ PULONG Copied)
 {
-    ULONG i, n;
+    PLECS65_SG_SYNC_STAGE stage;
+    KIRQL irql;
+    ULONG i, count;
     ULONGLONG total = 0;
+    NTSTATUS status = STATUS_INVALID_PARAMETER;
 
-    if (Copied == NULL || Stage == NULL || Elements == NULL ||
-        Capacity == 0 || Stage->List == NULL) {
+    if (!Owner || !Token || !Copied || !Elements || !Capacity)
         return STATUS_INVALID_PARAMETER;
-    }
     *Copied = 0;
-    n = Stage->List->NumberOfElements;
-    if (n == 0) return STATUS_INVALID_BUFFER_SIZE;
-    if (n > Capacity) return STATUS_BUFFER_TOO_SMALL;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    for (stage = Owner->Mappings; stage != NULL; stage = stage->Next)
+        if (stage->Token == Token) break;
 
-    for (i = 0; i < n; ++i) {
-        const SCATTER_GATHER_ELEMENT* e = &Stage->List->Elements[i];
+    if (!stage || !stage->List) goto Done;
+    count = stage->List->NumberOfElements;
+    if (!count) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Done;
+    }
+    if (count > Capacity) {
+        status = STATUS_BUFFER_TOO_SMALL;
+        goto Done;
+    }
+
+    for (i = 0; i < count; ++i) {
+        const SCATTER_GATHER_ELEMENT* e = &stage->List->Elements[i];
         ULONGLONG address = (ULONGLONG)e->Address.QuadPart;
-        if (e->Length == 0 || (e->Length & 3U) != 0 ||
-            (address & 3U) != 0 ||
-            address > MAXULONG ||
+        if (e->Length == 0 || (e->Length & 3U) ||
+            (address & 3U) || address > MAXULONG ||
             (ULONGLONG)e->Length - 1U > MAXULONG - address) {
-            return STATUS_INVALID_BUFFER_SIZE;
+            status = STATUS_INVALID_BUFFER_SIZE;
+            goto Done;
         }
         total += e->Length;
-        if (total > Stage->RequestedLength) {
-            return STATUS_INVALID_BUFFER_SIZE;
+        if (total > stage->RequestedLength) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            goto Done;
         }
     }
-    if (total != Stage->RequestedLength) {
-        return STATUS_INVALID_BUFFER_SIZE;
+    if (total != stage->RequestedLength) {
+        status = STATUS_INVALID_BUFFER_SIZE;
+        goto Done;
     }
 
-    RtlCopyMemory(Elements, Stage->List->Elements,
-        (SIZE_T)n * sizeof(*Elements));
-    *Copied = n;
-    return STATUS_SUCCESS;
+    RtlCopyMemory(Elements, stage->List->Elements,
+        (SIZE_T)count * sizeof(*Elements));
+    *Copied = count;
+    status = STATUS_SUCCESS;
+Done:
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    return status;
 }
 
 NTSTATUS
 LecSgSyncReleaseNoLaunch(
-    _Inout_ PLECS65_SG_SYNC_STAGE* Stage)
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token)
 {
-    PLECS65_SG_SYNC_STAGE current;
-    if (Stage == NULL || *Stage == NULL) return STATUS_INVALID_PARAMETER;
-    current = *Stage;
+    PLECS65_SG_SYNC_STAGE stage, *link;
+    KIRQL irql;
+    if (!Owner || !Token) return STATUS_INVALID_PARAMETER;
+
     /*
-     * Safe only because this interface has no DMA launch capability,
-     * GetScatterGatherListEx cannot queue with this flag, and the caller
-     * holds sole ownership. Parent must retain adapter/MDLs/PnP gate.
+     * Unlink under the SAME lock used by CopySegments. Concurrent
+     * readers can never dereference a freed stage, and stale tokens
+     * never resolve to a different mapping (tokens aren't reused).
      */
-    current->Adapter->DmaOperations->FreeAdapterObject(
-        current->Adapter, DeallocateObject);
-    ObDereferenceObject(current->DeviceObject);
-    *Stage = NULL;
-    LecSgSyncOwnerDone(current->Parent);
-    ExFreePoolWithTag(current, LECS65_TAG);
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    for (link = &Owner->Mappings; *link; link = &(*link)->Next)
+        if ((*link)->Token == Token) break;
+    stage = *link;
+    if (!stage) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_PARAMETER;
+    }
+    *link = stage->Next;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+
+    /*
+     * This stage has no device launch capability. Only its synchronous
+     * v3 no-launch allocation may be released. Do not use for any
+     * actual/unknown-active WR6k DMA transaction.
+     */
+    Owner->Adapter->DmaOperations->FreeAdapterObject(
+        Owner->Adapter, DeallocateObject);
+    ObDereferenceObject(Owner->DeviceObject);
+    LecSgSyncOwnerDone(Owner);
+    ExFreePoolWithTag(stage, LECS65_TAG);
     return STATUS_SUCCESS;
 }
