@@ -39,6 +39,28 @@ static DWORD WINAPI delayedCallback(void* unused) {
     pending(&dev, NULL, &sg, pendingContext);
     return 0;
 }
+typedef struct _COPY_RACE {
+    PLECS65_SG_STAGE Stage;
+    volatile LONG InvalidResults;
+} COPY_RACE;
+
+static DWORD WINAPI copyReader(void* parameter) {
+    COPY_RACE* race = (COPY_RACE*)parameter;
+    SCATTER_GATHER_ELEMENT local[3];
+    ULONG n;
+    unsigned i;
+    for (i=0; i<2000; ++i) {
+        NTSTATUS result = LecSgStageCopySegments(
+            race->Stage, local, 3, &n);
+        if (!(result == STATUS_DEVICE_NOT_READY ||
+              (result == STATUS_SUCCESS && n == 2 &&
+               local[0].Address.QuadPart == 0x10000))) {
+            InterlockedIncrement(&race->InvalidResults);
+        }
+    }
+    return 0;
+}
+
 static void init(void) {
     memset(&dev,0,sizeof(dev));
     memset(&mdl,0,sizeof(mdl));
@@ -123,6 +145,22 @@ int main(void) {
           stage->Unsafe &&
           LecSgStageCopySegments(stage,copy,3,&count)!=STATUS_SUCCESS &&
           puts==0);
+
+    {
+        COPY_RACE race;
+        mode=1;
+        st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
+        race.Stage=stage;
+        race.InvalidResults=0;
+        worker=CreateThread(NULL,0,copyReader,&race,0,NULL);
+        check("concurrent reader and close remain serialized",
+              NT_SUCCESS(st) &&
+              LecSgStageRelease(stage,TRUE)==STATUS_DEVICE_BUSY);
+        WaitForSingleObject(worker,INFINITE);
+        CloseHandle(worker);
+        check("copy or closed are the only race outcomes",
+              race.InvalidResults==0 && puts==0);
+    }
 
     mode=3;
     st=LecSgStageMap(&adapter,&dev,&mdl,128,&stage);
