@@ -556,150 +556,126 @@ True compiler/runtime helpers include known routines such as:
 These are classified as implementation infrastructure rather than LeCroy
 hardware semantics, but they are retained in the full reconstruction scope.
 
-## Current reconstruction status
+## Original WDM major-function dispatch (28 entries)
 
-The major architectural subsystems are now identified:
+The original DriverWorks dispatcher indexes the pointer table at
+`0x1CD10` by `IO_STACK_LOCATION.MajorFunction`. This is an exact
+**28-entry table** for `IRP_MJ_*` codes 0..27, with each entry pointing
+to a short virtual-call trampoline. The trampoline dispatches to a
+method in the main LeCroy device vtable at `0x1C500`.
 
-- driver entry/runtime;
-- AddDevice/device construction/destruction;
-- PnP;
-- power;
-- generic IRP dispatch;
-- StartDevice/resource mapping;
-- register descriptor/list architecture;
-- ISR/DPC;
-- event registration;
-- transfer registration and DMA;
-- buffered and METHOD_NEITHER acquisition;
-- MAM/MTT;
-- CFDC2110;
-- JTAG;
-- SPI;
-- serial FPGA/GPIO programming;
-- Dallas/1-Wire read and write;
-- trace infrastructure;
-- DriverWorks support classes.
+The following map is cross-verified using the full DWORD table exported
+in `ee9f4d86`, the original raw instructions from
+`UNOWNED_CODE_ASM.txt`, and the main LeCroy vtable dump:
 
-The original PE32 code is now classified at both function and subsystem level.
-The **initial 420-function inventory** had complete semantic entries
-in [legacy-driver-function-map.md](legacy-driver-function-map.md);
-it was then expanded to **527 recognized internal functions** after
-two curated Ghidra recovery passes. The first ASM pass resolved the
-two legacy warnings (`0x11894`, `0x19BB8`). The newest small
-DriverWorks virtual-forwarder functions emit indirect-jump
-decompiler warnings, but the corresponding x86 tail-jump forms
-are independently visible in raw ASM and are recorded in the
-function-map entries.
+| IRP major | Code | Forwarder | Main vtable slot | Concrete target |
+|---|---|---|---|---|
+| `IRP_MJ_CREATE` | `0x00` | `0x18472` | `+0x0C` | `0x10E3A` |
+| `IRP_MJ_CREATE_NAMED_PIPE` | `0x01` | `0x184A2` | `+0x14` | `0x10C18` |
+| `IRP_MJ_CLOSE` | `0x02` | `0x184BA` | `+0x18` | `0x10EAF` |
+| `IRP_MJ_READ` | `0x03` | `0x1841C` | `+0x1C` | `0x118E4` |
+| `IRP_MJ_WRITE` | `0x04` | `0x18448` | `+0x24` | `0x118E4` |
+| `IRP_MJ_QUERY_INFORMATION` | `0x05` | `0x1845A` | `+0x28` | `0x10C18` |
+| `IRP_MJ_SET_INFORMATION` | `0x06` | `0x1846C` | `+0x2C` | `0x10C18` |
+| `IRP_MJ_QUERY_EA` | `0x07` | `0x1848A` | `+0x30` | `0x10C18` |
+| `IRP_MJ_SET_EA` | `0x08` | `0x1849C` | `+0x34` | `0x10C18` |
+| `IRP_MJ_FLUSH_BUFFERS` | `0x09` | `0x184B4` | `+0x38` | `0x10C18` |
+| `IRP_MJ_QUERY_VOLUME_INFORMATION` | `0x0A` | `0x18416` | `+0x3C` | `0x10C18` |
+| `IRP_MJ_SET_VOLUME_INFORMATION` | `0x0B` | `0x18436` | `+0x40` | `0x10C18` |
+| `IRP_MJ_DIRECTORY_CONTROL` | `0x0C` | `0x18442` | `+0x44` | `0x10C18` |
+| `IRP_MJ_FILE_SYSTEM_CONTROL` | `0x0D` | `0x18454` | `+0x48` | `0x10C18` |
+| `IRP_MJ_DEVICE_CONTROL` | `0x0E` | `0x18466` | `+0x4C` | `0x11018` |
+| `IRP_MJ_INTERNAL_DEVICE_CONTROL` | `0x0F` | `0x18484` | `+0x50` | `0x10C18` |
+| `IRP_MJ_SHUTDOWN` | `0x10` | `0x18496` | `+0x54` | `0x10C18` |
+| `IRP_MJ_LOCK_CONTROL` | `0x11` | `0x184AE` | `+0x58` | `0x10C18` |
+| `IRP_MJ_CLEANUP` | `0x12` | `0x18410` | `+0x5C` | `0x10F30` |
+| `IRP_MJ_CREATE_MAILSLOT` | `0x13` | `0x18430` | `+0x60` | `0x10C18` |
+| `IRP_MJ_QUERY_SECURITY` | `0x14` | `0x1843C` | `+0x64` | `0x10C18` |
+| `IRP_MJ_SET_SECURITY` | `0x15` | `0x1844E` | `+0x68` | `0x10C18` |
+| `IRP_MJ_POWER` | `0x16` | `0x18460` | `+0x6C` | `0x1B096` |
+| `IRP_MJ_SYSTEM_CONTROL` | `0x17` | `0x1847E` | `+0x70` | `0x10CEA` |
+| `IRP_MJ_DEVICE_CHANGE` | `0x18` | `0x18490` | `+0x74` | `0x10C18` |
+| `IRP_MJ_QUERY_QUOTA` | `0x19` | `0x184A8` | `+0x78` | `0x10C18` |
+| `IRP_MJ_SET_QUOTA` | `0x1A` | `0x1840A` | `+0x7C` | `0x10C18` |
+| `IRP_MJ_PNP` | `0x1B` | `0x18428` | `+0x80` | `0x1A6EA` |
 
-The [vtable and ASM audit](legacy-driver-vtables-and-asm-audit.md) now confirms:
+The concrete target `0x10C18` (seen in **19**
+slots) completes unsupported major requests with
+`STATUS_NOT_IMPLEMENTED (0xC0000002)`. The distinct LeCroy
+handlers are:
 
-- the main LeCroy device vtable at `0x1C500`;
-- the hardware base and derived vtables at `0x1C8BC` and `0x1C62C`;
-- the deliberate DPC-forwarding override at derived slot `+0x24`;
-- the IRP/cancel tail-dispatch through hardware slot `+0x20`;
-- a direct `KfReleaseSpinLock` tail jump, not a broken jump table;
-- small this-adjustment thunks and the SEH-sensitive MDL code paths.
+- `CREATE 0x10E3A` and `CLOSE 0x10EAF`, with
+  **`CLEANUP 0x10F30` separately**;
+- `READ` and `WRITE` share packet-queue helper `0x118E4`;
+- `DEVICE_CONTROL 0x11018` is the entire original 27-case IOCTL dispatcher;
+- `POWER 0x1B096`, `SYSTEM_CONTROL 0x10CEA`,
+  and `PNP 0x1A6EA` use their respective WDM paths.
 
-**Important coverage limit:** "420/420 classified" is not a claim that the
-complete binary has been reverse engineered. Vtables identify executable
-this-adjusting thunks (notably `0x10C34`, `0x10C62`, `0x10C8C`,
-`0x10D62`, `0x10D6E`) not necessarily present as separate
-Ghidra-recognized functions. Fixed-length DWORD dumps also extend into
-ASCII strings and unrelated adjacent objects. Further work must identify
-all such code ranges/indirect targets, establish class/method semantics
-and verify the important binary paths, not just rename functions.
+**Table boundary:** the dump requested 30 DWORDs, but only
+the first **28** at `0x1CD10..0x1CD7F` are dispatch pointers.
+The next words at `0x1CD80` (`0x00000004`) and
+`0x1CD84` (`0x00000000`) are adjacent non-dispatch
+data; neither is a virtual handler. At `0x1CD88` starts
+the **24-entry** PnP minor-name array consumed by
+`0x18E58` (minor codes 0..23). At `0x1CDE8`
+starts the **four-entry** Power minor-name array consumed
+by `0x18EDB` (minor codes 0..3).
+These are **lookup strings**, not executable targets.
 
-The initial whole-executable instruction census (commit
-`cabdc5f9f882044bb3928545278024b1aad5ac9d`) now identifies
-**90 decoded unowned code clusters** totaling **3,207 bytes**, including
-the 888-byte main-device vtable target `0x11018..0x1138F` (slot
-`0x1C54C`, relative offset `+0x4C`). These are not accounted for in
-the 420 recognized internal function inventory. All 90 clusters are listed
-in [executable-code coverage](legacy-executable-code-coverage.md).
+## Current static reconstruction and coverage boundary
 
-The function-manager count of **507** includes the **420** internal
-functions plus **87** external/imported entries and is not evidence that
-87 new internal functions appeared. The next static pass exports all
-orphan-cluster assembly and separately classifies the 6,493 bytes of
-executable-block content not decoded as instructions. This is source-only
-reverse engineering; no x64 hardware regression is implied.
+All major original-driver architectural subsystems are identified:
+driver entry and object lifecycle, WDM PnP/Power, PCI
+resource mapping, register metadata, interrupt/DPC event state,
+transfer/MDL/DMA, buffered and METHOD_NEITHER acquisition,
+MAM/MTT, CFDC2110 transport, JTAG/SPI, FPGA/GPIO,
+Dallas/1-Wire read/write, trace infrastructure and
+DriverWorks/CRT/SEH support.
 
-## Complete executable audit and missed device dispatch
+Ghidra has **527 recognized internal functions** plus **87
+external function-manager entries**. Every internal function has
+selected pseudocode and a
+[semantic entry](legacy-driver-function-map.md).
+This includes 107 entries that initial Ghidra auto-discovery did
+not recognize (many were tiny virtual thunks, three were hidden
+code in previously undefined bytes).
 
-The 2026-10-04 full orphan ASM export has now conclusively
-identified `0x11018..0x1138F`, main LeCroy device vtable slot
-`0x1C500+0x4C`, as the **original top-level 27-case IOCTL
-dispatcher**. Unlike the earlier manually pieced-together IOCTL case
-list, this is a direct raw-assembly proof of the whole dispatch tree.
-See [IOCTL map](ioctl-map.md) and
-[complete decoded executable audit](legacy-executable-code-coverage.md).
+The complete original 27-case IOCTL dispatcher is
+`0x11018..0x1138F`, called via the `IRP_MJ_DEVICE_CONTROL`
+vtable slot `+0x4C`. It serializes through
+`KeWaitForSingleObject`/`KeReleaseMutex`.
+**Unknown IOCTLs contain an original x86 bug:** the dispatcher
+first stores `STATUS_INVALID_PARAMETER`, but calls
+`FUN_00010798` with the earlier successful mutex-wait
+status `0`, which overwrites `IoStatus.Status` to
+`STATUS_SUCCESS`. This is *not* a requirement for the x64
+port; see [IOCTL map](ioctl-map.md).
 
-The first whole-executable byte-classification pass shows
-48,035 decoded-instruction bytes, 5,377 bytes of defined data and
-1,116 undefined bytes across 54,528 executable-section bytes. All
-90 Ghidra-unowned decoded-code clusters have been semantically
-categorized by family, but short independent functions/virtual thunks
-still require function-boundary recovery and separate decompilation.
-This is not yet 100% executable-byte provenance.
+The final code-unit audit committed as `ee9f4d86` accounts
+for all 54,528 bytes in the Ghidra executable memory blocks:
 
-## First recovered-function pass: ABI and code-coverage implications
+- **48,086 bytes** of decoded instructions inside recognized functions;
+- **25 decoded bytes** outside ordinary functions, in exactly
+  **three compiler-SEH filter/cleanup clusters**;
+- **5,377 bytes** of Ghidra-defined data;
+- **1,040 still undefined bytes** (423 small regions), for
+  which byte-pattern evidence indicates padding and inline data.
 
-The first curated Ghidra `recover:` run at
-`9d3ac5b1` created **25** additional functions, including the
-complete master device-control dispatcher `0x11018`.
-The second run at `7bdbd3cf` created another **82** functions
-(79 referenced virtual/callbacks, plus three newly decoded helpers).
-Current coverage is **48,086** owned decoded instruction bytes,
-only **22** decoded unowned bytes in **three compiler-SEH**
-fragments, and **48,108** total decoded instruction bytes.
-The remaining **1,043 undefined bytes** are predominantly
-alignment/padding/text/constant data, with a separately identified
-three-byte x86 SEH frame-restoration instruction at `0x180C1`.
-Full details: [coverage audit](legacy-executable-code-coverage.md).
+The three compiler-managed code ranges are
+`0x18067..0x1806D`, `0x180BD..0x180C3`,
+`0x1814C..0x18156`. Six direct **DATA references**
+from scope metadata `0x1C9D4/1C9D8/1C9E4/1C9E8/
+1C9F0/1C9F4` identify their distinct filter and unwind
+entrypoints. The former undefined
+`0x180C1..0x180C3` decodes exactly to
+`MOV ESP,[EBP-0x18]` and belongs to SEH-frame restoration;
+it is deliberately **not** an independent function.
+See [whole-executable coverage audit](legacy-executable-code-coverage.md).
 
-The recovered decompiler code confirms
-`KeWaitForSingleObject` / `KeReleaseMutex` serialization around
-all 27 original top-level IOCTL cases. The unknown-IOCTL default
-contains a **real legacy completion-status bug**: it first writes
-`STATUS_INVALID_PARAMETER`, then allows `FUN_00010798`
-to overwrite the status with the successful mutex-wait result
-`STATUS_SUCCESS`. This is documented with the exact x86
-branches and completion helper in [ioctl-map.md](ioctl-map.md).
-It must be treated as a known legacy quirk, not as a requirement
-for a safe x64 implementation.
-
-`UNDEFINED_EXECUTABLE_RANGES.txt` identifies 424 still-undefined
-intervals (1,116 bytes). Most sampled spans are `CC` alignment,
-zero padding, or embedded strings/register names, but there are at
-least three plausible **real unrecognized code routines** at
-`0x18E58`, `0x18EDB`, `0x1C280`, likely PnP/power
-string-table lookup and SEH exception helper code. The second recovery successfully decoded and decompiled all three
-candidates. The remaining scope is specific SEH-frame/code-boundary
-and major-IRP table auditing; do not mistake the **historical**
-424-range/1,116-byte state in this section for the newer
-423-range/1,043-byte state in the coverage report.
-
-## Current whole-binary function coverage (post-second recovery)
-
-The analyzed PE32 now has **527** internal functions with
-function-by-function semantic descriptions and decompiled C
-snapshots, plus **87** external/imported Ghidra function-manager
-entries. The source count of 420 was a Ghidra auto-discovery
-limitation, not an architectural constraint.
-
-All former orphan clusters except **three x86 SEH fragments**
-have function ownership. The known compiler landing pads
-`0x18067..0x1806D`, `0x180BD..0x180C0` and
-`0x1814C..0x18156` total **22 bytes** and are properly
-handled as exception scope/filter code, not ordinary
-`__thiscall` methods. Three newly discovered functions
-`0x18E58`, `0x18EDB` and `0x1C280` implement PnP
-minor-name lookup, Power minor-name lookup and compiler SEH
-frame verification respectively.
-
-The final optional static audit is already staged in
-`ghidra_scripts/targets.txt`: whitelisted disassembly of
-`0x180C1` as a fragment (no artificial function), the
-30-entry IRP-major callback table, the PnP/Power name
-tables, and SEH xrefs. This must be checked independently
-before describing all executable bytes as accounted for.
+**Limits of this claim:** 527 classified functions and the
+SEH scope references give strong static coverage of the
+**analyzed PE image**, not proof of behavior under every
+runtime state, all indirect targets, complete original C++
+source recovery, or x64 equivalence. Runtime XStream/PCI
+regression, hazardous Dallas/GPIO write behavior and exact
+production interoperability remain separate verification work.
