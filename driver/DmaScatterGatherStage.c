@@ -22,6 +22,7 @@ LecSgStageReady(
     if (!stage->CallbackComplete) {
         stage->List = ScatterGather;
         stage->CallbackComplete = TRUE;
+        if (!LecMapOwnerCallback(&stage->Owner)) stage->Unsafe = TRUE;
     }
     else {
         /* Unexpected duplicate callback: never free an uncertain map. */
@@ -57,6 +58,8 @@ LecSgStageMap(
     if (stage == NULL) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(stage, sizeof(*stage));
     KeInitializeSpinLock(&stage->Lock);
+    LecMapOwnerInit(&stage->Owner);
+    (VOID)LecMapOwnerRequest(&stage->Owner);
     stage->Adapter = Adapter;
     stage->DeviceObject = DeviceObject;
     stage->WriteToDevice = FALSE; /* WR6k acquisition writes into host RAM. */
@@ -81,6 +84,7 @@ LecSgStageMap(
          * intentional conservative leak, not a finished error path.
          */
         stage->Unsafe = TRUE;
+        LecMapOwnerUncertain(&stage->Owner);
         *Result = stage;
         return status;
     }
@@ -105,6 +109,7 @@ LecSgStagePeek(
     KeAcquireSpinLock(&Stage->Lock, &irql);
     ready = (BOOLEAN)(Stage->CallbackComplete &&
         !Stage->Unsafe && !Stage->PutStarted &&
+        Stage->Owner.Phase == LecMapReady &&
         Stage->List != NULL);
     if (ready) *List = Stage->List;
     KeReleaseSpinLock(&Stage->Lock, irql);
@@ -125,15 +130,17 @@ LecSgStageRelease(
 
     if (!ProvenIdle) {
         Stage->Unsafe = TRUE;
+        LecMapOwnerUncertain(&Stage->Owner);
     }
     if (Stage->Unsafe || !Stage->CallbackComplete ||
         Stage->List == NULL || Stage->PutStarted ||
-        !ProvenIdle) {
+        !ProvenIdle || !LecMapOwnerMayRelease(&Stage->Owner)) {
         KeReleaseSpinLock(&Stage->Lock, irql);
         return STATUS_DEVICE_BUSY;
     }
 
     Stage->PutStarted = TRUE;
+    (VOID)LecMapOwnerReleased(&Stage->Owner);
     list = Stage->List;
     KeReleaseSpinLock(&Stage->Lock, irql);
 
@@ -145,4 +152,32 @@ LecSgStageRelease(
     ObDereferenceObject(Stage->DeviceObject);
     ExFreePoolWithTag(Stage, LECS65_TAG);
     return STATUS_SUCCESS;
+}
+
+BOOLEAN
+LecSgStageMarkLaunched(_Inout_ PLECS65_SG_STAGE Stage)
+{
+    KIRQL irql;
+    BOOLEAN result;
+
+    if (Stage == NULL) return FALSE;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    result = (BOOLEAN)(!Stage->Unsafe && !Stage->PutStarted &&
+        LecMapOwnerLaunch(&Stage->Owner));
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return result;
+}
+
+BOOLEAN
+LecSgStageMarkIdleProved(_Inout_ PLECS65_SG_STAGE Stage)
+{
+    KIRQL irql;
+    BOOLEAN result;
+
+    if (Stage == NULL) return FALSE;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    result = (BOOLEAN)(!Stage->Unsafe &&
+        LecMapOwnerIdleProved(&Stage->Owner));
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return result;
 }
