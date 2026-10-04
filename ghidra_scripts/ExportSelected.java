@@ -5,7 +5,8 @@
 //   -postScript ExportSelected.java <output-dir> <target> [<target> ...]
 //
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
-// (for example KeSetEvent), full coverage audit via coverage,\n// field displacement scans such as field:2e0,
+// (for example KeSetEvent), full coverage audit via coverage,
+// field displacement scans such as field:2e0,
 // full function instruction exports such as asm:18194, arbitrary address
 // reference scans such as xref:1c8bc, or raw pointer-table snapshots such as
 // dwords:1c62c:16 (base address in hex, count in decimal, 1..64).
