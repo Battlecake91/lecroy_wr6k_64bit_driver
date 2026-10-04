@@ -546,8 +546,8 @@ LecS65Pnp(
         LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
         LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, TRUE);
         devExt->Started = FALSE;
-        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
@@ -557,8 +557,8 @@ LecS65Pnp(
         LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
         LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, FALSE);
         devExt->Started = FALSE;
-        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
@@ -569,6 +569,7 @@ LecS65Pnp(
         LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
         LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, devExt->Started);
         devExt->Started = FALSE;
 
         /*
@@ -579,11 +580,9 @@ LecS65Pnp(
         IoReleaseRemoveLockAndWait(&devExt->RemoveLock, Irp);
 
         /*
-         * All regular dispatch references have left; asynchronous ISR/DPC
-         * and DMA hardware shutdown still require the separate P0 quiesce
-         * work before this teardown can be considered hardware-safe.
+         * All regular dispatch references and queued DPCs are drained.
+         * DMA timeout paths still need proof of hardware inactivity.
          */
-        LecDisconnectInterrupt(devExt);
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
         LecUnmapBars(devExt);
