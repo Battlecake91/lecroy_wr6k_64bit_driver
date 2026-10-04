@@ -1,5 +1,9 @@
 #pragma once
+#if defined(LECS65_SG_HOST_TEST)
+#include "../tests/dry/sg-stage-mock.h"
+#else
 #include "LecS65Drv.h"
+#endif
 #include "DmaMappingOwner.h"
 
 /*
