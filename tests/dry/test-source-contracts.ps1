@@ -237,6 +237,27 @@ Test-Contract "IRQ DPC and timer quiescence precedes resource cleanup" {
     $acquisitionText -match 'LegacyMamSeqShadowInitialized = FALSE'
 }
 
+Test-Contract "uncertain DMA is latched after both launch paths" {
+    $driverText -match 'volatile LONG DmaUnknownActive' -and
+    $driverText -match 'BOOLEAN DmaUnsafeToFree' -and
+    ([regex]::Matches($ioctlText, 'DmaUnsafeToFree = TRUE').Count -eq 2) -and
+    ([regex]::Matches($ioctlText, 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)').Count -eq 2) -and
+    ([regex]::Matches($ioctlText, 'DmaCompletionIrqSeen').Count -ge 4) -and
+    $deviceText -match 'DmaUnknownActive'
+}
+
+Test-Contract "unknown DMA memory cannot be released by cleanup" {
+    $acquisitionText -match 'if \(Transfer->DmaUnsafeToFree\)' -and
+    $acquisitionText -match 'transfer->DmaUnsafeToFree\) \{' -and
+    $acquisitionText -match '!candidate->DmaUnsafeToFree' -and
+    $acquisitionText -match 'DmaCompletionIrqSeen, 1'
+}
+
+Test-Contract "synthetic completion bit cannot satisfy a DMA wait" {
+    $acquisitionText -match 'if \(\(PendingMask & 0x01UL\) != 0\)\s*\{\s*return STATUS_INVALID_PARAMETER;' -and
+    $acquisitionText -match 'LecInjectLegacyPendingAndDispatch'
+}
+
 Test-Contract "public packed register ABI size guards are still present" {
     $required = @(
         'sizeof\(LECS65_REG_READ_LEGACY\) == 4',
