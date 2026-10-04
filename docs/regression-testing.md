@@ -207,9 +207,13 @@ reference until mapping release. `PutScatterGatherList` is guarded
 against missing callback or unknown DMA idle. The synthetic state
 model remains separate from real physical bus-stop proof.
 A source contract asserts that PnP, IOCTL and acquisition do not
-call the bridge. Its WDK build and Dry regression have **not yet been
-run**. The last verified full Dry suite is 23/23 source contracts,
-13/13 layout tests and 17/17 ownership tests on the previous revision.
+call the bridge. Owner-reported Windows Dry execution on 2026-10-04 at 21:26:23:
+WDK x64 build **PASS** (0 errors, 2 pre-existing `LNK4075` warnings),
+`lecdiag` x64 **PASS**, Source/ABI contracts **24/24 PASS**,
+descriptor-layout tests **13/13 PASS**, mapping-ownership tests
+**17/17 PASS**, overall `REGRESSION SUITE PASS: Dry`. This validates
+compilation and software-only invariants, **not** live WDM DMA callbacks
+or PnP/REMOVE runtime safety.
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
