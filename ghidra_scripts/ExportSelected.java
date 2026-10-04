@@ -6,6 +6,8 @@
 //
 // Targets may be addresses (for example 0x1619a or 1619a), symbol names
 // (for example KeSetEvent), full coverage audit via coverage,
+// and explicit recover:11018 to create reviewed missing functions.
+// recover: targets MODIFY the local Ghidra project database; back it up first.
 // field displacement scans such as field:2e0,
 // full function instruction exports such as asm:18194, arbitrary address
 // reference scans such as xref:1c8bc, or raw pointer-table snapshots such as
@@ -21,6 +23,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
+import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraScript;
@@ -73,7 +76,17 @@ public class ExportSelected extends GhidraScript {
                 String target = args[i];
                 Address addr = parseTargetAddress(target);
 
-                if (target.equalsIgnoreCase("coverage")) {
+                if (target.toLowerCase().startsWith("recover:")) {
+                    Address candidate = parseTargetAddress(
+                        target.substring("recover:".length()));
+                    if (candidate == null) {
+                        printerr("Invalid recover target: " + target);
+                    }
+                    else {
+                        recoverFunction(candidate);
+                    }
+                }
+                else if (target.equalsIgnoreCase("coverage")) {
                     writeCodeCoverage();
                 }
                 else if (target.equalsIgnoreCase("inventory")) {
@@ -176,6 +189,52 @@ public class ExportSelected extends GhidraScript {
             f = fm.getFunctionContaining(addr);
         }
         return f;
+    }
+
+    /*
+     * Opt-in Ghidra function creation for *reviewed* orphan code entrypoints.
+     * This changes the local Ghidra program database: never call this
+     * automatically from a census or heuristic. Back up the Ghidra project
+     * before using recover: entries. Existing function bodies are protected.
+     */
+    private void recoverFunction(Address entry) throws Exception {
+        String reportName = "RECOVER_" + entry + ".txt";
+        File report = new File(outDir, reportName);
+        try (PrintWriter pw = new PrintWriter(report, "UTF-8")) {
+            pw.println("REVIEWED_ORPHAN_FUNCTION_RECOVERY " + entry);
+            MemoryBlock block = currentProgram.getMemory().getBlock(entry);
+            if (block == null || !block.isExecute() ||
+                    currentProgram.getListing().getInstructionAt(entry) == null) {
+                pw.println("REJECTED: not a decoded executable instruction start");
+                printerr("recover rejected: " + entry);
+                return;
+            }
+            Function existing = functionAtOrContaining(entry);
+            if (existing != null) {
+                if (existing.getEntryPoint().equals(entry)) {
+                    pw.println("ALREADY_FUNCTION " + existing.getName());
+                    writeFunction(existing);
+                }
+                else {
+                    pw.println("REJECTED: inside existing function " +
+                        existing.getEntryPoint() + " " + existing.getName());
+                    printerr("recover overlaps function: " + entry);
+                }
+                return;
+            }
+            CreateFunctionCmd cmd = new CreateFunctionCmd(entry);
+            boolean success = cmd.applyTo(currentProgram, monitor);
+            Function created = fm.getFunctionAt(entry);
+            if (!success || created == null) {
+                pw.println("FAILED: Ghidra could not form a function at " + entry);
+                printerr("recover failed: " + entry);
+                return;
+            }
+            pw.println("CREATED " + created.getName());
+            pw.println("BODY_ADDRESSES " + created.getBody().getNumAddresses());
+            pw.println("This recovery updates the local Ghidra project.");
+            writeFunction(created);
+        }
     }
 
     private void writeFunction(Function f) throws Exception {
