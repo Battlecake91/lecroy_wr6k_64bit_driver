@@ -23,11 +23,13 @@ $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
 $adapterHeader = Join-Path $repo "driver\DmaAdapterStage.h"
+$ownerSource = Join-Path $repo "driver\DmaMappingOwner.c"
+$ownerHeader = Join-Path $repo "driver\DmaMappingOwner.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -43,6 +45,8 @@ $layoutText = Get-Content -LiteralPath $layoutSource -Raw
 $layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
 $adapterText = Get-Content -LiteralPath $adapterSource -Raw
 $adapterHeaderText = Get-Content -LiteralPath $adapterHeader -Raw
+$ownerText = Get-Content -LiteralPath $ownerSource -Raw
+$ownerHeaderText = Get-Content -LiteralPath $ownerHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -291,6 +295,18 @@ Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisi
     $acquisitionText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $deviceText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $ioctlText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable'
+}
+
+Test-Contract "DMA mapping callback ownership model is isolated and fail-closed" {
+    $driverProjectText -match 'ClCompile Include="DmaMappingOwner.c"' -and
+    $ownerHeaderText -match 'LecMapAwaitingCallback' -and
+    $ownerHeaderText -match 'LecMapUnknownActive' -and
+    $ownerText -match 'LecMapOwnerCallback' -and
+    $ownerText -match 'LecMapOwnerIdleProved' -and
+    $ownerText -match 'o->Phase = LecMapUnknownActive;' -and
+    $ownerText -match 'o->Phase == LecMapReady && o->CallbackSeen' -and
+    $acquisitionText -notmatch 'LecMapOwnerRequest|LecMapOwnerLaunch' -and
+    $deviceText -notmatch 'LecMapOwnerRequest|LecMapOwnerLaunch'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
