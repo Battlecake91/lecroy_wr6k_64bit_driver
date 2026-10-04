@@ -143,9 +143,17 @@ The existing legacy PFN-based acquisition path remains unchanged.
 (`tests/dry/test-dma-layout.c`) via
 `tests/dry/test-dma-layout.ps1`, with cases for table-page boundaries,
 mapping length/misalignment, 32-bit range overflow and capacity.
-**The new build and tests require an owner-run Windows verification**
-and are not covered by the earlier 20/20 result. The new native unit
-test is not a DMA mapping or runtime test.
+Owner-verified Windows 10 x64 full Dry run on 2026-10-04 at 19:55:
+- Debug|x64 driver build **PASS**, 0 errors, 2 existing LNK4075
+  linker-option warnings; the new DmaLayout.c compiled and linked.
+- x64 lecdiag build **PASS**.
+- Source/ABI Dry contracts **21/21 PASS**.
+- Native DMA descriptor layout tests **13/13 PASS**.
+- Runner: `REGRESSION SUITE PASS: Dry`.
+
+These are actual Windows native test results for the staged encoder,
+**not** successful WDM DMA adapter use, IOMMU compatibility, verified
+DMA bus idle, STOP/REMOVE stress or PCI hardware validation.
 
 Remaining hard blockers before production/HLK readiness:
 - A DMA timeout or error may leave real bus-master activity running after
