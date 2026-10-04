@@ -206,6 +206,8 @@ typedef struct _LECS65_TRANSFER {
     PMDL DescriptorMdl;
     ULONG DescriptorTablePhysical;
     ULONG TotalDwords;
+    /* Remains permanently pinned if DMA idle cannot be proven. */
+    BOOLEAN DmaUnsafeToFree;
     KEVENT CompletionEvent;
 } LECS65_TRANSFER, *PLECS65_TRANSFER;
 
@@ -247,6 +249,12 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     LIST_ENTRY TransferList;
     ULONG NextTransferToken;
     volatile PLECS65_TRANSFER CurrentTransfer;
+    /*
+     * An unknown DMA finish is terminal for this FDO: software cannot
+     * prove that old bus-master reads/writes have stopped.
+     */
+    volatile LONG DmaUnknownActive;
+    volatile LONG DmaCompletionIrqSeen;
 
     PKINTERRUPT InterruptObject;
     ULONG InterruptVector;
