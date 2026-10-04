@@ -63,6 +63,29 @@ if ($targets.Count -eq 0) {
     throw "No targets configured in $targetFile"
 }
 
+# Explicit recover: targets modify the *local* analyzed Ghidra project
+# (unlike normal read-only exports). Create an automatic sibling backup.
+# Close the Ghidra GUI before running recovery so the copy is consistent.
+$recoverTargets = @($targets | Where-Object { $_ -like "recover:*" })
+if ($recoverTargets.Count -gt 0) {
+    $ghidraProject = Join-Path $repo "ghidra_reverse_engineering_lecroy"
+    if (-not (Test-Path -LiteralPath $ghidraProject)) {
+        throw "Ghidra project directory not found: $ghidraProject"
+    }
+
+    $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $backupRoot = Split-Path -Parent $repo
+    $backupPath = Join-Path $backupRoot ("LeCroy_Ghidra_backup_" + $stamp)
+    if (Test-Path -LiteralPath $backupPath) {
+        throw "Ghidra backup path already exists: $backupPath"
+    }
+
+    Write-Host "Function recovery modifies the local Ghidra database."
+    Write-Host "Backing up complete Ghidra project to $backupPath"
+    Copy-Item -LiteralPath $ghidraProject -Destination $backupPath -Recurse -ErrorAction Stop
+    Write-Host "Ghidra project backup created."
+}
+
 $baseCommit = (git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or -not $baseCommit) {
     throw "Unable to determine current Git commit."
