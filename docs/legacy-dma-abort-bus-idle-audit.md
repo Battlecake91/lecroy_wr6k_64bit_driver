@@ -111,8 +111,10 @@ searchable manufacturer register documentation.
   `0x137C4` first performs source acknowledge/clear
   through `0x1260E`/`0x126EE`, writes
   `MTTCTL=0`, writes `ERRM=0xFFFFFFFF`
-  and masks `INTEN=0` through interrupt
-  synchronization. There is no bus-idle readback.
+  and requests synchronized `INTEN=0` through the
+  `0x12EAE -> 0x11E46` callback (whose actual write is
+  gated by `DAT_0001CD08 != -1`). There is no bus-idle
+  readback.
 - `IRP_MN_SURPRISE_REMOVAL`: PnP `0x1A6EA`
   case `0x17` selects policy/framework callbacks;
   no unconditional documented FPGA DMA drain sequence
@@ -121,8 +123,9 @@ searchable manufacturer register documentation.
   hardware-quiesce virtual `+0x120 ->
   0x10D6E -> 0x138D4` on supported transitions.
   That helper saves software IRQ state, writes
-  `ERRM=0xFFFFFFFF` and masks synchronized
-  `INTEN=0`; it **does not write an abort or
+  `ERRM=0xFFFFFFFF` and requests synchronized
+  `INTEN=0` (subject to the same callback gate); it
+  **does not write an abort or
   poll DMA idle**. The restore virtual
   `+0x11C -> 0x10D62 -> 0x138B2 ->
   0x1381E` may issue `START=1`,
