@@ -290,3 +290,43 @@ Sources:
 - [Xilinx Spartan-IIE datasheet DS077](https://docs.amd.com/v/u/en-US/ds077)
 - [Xilinx configuration and readback XAPP176](https://docs.amd.com/v/u/en-US/xapp176)
 - [LeCroy WaveRunner 6000 service manual (online reference)](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=114)
+
+## Installed x64 XStream firmware-file inventory (2026-10-06)
+
+A read-only Windows PowerShell enumeration of four LeCroy installation roots,
+supplied by the project owner, indexed 2,432 files (overlapping roots were
+deduplicated by full path). No binaries were uploaded to or committed to this
+public repository. This is an installed-file **filename/size inventory**, not
+PE static analysis, firmware execution, device readback or an exhaustive scan
+of the entire Windows volume.
+
+Directly confirmed XStream filenames (sizes in bytes):
+
+| Candidate | Size | Evidence and limits |
+|---|---:|---|
+| `hwprogrammer.exe` | 69,208 | Present; manufacturer service manual names the hardware programmer interface; precise implementation not yet inspected. |
+| `xstreamhwprogrammer.exe` | 59,992 | Present; relationship to legacy programmer not yet inspected. |
+| `s65hwupgrade.dll` | 295,512 | **Primary platform-specific update candidate**, on filename grounds only. |
+| `s65devicepacksvr.dll` | 1,854,040 | S65-specific support; possible image-provider relationship unknown. |
+| `aladdinhwupgrade.dll` | 325,720 | Alternate/general hardware upgrade component; S65 applicability unproven. |
+| `lecaladdinhwaccesspcisvr.dll` | 336,472 | Existing host-PCI component previously analyzed in `lecaladdinhwaccesspcisvr-analysis.md`; not yet linked to bitstream delivery. |
+| `ConfigMgrSvr.bin` | 256 | Filename not enough to assign to FPGA config. |
+| `MSI.bin` | 13,904,780 | Filename not enough to assign to FPGA config. |
+| `MSO.bit` and `MSO_Mag.bit` | 1,171,502 each | Not named for S65/WR6k PCI; no evidence they target the XC2S200E. |
+
+The visible `.mcs`/`.rbf` assets are named for `LabMaster10`,
+`GTX`, `GTX2`, `Hennessey`, `Mag`, `Mag12`, or `Yater`
+serial trigger FPGA families. **None is established as the photographed
+XC2S200E PCI image.** This does **not** prove the PCI image is absent:
+it may be a PE resource, library-packed bytes, a private updater format,
+located in an unscanned directory, or acquired from a separate storage source.
+No current evidence identifies the actual PCI bitstream.
+
+Next **offline/passive-only** step: metadata (file sizes, digital signatures,
+SHA-256, PE versions), ASCII/UTF-16 string references, PE resources and
+linkage among `s65hwupgrade.dll`, `hwprogrammer.exe`,
+`xstreamhwprogrammer.exe`, `s65devicepacksvr.dll` and existing
+hardware-access DLL. Do not execute a programmer, update firmware, read
+JTAG, invoke hardware-write APIs or publish binary images. Analyze only
+locally saved copies of vendor files. Do not infer DMA drain behavior
+from presence of a firmware-upgrade component.
