@@ -88,6 +88,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
     Invoke-Step "Synchronous WDM v3 SG no-launch tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-sg-sync.ps1")
     }
+
+    Invoke-Step "Live PnP publication lifetime tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-pnp-publication.ps1")
+    }
 }
 
 if ($Mode -eq "Hardware" -or $Mode -eq "All") {

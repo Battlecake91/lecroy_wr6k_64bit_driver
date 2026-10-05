@@ -307,13 +307,24 @@ A source contract ensures the live PCI code cannot invoke this stage.
 Current Windows Dry regression on 2026-10-05:
 - Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
   x64 `lecdiag` **PASS**.
-- Source/ABI contracts **28/28 PASS**.
+- Source/ABI contracts **29/29 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
 - Synchronous WDM v3 no-launch and PnP-parent fake-DDI suite
   **149/149 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**234/234** checks).
+- Live PnP publication lifetime suite **27/27 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**262/262** checks).
+
+`test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
+adapter-stage sources against the fake WDM surface. It verifies publication
+and parent allocation rollback, the single held PDO reference, zero adapter or
+mapping allocation, STOP reuse, surprise/remove cleanup, concurrent
+unpublication versus an active wrapper user, stale/sequential duplicate
+release rejection and independent retention of a synthetic unknown-active
+legacy transfer. The retained fixture deliberately leaves the wrapper,
+parent, PDO reference and transfer link outstanding, matching the restart-only
+quarantine contract.
 
 This test is software-only: no real OS SG mapping, actual PnP rundown
 or physical DMA idle has been proven.
@@ -328,11 +339,11 @@ Remaining hard blockers before production/HLK readiness:
   injection under Driver Verifier/controlled hardware.
 - Review whether power transitions, DMA-remapping/IOMMU and unexpected
   removals need a stronger hardware ownership model.
-- Publish exactly one independently resident `LECS65_DMA_PNP_STAGE` per
-  physical device during future PnP wiring, prohibit bypass through raw
-  adapter-context creation, and join borrowed MDLs to remove-lock rundown.
-  The inactive parent enforces one context per parent but is not yet a live
-  device-wide registry.
+- The live lifetime wrapper now publishes one independently resident parent
+  per AddDevice FDO/PDO and prohibits staged adapter entry from live sources.
+  Before activation, join every staged borrowed MDL/request to remove-lock and
+  wrapper rundown, and validate real repeated/malformed PnP, failed START,
+  power and fault-injection paths under Driver Verifier.
 
 The IRQ failure path has **not** been fault-injected or hardware-tested.
 A future controlled test must simulate `IoConnectInterrupt` failure before

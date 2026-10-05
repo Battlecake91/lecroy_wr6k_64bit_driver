@@ -56,6 +56,32 @@ typedef unsigned long KIRQL;
 /* The Windows user header already typedefs KSPIN_LOCK. Substitute a
  * real host-side mutex only within this fake-WDM translation unit. */
 #define KSPIN_LOCK CRITICAL_SECTION
+static inline VOID InitializeListHead(PLIST_ENTRY ListHead) {
+    ListHead->Flink = ListHead;
+    ListHead->Blink = ListHead;
+}
+static inline VOID InsertTailList(
+    PLIST_ENTRY ListHead,
+    PLIST_ENTRY Entry) {
+    PLIST_ENTRY previous = ListHead->Blink;
+    Entry->Flink = ListHead;
+    Entry->Blink = previous;
+    previous->Flink = Entry;
+    ListHead->Blink = Entry;
+}
+typedef struct _FAKE_KEVENT { volatile LONG Signaled; } KEVENT, *PKEVENT;
+#ifndef NotificationEvent
+#define NotificationEvent 0
+#endif
+#ifndef Executive
+#define Executive 0
+#endif
+#ifndef KernelMode
+#define KernelMode 0
+#endif
+#ifndef IO_NO_INCREMENT
+#define IO_NO_INCREMENT 0
+#endif
 typedef struct _FAKE_DEVICE { volatile LONG References; } FAKE_DEVICE, *PDEVICE_OBJECT;
 typedef struct _FAKE_MDL { void* Va; ULONG Size; ULONG MdlFlags; struct _FAKE_MDL* Next; } MDL, *PMDL;
 typedef void* PIRP;
@@ -223,6 +249,32 @@ static inline VOID KeAcquireSpinLock(KSPIN_LOCK* p, KIRQL* irql) {
 }
 static inline VOID KeReleaseSpinLock(KSPIN_LOCK* p, KIRQL irql) {
     UNREFERENCED_PARAMETER(irql); LeaveCriticalSection(p);
+}
+static inline VOID KeInitializeEvent(
+    PKEVENT event, int type, BOOLEAN state) {
+    UNREFERENCED_PARAMETER(type);
+    event->Signaled = state ? 1 : 0;
+}
+static inline LONG KeClearEvent(PKEVENT event) {
+    return InterlockedExchange(&event->Signaled, 0);
+}
+static inline LONG KeSetEvent(PKEVENT event, LONG increment, BOOLEAN wait) {
+    UNREFERENCED_PARAMETER(increment);
+    UNREFERENCED_PARAMETER(wait);
+    return InterlockedExchange(&event->Signaled, 1);
+}
+static inline NTSTATUS KeWaitForSingleObject(
+    PVOID object, int reason, int mode, BOOLEAN alertable,
+    PLARGE_INTEGER timeout) {
+    PKEVENT event = (PKEVENT)object;
+    UNREFERENCED_PARAMETER(reason);
+    UNREFERENCED_PARAMETER(mode);
+    UNREFERENCED_PARAMETER(alertable);
+    UNREFERENCED_PARAMETER(timeout);
+    while (InterlockedCompareExchange(&event->Signaled, 0, 0) == 0) {
+        Sleep(1);
+    }
+    return (NTSTATUS)0;
 }
 static inline VOID KeRaiseIrql(KIRQL target, KIRQL* prev) {
     UNREFERENCED_PARAMETER(target); *prev = 0;

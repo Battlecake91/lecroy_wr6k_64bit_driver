@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 
 #define LECS65_BAR0_SGTA   0x040
 #define LECS65_BAR0_IIMTC  0x044
@@ -32,6 +33,7 @@ LecFreeMdlChain(
 static
 VOID
 LecFreeTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ PLECS65_TRANSFER Transfer
     )
 {
@@ -44,8 +46,21 @@ LecFreeTransfer(
      * NOT production-ready DMA lifecycle management.
      */
     if (Transfer->DmaUnsafeToFree) {
-        LecTrace("DMA quarantine: token=%lu retained across teardown\n",
-            Transfer->Token);
+        NTSTATUS retainStatus = STATUS_INVALID_DEVICE_STATE;
+
+        if (!Transfer->QuarantineOwned &&
+            DevExt->DmaPnpPublication != NULL) {
+            InitializeListHead(&Transfer->Link);
+            retainStatus = LecDmaPnpPublicationRetainLegacyTransfer(
+                DevExt->DmaPnpPublication, &Transfer->Link);
+            if (NT_SUCCESS(retainStatus)) {
+                Transfer->QuarantineOwned = TRUE;
+            }
+        }
+        LecTrace(
+            "DMA quarantine: token=%lu retained across teardown owner=0x%08X\n",
+            Transfer->Token,
+            retainStatus);
         return;
     }
 
@@ -63,6 +78,22 @@ LecFreeTransfer(
     Transfer->SourceMdlChain = NULL;
 
     ExFreePoolWithTag(Transfer, LECS65_TAG);
+}
+
+VOID
+LecMarkDmaUnknownActive(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer)
+{
+    /* Poison memory ownership before publishing device-wide uncertainty. */
+    Transfer->DmaUnsafeToFree = TRUE;
+    (void)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+    if (DevExt->DmaPnpPublication != NULL) {
+        (void)LecDmaPnpPublicationQuarantine(
+            DevExt->DmaPnpPublication);
+    }
+    /* Block every subsequent IOCTL, including direct register writes. */
+    LecSetIoctlAdmission(DevExt, FALSE);
 }
 
 static
@@ -337,13 +368,13 @@ LecRegisterTransfer(
         AccessMode,
         &transfer->SourceMdlChain);
     if (!NT_SUCCESS(status)) {
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
         return status;
     }
 
     status = LecBuildDescriptorTable(transfer);
     if (!NT_SUCCESS(status)) {
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
         return status;
     }
 
@@ -435,7 +466,7 @@ LecUnregisterTransfer(
         Token,
         OwnerProcessId);
 
-    LecFreeTransfer(transfer);
+    LecFreeTransfer(DevExt, transfer);
     return STATUS_SUCCESS;
 }
 
@@ -477,7 +508,7 @@ LecReleaseTransfersForProcess(
             break;
         }
 
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
     }
 }
 
@@ -515,7 +546,7 @@ LecReleaseAllTransfers(
          * LecFreeTransfer retains poisoned allocations permanently.
          * They are not recoverable without a verified hardware reset.
          */
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
     }
 }
 

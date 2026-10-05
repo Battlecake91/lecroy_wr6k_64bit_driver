@@ -208,14 +208,21 @@ typedef struct _LECS65_TRANSFER {
     ULONG TotalDwords;
     /* Remains permanently pinned if DMA idle cannot be proven. */
     BOOLEAN DmaUnsafeToFree;
+    /* Set after ownership moves to the FDO-independent retention anchor. */
+    BOOLEAN QuarantineOwned;
     KEVENT CompletionEvent;
 } LECS65_TRANSFER, *PLECS65_TRANSFER;
+
+struct _LECS65_DMA_PNP_PUBLICATION;
+typedef struct _LECS65_DMA_PNP_PUBLICATION
+    LECS65_DMA_PNP_PUBLICATION, *PLECS65_DMA_PNP_PUBLICATION;
 
 typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT Self;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT LowerDeviceObject;
     IO_REMOVE_LOCK RemoveLock;
+    PLECS65_DMA_PNP_PUBLICATION DmaPnpPublication;
     KSPIN_LOCK IoAdmissionLock;
     KEVENT IoIdleEvent;
     ULONG ActiveIoctls;
@@ -391,6 +398,9 @@ VOID LecReleaseTransfersForProcess(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ HANDLE OwnerProcessId);
 VOID LecReleaseAllTransfers(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecMarkDmaUnknownActive(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer);
 PLECS65_TRANSFER LecFindTransferOwned(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ ULONG Token,

@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 #include <stdarg.h>
 
 const GUID g_LecS65InterfaceGuids[LECS65_INTERFACE_COUNT] = {
@@ -161,6 +162,20 @@ LecS65AddDevice(
         LecTrace("AddDevice: IoAttachDeviceToDeviceStack failed\n");
         IoDeleteDevice(deviceObject);
         return STATUS_NO_SUCH_DEVICE;
+    }
+
+    /*
+     * Publish exactly one software-only lifetime anchor for this FDO/PDO.
+     * This allocates no DMA adapter, mapping or hardware resource.
+     */
+    status = LecDmaPnpPublicationCreate(
+        PhysicalDeviceObject, &devExt->DmaPnpPublication);
+    if (!NT_SUCCESS(status)) {
+        LecTrace("AddDevice: DMA/PnP publication failed 0x%08X\n", status);
+        IoDetachDevice(devExt->LowerDeviceObject);
+        devExt->LowerDeviceObject = NULL;
+        IoDeleteDevice(deviceObject);
+        return status;
     }
 
     deviceObject->Flags |= DO_POWER_PAGABLE;

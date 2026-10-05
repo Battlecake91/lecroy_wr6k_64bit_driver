@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 
 static
 NTSTATUS
@@ -561,6 +562,12 @@ LecS65Pnp(
         devExt->Started = FALSE;
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+        if (devExt->DmaPnpPublication != NULL) {
+            NTSTATUS lifetimeStatus = LecDmaPnpPublicationNotifyTeardown(
+                devExt->DmaPnpPublication, LecDmaPnpTeardownStop);
+            LecTrace("STOP_DEVICE: DMA/PnP lifetime -> 0x%08X\n",
+                lifetimeStatus);
+        }
         LecUnmapBars(devExt);
         return LecForwardLockedIrp(devExt, Irp, FALSE);
 
@@ -572,6 +579,12 @@ LecS65Pnp(
         devExt->Started = FALSE;
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+        if (devExt->DmaPnpPublication != NULL) {
+            NTSTATUS lifetimeStatus = LecDmaPnpPublicationNotifyTeardown(
+                devExt->DmaPnpPublication, LecDmaPnpTeardownSurprise);
+            LecTrace("SURPRISE_REMOVAL: DMA/PnP lifetime -> 0x%08X\n",
+                lifetimeStatus);
+        }
         LecUnmapBars(devExt);
         return LecForwardLockedIrp(devExt, Irp, FALSE);
 
@@ -596,6 +609,22 @@ LecS65Pnp(
          */
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+
+        if (devExt->DmaPnpPublication != NULL) {
+            PLECS65_DMA_PNP_PUBLICATION publication =
+                devExt->DmaPnpPublication;
+            BOOLEAN retained = FALSE;
+            NTSTATUS lifetimeStatus;
+
+            /* No dispatch reference can load this pointer after rundown. */
+            devExt->DmaPnpPublication = NULL;
+            lifetimeStatus = LecDmaPnpPublicationRemove(
+                publication, &retained);
+            LecTrace(
+                "REMOVE_DEVICE: DMA/PnP lifetime -> 0x%08X retained=%u\n",
+                lifetimeStatus,
+                retained);
+        }
         LecUnmapBars(devExt);
 
         if (devExt->SymbolicLinkCreated) {

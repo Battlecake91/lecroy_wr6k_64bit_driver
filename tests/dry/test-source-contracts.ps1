@@ -31,11 +31,13 @@ $syncSource = Join-Path $repo "driver\DmaSyncStage.c"
 $syncHeader = Join-Path $repo "driver\DmaSyncStage.h"
 $pnpDmaSource = Join-Path $repo "driver\DmaPnpStage.c"
 $pnpDmaHeader = Join-Path $repo "driver\DmaPnpStage.h"
+$pnpPublicationSource = Join-Path $repo "driver\DmaPnpPublication.c"
+$pnpPublicationHeader = Join-Path $repo "driver\DmaPnpPublication.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -59,6 +61,8 @@ $syncText = Get-Content -LiteralPath $syncSource -Raw
 $syncHeaderText = Get-Content -LiteralPath $syncHeader -Raw
 $pnpDmaText = Get-Content -LiteralPath $pnpDmaSource -Raw
 $pnpDmaHeaderText = Get-Content -LiteralPath $pnpDmaHeader -Raw
+$pnpPublicationText = Get-Content -LiteralPath $pnpPublicationSource -Raw
+$pnpPublicationHeaderText = Get-Content -LiteralPath $pnpPublicationHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -266,8 +270,9 @@ Test-Contract "IRQ DPC and timer quiescence precedes resource cleanup" {
 Test-Contract "uncertain DMA is latched after both launch paths" {
     $driverText -match 'volatile LONG DmaUnknownActive' -and
     $driverText -match 'BOOLEAN DmaUnsafeToFree' -and
-    ([regex]::Matches($ioctlText, 'DmaUnsafeToFree = TRUE').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)').Count -eq 2) -and
+    $acquisitionText -match 'Transfer->DmaUnsafeToFree = TRUE' -and
+    $acquisitionText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
+    ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 2) -and
     ([regex]::Matches($ioctlText, 'DmaCompletionIrqSeen').Count -ge 4) -and
     $deviceText -match 'DmaUnknownActive'
 }
@@ -368,19 +373,23 @@ Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
     $ioctlText -notmatch 'LecSgSync|GetScatterGatherListEx'
 }
 
-Test-Contract "PnP DMA parent is compiled but remains outside live paths" {
+Test-Contract "PnP DMA parent publishes lifetime only and cannot activate DMA" {
     $driverProjectText -match 'ClCompile Include="DmaPnpStage.c"' -and
     $driverProjectText -match 'ClInclude Include="DmaPnpStage.h"' -and
+    $driverProjectText -match 'ClCompile Include="DmaPnpPublication.c"' -and
+    $driverProjectText -match 'ClInclude Include="DmaPnpPublication.h"' -and
     $pnpDmaHeaderText -match 'One instance represents one physical-device ownership domain' -and
     $pnpDmaHeaderText -match 'PLECS65_DMA_ADAPTER_CONTEXT AdapterContext' -and
     $pnpDmaHeaderText -match 'LECS65_SG_SYNC_OWNER SyncOwner' -and
     $pnpDmaText -match 'LecDmaCreateAdapterContext' -and
     $pnpDmaText -match 'LecSgSyncOwnerInit' -and
     $pnpDmaText -notmatch 'LecMapOwnerLaunch' -and
-    $driverSourceText -notmatch 'LecDmaPnp' -and
-    $acquisitionText -notmatch 'LecDmaPnp' -and
-    $deviceText -notmatch 'LecDmaPnp' -and
-    $ioctlText -notmatch 'LecDmaPnp'
+    $driverSourceText -match 'LecDmaPnpPublicationCreate' -and
+    $acquisitionText -match 'LecDmaPnpPublicationRetainLegacyTransfer' -and
+    $deviceText -match 'LecDmaPnpPublicationRemove' -and
+    ($driverSourceText + $acquisitionText + $deviceText + $ioctlText) -notmatch
+        'LecDmaPnpStartNoLaunch|LecDmaPnpMapNoLaunch|LecSgSyncMapNoLaunch|LecDmaCreateAdapterContext' -and
+    $acquisitionText -match 'MmGetMdlPfnArray'
 }
 
 Test-Contract "PnP DMA parent gates rundown and unknown-active retention" {
@@ -409,6 +418,22 @@ Test-Contract "PnP DMA parent uses factory lifetime and atomic quarantine" {
     $pnpDmaText -match 'LecSgSyncOwnerQuarantine' -and
     $syncHeaderText -match 'ULONG ReleasesInFlight' -and
     $syncText -match 'LecSgSyncCommitReleaseLocked'
+}
+
+Test-Contract "live PnP publication is remove-lock ordered and fail-closed" {
+    $pnpPublicationHeaderText -match 'allocates only nonpaged software objects' -and
+    $pnpPublicationText -match 'LecDmaPnpStageCreate' -and
+    $pnpPublicationText -match 'LecDmaPnpPublicationUnpublishing' -and
+    $pnpPublicationText -match 'KeWaitForSingleObject' -and
+    $pnpPublicationText -match 'RetainedLegacyTransferCount' -and
+    $pnpPublicationText -match 'LecDmaPnpQuarantineUnknownActive' -and
+    $pnpPublicationText -match 'ObReferenceObject\(PhysicalDeviceObject\)' -and
+    $pnpPublicationText -match 'ObDereferenceObject\(Publication->PhysicalDeviceObject\)' -and
+    $pnpPublicationText -match 'InterlockedCompareExchange\(&Reference->State, 2, 1\)' -and
+    ([regex]::Matches($driverSourceText, 'LecDmaPnpPublicationCreate\(').Count -eq 1) -and
+    $deviceText -match '(?s)IoReleaseRemoveLockAndWait.*?LecReleaseAllTransfers.*?DmaPnpPublication = NULL.*?LecDmaPnpPublicationRemove.*?LecUnmapBars' -and
+    $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?DmaUnknownActive.*?LecDmaPnpPublicationQuarantine.*?LecSetIoctlAdmission' -and
+    $ioctlText -match 'LecMarkDmaUnknownActive'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {

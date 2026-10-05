@@ -6,17 +6,19 @@
   WDK 10.0.28000.0 toolchain.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge
-  and the inactive synchronous v3 no-launch stage. See
+  the inactive synchronous v3 no-launch stage and the live PnP publication
+  lifetime anchor. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 28/28, layout 13/13, ownership 17/17,
-  asynchronous SG 27/27 and synchronous v3/PnP lifetime 149/149; overall
-  234/234 PASS.
+- Current result: source/ABI 29/29, layout 13/13, ownership 17/17,
+  asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
+  publication 27/27; overall 262/262 PASS.
 
 ## DMA/PnP staging
 
 - The active acquisition path is unchanged and still uses PFN-derived DMA
   addresses. Adapter-mapped staging is not reachable from acquisition, IOCTL
-  or live PnP paths.
+  or live PnP paths. Live PnP reaches only the software lifetime-publication
+  layer; it cannot start the adapter stage or create mappings.
 - The synchronous v3 stage uses `GetScatterGatherListEx` with
   `DMA_SYNCHRONOUS_CALLBACK` and no execution callback. It has no launch API.
 - No-launch mappings now have centralized adapter/PDO ownership, unique transfer
@@ -33,9 +35,13 @@
   and caller rundown. Blocked GetEx completion is retained after quarantine;
   notification after an irreversible no-launch release commit is reported as
   late and prevents all remaining cleanup.
-  It prevents multiple contexts within one parent. Live PnP does not yet
-  publish one independently resident parent per physical device, so a complete
-  device-wide guarantee and FDO-independent quarantine lifetime remain open.
+  It prevents multiple contexts within one parent. AddDevice now publishes one
+  separately allocated wrapper and parent per FDO/PDO, with its own PDO
+  reference and two-level remove-lock/internal-user rundown. Clean REMOVE
+  destroys it after unpublication; unknown-active legacy transfer ownership is
+  rehomed into the wrapper so the parent, PDO, pinned MDLs and descriptors can
+  remain retained beyond FDO deletion. This is restart-only containment, not
+  production recovery.
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.
