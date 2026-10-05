@@ -407,18 +407,71 @@ PCI card is `XC2S200E-6 PQ208`. This is **strong evidence** that
 `BINARY/205` is the PCI-FPGA image. Two independent, same-family
 configuration sync points in `204` strongly suggest a combined
 Acquisition/ATC FPGA image; `203` is structurally unlike FPGA data
-and is a likely microcontroller flash image. These specific functional
-assignments are not yet directly proved by callsite-to-resource-ID
-cross-references in the programmer's disassembly.
+and is a likely microcontroller flash image. The three image-source assignments have now been confirmed as
+the **default resource IDs** registered by the S65 device-pack
+component, as documented immediately below. The user-configurable
+resource-ID CVARs may nevertheless be overridden at runtime.
 
-**Follow-up evidence:** In `s65devicepacksvr.dll`, reverse engineer the
-read-only handlers that bind `PciFpgaResId`, `AcqFpgaResId` and
-microcontroller IDs to `BINARY/203..205`. No actual firmware loader or
-upgrade should be called. If confirmed, the PCI image can be privately
-studied using FPGA configuration frame/command decoders, with the
-important limitation that a bitstream is not RTL or proof of DMA
-completion/PCI write drain.
+**Remaining follow-up:** Privately inspect the PCI image's Xilinx
+configuration commands and placement details, and identify whether the
+running card's firmware revision matches the installed update image.
+The registered default resource IDs do not establish that the running
+device uses that exact revision. No firmware loader or upgrade should be
+called. The bitstream is not RTL or proof of DMA completion/PCI drain.
 
 References:
 - [Xilinx DS077, configuration-file size table](https://home.agh.edu.pl/~jamro/xsb/spartan2E.pdf)
 - [Xilinx XAPP176, frame/data format](https://docs.amd.com/api/khub/documents/Hcm12rAU9l9qlRD43FOX3g/content)
+
+## Confirmed S65 device-pack resource-ID mapping and loader references (2026-10-06)
+
+A second offline-only disassembly examined the owner-provided
+`s65hwupgrade.dll` (295,512 bytes; SHA-256
+`0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1`)
+alongside the previously analyzed, identical-hash
+`s65devicepacksvr.dll`. Neither was executed or copied into the repo.
+
+**Confirmed defaults in `s65devicepacksvr.dll` (PE32 image base
+`0x10000000`):**
+
+| x86 instruction VA | Immediate | CVAR string | PE resource | Decoded data size |
+|---|---|---|---|---:|
+| `0x100047F6` | `push 0xCB` | `MicroResId` (`0x1001A304`) | `BINARY/203/1033` | 56,792 |
+| `0x100048FD` | `push 0xCC` | `AcqFpgaResId` (`0x1001A32C`) | `BINARY/204/1033` | 360,520 |
+| `0x10004A04` | `push 0xCD` | `PciFpgaResId` (`0x1001A35C`) | `BINARY/205/1033` | 180,252 |
+
+The immediate values above are registered **CVAR defaults**, not
+immutable hardcoded values. Dynamic configuration can potentially
+override them. Three resource retrieval paths in the device-pack
+binary call Win32 `FindResourceA` at `0x100074E1`,
+`0x100075CA` and `0x100076BC`, respectively. Each supplies the
+literal resource type `BINARY` (string VA `0x1001A4C4`) and follows
+with `LoadResource`. Nearby error strings identify the microcontroller,
+Acq FPGA and PCI FPGA paths, respectively.
+
+`s65hwupgrade.dll` includes a second generic, resource-ID-driven loader
+that calls `LoadLibraryA` (`0x10006675`), `FindResourceA`
+(`0x10006688`) and `LoadResource` (`0x10006692`), with resource type
+`BINARY` at `0x100257E8`. Its user-visible strings separately
+advertise PCI FPGA upgrading **using a device pack** or **using a file**.
+This corroborates the update-image selection chain, but *does not*
+prove the specific firmware bytes currently running in the production
+device, nor establish the bitstream-to-hardware programming transport.
+
+The same read-only parser independently rechecked the resource payload
+integrity:
+
+- `BINARY/203`: 1,968 Intel-HEX records, one valid EOF, 56,792
+  decoded bytes in multiple address ranges.
+- `BINARY/204`: 22,540 records, valid checksums, contiguous 360,520
+  decoded bytes; two Xilinx sync markers at offsets 4 and 180,264.
+- `BINARY/205`: 11,270 records, valid checksums, contiguous 180,252
+  decoded bytes; one Xilinx sync marker at offset 4.
+
+**Conclusion:** `205` is explicitly the installed device pack's
+default `PciFpgaResId`, not merely a size-based guess. The decoded
+180,252-byte image also has the expected XC2S200E configuration length.
+This identifies a **PCI FPGA update image** for this XStream release,
+but determining the actual *live* firmware revision requires additional
+safe evidence. Preserve the private payloads offline; no reflash or JTAG
+on the only functional licensed PCI card.
