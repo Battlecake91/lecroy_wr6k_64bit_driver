@@ -84,7 +84,7 @@ hardware has no undocumented abort/reset command.
 | BAR1 `0x064 MAMRGO` | Write MAM launch count | `0x171DE` | Direct MAM DMA start |
 | BAR1 `0x084 MTTRGO` | Write MTT launch count | `0x171DE` | Direct MTT DMA start |
 | BAR1 `0x080 MTTCTL` | Write `0` on hardware teardown or reset/init | `0x137C4`, `0x1381E`, `0x14847` | Direct; potential MTT disable, **no drain proof**, not MAM abort |
-| BAR1 `0x00C START` | Write `1`, delay, read bit 0 during initialization | `0x12FDE` | Initialization/reset-like action; neither DMA-specific abort nor idle certified |
+| BAR0 `0x00C START` | Write `1`, delay, read bit 0 during initialization | `0x12FDE` | Initialization/reset-like action; neither DMA-specific abort nor idle certified |
 | BAR1 `0x004 CLRERR`, `0x008 CLRIRQ` | Acknowledge translated error/IRQ masks | `0x108D6`, `0x1260E`, `0x126EE` | Acknowledgment only |
 | BAR1 `0x0C4 GPIODAT` | Clear bit `0x00010000` during MAM preparation | `0x120DC` | Mode setup, not DMA stop |
 | BAR1 `0x040 MAMDAT`, `0x044 MAMPGO`, `0x060 MAMSEQ` | Program MAM data, `MAMPGO` trigger `0x105`, sequence | `0x12D6A` and configuration helpers | Acquisition setup, not DMA drain |
@@ -301,3 +301,71 @@ keep WDM v3 live staging disabled.
 External WDM contracts:
 [CancelMappedTransfer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pcancel_mapped_transfer),
 [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex).
+
+## PCI-card FPGA and acquisition-link physical boundary (2026-10-06)
+
+Read-only corroboration against the separately documented, owner-supplied PCI
+card schematic (`docs/pci-card-acquisition-board-topology.md`), the manufacturer
+WaveRunner 6000 service manual (section 4.3, PCI Card, and section 4.6.1.3,
+Controller FPGA), and an independent WaveRunner 6200 repair investigation:
+
+- The conventional PCI connector's command/address/control, `REQ#`, `GNT#`
+  and `INTA#` are connected, partly through Pericom `PI5C3861` level/bus
+  switches, to PCI-card `U3`, a Xilinx `XC2S200E` Spartan-IIE FPGA.
+  The card schematic shows no separate discrete PCI DMA/bus-master ASIC.
+  This strongly locates the physical PCI initiator interface at `U3`, not
+  the acquisition-board MAM/MTT blocks. The exact FPGA RTL remains unknown.
+- Receive `J1` and transmit `J2` are separate 40-pin differential link
+  headers (`D0..D11`, clock, sync, reset/error and stable-status nets).
+  The acquisition controller FPGA is on the other end of that LVDS link;
+  its producer/readout state and link queues must not be equated with PCI
+  initiator or upstream host-bridge completion.
+- The PCI FPGA contains the host-visible endpoint, while BAR0/BAR1 register
+  effects can be implemented locally or forwarded downstream. A host-side
+  register address or ISR event does not establish where the signal originates.
+- The PCI-card `XC18V02` configuration PROM is shown as an **assembly option**;
+  no evidence establishes that it is fitted on this specific card. A public
+  S65 hardware report describes acquisition-microcontroller-provided FPGA
+  configuration. Neither configuration path documents acquisition DMA drain
+  or behavior of an unresponsive FPGA.
+- The service manual describes the PCI card as a *transaction repeater*.
+  This is the manufacturer's functional description, **not** evidence that
+  its custom PCI/FPGA/link implementation implements a standard PCI bridge
+  class or a specified Xilinx PCI LogiCORE version.
+
+**Bus-idle proof needs two distinct hardware boundaries:** (1) acquisition
+producers, both MAM and MTT, and the receive link can no longer enqueue
+payload or DMA work; (2) PCI `U3` has finished descriptor reads and all
+PCI host-memory writes, including any internal or upstream-bridge posted
+transactions. A precise ownership and visibility contract for each boundary
+is unavailable. Even a hypothetical `U3` master-idle bit would need to be
+validated against posted bridge writes, and a remote controller idle flag
+alone would not account for `U3`'s queued transactions.
+
+PCI Local Bus Specification revision 3.0 section 3.2.5 distinguishes a simple
+master from bridge devices and allows posted write queues in bridges, with
+separate read/ordering rules. That specification describes permissible bus
+behavior; it does **not** establish the exact LeCroy FPGA design or the
+necessary ordering of the WR6k completion interrupt. Likewise, Xilinx PCI
+IP's generic reset/handshake documentation cannot establish that LeCroy used
+that particular IP or correctly wired application-layer drain signals.
+
+A future positive abort/idle proof needs device-specific evidence of a
+fail-closed stop of both transfer producers, in-flight descriptor fetches,
+initiator state and write-buffer/bridge draining, including under timeout and
+fault. No presently identified register (`IIMCL`, `IIMST`, `MTTCTL`,
+`START`, `INTST`) provides that documented predicate. No live register or
+reset tests are authorized by this research.
+
+Sources (schematic descriptions only; private drawings are not redistributed):
+
+- [LeCroy WaveRunner 6000 Series Service Manual, section 4.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=25)
+  and [section 4.6.1.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=30).
+- [Independent 6200 PCI FPGA/LVDS inspection](https://www.eevblog.com/forum/repair/lecroy-waverunner-6200-repair/)
+  (corroboration for a related unit, not this board's assembly revision).
+- [WavePro/S65 platform comparison](https://www.eevblog.com/forum/testgear/lecroy-wavepro-7300-back-from-the-dead-%28and-x64-port%29/)
+  (third-party configuration report; not proof of the fitted PROM variant).
+- [PCI Local Bus Specification v3.0, section 3.2.5](https://studylib.net/doc/28279212/pci-spev-v3-0)
+  (generic PCI ordering only).
+- [Xilinx PCI Initiator/Target User Guide UG262, chapter 8](https://docs.amd.com/api/khub/documents/eCaBHdwRMTXeIXAGo49sIg/content)
+  (generic later IP description, **not** a WR6k IP identification).
