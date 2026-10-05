@@ -191,3 +191,40 @@ is later needed. Details:
 
 This information refines the schematic's `ID Chip` label,
 whose contents cannot be inferred from the picture alone.
+
+## DMA-related physical-layer findings and provenance (2026-10-06)
+
+Independent manufacturer documentation confirms that the separate PCI board
+is a **transaction repeater** between conventional PCI and the acquisition
+controller over LVDS, with its digital PCI/LVDS logic in a Xilinx
+Spartan-IIE FPGA (WaveRunner 6000 service manual, sections 4.3, 4.6.1.3).
+A public WaveRunner 6200 investigation independently reports three
+`XC2S200E` FPGAs: one `PQ208` PCI-card device and two `FG456`
+acquisition-board devices. These observations corroborate the owner's
+schematic, but do not identify the package/speed grade or fitted PCB
+revision of the actual working unit.
+
+The PCI board's `U3` terminates the buffered conventional PCI interface
+(including requester arbitration lines `REQ#/GNT#`) and terminates both LVDS
+headers `J1/J2`. The acquisition controller FPGA has separate MAM and
+MTT/timebase producer/control domains. The host's common `SGTA/IIMTC/IIMCL`
+register path and source-specific `MAMRGO/MTTRGO` launches are evidence of a
+shared **driver-visible** transfer interface, not evidence of the exact
+number of RTL engines, internal FIFOs or a common abort operation.
+
+No reviewed schematic or public service/manual excerpt documents the PCI
+FPGA's descriptor-fetch state machine, outstanding initiator requests,
+posted-write FIFO, remote LVDS work queue, interrupt-to-write-retirement
+ordering or a device-specific halt/drain acknowledgement. See
+[`legacy-dma-abort-bus-idle-audit.md`](legacy-dma-abort-bus-idle-audit.md)
+for the DMA-lifetime consequence: neither completion IRQ nor any inferred
+reset/disable sequence proves that host memory can be unmapped or reused.
+
+Additional public documentation:
+
+- [Manufacturer PCI description, section 4.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=25)
+- [Acquisition controller, section 4.6.1.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=30)
+- [LeCroy acquisition main-board drawing index and public schematic source](https://www.ko4bb.com/getsimple/index.php?dir=LeCroy/LeCroy_6000_series_Digital_Storage_Oscilloscope_Service_Manual/Schematics&id=manuals)
+- [Independent XC2S200E/link inspection, related WaveRunner 6200](https://www.eevblog.com/forum/repair/lecroy-waverunner-6200-repair/)
+
+Do not publish owner-supplied drawing PDFs, bitstreams or license memory.
