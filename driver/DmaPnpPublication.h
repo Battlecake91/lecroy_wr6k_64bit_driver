@@ -2,6 +2,10 @@
 
 #include "DmaPnpStage.h"
 
+#define LECS65_TRANSFER_QUARANTINE_FDO          0L
+#define LECS65_TRANSFER_QUARANTINE_TRANSFERRING 1L
+#define LECS65_TRANSFER_QUARANTINE_PUBLICATION  2L
+
 /*
  * Live-PnP lifetime anchor for the otherwise inactive DMA staging parent.
  *
@@ -46,7 +50,7 @@ typedef struct _LECS65_DMA_PNP_PUBLICATION_REFERENCE {
 
 NTSTATUS LecDmaPnpPublicationCreate(
     _In_ PDEVICE_OBJECT PhysicalDeviceObject,
-    _Outptr_ PLECS65_DMA_PNP_PUBLICATION* Publication);
+    _Inout_ PLECS65_DMA_PNP_PUBLICATION* Publication);
 
 /* Caller must already own the FDO remove-lock reference. */
 NTSTATUS LecDmaPnpPublicationAcquire(
@@ -67,7 +71,8 @@ NTSTATUS LecDmaPnpPublicationQuarantine(
  */
 NTSTATUS LecDmaPnpPublicationRetainLegacyTransfer(
     _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
-    _Inout_ PLIST_ENTRY TransferLink);
+    _Inout_ PLIST_ENTRY TransferLink,
+    _Inout_ volatile LONG* OwnershipState);
 
 /* Software-only mirroring after real STOP/SURPRISE rundown has completed. */
 NTSTATUS LecDmaPnpPublicationNotifyTeardown(

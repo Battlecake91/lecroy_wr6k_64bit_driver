@@ -307,14 +307,15 @@ A source contract ensures the live PCI code cannot invoke this stage.
 Current Windows Dry regression on 2026-10-05:
 - Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
   x64 `lecdiag` **PASS**.
-- Source/ABI contracts **29/29 PASS**.
+- Source/ABI contracts **30/30 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
 - Synchronous WDM v3 no-launch and PnP-parent fake-DDI suite
   **149/149 PASS**.
-- Live PnP publication lifetime suite **27/27 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**262/262** checks).
+- Live PnP publication lifetime suite **38/38 PASS**.
+- Live PnP IRP/remove-lock suite **8/8 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**282/282** checks).
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication
@@ -325,6 +326,22 @@ release rejection and independent retention of a synthetic unknown-active
 legacy transfer. The retained fixture deliberately leaves the wrapper,
 parent, PDO reference and transfer link outstanding, matching the restart-only
 quarantine contract.
+
+The expanded publication suite additionally injects parent-notification
+failure after transfer ownership has committed, blocks notification while
+REMOVE unpublishes and waits, rejects duplicate publication and transfer-list
+insertion, checks ownership rollback when retention loses the unpublish race,
+and covers duplicate surprise removal plus STOP-after-surprise. Allocation,
+PDO references and retained-object counts are checked at each boundary.
+
+`test-pnp-irp-lifetime.c` compiles the production
+`PnpIrpLifetime.c` forwarding helpers with a fake lower stack. Deterministic
+synchronous, pending, failed and power completions verify that ordinary
+forwarding releases its remove lock exactly once in the completion routine,
+marks a propagated pending IRP and never releases early. The START/REMOVE
+forward-and-wait helper instead returns `STATUS_MORE_PROCESSING_REQUIRED` from
+its completion routine, waits for pending completion and retains both IRP and
+remove-lock ownership for its caller.
 
 This test is software-only: no real OS SG mapping, actual PnP rundown
 or physical DMA idle has been proven.

@@ -284,42 +284,6 @@ LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
         &DevExt->IoIdleEvent, Executive, KernelMode, FALSE, NULL);
 }
 
-/*
- * A forwarded IRP can complete asynchronously. Release its remove-lock
- * reference from the completion routine, not from the dispatch return.
- */
-static NTSTATUS
-LecReleaseForwardedIrpLock(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _Inout_ PIRP Irp,
-    _In_ PVOID Context)
-{
-    PLECS65_DEVICE_EXTENSION devExt = (PLECS65_DEVICE_EXTENSION)Context;
-    UNREFERENCED_PARAMETER(DeviceObject);
-
-    if (Irp->PendingReturned) {
-        IoMarkIrpPending(Irp);
-    }
-    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
-    return STATUS_CONTINUE_COMPLETION;
-}
-
-NTSTATUS
-LecForwardLockedIrp(
-    _In_ PLECS65_DEVICE_EXTENSION DevExt,
-    _Inout_ PIRP Irp,
-    _In_ BOOLEAN IsPowerIrp)
-{
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(
-        Irp, LecReleaseForwardedIrpLock, DevExt,
-        TRUE, TRUE, TRUE);
-
-    return IsPowerIrp ?
-        PoCallDriver(DevExt->LowerDeviceObject, Irp) :
-        IoCallDriver(DevExt->LowerDeviceObject, Irp);
-}
-
 NTSTATUS
 LecS65PassThrough(
     _In_ PDEVICE_OBJECT DeviceObject,

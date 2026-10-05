@@ -22,7 +22,7 @@ $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Push-Location $outDir
     try {
-        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC "/Fe:$exe" $sources
+        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /DLECS65_PNP_PUBLICATION_TEST_HOOKS /TC "/Fe:$exe" $sources
         if ($LASTEXITCODE -ne 0) { throw "PnP publication test build failed." }
     }
     finally {
@@ -37,7 +37,7 @@ else {
     $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
     if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found." }
     $quotedSources = ($sources | ForEach-Object { '"' + $_ + '"' }) -join ' '
-    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC /Fe:`"$exe`" $quotedSources"
+    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /DLECS65_PNP_PUBLICATION_TEST_HOOKS /TC /Fe:`"$exe`" $quotedSources"
     & $env:ComSpec /d /s /c $cmd
     if ($LASTEXITCODE -ne 0) { throw "PnP publication test build failed." }
 }

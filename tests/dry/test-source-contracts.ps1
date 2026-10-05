@@ -33,11 +33,12 @@ $pnpDmaSource = Join-Path $repo "driver\DmaPnpStage.c"
 $pnpDmaHeader = Join-Path $repo "driver\DmaPnpStage.h"
 $pnpPublicationSource = Join-Path $repo "driver\DmaPnpPublication.c"
 $pnpPublicationHeader = Join-Path $repo "driver\DmaPnpPublication.h"
+$pnpIrpSource = Join-Path $repo "driver\PnpIrpLifetime.c"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -63,6 +64,7 @@ $pnpDmaText = Get-Content -LiteralPath $pnpDmaSource -Raw
 $pnpDmaHeaderText = Get-Content -LiteralPath $pnpDmaHeader -Raw
 $pnpPublicationText = Get-Content -LiteralPath $pnpPublicationSource -Raw
 $pnpPublicationHeaderText = Get-Content -LiteralPath $pnpPublicationHeader -Raw
+$pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -216,12 +218,26 @@ Test-Contract "all dispatch paths participate in remove-lock ownership" {
     $driverText -match 'IO_REMOVE_LOCK RemoveLock' -and
     $driverSourceText -match 'IoInitializeRemoveLock\(' -and
     ([regex]::Matches($driverSourceText, 'IoAcquireRemoveLock\(').Count -ge 3) -and
-    $driverSourceText -match 'LecReleaseForwardedIrpLock' -and
-    $driverSourceText -match 'STATUS_CONTINUE_COMPLETION' -and
+    $driverProjectText -match 'ClCompile Include="PnpIrpLifetime.c"' -and
+    $pnpIrpText -match 'LecReleaseForwardedIrpLock' -and
+    $pnpIrpText -match 'STATUS_CONTINUE_COMPLETION' -and
+    $pnpIrpText -match 'IoReleaseRemoveLock' -and
     $deviceText -match 'IoAcquireRemoveLock\(' -and
     $deviceText -match 'IoReleaseRemoveLockAndWait\(' -and
     $ioctlText -match 'IoAcquireRemoveLock\(' -and
     $ioctlText -match 'IoReleaseRemoveLock\('
+}
+
+Test-Contract "AddDevice partial initialization has exact cleanup" {
+    $addDevice = [regex]::Match(
+        $driverSourceText,
+        '(?s)LecS65AddDevice\s*\(.*?(?=VOID\s+LecS65Unload)')
+    $addDevice.Success -and
+    $addDevice.Value -match '(?s)IoAttachDeviceToDeviceStack.*?if \(devExt->LowerDeviceObject == NULL\).*?IoDeleteDevice\(deviceObject\).*?return STATUS_NO_SUCH_DEVICE' -and
+    $addDevice.Value -match '(?s)LecDmaPnpPublicationCreate.*?if \(!NT_SUCCESS\(status\)\).*?IoDetachDevice.*?LowerDeviceObject = NULL.*?IoDeleteDevice\(deviceObject\).*?return status' -and
+    $addDevice.Value -match '(?s)IoRegisterDeviceInterface.*?if \(NT_SUCCESS\(status\)\).*?InterfaceRegistered\[i\] = TRUE' -and
+    $deviceText -match '(?s)if \(devExt->InterfaceRegistered\[i\]\).*?RtlFreeUnicodeString.*?InterfaceRegistered\[i\] = FALSE' -and
+    $pnpPublicationText -match '(?s)if \(\*Publication != NULL\).*?STATUS_INVALID_DEVICE_STATE'
 }
 
 Test-Contract "IOCTL admission counter releases at dispatch completion" {
@@ -432,7 +448,9 @@ Test-Contract "live PnP publication is remove-lock ordered and fail-closed" {
     $pnpPublicationText -match 'InterlockedCompareExchange\(&Reference->State, 2, 1\)' -and
     ([regex]::Matches($driverSourceText, 'LecDmaPnpPublicationCreate\(').Count -eq 1) -and
     $deviceText -match '(?s)IoReleaseRemoveLockAndWait.*?LecReleaseAllTransfers.*?DmaPnpPublication = NULL.*?LecDmaPnpPublicationRemove.*?LecUnmapBars' -and
-    $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?DmaUnknownActive.*?LecDmaPnpPublicationQuarantine.*?LecSetIoctlAdmission' -and
+    $pnpPublicationText -match 'LECS65_TRANSFER_QUARANTINE_TRANSFERRING' -and
+    $pnpPublicationText -match '(?s)InsertTailList.*?LECS65_TRANSFER_QUARANTINE_PUBLICATION.*?LecDmaPnpPublicationQuarantineParent' -and
+    $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?DmaUnknownActive.*?LecSetIoctlAdmission.*?LecDmaPnpPublicationQuarantine' -and
     $ioctlText -match 'LecMarkDmaUnknownActive'
 }
 
