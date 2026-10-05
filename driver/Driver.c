@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 #include <stdarg.h>
 
 const GUID g_LecS65InterfaceGuids[LECS65_INTERFACE_COUNT] = {
@@ -137,6 +138,11 @@ LecS65AddDevice(
 
     devExt = (PLECS65_DEVICE_EXTENSION)deviceObject->DeviceExtension;
     RtlZeroMemory(devExt, sizeof(*devExt));
+    IoInitializeRemoveLock(&devExt->RemoveLock, LECS65_TAG, 0, 0);
+    KeInitializeSpinLock(&devExt->IoAdmissionLock);
+    KeInitializeEvent(&devExt->IoIdleEvent, NotificationEvent, TRUE);
+    devExt->ActiveIoctls = 0;
+    devExt->AcceptIoctls = FALSE;
     /* Original BAR0 ERRM register wrapper starts with cached 0xFFFFFFFF. */
     devExt->LegacyErrmShadow = (LONG)0xFFFFFFFFUL;
     KeInitializeMutex(&devExt->DallasMutex, 0);
@@ -144,6 +150,8 @@ LecS65AddDevice(
     InitializeListHead(&devExt->TransferList);
     devExt->NextTransferToken = 0;
     devExt->CurrentTransfer = NULL;
+    KeInitializeSpinLock(&devExt->DmaCompletionLock);
+    LecDmaCompletionInitialize(&devExt->DmaCompletion);
     KeInitializeDpc(&devExt->InterruptDpc, LecInterruptDpc, devExt);
     KeInitializeSpinLock(&devExt->LegacyEventLock);
     KeInitializeSpinLock(&devExt->TraceLock);
@@ -156,6 +164,20 @@ LecS65AddDevice(
         LecTrace("AddDevice: IoAttachDeviceToDeviceStack failed\n");
         IoDeleteDevice(deviceObject);
         return STATUS_NO_SUCH_DEVICE;
+    }
+
+    /*
+     * Publish exactly one software-only lifetime anchor for this FDO/PDO.
+     * This allocates no DMA adapter, mapping or hardware resource.
+     */
+    status = LecDmaPnpPublicationCreate(
+        PhysicalDeviceObject, &devExt->DmaPnpPublication);
+    if (!NT_SUCCESS(status)) {
+        LecTrace("AddDevice: DMA/PnP publication failed 0x%08X\n", status);
+        IoDetachDevice(devExt->LowerDeviceObject);
+        devExt->LowerDeviceObject = NULL;
+        IoDeleteDevice(deviceObject);
+        return status;
     }
 
     deviceObject->Flags |= DO_POWER_PAGABLE;
@@ -211,6 +233,59 @@ LecS65Unload(
     LecTrace("Unload\n");
 }
 
+/*
+ * The admission lock gives STOP an atomic boundary: once disabled,
+ * no new IOCTL may enter the hardware/transfer/event paths. STOP waits
+ * for already admitted synchronous IOCTLs before freeing their resources.
+ * This is distinct from the remove lock, which protects the device object.
+ */
+BOOLEAN
+LecEnterIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    KIRQL irql;
+    BOOLEAN accepted;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    accepted = DevExt->AcceptIoctls;
+    if (accepted) {
+        if (DevExt->ActiveIoctls++ == 0) {
+            KeClearEvent(&DevExt->IoIdleEvent);
+        }
+    }
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+    return accepted;
+}
+
+VOID
+LecLeaveIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    NT_ASSERT(DevExt->ActiveIoctls != 0);
+    if (--DevExt->ActiveIoctls == 0) {
+        KeSetEvent(&DevExt->IoIdleEvent, IO_NO_INCREMENT, FALSE);
+    }
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+}
+
+VOID
+LecSetIoctlAdmission(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN Enable)
+{
+    KIRQL irql;
+    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
+    DevExt->AcceptIoctls = Enable;
+    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+}
+
+VOID
+LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt)
+{
+    /* Called at PASSIVE_LEVEL only after admission has been disabled. */
+    (VOID)KeWaitForSingleObject(
+        &DevExt->IoIdleEvent, Executive, KernelMode, FALSE, NULL);
+}
+
 NTSTATUS
 LecS65PassThrough(
     _In_ PDEVICE_OBJECT DeviceObject,
@@ -221,15 +296,23 @@ LecS65PassThrough(
 
     devExt = (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+
     if (devExt->LowerDeviceObject == NULL) {
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         Irp->IoStatus.Status = STATUS_INVALID_DEVICE_STATE;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(devExt->LowerDeviceObject, Irp);
+    return LecForwardLockedIrp(devExt, Irp, FALSE);
 }
 
 NTSTATUS
@@ -240,7 +323,15 @@ LecS65Create(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    LONGLONG count = InterlockedIncrement64(&devExt->CreateCount);
+    LONGLONG count;
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+    count = InterlockedIncrement64(&devExt->CreateCount);
 
     LecTrace("CREATE: pid=%p requestor=%s started=%u count=%lld\n",
         PsGetCurrentProcessId(),
@@ -248,10 +339,12 @@ LecS65Create(
         devExt->Started,
         count);
 
-    Irp->IoStatus.Status = devExt->Removed ? STATUS_DELETE_PENDING : STATUS_SUCCESS;
+    status = devExt->Removed ? STATUS_DELETE_PENDING : STATUS_SUCCESS;
+    Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = 0;
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return Irp->IoStatus.Status;
+    return status;
 }
 
 NTSTATUS
@@ -262,7 +355,15 @@ LecS65Close(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
-    LONGLONG count = InterlockedIncrement64(&devExt->CloseCount);
+    LONGLONG count;
+    NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+    count = InterlockedIncrement64(&devExt->CloseCount);
 
     LecTrace("CLOSE: pid=%p count=%lld\n", PsGetCurrentProcessId(), count);
 
@@ -271,10 +372,18 @@ LecS65Close(
      * process close. The x64 replacement uses opaque tokens rather than
      * leaking kernel pointers, and always enforces owner identity.
      */
-    LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
+    /*
+     * STOP waits for process-owned transfer cleanup as well as IOCTLs.
+     * A close racing with STOP leaves transfer release to the PnP teardown.
+     */
+    if (LecEnterIoctl(devExt)) {
+        LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
+        LecLeaveIoctl(devExt);
+    }
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_SUCCESS;
 }

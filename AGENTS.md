@@ -47,6 +47,7 @@ Only cross-cutting facts that future work must know belong here.
   - setter request DWORD `+0x101` contains the zero-based register-list index;
   - setter DWORD `+0x106` contains the requested value.
 - Native register access must resolve only known BAR/offset mappings and validate lengths, indices, and ranges before touching hardware.
+- Neither original x86 timeout cleanup nor physical acquisition completion currently proves WR6k DMA bus-idle. Draft x64 quarantine of indeterminate transfers deliberately retains pinned pages until restart and is not a production-grade abort/recovery solution. See `docs/dma-lifetime-and-timeout.md`.
 - The original x86 driver's unchecked behaviors are evidence, not implementation requirements. The x64 replacement should harden them.
 - Private/vendor binaries may be analyzed locally but must never be committed.
 

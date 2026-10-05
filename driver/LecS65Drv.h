@@ -2,6 +2,7 @@
 
 #include <ntddk.h>
 #include <stdint.h>
+#include "DmaCompletion.h"
 
 #define LECS65_TAG '56SL'
 
@@ -206,13 +207,28 @@ typedef struct _LECS65_TRANSFER {
     PMDL DescriptorMdl;
     ULONG DescriptorTablePhysical;
     ULONG TotalDwords;
+    ULONGLONG DmaGeneration;
+    /* Remains permanently pinned if DMA idle cannot be proven. */
+    BOOLEAN DmaUnsafeToFree;
+    /* Atomic LECS65_TRANSFER_QUARANTINE_* ownership state. */
+    volatile LONG QuarantineOwnership;
     KEVENT CompletionEvent;
 } LECS65_TRANSFER, *PLECS65_TRANSFER;
+
+struct _LECS65_DMA_PNP_PUBLICATION;
+typedef struct _LECS65_DMA_PNP_PUBLICATION
+    LECS65_DMA_PNP_PUBLICATION, *PLECS65_DMA_PNP_PUBLICATION;
 
 typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT Self;
     PDEVICE_OBJECT PhysicalDeviceObject;
     PDEVICE_OBJECT LowerDeviceObject;
+    IO_REMOVE_LOCK RemoveLock;
+    PLECS65_DMA_PNP_PUBLICATION DmaPnpPublication;
+    KSPIN_LOCK IoAdmissionLock;
+    KEVENT IoIdleEvent;
+    ULONG ActiveIoctls;
+    BOOLEAN AcceptIoctls;
 
     BOOLEAN Started;
     BOOLEAN Removed;
@@ -242,6 +258,15 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     LIST_ENTRY TransferList;
     ULONG NextTransferToken;
     volatile PLECS65_TRANSFER CurrentTransfer;
+    KSPIN_LOCK DmaCompletionLock;
+    LECS65_DMA_COMPLETION_TRACKER DmaCompletion;
+    volatile LONG64 DmaGenerationCounter;
+    volatile LONG64 DmaActiveGeneration;
+    /*
+     * An unknown DMA finish is terminal for this FDO: software cannot
+     * prove that old bus-master reads/writes have stopped.
+     */
+    volatile LONG DmaUnknownActive;
 
     PKINTERRUPT InterruptObject;
     ULONG InterruptVector;
@@ -315,6 +340,16 @@ VOID LecS65Unload(_In_ PDRIVER_OBJECT DriverObject);
 VOID LecTrace(_In_z_ _Printf_format_string_ PCSTR Format, ...);
 VOID LecHexDump(_In_reads_bytes_opt_(Length) const UCHAR* Buffer, _In_ ULONG Length);
 VOID LecUnmapBars(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+BOOLEAN LecEnterIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecLeaveIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecSetIoctlAdmission(_Inout_ PLECS65_DEVICE_EXTENSION DevExt, _In_ BOOLEAN Enable);
+VOID LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+
+NTSTATUS LecForwardLockedIrp(
+    _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PIRP Irp,
+    _In_ BOOLEAN IsPowerIrp);
+
 
 NTSTATUS LecForwardAndWait(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
@@ -335,6 +370,10 @@ NTSTATUS LecReadPciConfig(
 
 NTSTATUS LecConnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecDisconnectInterrupt(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecQuiesceDeferredWork(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN HardwareAccessible);
+
 BOOLEAN LecInterruptService(_In_ PKINTERRUPT Interrupt, _In_ PVOID Context);
 VOID LecInterruptDpc(
     _In_ PKDPC Dpc,
@@ -364,6 +403,30 @@ VOID LecReleaseTransfersForProcess(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ HANDLE OwnerProcessId);
 VOID LecReleaseAllTransfers(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+NTSTATUS LecSelectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _Out_ PULONGLONG Generation);
+BOOLEAN LecArmSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation);
+BOOLEAN LecCancelSelectedDmaArm(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation);
+NTSTATUS LecLaunchSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation,
+    _In_ volatile ULONG* CompletionControl,
+    _In_ volatile ULONG* GoRegister,
+    _In_ ULONG GoValue,
+    _Out_ PBOOLEAN DmaLaunched);
+VOID LecDeselectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _In_ ULONGLONG Generation);
+VOID LecMarkDmaUnknownActive(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer);
 PLECS65_TRANSFER LecFindTransferOwned(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ ULONG Token,

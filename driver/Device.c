@@ -1,56 +1,5 @@
 #include "LecS65Drv.h"
-
-static
-NTSTATUS
-LecCompletionSetEvent(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp,
-    _In_ PVOID Context
-    )
-{
-    PKEVENT event = (PKEVENT)Context;
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
-
-    KeSetEvent(event, IO_NO_INCREMENT, FALSE);
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-NTSTATUS
-LecForwardAndWait(
-    _In_ PLECS65_DEVICE_EXTENSION DevExt,
-    _Inout_ PIRP Irp
-    )
-{
-    KEVENT event;
-    NTSTATUS status;
-
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(
-        Irp,
-        LecCompletionSetEvent,
-        &event,
-        TRUE,
-        TRUE,
-        TRUE);
-
-    status = IoCallDriver(DevExt->LowerDeviceObject, Irp);
-
-    if (status == STATUS_PENDING) {
-        KeWaitForSingleObject(
-            &event,
-            Executive,
-            KernelMode,
-            FALSE,
-            NULL);
-        status = Irp->IoStatus.Status;
-    }
-
-    return status;
-}
+#include "DmaPnpPublication.h"
 
 VOID
 LecReleaseLegacyEvents(
@@ -487,75 +436,144 @@ LecS65Pnp(
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status;
 
+    /*
+     * REMOVE holds its own reference until all other dispatch references
+     * have completed. Normal PnP forwarding is completion-accounted.
+     */
+    status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+    }
+
     LecTrace("PNP: minor=0x%02X\n", stack->MinorFunction);
 
     switch (stack->MinorFunction) {
     case IRP_MN_START_DEVICE:
         status = LecForwardAndWait(devExt, Irp);
         if (NT_SUCCESS(status)) {
-            status = LecHandleStartDevice(
-                devExt,
-                stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+            /*
+             * A timed-out bus master may still own pinned descriptor/user
+             * pages. Even STOP/START cannot clear that uncertainty without
+             * an independently verified hardware idle protocol.
+             */
+            if (InterlockedCompareExchange(
+                    &devExt->DmaUnknownActive, 0, 0) != 0) {
+                status = STATUS_DEVICE_NOT_READY;
+            }
+            else {
+                status = LecHandleStartDevice(
+                    devExt,
+                    stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+            }
 
             if (NT_SUCCESS(status)) {
                 NTSTATUS irqStatus;
 
-                devExt->Started = TRUE;
-
                 /*
-                 * Connecting the interrupt is passive until an understood
-                 * source is explicitly enabled in InterruptEnableShadow.
-                 * Do not fail safe bring-up if a platform refuses the legacy
-                 * line interrupt; diagnostics and passive tracing remain
-                 * useful in that state.
+                 * Acquisition/DMA requires an ISR to complete transfers.
+                 * Never publish a started device if IRQ registration fails:
+                 * the former diagnostic-only fallback also admitted active
+                 * hardware operations through the normal interface.
                  */
                 irqStatus = LecConnectInterrupt(devExt);
                 if (!NT_SUCCESS(irqStatus)) {
                     LecTrace(
-                        "START_DEVICE: continuing without connected IRQ: 0x%08X\n",
+                        "START_DEVICE: IRQ unavailable, rejecting start: 0x%08X\n",
                         irqStatus);
+                    devExt->Started = FALSE;
+                    devExt->LegacyMamShadowInitialized = FALSE;
+                    devExt->LegacyMamSeqShadowInitialized = FALSE;
+                    LecUnmapBars(devExt);
+                    status = irqStatus;
                 }
-
-                LecEnableInterfaces(devExt);
+                else {
+                    devExt->Started = TRUE;
+                    LecSetIoctlAdmission(devExt, TRUE);
+                    LecEnableInterfaces(devExt);
+                }
             }
         }
 
         Irp->IoStatus.Status = status;
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return status;
 
     case IRP_MN_STOP_DEVICE:
-        devExt->Started = FALSE;
+        LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
-        LecDisconnectInterrupt(devExt);
+        LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, TRUE);
+        devExt->Started = FALSE;
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+        if (devExt->DmaPnpPublication != NULL) {
+            NTSTATUS lifetimeStatus = LecDmaPnpPublicationNotifyTeardown(
+                devExt->DmaPnpPublication, LecDmaPnpTeardownStop);
+            LecTrace("STOP_DEVICE: DMA/PnP lifetime -> 0x%08X\n",
+                lifetimeStatus);
+        }
         LecUnmapBars(devExt);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_SURPRISE_REMOVAL:
-        devExt->Started = FALSE;
+        LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
-        LecDisconnectInterrupt(devExt);
+        LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, FALSE);
+        devExt->Started = FALSE;
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+        if (devExt->DmaPnpPublication != NULL) {
+            NTSTATUS lifetimeStatus = LecDmaPnpPublicationNotifyTeardown(
+                devExt->DmaPnpPublication, LecDmaPnpTeardownSurprise);
+            LecTrace("SURPRISE_REMOVAL: DMA/PnP lifetime -> 0x%08X\n",
+                lifetimeStatus);
+        }
         LecUnmapBars(devExt);
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_REMOVE_DEVICE:
         devExt->Removed = TRUE;
+        LecSetIoctlAdmission(devExt, FALSE);
+        LecDisableInterfaces(devExt);
+        LecDrainIoctls(devExt);
+        LecQuiesceDeferredWork(devExt, devExt->Started);
         devExt->Started = FALSE;
 
-        LecDisableInterfaces(devExt);
-        LecDisconnectInterrupt(devExt);
+        /*
+         * Own REMOVE completion and wait for the lower stack before tearing
+         * down the attachment. LecForwardAndWait retains the IRP for us.
+         */
+        status = LecForwardAndWait(devExt, Irp);
+        IoReleaseRemoveLockAndWait(&devExt->RemoveLock, Irp);
+
+        /*
+         * All regular dispatch references and queued DPCs are drained.
+         * DMA timeout paths still need proof of hardware inactivity.
+         */
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
-        LecUnmapBars(devExt);
 
-        IoSkipCurrentIrpStackLocation(Irp);
-        status = IoCallDriver(devExt->LowerDeviceObject, Irp);
+        if (devExt->DmaPnpPublication != NULL) {
+            PLECS65_DMA_PNP_PUBLICATION publication =
+                devExt->DmaPnpPublication;
+            BOOLEAN retained = FALSE;
+            NTSTATUS lifetimeStatus;
+
+            /* No dispatch reference can load this pointer after rundown. */
+            devExt->DmaPnpPublication = NULL;
+            lifetimeStatus = LecDmaPnpPublicationRemove(
+                publication, &retained);
+            LecTrace(
+                "REMOVE_DEVICE: DMA/PnP lifetime -> 0x%08X retained=%u\n",
+                lifetimeStatus,
+                retained);
+        }
+        LecUnmapBars(devExt);
 
         if (devExt->SymbolicLinkCreated) {
             UNICODE_STRING dosName;
@@ -575,12 +593,13 @@ LecS65Pnp(
         }
 
         IoDetachDevice(devExt->LowerDeviceObject);
+        Irp->IoStatus.Status = status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
         IoDeleteDevice(DeviceObject);
         return status;
 
     default:
-        IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(devExt->LowerDeviceObject, Irp);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
     }
 }
 
@@ -599,7 +618,16 @@ LecS65Power(
         stack->Parameters.Power.Type,
         stack->Parameters.Power.State.SystemState);
 
-    PoStartNextPowerIrp(Irp);
-    IoSkipCurrentIrpStackLocation(Irp);
-    return PoCallDriver(devExt->LowerDeviceObject, Irp);
+    {
+        NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+        if (!NT_SUCCESS(status)) {
+            Irp->IoStatus.Status = status;
+            Irp->IoStatus.Information = 0;
+            PoStartNextPowerIrp(Irp);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return status;
+        }
+        PoStartNextPowerIrp(Irp);
+        return LecForwardLockedIrp(devExt, Irp, TRUE);
+    }
 }

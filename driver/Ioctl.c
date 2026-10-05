@@ -1881,14 +1881,22 @@ LecExecuteLegacyMttTransferLocked(
     volatile ULONG* mttrgo;
     ULONG currentMask;
     ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     LARGE_INTEGER timeout;
     NTSTATUS status;
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
 
     if (Transfer == NULL) {
         return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     /*
@@ -1921,10 +1929,20 @@ LecExecuteLegacyMttTransferLocked(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        Transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        Transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
     transferSelected = TRUE;
+
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Cleanup;
+    }
+    transferArmed = TRUE;
 
     currentMask = (ULONG)InterlockedCompareExchange(
         (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -1939,8 +1957,16 @@ LecExecuteLegacyMttTransferLocked(
     }
     transferInterruptEnabled = TRUE;
 
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mttrgo,
+        (ULONG)LaunchUnits,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -1955,6 +1981,29 @@ LecExecuteLegacyMttTransferLocked(
     }
 
 Cleanup:
+    /*
+     * A timeout, failed wait or synthetic completion is NOT DMA idle.
+     * Retain both the user-page MDLs and descriptor pages indefinitely,
+     * and refuse later DMA starts on this FDO. No guessed abort writes.
+     */
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+    }
+    else if (dmaLaunched && LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS))) {
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -1972,9 +2021,10 @@ Cleanup:
     }
 
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            Transfer,
+            dmaGeneration);
     }
 
     LecTrace(
@@ -3447,6 +3497,19 @@ LecIoctlCfDc2110(
             }
         }
 
+        /*
+         * This packed request may contain multiple hardware commands.
+         * If an earlier MTT launch became indeterminate, never run the
+         * remaining records while the same outer IOCTL is still active.
+         */
+        if (InterlockedCompareExchange(
+                &DevExt->DmaUnknownActive, 0, 0) != 0) {
+            if (NT_SUCCESS(status)) {
+                status = STATUS_DEVICE_NOT_READY;
+            }
+            break;
+        }
+
         outputOffset += recordOutput;
         inputOffset += 8 + payloadLength;
     }
@@ -3488,6 +3551,7 @@ LecIoctlAcquireBufferedOneChannel(
     ULONG launchCount;
     ULONG currentMask;
     ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     ULONG gpioValue;
     ULONG iimStatus;
     ULONG mamValues[5];
@@ -3507,7 +3571,9 @@ LecIoctlAcquireBufferedOneChannel(
     NTSTATUS status;
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
     ULONG i;
 
     if (SystemBuffer == NULL ||
@@ -3515,6 +3581,11 @@ LecIoctlAcquireBufferedOneChannel(
         InputLength != 15 ||
         OutputLength != sizeof(ULONG)) {
         return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     RtlCopyMemory(&token, SystemBuffer, sizeof(token));
@@ -3553,6 +3624,18 @@ LecIoctlAcquireBufferedOneChannel(
         KernelMode,
         FALSE,
         NULL);
+
+    /*
+     * Another already-admitted IOCTL can wait here while a prior DMA request
+     * times out and permanently closes admission. Recheck the terminal fault
+     * after serialization and before any MAM setup MMIO.
+     */
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(
+            &DevExt->DmaUnknownActive, 0, 0) != 0) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto Exit;
+    }
 
     transfer = LecFindTransferOwned(
         DevExt,
@@ -3690,10 +3773,20 @@ LecIoctlAcquireBufferedOneChannel(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
     transferSelected = TRUE;
+
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto CleanupTransfer;
+    }
+    transferArmed = TRUE;
 
     currentMask = (ULONG)InterlockedCompareExchange(
         (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -3708,8 +3801,16 @@ LecIoctlAcquireBufferedOneChannel(
     }
     transferInterruptEnabled = TRUE;
 
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mamRgo, launchCount);
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mamRgo,
+        launchCount,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -3724,6 +3825,24 @@ LecIoctlAcquireBufferedOneChannel(
     }
 
 CleanupTransfer:
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, transfer);
+    }
+    else if (dmaLaunched && LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS))) {
+        LecMarkDmaUnknownActive(DevExt, transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -3741,9 +3860,10 @@ CleanupTransfer:
     }
 
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            transfer,
+            dmaGeneration);
     }
 
     /*
@@ -3924,6 +4044,21 @@ LecS65DeviceControl(
     ULONG outputPreviewLength = 0;
     PVOID type3InputBuffer =
         stack->Parameters.DeviceIoControl.Type3InputBuffer;
+    NTSTATUS lockStatus = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+
+    if (!NT_SUCCESS(lockStatus)) {
+        Irp->IoStatus.Status = lockStatus;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return lockStatus;
+    }
+    if (!LecEnterIoctl(devExt)) {
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_DEVICE_NOT_READY;
+    }
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
     RtlZeroMemory(outputPreview, sizeof(outputPreview));
@@ -4751,6 +4886,8 @@ LecS65DeviceControl(
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
+    LecLeaveIoctl(devExt);
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return status;
 }

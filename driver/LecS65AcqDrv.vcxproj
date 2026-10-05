@@ -28,6 +28,7 @@
     <CharacterSet>Unicode</CharacterSet>
     <GenerateManifest>false</GenerateManifest>
     <EmbedManifest>false</EmbedManifest>
+    <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -36,6 +37,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <CharacterSet>Unicode</CharacterSet>
     <EmbedManifest>false</EmbedManifest>
+    <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -90,6 +92,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <PreprocessorDefinitions>DBG=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -104,10 +107,27 @@
 
   <ItemGroup>
     <ClInclude Include="LecS65Drv.h" />
+    <ClInclude Include="DmaLayout.h" />
+    <ClInclude Include="DmaAdapterStage.h" />
+    <ClInclude Include="DmaMappingOwner.h" />
+    <ClInclude Include="DmaScatterGatherStage.h" />
+    <ClInclude Include="DmaSyncStage.h" />
+    <ClInclude Include="DmaPnpStage.h" />
+    <ClInclude Include="DmaPnpPublication.h" />
+    <ClInclude Include="DmaCompletion.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
+    <ClCompile Include="PnpIrpLifetime.c" />
     <ClCompile Include="Pci.c" />
     <ClCompile Include="Acquisition.c" />
+    <ClCompile Include="DmaCompletion.c" />
+    <ClCompile Include="DmaLayout.c" />
+    <ClCompile Include="DmaAdapterStage.c" />
+    <ClCompile Include="DmaMappingOwner.c" />
+    <ClCompile Include="DmaScatterGatherStage.c" />
+    <ClCompile Include="DmaSyncStage.c" />
+    <ClCompile Include="DmaPnpStage.c" />
+    <ClCompile Include="DmaPnpPublication.c" />
     <ClCompile Include="Ioctl.c" />
     <None Include="LecS65AcqDrv.inf" />
   </ItemGroup>

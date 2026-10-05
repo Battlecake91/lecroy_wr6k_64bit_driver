@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 
 #define LECS65_BAR0_SGTA   0x040
 #define LECS65_BAR0_IIMTC  0x044
@@ -32,9 +33,50 @@ LecFreeMdlChain(
 static
 VOID
 LecFreeTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ PLECS65_TRANSFER Transfer
     )
 {
+    /*
+     * Deliberate fail-closed quarantine. Without a proven DMA abort/idle
+     * protocol, unlocking/reusing these pages could corrupt unrelated
+     * kernel or process memory. The pinned pages and descriptor storage
+     * must survive FDO destruction; recovery is a controlled system restart,
+     * not a driver restart. This leaks kernel resources by design and is
+     * NOT production-ready DMA lifecycle management.
+     */
+    if (Transfer->DmaUnsafeToFree) {
+        LONG ownershipState;
+        NTSTATUS retainStatus = STATUS_INVALID_DEVICE_STATE;
+
+        ownershipState = InterlockedCompareExchange(
+            &Transfer->QuarantineOwnership,
+            LECS65_TRANSFER_QUARANTINE_FDO,
+            LECS65_TRANSFER_QUARANTINE_FDO);
+        if (ownershipState == LECS65_TRANSFER_QUARANTINE_PUBLICATION) {
+            retainStatus = STATUS_SUCCESS;
+        }
+        else if (DevExt->DmaPnpPublication != NULL) {
+            retainStatus = LecDmaPnpPublicationRetainLegacyTransfer(
+                DevExt->DmaPnpPublication,
+                &Transfer->Link,
+                &Transfer->QuarantineOwnership);
+        }
+        ownershipState = InterlockedCompareExchange(
+            &Transfer->QuarantineOwnership,
+            LECS65_TRANSFER_QUARANTINE_FDO,
+            LECS65_TRANSFER_QUARANTINE_FDO);
+        (void)LecDmaCompletionMarkQuarantined(
+            &DevExt->DmaCompletion,
+            Transfer->DmaGeneration);
+        LecTrace(
+            "DMA quarantine: token=%lu retained across teardown status=0x%08X owner=%ld\n",
+            Transfer->Token,
+            retainStatus,
+            ownershipState);
+        return;
+    }
+
     if (Transfer->DescriptorMdl != NULL) {
         IoFreeMdl(Transfer->DescriptorMdl);
         Transfer->DescriptorMdl = NULL;
@@ -49,6 +91,176 @@ LecFreeTransfer(
     Transfer->SourceMdlChain = NULL;
 
     ExFreePoolWithTag(Transfer, LECS65_TAG);
+}
+
+NTSTATUS
+LecSelectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _Out_ PULONGLONG Generation)
+{
+    KIRQL irql;
+    ULONGLONG generation;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (DevExt == NULL || Transfer == NULL || Generation == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    generation = (ULONGLONG)InterlockedIncrement64(
+        &DevExt->DmaGenerationCounter);
+    if (generation == 0) {
+        generation = (ULONGLONG)InterlockedIncrement64(
+            &DevExt->DmaGenerationCounter);
+    }
+    if (!LecDmaCompletionPrepare(&DevExt->DmaCompletion, generation)) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    if (DevExt->CurrentTransfer != NULL ||
+        DevExt->DmaActiveGeneration != 0) {
+        status = STATUS_DEVICE_BUSY;
+    }
+    else {
+        Transfer->DmaGeneration = generation;
+        DevExt->DmaActiveGeneration = (LONG64)generation;
+        DevExt->CurrentTransfer = Transfer;
+        *Generation = generation;
+    }
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
+    return status;
+}
+
+BOOLEAN
+LecArmSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation)
+{
+    return LecDmaCompletionArm(
+        &DevExt->DmaCompletion,
+        Generation);
+}
+
+BOOLEAN
+LecCancelSelectedDmaArm(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation)
+{
+    return LecDmaCompletionCancelArm(
+        &DevExt->DmaCompletion,
+        Generation);
+}
+
+typedef struct _LECS65_DMA_LAUNCH_CONTEXT {
+    PLECS65_DEVICE_EXTENSION DevExt;
+    ULONGLONG Generation;
+    volatile ULONG* CompletionControl;
+    volatile ULONG* GoRegister;
+    ULONG GoValue;
+    BOOLEAN GoWritten;
+} LECS65_DMA_LAUNCH_CONTEXT, *PLECS65_DMA_LAUNCH_CONTEXT;
+
+static
+BOOLEAN
+LecCommitDmaLaunchSynchronized(_In_ PVOID Context)
+{
+    PLECS65_DMA_LAUNCH_CONTEXT launch =
+        (PLECS65_DMA_LAUNCH_CONTEXT)Context;
+
+    /*
+     * KeSynchronizeExecution excludes the ISR across both the GO write and
+     * publication of DeviceActive.  Therefore an IRQ before this callback is
+     * rejected by Arming, while a fast IRQ after GO cannot run until the
+     * active generation has been published.
+     */
+    if (!LecDmaCompletionIsArmed(
+            &launch->DevExt->DmaCompletion,
+            launch->Generation)) {
+        return FALSE;
+    }
+
+    WRITE_REGISTER_ULONG(launch->CompletionControl, 1UL);
+    WRITE_REGISTER_ULONG(launch->GoRegister, launch->GoValue);
+    launch->GoWritten = TRUE;
+
+    return LecDmaCompletionPublishDeviceActive(
+        &launch->DevExt->DmaCompletion,
+        launch->Generation);
+}
+
+NTSTATUS
+LecLaunchSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation,
+    _In_ volatile ULONG* CompletionControl,
+    _In_ volatile ULONG* GoRegister,
+    _In_ ULONG GoValue,
+    _Out_ PBOOLEAN DmaLaunched)
+{
+    LECS65_DMA_LAUNCH_CONTEXT launch;
+    BOOLEAN committed;
+
+    if (DevExt == NULL || CompletionControl == NULL ||
+        GoRegister == NULL || DmaLaunched == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *DmaLaunched = FALSE;
+    if (!DevExt->InterruptConnected || DevExt->InterruptObject == NULL) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    RtlZeroMemory(&launch, sizeof(launch));
+    launch.DevExt = DevExt;
+    launch.Generation = Generation;
+    launch.CompletionControl = CompletionControl;
+    launch.GoRegister = GoRegister;
+    launch.GoValue = GoValue;
+
+    committed = KeSynchronizeExecution(
+        DevExt->InterruptObject,
+        LecCommitDmaLaunchSynchronized,
+        &launch);
+    *DmaLaunched = launch.GoWritten;
+
+    return committed ? STATUS_SUCCESS : STATUS_IO_DEVICE_ERROR;
+}
+
+VOID
+LecDeselectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _In_ ULONGLONG Generation)
+{
+    KIRQL irql;
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    if (DevExt->CurrentTransfer == Transfer &&
+        (ULONGLONG)DevExt->DmaActiveGeneration == Generation) {
+        DevExt->CurrentTransfer = NULL;
+        DevExt->DmaActiveGeneration = 0;
+        (void)LecDmaCompletionConsumeSignal(
+            &DevExt->DmaCompletion,
+            Generation);
+    }
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
+}
+
+VOID
+LecMarkDmaUnknownActive(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer)
+{
+    /* Poison memory ownership before publishing device-wide uncertainty. */
+    Transfer->DmaUnsafeToFree = TRUE;
+    (void)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+    /* Block new hardware work before any secondary notification can fail. */
+    LecSetIoctlAdmission(DevExt, FALSE);
+    if (DevExt->DmaPnpPublication != NULL) {
+        (void)LecDmaPnpPublicationQuarantine(
+            DevExt->DmaPnpPublication);
+    }
 }
 
 static
@@ -323,13 +535,13 @@ LecRegisterTransfer(
         AccessMode,
         &transfer->SourceMdlChain);
     if (!NT_SUCCESS(status)) {
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
         return status;
     }
 
     status = LecBuildDescriptorTable(transfer);
     if (!NT_SUCCESS(status)) {
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
         return status;
     }
 
@@ -407,7 +619,8 @@ LecUnregisterTransfer(
         return STATUS_NOT_FOUND;
     }
 
-    if (DevExt->CurrentTransfer == transfer) {
+    if (DevExt->CurrentTransfer == transfer ||
+        transfer->DmaUnsafeToFree) {
         KeReleaseMutex(&DevExt->TransferMutex, FALSE);
         return STATUS_DEVICE_BUSY;
     }
@@ -420,7 +633,7 @@ LecUnregisterTransfer(
         Token,
         OwnerProcessId);
 
-    LecFreeTransfer(transfer);
+    LecFreeTransfer(DevExt, transfer);
     return STATUS_SUCCESS;
 }
 
@@ -448,7 +661,8 @@ LecReleaseTransfersForProcess(
                 CONTAINING_RECORD(link, LECS65_TRANSFER, Link);
 
             if (candidate->OwnerProcessId == OwnerProcessId &&
-                DevExt->CurrentTransfer != candidate) {
+                DevExt->CurrentTransfer != candidate &&
+                !candidate->DmaUnsafeToFree) {
                 RemoveEntryList(link);
                 transfer = candidate;
                 break;
@@ -461,7 +675,7 @@ LecReleaseTransfersForProcess(
             break;
         }
 
-        LecFreeTransfer(transfer);
+        LecFreeTransfer(DevExt, transfer);
     }
 }
 
@@ -470,6 +684,13 @@ LecReleaseAllTransfers(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
     )
 {
+    KIRQL irql;
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    DevExt->CurrentTransfer = NULL;
+    DevExt->DmaActiveGeneration = 0;
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
+
     for (;;) {
         PLECS65_TRANSFER transfer = NULL;
 
@@ -488,14 +709,17 @@ LecReleaseAllTransfers(
                 Link);
         }
 
-        DevExt->CurrentTransfer = NULL;
         KeReleaseMutex(&DevExt->TransferMutex, FALSE);
 
         if (transfer == NULL) {
             break;
         }
 
-        LecFreeTransfer(transfer);
+        /*
+         * LecFreeTransfer retains poisoned allocations permanently.
+         * They are not recoverable without a verified hardware reset.
+         */
+        LecFreeTransfer(DevExt, transfer);
     }
 }
 
@@ -579,6 +803,14 @@ LecInterruptService(
      * synchronous acquisition thread's later cleanup.
      */
     if ((status & 0x01UL) != 0) {
+        ULONGLONG generation = (ULONGLONG)InterlockedCompareExchange64(
+            &devExt->DmaActiveGeneration, 0, 0);
+
+        if (generation != 0) {
+            (void)LecDmaCompletionObservePhysicalIrq(
+                &devExt->DmaCompletion,
+                generation);
+        }
         iimcl = (volatile ULONG*)(
             devExt->Bar[0] + LECS65_BAR0_IIMCL);
         WRITE_REGISTER_ULONG(iimcl, 0UL);
@@ -710,15 +942,23 @@ LecInterruptDpc(
         0);
 
     if ((pending & 0x01UL) != 0) {
-        PLECS65_TRANSFER transfer =
-            (PLECS65_TRANSFER)devExt->CurrentTransfer;
+        PLECS65_TRANSFER transfer;
+        ULONGLONG generation;
 
-        if (transfer != NULL) {
+        KeAcquireSpinLockAtDpcLevel(&devExt->DmaCompletionLock);
+        transfer = (PLECS65_TRANSFER)devExt->CurrentTransfer;
+        generation = (ULONGLONG)devExt->DmaActiveGeneration;
+        if (transfer != NULL &&
+            transfer->DmaGeneration == generation &&
+            LecDmaCompletionConsumeSignal(
+                &devExt->DmaCompletion,
+                generation)) {
             KeSetEvent(
                 &transfer->CompletionEvent,
                 IO_NO_INCREMENT,
                 FALSE);
         }
+        KeReleaseSpinLockFromDpcLevel(&devExt->DmaCompletionLock);
     }
 
     if ((pending & (0x02UL | 0x04UL | 0x10UL | 0x20UL)) != 0) {
@@ -836,6 +1076,15 @@ LecInjectLegacyPendingAndDispatch(
         return STATUS_INVALID_DEVICE_STATE;
     }
 
+    /*
+     * CFDC2400 can force software-pending bit 0 and wake a DMA waiter
+     * without any hardware completion. Never accept synthetic acquisition
+     * completion, even when no transfer is currently selected.
+     */
+    if ((PendingMask & 0x01UL) != 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
     (VOID)InterlockedOr(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         (LONG)PendingMask);
@@ -904,6 +1153,77 @@ LecConnectInterrupt(
     }
 
     return status;
+}
+
+static BOOLEAN
+LecMaskHardwareInterruptsSynchronized(_In_ PVOID Context)
+{
+    PLECS65_DEVICE_EXTENSION devExt = (PLECS65_DEVICE_EXTENSION)Context;
+
+    /*
+     * INTEN is BAR0+0x084. Serialize the final mask write with the ISR
+     * while the interrupt connection and BAR mapping are still valid.
+     */
+    InterlockedExchange(
+        (volatile LONG*)&devExt->InterruptEnableShadow, 0);
+
+    if (devExt->Bar[0] != NULL &&
+        devExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
+        WRITE_REGISTER_ULONG(
+            (volatile ULONG*)(devExt->Bar[0] + 0x084), 0);
+    }
+
+    return TRUE;
+}
+
+VOID
+LecQuiesceDeferredWork(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ BOOLEAN HardwareAccessible)
+{
+    /*
+     * Caller has disabled admission and drained synchronous IOCTLs.
+     * SURPRISE_REMOVAL must never touch potentially absent PCI MMIO.
+     */
+    if (HardwareAccessible &&
+        DevExt->Bar[0] != NULL &&
+        DevExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
+        if (DevExt->InterruptConnected &&
+            DevExt->InterruptObject != NULL) {
+            (VOID)KeSynchronizeExecution(
+                DevExt->InterruptObject,
+                LecMaskHardwareInterruptsSynchronized,
+                DevExt);
+        }
+        else {
+            (VOID)LecMaskHardwareInterruptsSynchronized(DevExt);
+        }
+    }
+
+    LecDisconnectInterrupt(DevExt);
+
+    /*
+     * No more ISRs can queue work after disconnect. Remove any pending
+     * instance, then wait for an instance already running on another CPU.
+     * The flush is kernel-wide, therefore use only for PnP teardown.
+     */
+    (VOID)KeRemoveQueueDpc(&DevExt->InterruptDpc);
+    KeFlushQueuedDpcs();
+
+    if (DevExt->LegacyTimerInitialized) {
+        (VOID)KeCancelTimer(&DevExt->LegacyTimer);
+        DevExt->LegacyTimerInitialized = FALSE;
+        DevExt->LegacyTimerStartTime.QuadPart = 0;
+        DevExt->LegacyTimerDurationMs = 0;
+    }
+
+    /*
+     * The next START must repopulate hardware register shadows; the device
+     * may have lost these values during the PnP transition.
+     */
+    DevExt->LegacyMamShadowInitialized = FALSE;
+    DevExt->LegacyMamSeqShadowInitialized = FALSE;
+    DevExt->LegacySpiInitialized = FALSE;
 }
 
 VOID
