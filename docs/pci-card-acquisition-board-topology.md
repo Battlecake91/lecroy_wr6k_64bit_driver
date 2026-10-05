@@ -330,3 +330,47 @@ hardware-access DLL. Do not execute a programmer, update firmware, read
 JTAG, invoke hardware-write APIs or publish binary images. Analyze only
 locally saved copies of vendor files. Do not infer DMA drain behavior
 from presence of a firmware-upgrade component.
+
+## S65 update components: verified static strings (2026-10-06)
+
+**Source:** owner-provided read-only ASCII/UTF-16LE string and PE-version
+report for six installed x64 XStream files, all build version
+`0.23.66.84`. This is *string evidence*, not a recovered implementation
+or extracted firmware. The third-party DLLs were not uploaded or run;
+only derived descriptions appear here.
+
+- `s65hwupgrade.dll` (295,512 bytes, SHA-256
+  `0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1`)
+  identifies `CS65HwProgrammer`, three upgrade targets
+  (microcontroller, Acq FPGAs, PCI FPGA), `UpgradePciFpga`, and
+  explicit **two PCI image sources**: *using device pack* / *using file*.
+  It also mentions `FlashDrv.cpp`, flash erase/programming failures
+  and JTAG-chain errors. These do not yet establish which physical
+  storage is erased/programmed for PCI FPGA upgrades.
+- `s65devicepacksvr.dll` (1,854,040 bytes, SHA-256
+  `4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bdbe9d`)
+  contains `PciFpgaResId`, `PciFpgaVerResId`, and messages
+  `Could not load Pci Fpga resource data.` /
+  `Pci Fpga resource data invalid.`. This is strong evidence of
+  resource-ID-driven PCI image lookup, **not proof** the actual bytes
+  are stored inside this DLL rather than an auxiliary module/resource.
+- `hwprogrammer.exe` is a UI (69,208 bytes) with PCI FPGA version and
+  update warnings. `xstreamhwprogrammer.exe` (59,992 bytes) refers to
+  `S65HwProgrammer`/`S65HwProgrammer2` and PCI FPGA status.
+- `aladdinhwupgrade.dll` references broader generations and PCI
+  FPGA JTAG/flash operations, including the string
+  `JTAG programation is not supported by this version of the PCI card`.
+  This is **not** evidence that the owner's S65 hardware has that
+  limitation: the DLL is not proven to select the same code path.
+- `lecaladdinhwaccesspcisvr.dll` contains link-reset and DMA diagnostic
+  strings; it is not yet established as part of the S65 updater.
+  Updater/programmer linkage needs independent static disassembly or
+  resource-reference analysis.
+
+**Research priority:** inspect PE resource *metadata only* (resource
+types, names/IDs, sizes, version selectors) in `s65devicepacksvr.dll`
+and `s65hwupgrade.dll`, without executing either library, copying
+bitstreams into a public repository, extracting license contents or
+performing JTAG/MMIO/programming. A confirmed resource table can identify
+candidate PCI images for later **private** offline study. Even an identified
+or extracted bitstream does not establish an RTL-level PCI bus-idle proof.
