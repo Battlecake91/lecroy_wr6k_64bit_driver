@@ -246,7 +246,8 @@ descriptor construction
 Known descriptors include:
 
 ```text
-+0x000  START / acquisition firmware/start register
++0x000  FVER / PCI-interface firmware version
++0x00C  START / initialization start-status register
 +0x004  ERRS
 +0x008  ERRM
 +0x040  SGTA / acquisition DMA descriptor-table address
