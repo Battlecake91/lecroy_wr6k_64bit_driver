@@ -113,6 +113,7 @@
     <ClInclude Include="DmaScatterGatherStage.h" />
     <ClInclude Include="DmaSyncStage.h" />
     <ClInclude Include="DmaPnpStage.h" />
+    <ClInclude Include="DmaPnpPublication.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="Pci.c" />
@@ -123,6 +124,7 @@
     <ClCompile Include="DmaScatterGatherStage.c" />
     <ClCompile Include="DmaSyncStage.c" />
     <ClCompile Include="DmaPnpStage.c" />
+    <ClCompile Include="DmaPnpPublication.c" />
     <ClCompile Include="Ioctl.c" />
     <None Include="LecS65AcqDrv.inf" />
   </ItemGroup>

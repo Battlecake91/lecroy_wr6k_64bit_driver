@@ -342,12 +342,15 @@ full Dry result is recorded in
 do not exercise actual OS DMA resource allocation, real PnP REMOVE or
 hardware bus-master idle.
 
-## Inactive PnP/DMA parent ownership
+## Live-published inactive PnP/DMA parent ownership
 
-`DmaPnpStage.c/.h` now supplies the missing software parent for the staged
-adapter and synchronous owner. It remains unreachable from `Driver.c`,
-`Device.c`, `Acquisition.c` and `Ioctl.c`; compiling it does not allocate an
-adapter, map memory or change the active PFN-derived path.
+`DmaPnpStage.c/.h` supplies the software parent for the staged adapter and
+synchronous owner. `DmaPnpPublication.c/.h` now publishes exactly one
+separately allocated lifetime anchor from AddDevice and mirrors live
+STOP/SURPRISE_REMOVE/REMOVE into that parent. Publication does not call
+`LecDmaPnpStartNoLaunch`, acquire a DMA adapter, map memory or change the active
+PFN-derived acquisition path. Source contracts prohibit all staged adapter and
+mapping entry points from the live driver sources.
 
 The ownership contract is:
 
@@ -358,31 +361,30 @@ The ownership contract is:
 | BAR mappings | Live device extension | Published only after START resource mapping; unmapped after IOCTL drain and IRQ/DPC/timer quiescence. Surprise removal performs no MMIO. |
 | IRQ and queued DPC | Live device extension | Interrupt disconnect precedes DPC removal/flush; neither step proves physical DMA idle. |
 | Embedded timer | Live device extension | Used only as a waited timer object; canceled after the DPC rundown and before transfer/BAR release. |
-| Active PFN transfer MDLs and descriptors | `LECS65_TRANSFER` | Released only when `DmaUnsafeToFree` is false. Unknown-active transfers are detached and intentionally leaked, not declared idle. |
-| Staged adapter, PDO reference and descriptor common buffer | One `LECS65_DMA_PNP_STAGE` through its single `LECS65_DMA_ADAPTER_CONTEXT` | Created transactionally on inactive START; retained until the child owner is stopped, all parent calls retire, every no-launch mapping drains and software quiescence ordering is recorded. |
+| Live publication and PDO reference | One separately allocated `LECS65_DMA_PNP_PUBLICATION` per FDO/PDO | Created transactionally during AddDevice. Clean REMOVE unpublishes it after remove-lock rundown, drains software users, destroys the empty parent, dereferences the PDO and frees the wrapper. |
+| Active PFN transfer MDLs and descriptors | `LECS65_TRANSFER` | Released only when `DmaUnsafeToFree` is false. An unknown-active transfer is detached from the FDO list and linked to the independently resident publication before FDO deletion. The wrapper, parent, PDO reference, transfer, pinned MDLs and descriptors are then intentionally retained until restart; none is declared idle. |
+| Staged adapter, PDO reference and descriptor common buffer | One `LECS65_DMA_PNP_STAGE` through its single `LECS65_DMA_ADAPTER_CONTEXT` | Created transactionally on inactive START; retained until the child owner is stopped, all parent calls retire, every no-launch mapping drains and software quiescence ordering is recorded. Live START does not invoke this staged START. |
 | Staged SG allocation and transfer context | `LECS65_SG_SYNC_OWNER`/token | One allocation per adapter context; released by `FreeAdapterObject(DeallocateObject)` only because this interface has no launch operation. |
-| Staged locked MDL chain | External future request owner; borrowed by the SG stage | Must remain pinned through mapping release and parent-call rundown. The new parent does not unlock borrowed MDLs. |
+| Staged locked MDL chain | External future request owner; borrowed by the SG stage | Must remain pinned through mapping release and parent-call rundown. The parent does not unlock borrowed MDLs. |
 
-The live-source audit confirmed that valid STOP and surprise-removal paths
-close admission and drain IOCTLs before disconnecting the interrupt, flushing
-queued DPCs, canceling the timer, releasing ordinary transfers and unmapping
-BARs. REMOVE additionally waits on the remove lock before deleting the FDO.
-No concrete double release or DPC-after-transfer-free path was found in that
+The live-source audit confirms that valid STOP and surprise-removal paths close
+admission and drain IOCTLs before disconnecting the interrupt, flushing queued
+DPCs, canceling the timer, releasing ordinary transfers and unmapping BARs.
+REMOVE additionally waits on the remove lock before deleting the FDO. No
+concrete double release or DPC-after-transfer-free path was found in that
 ordering. This is source evidence only: lower-stack completion timing, power
 IRPs, repeated or malformed PnP sequences and Driver Verifier behavior have
-not been exercised. The confirmed staging defect was narrower: adapter and
-sync ownership ended at each independently created context, so there was no
-parent START generation, request rundown or single context boundary. The new
-inactive parent corrects that software architecture without changing live PnP.
+not been exercised.
 
-Parent storage now comes only from `LecDmaPnpStageCreate`. The private
-construction step initializes fresh, uniquely owned, unpublished nonpaged
-storage; there is no public reconstruct-in-place API that can clear a live
-lock, token, counter or quarantine latch. `LecDmaPnpStageDestroy` accepts only
-an empty `Stopped` or `Removed` stage. Its caller must first unpublish the
-pointer and complete external/remove-lock rundown; the internal call count
-cannot protect a caller that has not yet entered an API. This publication and
-external-rundown obligation remains part of future live-PnP integration.
+Parent storage comes only from `LecDmaPnpStageCreate`. Its private construction
+step initializes fresh, uniquely owned nonpaged storage; there is no public
+reconstruct-in-place API that can clear a live lock, token, counter or
+quarantine latch. `LecDmaPnpStageDestroy` accepts only an empty `Stopped` or
+`Removed` stage. The live wrapper supplies the required publication and
+external rundown: callers first hold the FDO remove lock, wrapper acquisition
+adds an internal user reference, and REMOVE prevents new acquisitions before
+waiting for existing users. Clean parent destruction happens only after both
+rundown domains have retired.
 
 The parent implements `Stopped -> Starting -> Started` and explicit STOP,
 surprise-removal and REMOVE states. START publishes admission only after the
@@ -405,11 +407,21 @@ a mapping from a later generation.
 
 One parent holds at most one adapter context. This corrects the confirmed
 staging architecture gap in which two contexts for the same fake PDO could
-independently claim owners. The guarantee is currently **per parent object**.
-Before activation, live PnP must create and publish exactly one independently
-resident parent for each physical device and must forbid direct adapter-context
-creation outside it. Parent storage cannot be embedded only in an FDO if an
-unknown-active quarantine must survive FDO deletion.
+independently claim owners. Live AddDevice creates one parent and wrapper per
+FDO/PDO and holds its own PDO object reference. Direct adapter-context creation
+remains unreachable from live sources. The wrapper is independent of the FDO
+so an unknown-active quarantine can survive FDO deletion.
+
+The active timeout paths use one helper that first poisons the transfer, then
+latches device-wide uncertainty, quarantines the parent and closes IOCTL
+admission. During teardown, a poisoned transfer is removed from the FDO list
+and its list link is rehomed into the wrapper's retained-transfer list. REMOVE
+unpublishes the device-extension pointer after `IoReleaseRemoveLockAndWait`.
+If the wrapper observes a retained transfer or parent quarantine, it returns
+`STATUS_DEVICE_BUSY` to its cleanup caller and intentionally retains all of
+its ownership rather than blocking device removal or freeing unknown-active
+memory. This status is diagnostic; it does not fail or delay the already
+forwarded PnP REMOVE IRP.
 
 `LecDmaPnpQuarantineUnknownActive` first uses an interlocked operation to set
 an authoritative permanent latch, before waiting for either parent or child
@@ -438,23 +450,30 @@ including STOP/REMOVE cleanup, remain blocked. This is retention, not recovery,
 and may intentionally leave the parent, adapter, descriptor common buffer,
 mapping, PDO references and external MDL ownership outstanding.
 
-### Unresolved activation blockers
+### Confirmed software behavior and unresolved activation blockers
 
-The parent and child owners remain staging-only, not a live STOP/REMOVE policy:
-the real PnP code does not reference them. No existing DMA transfer
-may be converted to this path yet. In particular, a physical
+The parent lifetime is wired into live STOP/SURPRISE_REMOVE/REMOVE, but its
+adapter and child owners remain staging-only. Live START deliberately leaves
+the parent in `Stopped`; no existing DMA transfer is converted to the staged
+mapping path. In particular, a physical
 hardware-start/IRQ/timeout path still lacks a proven bus-master idle
 transition and must **never** call the no-launch release method.
 The old async SG stage remains fail-closed and does not launch or
 free mappings. Real STOP/REMOVE must eventually reconcile pinned MDL
 chain ownership, adapters, descriptors, DMA completion, loss of device,
 and remove locks, without waiting on permanently quarantined mappings.
-The stage also does not own or unlock its borrowed MDLs. A real parent must
-join independently resident parent storage, MDL ownership, the per-device
-parent instance and PnP remove-lock lifetime before any request can reach this
-code. It must unpublish the parent and finish that external rundown before
-freeing parent storage. The software-only phase/latch protocol does not by
-itself close the physical notification-versus-release window for active DMA.
+The staged sync owner still borrows rather than unlocks its MDLs; only the
+legacy unknown-active transfer path is currently joined to the independent
+retention anchor. No adapter mapping may become live until every staged MDL
+and request is also joined to remove-lock/publication rundown. The
+software-only phase/latch protocol does not by itself close the physical
+notification-versus-release window for active DMA.
+
+The live tests confirm allocation rollback, one wrapper/parent/PDO reference,
+unpublish-before-internal-rundown, clean STOP/surprise/remove transitions,
+stale and duplicate release rejection, and FDO-independent retention of a
+synthetic poisoned transfer. They do not execute real kernel PnP concurrency,
+HAL/IOMMU mappings, Driver Verifier, power transitions or physical DMA.
 
 Sources:
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
