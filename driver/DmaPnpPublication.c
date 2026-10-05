@@ -1,5 +1,15 @@
 #include "DmaPnpPublication.h"
 
+#if defined(LECS65_PNP_PUBLICATION_TEST_HOOKS)
+NTSTATUS FakeLecDmaPnpQuarantineUnknownActive(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage);
+#define LecDmaPnpPublicationQuarantineParent \
+    FakeLecDmaPnpQuarantineUnknownActive
+#else
+#define LecDmaPnpPublicationQuarantineParent \
+    LecDmaPnpQuarantineUnknownActive
+#endif
+
 static BOOLEAN
 LecDmaPnpPublicationIsQuarantined(
     _Inout_ PLECS65_DMA_PNP_STAGE Parent)
@@ -15,7 +25,7 @@ LecDmaPnpPublicationIsQuarantined(
 NTSTATUS
 LecDmaPnpPublicationCreate(
     _In_ PDEVICE_OBJECT PhysicalDeviceObject,
-    _Outptr_ PLECS65_DMA_PNP_PUBLICATION* Publication)
+    _Inout_ PLECS65_DMA_PNP_PUBLICATION* Publication)
 {
     PLECS65_DMA_PNP_PUBLICATION created;
     NTSTATUS status;
@@ -23,7 +33,9 @@ LecDmaPnpPublicationCreate(
     if (PhysicalDeviceObject == NULL || Publication == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
-    *Publication = NULL;
+    if (*Publication != NULL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
 
     created = (PLECS65_DMA_PNP_PUBLICATION)ExAllocatePool2(
         POOL_FLAG_NON_PAGED, sizeof(*created), LECS65_TAG);
@@ -118,7 +130,7 @@ LecDmaPnpPublicationQuarantine(
     if (!NT_SUCCESS(status)) {
         return status;
     }
-    status = LecDmaPnpQuarantineUnknownActive(reference.Parent);
+    status = LecDmaPnpPublicationQuarantineParent(reference.Parent);
     (void)LecDmaPnpPublicationRelease(Publication, &reference);
     return status;
 }
@@ -126,27 +138,42 @@ LecDmaPnpPublicationQuarantine(
 NTSTATUS
 LecDmaPnpPublicationRetainLegacyTransfer(
     _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
-    _Inout_ PLIST_ENTRY TransferLink)
+    _Inout_ PLIST_ENTRY TransferLink,
+    _Inout_ volatile LONG* OwnershipState)
 {
     LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
     KIRQL irql;
     NTSTATUS status;
 
-    if (Publication == NULL || TransferLink == NULL) {
+    if (Publication == NULL || TransferLink == NULL ||
+        OwnershipState == NULL) {
         return STATUS_INVALID_PARAMETER;
+    }
+    if (InterlockedCompareExchange(
+            OwnershipState,
+            LECS65_TRANSFER_QUARANTINE_TRANSFERRING,
+            LECS65_TRANSFER_QUARANTINE_FDO) !=
+        LECS65_TRANSFER_QUARANTINE_FDO) {
+        return STATUS_INVALID_DEVICE_STATE;
     }
 
     status = LecDmaPnpPublicationAcquire(Publication, &reference);
     if (!NT_SUCCESS(status)) {
+        (void)InterlockedExchange(
+            OwnershipState, LECS65_TRANSFER_QUARANTINE_FDO);
         return status;
     }
-    status = LecDmaPnpQuarantineUnknownActive(reference.Parent);
-    if (NT_SUCCESS(status)) {
-        KeAcquireSpinLock(&Publication->Lock, &irql);
-        InsertTailList(&Publication->RetainedLegacyTransfers, TransferLink);
-        ++Publication->RetainedLegacyTransferCount;
-        KeReleaseSpinLock(&Publication->Lock, irql);
-    }
+
+    /* Commit independent memory ownership before parent notification. */
+    InitializeListHead(TransferLink);
+    KeAcquireSpinLock(&Publication->Lock, &irql);
+    InsertTailList(&Publication->RetainedLegacyTransfers, TransferLink);
+    ++Publication->RetainedLegacyTransferCount;
+    (void)InterlockedExchange(
+        OwnershipState, LECS65_TRANSFER_QUARANTINE_PUBLICATION);
+    KeReleaseSpinLock(&Publication->Lock, irql);
+
+    status = LecDmaPnpPublicationQuarantineParent(reference.Parent);
     (void)LecDmaPnpPublicationRelease(Publication, &reference);
     return status;
 }

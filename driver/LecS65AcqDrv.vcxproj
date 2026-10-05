@@ -116,6 +116,7 @@
     <ClInclude Include="DmaPnpPublication.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
+    <ClCompile Include="PnpIrpLifetime.c" />
     <ClCompile Include="Pci.c" />
     <ClCompile Include="Acquisition.c" />
     <ClCompile Include="DmaLayout.c" />

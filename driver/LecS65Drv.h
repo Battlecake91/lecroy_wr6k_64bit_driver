@@ -208,8 +208,8 @@ typedef struct _LECS65_TRANSFER {
     ULONG TotalDwords;
     /* Remains permanently pinned if DMA idle cannot be proven. */
     BOOLEAN DmaUnsafeToFree;
-    /* Set after ownership moves to the FDO-independent retention anchor. */
-    BOOLEAN QuarantineOwned;
+    /* Atomic LECS65_TRANSFER_QUARANTINE_* ownership state. */
+    volatile LONG QuarantineOwnership;
     KEVENT CompletionEvent;
 } LECS65_TRANSFER, *PLECS65_TRANSFER;
 

@@ -1,7 +1,7 @@
 # WR6k DMA completion, timeout and memory lifetime
 
 Status: **software-only staged lifetime hardening**, 2026-10-05.
-Base reviewed: `fix/p0-irq-start-dma-gating` at `8c952dc`.
+Base reviewed: `fix/p0-irq-start-dma-gating` at `1de0a753`.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -413,9 +413,14 @@ remains unreachable from live sources. The wrapper is independent of the FDO
 so an unknown-active quarantine can survive FDO deletion.
 
 The active timeout paths use one helper that first poisons the transfer, then
-latches device-wide uncertainty, quarantines the parent and closes IOCTL
-admission. During teardown, a poisoned transfer is removed from the FDO list
-and its list link is rehomed into the wrapper's retained-transfer list. REMOVE
+latches device-wide uncertainty and closes IOCTL admission before notifying
+the parent. During teardown, a poisoned transfer is removed from the FDO list
+and its list link is rehomed into the wrapper's retained-transfer list. The
+transfer uses an atomic `FDO -> TRANSFERRING -> PUBLICATION` ownership state,
+so duplicate cleanup cannot insert the same link twice. Publication commits
+the list ownership before the fallible parent notification; a notification
+failure therefore retains the MDLs and descriptors rather than orphaning or
+freeing them. REMOVE
 unpublishes the device-extension pointer after `IoReleaseRemoveLockAndWait`.
 If the wrapper observes a retained transfer or parent quarantine, it returns
 `STATUS_DEVICE_BUSY` to its cleanup caller and intentionally retains all of
@@ -472,8 +477,20 @@ notification-versus-release window for active DMA.
 The live tests confirm allocation rollback, one wrapper/parent/PDO reference,
 unpublish-before-internal-rundown, clean STOP/surprise/remove transitions,
 stale and duplicate release rejection, and FDO-independent retention of a
-synthetic poisoned transfer. They do not execute real kernel PnP concurrency,
-HAL/IOMMU mappings, Driver Verifier, power transitions or physical DMA.
+synthetic poisoned transfer. They also fault parent notification after the
+ownership commit, race that notification with REMOVE, reject duplicate
+publication/retention and verify that unpublish rejection leaves ownership
+with the caller. The production IRP forwarding helpers are separately run
+against synchronous, pending, error and power fake-lower-stack completions;
+the tests verify exact remove-lock release and the held-IRP contract used by
+START/REMOVE. They do not execute real kernel PnP concurrency, HAL/IOMMU
+mappings, Driver Verifier, power transitions or physical DMA.
+
+The publication factory now treats its output slot as an in/out ownership
+slot and rejects a non-NULL existing publication rather than overwriting and
+leaking it. This enforces one publication in the live device extension. It is
+not a global PDO registry; the remaining device-wide uniqueness premise is
+the WDM AddDevice contract for one FDO attachment per device stack.
 
 Sources:
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),

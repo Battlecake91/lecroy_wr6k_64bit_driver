@@ -46,21 +46,31 @@ LecFreeTransfer(
      * NOT production-ready DMA lifecycle management.
      */
     if (Transfer->DmaUnsafeToFree) {
+        LONG ownershipState;
         NTSTATUS retainStatus = STATUS_INVALID_DEVICE_STATE;
 
-        if (!Transfer->QuarantineOwned &&
-            DevExt->DmaPnpPublication != NULL) {
-            InitializeListHead(&Transfer->Link);
-            retainStatus = LecDmaPnpPublicationRetainLegacyTransfer(
-                DevExt->DmaPnpPublication, &Transfer->Link);
-            if (NT_SUCCESS(retainStatus)) {
-                Transfer->QuarantineOwned = TRUE;
-            }
+        ownershipState = InterlockedCompareExchange(
+            &Transfer->QuarantineOwnership,
+            LECS65_TRANSFER_QUARANTINE_FDO,
+            LECS65_TRANSFER_QUARANTINE_FDO);
+        if (ownershipState == LECS65_TRANSFER_QUARANTINE_PUBLICATION) {
+            retainStatus = STATUS_SUCCESS;
         }
+        else if (DevExt->DmaPnpPublication != NULL) {
+            retainStatus = LecDmaPnpPublicationRetainLegacyTransfer(
+                DevExt->DmaPnpPublication,
+                &Transfer->Link,
+                &Transfer->QuarantineOwnership);
+        }
+        ownershipState = InterlockedCompareExchange(
+            &Transfer->QuarantineOwnership,
+            LECS65_TRANSFER_QUARANTINE_FDO,
+            LECS65_TRANSFER_QUARANTINE_FDO);
         LecTrace(
-            "DMA quarantine: token=%lu retained across teardown owner=0x%08X\n",
+            "DMA quarantine: token=%lu retained across teardown status=0x%08X owner=%ld\n",
             Transfer->Token,
-            retainStatus);
+            retainStatus,
+            ownershipState);
         return;
     }
 
@@ -88,12 +98,12 @@ LecMarkDmaUnknownActive(
     /* Poison memory ownership before publishing device-wide uncertainty. */
     Transfer->DmaUnsafeToFree = TRUE;
     (void)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+    /* Block new hardware work before any secondary notification can fail. */
+    LecSetIoctlAdmission(DevExt, FALSE);
     if (DevExt->DmaPnpPublication != NULL) {
         (void)LecDmaPnpPublicationQuarantine(
             DevExt->DmaPnpPublication);
     }
-    /* Block every subsequent IOCTL, including direct register writes. */
-    LecSetIoctlAdmission(DevExt, FALSE);
 }
 
 static

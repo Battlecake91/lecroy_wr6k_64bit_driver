@@ -6,12 +6,12 @@
   WDK 10.0.28000.0 toolchain.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge
-  the inactive synchronous v3 no-launch stage and the live PnP publication
-  lifetime anchor. See
+  the inactive synchronous v3 no-launch stage, the live PnP publication
+  lifetime anchor and actual IRP/remove-lock forwarding helpers. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 29/29, layout 13/13, ownership 17/17,
+- Current result: source/ABI 30/30, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 27/27; overall 262/262 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8; overall 282/282 PASS.
 
 ## DMA/PnP staging
 
@@ -42,6 +42,12 @@
   rehomed into the wrapper so the parent, PDO, pinned MDLs and descriptors can
   remain retained beyond FDO deletion. This is restart-only containment, not
   production recovery.
+- Duplicate publication and legacy-transfer retention are now rejected by
+  explicit ownership state. Unknown-active handling closes admission before
+  parent notification, and transfer ownership commits to the independent
+  retained list before that notification can fail. Production IRP forwarding
+  is software-tested for synchronous/pending/error/power completion and exact
+  remove-lock release.
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.

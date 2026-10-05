@@ -1,58 +1,6 @@
 #include "LecS65Drv.h"
 #include "DmaPnpPublication.h"
 
-static
-NTSTATUS
-LecCompletionSetEvent(
-    _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP Irp,
-    _In_ PVOID Context
-    )
-{
-    PKEVENT event = (PKEVENT)Context;
-
-    UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
-
-    KeSetEvent(event, IO_NO_INCREMENT, FALSE);
-    return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-NTSTATUS
-LecForwardAndWait(
-    _In_ PLECS65_DEVICE_EXTENSION DevExt,
-    _Inout_ PIRP Irp
-    )
-{
-    KEVENT event;
-    NTSTATUS status;
-
-    KeInitializeEvent(&event, NotificationEvent, FALSE);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(
-        Irp,
-        LecCompletionSetEvent,
-        &event,
-        TRUE,
-        TRUE,
-        TRUE);
-
-    status = IoCallDriver(DevExt->LowerDeviceObject, Irp);
-
-    if (status == STATUS_PENDING) {
-        KeWaitForSingleObject(
-            &event,
-            Executive,
-            KernelMode,
-            FALSE,
-            NULL);
-        status = Irp->IoStatus.Status;
-    }
-
-    return status;
-}
-
 VOID
 LecReleaseLegacyEvents(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
