@@ -19,6 +19,8 @@ $driverSource = Join-Path $repo "driver\Driver.c"
 $ioctlSource = Join-Path $repo "driver\Ioctl.c"
 $deviceSource = Join-Path $repo "driver\Device.c"
 $acquisitionSource = Join-Path $repo "driver\Acquisition.c"
+$completionSource = Join-Path $repo "driver\DmaCompletion.c"
+$completionHeader = Join-Path $repo "driver\DmaCompletion.h"
 $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
@@ -38,7 +40,7 @@ $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -50,6 +52,8 @@ $driverSourceText = Get-Content -LiteralPath $driverSource -Raw
 $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
 $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
+$completionText = Get-Content -LiteralPath $completionSource -Raw
+$completionHeaderText = Get-Content -LiteralPath $completionHeader -Raw
 $layoutText = Get-Content -LiteralPath $layoutSource -Raw
 $layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
 $adapterText = Get-Content -LiteralPath $adapterSource -Raw
@@ -288,8 +292,11 @@ Test-Contract "uncertain DMA is latched after both launch paths" {
     $driverText -match 'BOOLEAN DmaUnsafeToFree' -and
     $acquisitionText -match 'Transfer->DmaUnsafeToFree = TRUE' -and
     $acquisitionText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
-    ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'DmaCompletionIrqSeen').Count -ge 4) -and
+    ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 4) -and
+    ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishWait\(').Count -eq 4) -and
+    ([regex]::Matches($ioctlText, 'LecArmSelectedDma\(').Count -eq 2) -and
+    ([regex]::Matches($ioctlText, 'LecLaunchSelectedDma\(').Count -eq 2) -and
+    ([regex]::Matches($ioctlText, 'LecCancelSelectedDmaArm\(').Count -eq 2) -and
     $deviceText -match 'DmaUnknownActive'
 }
 
@@ -297,7 +304,83 @@ Test-Contract "unknown DMA memory cannot be released by cleanup" {
     $acquisitionText -match 'if \(Transfer->DmaUnsafeToFree\)' -and
     $acquisitionText -match 'transfer->DmaUnsafeToFree\) \{' -and
     $acquisitionText -match '!candidate->DmaUnsafeToFree' -and
-    $acquisitionText -match 'DmaCompletionIrqSeen, 1'
+    $acquisitionText -match 'LecDmaCompletionMarkQuarantined'
+}
+
+Test-Contract "live DMA completion has explicit evidence states and generations" {
+    $driverProjectText -match 'ClCompile Include="DmaCompletion.c"' -and
+    $completionHeaderText -match 'LecDmaCompletionNeverLaunched' -and
+    $completionHeaderText -match 'LecDmaCompletionArming' -and
+    $completionHeaderText -match 'LecDmaCompletionDeviceActive' -and
+    $completionHeaderText -match 'LecDmaCompletionObserved' -and
+    $completionHeaderText -match 'LecDmaCompletionIdleProved' -and
+    $completionHeaderText -match 'LecDmaCompletionUnknownActive' -and
+    $completionHeaderText -match 'LecDmaCompletionQuarantined' -and
+    $completionText -match 'LecDmaCompletionObservePhysicalIrq' -and
+    $completionText -match 'LecDmaCompletionMayReleaseMapping' -and
+    $ioctlText -match 'dmaGeneration' -and
+    $acquisitionText -match 'DmaActiveGeneration'
+}
+
+Test-Contract "DMA GO commit and active publication exclude the ISR" {
+    $launchCallback = [regex]::Match(
+        $acquisitionText,
+        '(?s)LecCommitDmaLaunchSynchronized\s*\(.*?\n\}')
+    $launchEntry = [regex]::Match(
+        $acquisitionText,
+        '(?s)LecLaunchSelectedDma\s*\(.*?\n\}')
+    $armed = $launchCallback.Value.IndexOf('LecDmaCompletionIsArmed')
+    $completionControl = $launchCallback.Value.IndexOf(
+        'WRITE_REGISTER_ULONG(launch->CompletionControl')
+    $go = $launchCallback.Value.IndexOf(
+        'WRITE_REGISTER_ULONG(launch->GoRegister')
+    $published = $launchCallback.Value.IndexOf(
+        'LecDmaCompletionPublishDeviceActive')
+    $launchCallback.Success -and
+    $launchEntry.Success -and
+    $armed -ge 0 -and
+    $completionControl -gt $armed -and
+    $go -gt $completionControl -and
+    $published -gt $go -and
+    $launchEntry.Value -match 'KeSynchronizeExecution\(' -and
+    $ioctlText -notmatch 'WRITE_REGISTER_ULONG\(iimcl, 1UL\)' -and
+    $ioctlText -notmatch 'WRITE_REGISTER_ULONG\(mttrgo,' -and
+    $ioctlText -notmatch 'WRITE_REGISTER_ULONG\(mamRgo, launchCount\)'
+}
+
+Test-Contract "wrong-generation completion consumers cannot erase evidence" {
+    $consume = [regex]::Match(
+        $completionText,
+        '(?s)LecDmaCompletionConsumeSignal\s*\(.*?\n\}')
+    $consume.Success -and
+    $consume.Value -match 'InterlockedCompareExchange64\(' -and
+    $consume.Value -notmatch 'InterlockedExchange64\('
+}
+
+Test-Contract "completion IRQ never directly proves idle or releases mappings" {
+    $observeCompletion = [regex]::Match(
+        $completionText,
+        '(?s)LecDmaCompletionObservePhysicalIrq\s*\(.*?\n\}')
+    $observeCompletion.Success -and
+    $observeCompletion.Value -match 'LecDmaCompletionObserved' -and
+    $observeCompletion.Value -notmatch 'LecDmaCompletionIdleProved' -and
+    $completionText -match '(?s)LecDmaCompletionMayReleaseMapping.*?LecDmaCompletionNeverLaunched.*?LecDmaCompletionIdleProved' -and
+    ($driverSourceText + $deviceText + $acquisitionText + $ioctlText) -notmatch 'LecDmaCompletionProveIdle' -and
+    $acquisitionText -match 'KeAcquireSpinLockAtDpcLevel\(&devExt->DmaCompletionLock\)' -and
+    $acquisitionText -match 'LecDeselectDmaTransfer'
+}
+
+Test-Contract "serialized MAM launch rechecks terminal DMA admission" {
+    $mam = [regex]::Match(
+        $ioctlText,
+        '(?s)LecIoctlAcquireBufferedOneChannel\s*\(.*?(?=static\s+NTSTATUS\s+LecIoctl)')
+    $serialized = $mam.Value.IndexOf('KeWaitForSingleObject(')
+    $faultRecheck = $mam.Value.IndexOf('DmaUnknownActive', $serialized + 1)
+    $firstMamMmio = $mam.Value.IndexOf('LecResolveRegister', $serialized + 1)
+    $mam.Success -and
+    $serialized -ge 0 -and
+    $faultRecheck -gt $serialized -and
+    $firstMamMmio -gt $faultRecheck
 }
 
 Test-Contract "synthetic completion bit cannot satisfy a DMA wait" {

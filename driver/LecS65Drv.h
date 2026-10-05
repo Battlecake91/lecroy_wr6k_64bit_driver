@@ -2,6 +2,7 @@
 
 #include <ntddk.h>
 #include <stdint.h>
+#include "DmaCompletion.h"
 
 #define LECS65_TAG '56SL'
 
@@ -206,6 +207,7 @@ typedef struct _LECS65_TRANSFER {
     PMDL DescriptorMdl;
     ULONG DescriptorTablePhysical;
     ULONG TotalDwords;
+    ULONGLONG DmaGeneration;
     /* Remains permanently pinned if DMA idle cannot be proven. */
     BOOLEAN DmaUnsafeToFree;
     /* Atomic LECS65_TRANSFER_QUARANTINE_* ownership state. */
@@ -256,12 +258,15 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     LIST_ENTRY TransferList;
     ULONG NextTransferToken;
     volatile PLECS65_TRANSFER CurrentTransfer;
+    KSPIN_LOCK DmaCompletionLock;
+    LECS65_DMA_COMPLETION_TRACKER DmaCompletion;
+    volatile LONG64 DmaGenerationCounter;
+    volatile LONG64 DmaActiveGeneration;
     /*
      * An unknown DMA finish is terminal for this FDO: software cannot
      * prove that old bus-master reads/writes have stopped.
      */
     volatile LONG DmaUnknownActive;
-    volatile LONG DmaCompletionIrqSeen;
 
     PKINTERRUPT InterruptObject;
     ULONG InterruptVector;
@@ -398,6 +403,27 @@ VOID LecReleaseTransfersForProcess(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ HANDLE OwnerProcessId);
 VOID LecReleaseAllTransfers(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+NTSTATUS LecSelectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _Out_ PULONGLONG Generation);
+BOOLEAN LecArmSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation);
+BOOLEAN LecCancelSelectedDmaArm(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation);
+NTSTATUS LecLaunchSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation,
+    _In_ volatile ULONG* CompletionControl,
+    _In_ volatile ULONG* GoRegister,
+    _In_ ULONG GoValue,
+    _Out_ PBOOLEAN DmaLaunched);
+VOID LecDeselectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _In_ ULONGLONG Generation);
 VOID LecMarkDmaUnknownActive(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PLECS65_TRANSFER Transfer);
