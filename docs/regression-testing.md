@@ -304,10 +304,10 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows Dry regression on 2026-10-05:
+Current Windows Dry regression on 2026-10-06:
 - Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
   x64 `lecdiag` **PASS**.
-- Source/ABI contracts **33/33 PASS**.
+- Source/ABI contracts **35/35 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +315,8 @@ Current Windows Dry regression on 2026-10-05:
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **17/17 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**302/302** checks).
+- Live DMA completion-state suite **24/24 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**311/311** checks).
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication
@@ -346,12 +346,16 @@ remove-lock ownership for its caller.
 
 `test-dma-completion.c` compiles the production `DmaCompletion.c` tracker.
 It deterministically verifies an IRQ immediately before timeout, a completion
-event without IRQ evidence, early/repeated/stale/wrong-generation completion,
-completion racing STOP/REMOVE uncertainty, quarantine racing attempted
-release and no-launch versus launched cleanup. `CompletionObserved` never
-becomes `IdleProved` implicitly and cannot authorize WDM mapping release.
-Source contracts also require the generation-checked DPC/transfer-selection
-binding and the post-serialization MAM fault recheck before setup MMIO.
+event without IRQ evidence, pre-GO rejection, the fail-closed modeled interval
+between GO and active publication, fast IRQ acceptance after synchronized
+publication, early/repeated/stale/wrong-generation completion, preservation of
+matching evidence against a stale consumer, exactly one concurrent consumer,
+completion racing STOP/REMOVE uncertainty, quarantine racing attempted release
+and no-launch versus launched cleanup. `CompletionObserved` never becomes
+`IdleProved` implicitly and cannot authorize WDM mapping release. Source
+contracts also require the generation-checked DPC/transfer-selection binding,
+the synchronized IIMCL/GO/active-publication ordering and the
+post-serialization MAM fault recheck before setup MMIO.
 
 These tests are software-only: no real OS SG mapping, actual PnP rundown
 or physical DMA idle has been proven.

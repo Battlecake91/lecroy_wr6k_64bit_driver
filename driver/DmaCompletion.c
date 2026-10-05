@@ -53,7 +53,8 @@ LecDmaCompletionPrepare(
     }
 
     phase = LecDmaCompletionReadLong(&Tracker->Phase);
-    if (phase == LecDmaCompletionDeviceActive ||
+    if (phase == LecDmaCompletionArming ||
+        phase == LecDmaCompletionDeviceActive ||
         phase == LecDmaCompletionUnknownActive ||
         phase == LecDmaCompletionQuarantined) {
         return FALSE;
@@ -68,7 +69,52 @@ LecDmaCompletionPrepare(
 }
 
 BOOLEAN
-LecDmaCompletionMarkDeviceActive(
+LecDmaCompletionArm(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation)
+{
+    if (Tracker == NULL ||
+        !LecDmaCompletionGenerationMatches(Tracker, Generation)) {
+        return FALSE;
+    }
+
+    return (BOOLEAN)(InterlockedCompareExchange(
+        &Tracker->Phase,
+        LecDmaCompletionArming,
+        LecDmaCompletionNeverLaunched) ==
+        LecDmaCompletionNeverLaunched);
+}
+
+BOOLEAN
+LecDmaCompletionCancelArm(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation)
+{
+    if (Tracker == NULL ||
+        !LecDmaCompletionGenerationMatches(Tracker, Generation)) {
+        return FALSE;
+    }
+
+    return (BOOLEAN)(InterlockedCompareExchange(
+        &Tracker->Phase,
+        LecDmaCompletionNeverLaunched,
+        LecDmaCompletionArming) ==
+        LecDmaCompletionArming);
+}
+
+BOOLEAN
+LecDmaCompletionIsArmed(
+    _In_ const LECS65_DMA_COMPLETION_TRACKER* Tracker,
+    _In_ ULONGLONG Generation)
+{
+    return (BOOLEAN)(Tracker != NULL &&
+        LecDmaCompletionGenerationMatches(Tracker, Generation) &&
+        LecDmaCompletionReadLong(&Tracker->Phase) ==
+            LecDmaCompletionArming);
+}
+
+BOOLEAN
+LecDmaCompletionPublishDeviceActive(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation)
 {
@@ -80,8 +126,8 @@ LecDmaCompletionMarkDeviceActive(
     return (BOOLEAN)(InterlockedCompareExchange(
         &Tracker->Phase,
         LecDmaCompletionDeviceActive,
-        LecDmaCompletionNeverLaunched) ==
-        LecDmaCompletionNeverLaunched);
+        LecDmaCompletionArming) ==
+        LecDmaCompletionArming);
 }
 
 BOOLEAN
@@ -93,6 +139,19 @@ LecDmaCompletionObservePhysicalIrq(
 
     if (Tracker == NULL ||
         !LecDmaCompletionGenerationMatches(Tracker, Generation)) {
+        return FALSE;
+    }
+
+    /*
+     * An IRQ observed while launch is only armed predates the software GO
+     * commit boundary.  Its provenance is not safe to attribute to this
+     * transfer, so poison ownership without publishing signal evidence.
+     */
+    if (InterlockedCompareExchange(
+            &Tracker->Phase,
+            LecDmaCompletionUnknownActive,
+            LecDmaCompletionArming) ==
+        LecDmaCompletionArming) {
         return FALSE;
     }
 
@@ -115,18 +174,25 @@ LecDmaCompletionConsumeSignal(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation)
 {
-    ULONGLONG irqGeneration;
+    LONG64 irqGeneration;
 
     if (Tracker == NULL || Generation == 0) {
         return FALSE;
     }
 
-    irqGeneration = (ULONGLONG)InterlockedExchange64(
-        &Tracker->IrqGeneration, 0);
-    return (BOOLEAN)(irqGeneration == Generation &&
-        LecDmaCompletionGenerationMatches(Tracker, Generation) &&
-        LecDmaCompletionReadLong(&Tracker->Phase) ==
-            LecDmaCompletionObserved);
+    irqGeneration = LecDmaCompletionReadLong64(
+        &Tracker->IrqGeneration);
+    if ((ULONGLONG)irqGeneration != Generation ||
+        !LecDmaCompletionGenerationMatches(Tracker, Generation) ||
+        LecDmaCompletionReadLong(&Tracker->Phase) !=
+            LecDmaCompletionObserved) {
+        return FALSE;
+    }
+
+    return (BOOLEAN)(InterlockedCompareExchange64(
+        &Tracker->IrqGeneration,
+        0,
+        (LONG64)Generation) == (LONG64)Generation);
 }
 
 BOOLEAN
@@ -152,7 +218,8 @@ LecDmaCompletionFinishWait(
             phase == LecDmaCompletionQuarantined) {
             return TRUE;
         }
-        if (phase != LecDmaCompletionDeviceActive &&
+        if (phase != LecDmaCompletionArming &&
+            phase != LecDmaCompletionDeviceActive &&
             phase != LecDmaCompletionObserved) {
             return TRUE;
         }

@@ -407,9 +407,19 @@ NTSTATUS LecSelectDmaTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PLECS65_TRANSFER Transfer,
     _Out_ PULONGLONG Generation);
-BOOLEAN LecMarkSelectedDmaLaunched(
+BOOLEAN LecArmSelectedDma(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ ULONGLONG Generation);
+BOOLEAN LecCancelSelectedDmaArm(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation);
+NTSTATUS LecLaunchSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation,
+    _In_ volatile ULONG* CompletionControl,
+    _In_ volatile ULONG* GoRegister,
+    _In_ ULONG GoValue,
+    _Out_ PBOOLEAN DmaLaunched);
 VOID LecDeselectDmaTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PLECS65_TRANSFER Transfer,

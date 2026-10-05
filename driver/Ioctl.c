@@ -1886,6 +1886,7 @@ LecExecuteLegacyMttTransferLocked(
     NTSTATUS status;
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
     BOOLEAN dmaLaunched = FALSE;
 
@@ -1937,6 +1938,12 @@ LecExecuteLegacyMttTransferLocked(
     }
     transferSelected = TRUE;
 
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Cleanup;
+    }
+    transferArmed = TRUE;
+
     currentMask = (ULONG)InterlockedCompareExchange(
         (volatile LONG*)&DevExt->InterruptEnableShadow,
         0,
@@ -1950,13 +1957,16 @@ LecExecuteLegacyMttTransferLocked(
     }
     transferInterruptEnabled = TRUE;
 
-    if (!LecMarkSelectedDmaLaunched(DevExt, dmaGeneration)) {
-        status = STATUS_INVALID_DEVICE_STATE;
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mttrgo,
+        (ULONG)LaunchUnits,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
         goto Cleanup;
     }
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
-    dmaLaunched = TRUE;
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -1976,7 +1986,15 @@ Cleanup:
      * Retain both the user-page MDLs and descriptor pages indefinitely,
      * and refuse later DMA starts on this FDO. No guessed abort writes.
      */
-    if (dmaLaunched && LecDmaCompletionFinishWait(
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+    }
+    else if (dmaLaunched && LecDmaCompletionFinishWait(
             &DevExt->DmaCompletion,
             dmaGeneration,
             (BOOLEAN)(status == STATUS_SUCCESS))) {
@@ -3553,6 +3571,7 @@ LecIoctlAcquireBufferedOneChannel(
     NTSTATUS status;
     NTSTATUS disableStatus;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
     BOOLEAN dmaLaunched = FALSE;
     ULONG i;
@@ -3763,6 +3782,12 @@ LecIoctlAcquireBufferedOneChannel(
     }
     transferSelected = TRUE;
 
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto CleanupTransfer;
+    }
+    transferArmed = TRUE;
+
     currentMask = (ULONG)InterlockedCompareExchange(
         (volatile LONG*)&DevExt->InterruptEnableShadow,
         0,
@@ -3776,13 +3801,16 @@ LecIoctlAcquireBufferedOneChannel(
     }
     transferInterruptEnabled = TRUE;
 
-    if (!LecMarkSelectedDmaLaunched(DevExt, dmaGeneration)) {
-        status = STATUS_INVALID_DEVICE_STATE;
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mamRgo,
+        launchCount,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
         goto CleanupTransfer;
     }
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mamRgo, launchCount);
-    dmaLaunched = TRUE;
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -3797,7 +3825,15 @@ LecIoctlAcquireBufferedOneChannel(
     }
 
 CleanupTransfer:
-    if (dmaLaunched && LecDmaCompletionFinishWait(
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, transfer);
+    }
+    else if (dmaLaunched && LecDmaCompletionFinishWait(
             &DevExt->DmaCompletion,
             dmaGeneration,
             (BOOLEAN)(status == STATUS_SUCCESS))) {

@@ -9,6 +9,7 @@
  */
 typedef enum _LECS65_DMA_COMPLETION_PHASE {
     LecDmaCompletionNeverLaunched = 0,
+    LecDmaCompletionArming,
     LecDmaCompletionDeviceActive,
     LecDmaCompletionObserved,
     LecDmaCompletionIdleProved,
@@ -29,7 +30,19 @@ BOOLEAN LecDmaCompletionPrepare(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation);
 
-BOOLEAN LecDmaCompletionMarkDeviceActive(
+BOOLEAN LecDmaCompletionArm(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation);
+
+BOOLEAN LecDmaCompletionCancelArm(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation);
+
+BOOLEAN LecDmaCompletionIsArmed(
+    _In_ const LECS65_DMA_COMPLETION_TRACKER* Tracker,
+    _In_ ULONGLONG Generation);
+
+BOOLEAN LecDmaCompletionPublishDeviceActive(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation);
 

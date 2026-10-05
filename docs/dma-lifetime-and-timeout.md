@@ -56,12 +56,19 @@ This is **partial damage containment**, not DMA engine stop/recovery:
 
 1. The existing DMA start paths (`LecExecuteLegacyMttTransferLocked` and `LecIoctlAcquireBufferedOneChannel`) reject a latched `DmaUnknownActive` device.
 2. Each serialized launch now has a nonzero 64-bit software generation and an
-   explicit completion-evidence state. The physical ISR can change only the
-   current `DeviceActive` generation to `CompletionObserved`; the DPC signals
-   the event only when its recorded IRQ generation, the selected transfer and
-   the current generation still match. A completion spin lock keeps the
-   selected transfer resident through `KeSetEvent` while launch cleanup
-   deselects it.
+   explicit completion-evidence state. Before enabling completion IRQ bit 0,
+   the selected generation enters a transient `Arming` state. The existing
+   `IIMCL=1` and MAMRGO/MTTRGO writes, followed by publication of
+   `DeviceActive`, run inside one `KeSynchronizeExecution` callback. The ISR
+   therefore cannot run between GO and active publication. An ISR that runs
+   earlier while `Arming` rejects the completion, changes ownership to
+   `UnknownActive` and prevents GO. The physical ISR can otherwise change only
+   the current `DeviceActive` generation to `CompletionObserved`; the DPC
+   signals the event only when its recorded IRQ generation, the selected
+   transfer and the current generation still match. A completion spin lock
+   keeps the selected transfer resident through `KeSetEvent` while launch
+   cleanup deselects it. Wrong-generation consumers use compare-and-swap and
+   cannot erase a valid current IRQ marker.
 3. On a launched request with timeout/failed wait or a supposedly successful
    event without matching physical-IRQ evidence, transition to
    `UnknownActive`, mark its transfer `DmaUnsafeToFree`, latch
@@ -85,8 +92,9 @@ ownership evidence, not undocumented FPGA behavior:
 
 | State | Entry | Permitted consequence |
 | --- | --- | --- |
-| `NeverLaunched` | Fresh generation prepared before GO, or no-launch staging | A real WDM mapping may be released only if no device launch occurred. |
-| `DeviceActive` | Software commits the exact generation immediately before the launch writes | Transfer resources and mappings remain owned; no release is permitted. |
+| `NeverLaunched` | Fresh generation prepared before GO, cancelled arming, or no-launch staging | A real WDM mapping may be released only if no device launch occurred. |
+| `Arming` | Selected generation is published before completion IRQ bit 0 is enabled | Transient, non-releasable launch gate. A physical IRQ observed here is not attributed to the new transfer and forces `UnknownActive`; failure before GO may cancel back to `NeverLaunched` only if no IRQ changed the state. |
+| `DeviceActive` | The synchronized launch callback has written `IIMCL=1` and MAMRGO/MTTRGO, then publishes the generation before releasing ISR exclusion | Transfer resources and mappings remain owned; no release is permitted. |
 | `CompletionObserved` | Physical ISR accepts INTST bit 0 for the current active generation | Matching DPC may signal that transfer's event. This is **not** `IdleProved` and cannot release a WDM mapping. |
 | `IdleProved` | Reserved for a future independent, documented board/platform idle predicate | Mapping release may be considered. No live call site performs this transition. |
 | `UnknownActive` | Timeout, failed wait, successful event without matching IRQ, STOP/REMOVE uncertainty or generation inconsistency after launch | Terminal FDO fault; close admission and retain DMA-owned memory. |
@@ -96,10 +104,20 @@ ownership evidence, not undocumented FPGA behavior:
 legacy compatibility path prepares a later serialized acquisition. Software
 generation matching prevents a queued old DPC or recorded old IRQ from
 signaling a different transfer, and repeated completion cannot create
-`IdleProved`. It cannot identify the physical origin of an untagged board IRQ:
-if an IRQ from an earlier transfer is asserted only after a later generation
-has already entered `DeviceActive`, the driver has no hardware generation tag
-with which to distinguish it. That remains an unproven live-path premise.
+`IdleProved`. Conditional consumption also leaves a matching marker intact
+when a stale caller presents the wrong generation, while concurrent matching
+consumers have only one winner.
+
+The synchronized callback removes the source-established interleaving in
+which software previously published `DeviceActive` before writing GO. It does
+not identify the physical origin of an untagged board IRQ. In particular, a
+source that was physically pending before GO but was not delivered to the ISR
+until after the synchronized callback is indistinguishable from a genuine
+fast completion, and an IRQ from an earlier transfer asserted after a later
+generation reaches `DeviceActive` has no hardware generation tag. These remain
+unproven live-path premises. The correction adds no register access and keeps
+the existing IIMCL-then-GO order and values; it changes only the software
+state and ISR exclusion around those writes.
 
 The successful legacy PFN path intentionally remains behavior-compatible:
 `CompletionObserved` satisfies its historical synchronous wait and ordinary
@@ -570,11 +588,14 @@ mappings, Driver Verifier, power transitions or physical DMA.
 
 The production completion tracker is additionally compiled into a native
 host test. Deterministic cases cover IRQ immediately before timeout, event
-without physical IRQ, early and repeated completion, stale/wrong generation,
-completion versus STOP/REMOVE uncertainty, quarantine versus attempted
-release and the exact `NeverLaunched`/`CompletionObserved`/`IdleProved`
-mapping-release boundary. These tests establish software attribution and
-retention only; they cannot tag a real board IRQ or prove PCI bus-idle.
+without physical IRQ, pre-GO completion, the fail-closed modeled interval
+between GO and active publication, genuine fast completion after synchronized
+publication, early and repeated completion, stale/wrong generation,
+wrong-generation marker preservation, concurrent consumers, completion versus
+STOP/REMOVE uncertainty, quarantine versus attempted release and the exact
+`NeverLaunched`/`CompletionObserved`/`IdleProved` mapping-release boundary.
+These tests establish software attribution and retention only; they cannot tag
+a real board IRQ or prove PCI bus-idle.
 
 The publication factory now treats its output slot as an in/out ownership
 slot and rejects a non-NULL existing publication rather than overwriting and

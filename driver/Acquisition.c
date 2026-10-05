@@ -133,13 +133,98 @@ LecSelectDmaTransfer(
 }
 
 BOOLEAN
-LecMarkSelectedDmaLaunched(
+LecArmSelectedDma(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ ULONGLONG Generation)
 {
-    return LecDmaCompletionMarkDeviceActive(
+    return LecDmaCompletionArm(
         &DevExt->DmaCompletion,
         Generation);
+}
+
+BOOLEAN
+LecCancelSelectedDmaArm(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation)
+{
+    return LecDmaCompletionCancelArm(
+        &DevExt->DmaCompletion,
+        Generation);
+}
+
+typedef struct _LECS65_DMA_LAUNCH_CONTEXT {
+    PLECS65_DEVICE_EXTENSION DevExt;
+    ULONGLONG Generation;
+    volatile ULONG* CompletionControl;
+    volatile ULONG* GoRegister;
+    ULONG GoValue;
+    BOOLEAN GoWritten;
+} LECS65_DMA_LAUNCH_CONTEXT, *PLECS65_DMA_LAUNCH_CONTEXT;
+
+static
+BOOLEAN
+LecCommitDmaLaunchSynchronized(_In_ PVOID Context)
+{
+    PLECS65_DMA_LAUNCH_CONTEXT launch =
+        (PLECS65_DMA_LAUNCH_CONTEXT)Context;
+
+    /*
+     * KeSynchronizeExecution excludes the ISR across both the GO write and
+     * publication of DeviceActive.  Therefore an IRQ before this callback is
+     * rejected by Arming, while a fast IRQ after GO cannot run until the
+     * active generation has been published.
+     */
+    if (!LecDmaCompletionIsArmed(
+            &launch->DevExt->DmaCompletion,
+            launch->Generation)) {
+        return FALSE;
+    }
+
+    WRITE_REGISTER_ULONG(launch->CompletionControl, 1UL);
+    WRITE_REGISTER_ULONG(launch->GoRegister, launch->GoValue);
+    launch->GoWritten = TRUE;
+
+    return LecDmaCompletionPublishDeviceActive(
+        &launch->DevExt->DmaCompletion,
+        launch->Generation);
+}
+
+NTSTATUS
+LecLaunchSelectedDma(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation,
+    _In_ volatile ULONG* CompletionControl,
+    _In_ volatile ULONG* GoRegister,
+    _In_ ULONG GoValue,
+    _Out_ PBOOLEAN DmaLaunched)
+{
+    LECS65_DMA_LAUNCH_CONTEXT launch;
+    BOOLEAN committed;
+
+    if (DevExt == NULL || CompletionControl == NULL ||
+        GoRegister == NULL || DmaLaunched == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *DmaLaunched = FALSE;
+    if (!DevExt->InterruptConnected || DevExt->InterruptObject == NULL) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    RtlZeroMemory(&launch, sizeof(launch));
+    launch.DevExt = DevExt;
+    launch.Generation = Generation;
+    launch.CompletionControl = CompletionControl;
+    launch.GoRegister = GoRegister;
+    launch.GoValue = GoValue;
+
+    committed = KeSynchronizeExecution(
+        DevExt->InterruptObject,
+        LecCommitDmaLaunchSynchronized,
+        &launch);
+    *DmaLaunched = launch.GoWritten;
+
+    return committed ? STATUS_SUCCESS : STATUS_IO_DEVICE_ERROR;
 }
 
 VOID

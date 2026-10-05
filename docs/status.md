@@ -10,10 +10,10 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 33/33, layout 13/13, ownership 17/17,
+- Current result: source/ABI 35/35, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 17/17;
-  overall 302/302 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 24/24;
+  overall 311/311 PASS.
 
 ## DMA/PnP staging
 
@@ -52,16 +52,23 @@
   is software-tested for synchronous/pending/error/power completion and exact
   remove-lock release.
 - Live legacy DMA completion now records explicit 64-bit generations and
-  `NeverLaunched`, `DeviceActive`, `CompletionObserved`, `IdleProved`,
-  `UnknownActive` and `Quarantined` evidence states. The ISR cannot infer
-  idle, an old recorded generation cannot signal a later transfer, and a DPC
-  holds the completion lock while touching the selected event. A queued MAM
-  request rechecks terminal DMA failure after serialization and before MMIO.
+  `NeverLaunched`, transient `Arming`, `DeviceActive`, `CompletionObserved`,
+  `IdleProved`, `UnknownActive` and `Quarantined` evidence states. IIMCL/GO and
+  post-GO active publication run under ISR exclusion. A pre-GO ISR poisons the
+  transfer rather than satisfying it; a fast post-GO IRQ is processed after
+  publication. The ISR cannot infer idle, an old recorded generation cannot
+  signal a later transfer, a stale consumer cannot clear current evidence, and
+  a DPC holds the completion lock while touching the selected event. A queued
+  MAM request rechecks terminal DMA failure after serialization and before
+  MMIO.
 - Successful legacy acquisition behavior remains unchanged: a matching
   physical IRQ produces `CompletionObserved`, not `IdleProved`. Later release
   of its PFN-based resources therefore still depends on an unverified hardware
   IRQ-to-final-memory-access ordering premise. WDM mapping release remains
   forbidden on that evidence alone.
+- ISR serialization does not prove that a physically pending untagged source
+  originated after GO; hardware IRQ provenance and final PCI transaction
+  ordering remain unverified.
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.
