@@ -228,3 +228,65 @@ Additional public documentation:
 - [Independent XC2S200E/link inspection, related WaveRunner 6200](https://www.eevblog.com/forum/repair/lecroy-waverunner-6200-repair/)
 
 Do not publish owner-supplied drawing PDFs, bitstreams or license memory.
+
+## Photographic assembly evidence and configuration extraction path (2026-10-06)
+
+**Source:** user-supplied photographs of a physically removed PCI interface
+card, front and back, plus the WaveRunner 6000 Series Service Manual,
+version B, August 2004, uploaded privately. Only derived component
+identification is recorded here; original photographs, identifiers and the
+manual are not redistributed.
+
+- The photographed PCI assembly label reads `900890-00`. Its PCI endpoint
+  is visibly a `XC2S200E-6` in a `PQ208` package, consistent with the
+  separately analyzed PCI electrical schematic. The PCB shows unpopulated
+  header `J4`, which the schematic names JTAG.
+- The `U6` configuration-PROM footprint is **visibly unpopulated**. This
+  directly rules out simply reading an on-card `XC18V02` from this pictured
+  assembly. The schematic specifies `R60/R63/R66` versus `R88/R89`
+  population choices for onboard PROM versus **remote configuration via
+  link**. The missing U6 strongly supports the link-configured variant;
+  resistor population and actual upstream bitstream provenance still need
+  electrical/documentary confirmation.
+- The manufacturer manual's section **6.3.4, PDF page 114** presents a
+  `LeCroy S65 Hardware Programmer` UI with **three distinct version and
+  upgrade rows**: `Microcontroller`, `Acq/Atc Fpgas`, and `Pci Fpga`.
+  Section 6.3.5 (PDF page 115) names `hwprogrammer.exe` as the tool for
+  checking versions. This proves there is a managed PCI FPGA firmware
+  update mechanism, but neither that its update image is a separately
+  stored `.bit` file nor that upgrades are readable/reversible.
+  The manual explicitly warns that interrupted programming can require
+  factory recovery. Do **not** run firmware upgrades to obtain evidence.
+- The manual §4.6.1.4 (PDF p30) states that the acquisition
+  microcontroller programs acquisition-board Spartan-IIE FPGAs.
+  Given remote PCI-card configuration, the PCI bitstream may be stored
+  in the acquisition-side non-volatile memory or supplied/updated using
+  host application data, but **its actual storage and routing are unproved**.
+- Xilinx `DS077` and `XAPP176` document Spartan-IIE configuration
+  readback through JTAG/boundary scan (`CFG_OUT`). `XAPP176` §Security
+  says `Level1` prohibits external readback and `Level2` prohibits
+  external configuration and readback. The external JTAG port remains
+  accessible in principle but that is *not* proof that the fitted card
+  permits readback. JTAG interaction is active signaling, not a passive
+  observation; any procedure requires a separate risk assessment,
+  independent hardware power, verified J4 pinout and a controlled,
+  recoverable test specimen, never the sole licensed production board.
+- A recovered configuration stream is **not RTL, Verilog or VHDL**:
+  it encodes placement/routing/LUT/control data (and readback may also
+  include stateful data). A bitstream alone does not certify
+  DMA/posted-write drain or completion IRQ ordering. Static inspection
+  of installed `hwprogrammer.exe`, firmware files and FPGA update
+  resources is the safest immediate research path.
+
+**Preferred next steps:** (1) read-only file inventory on the existing
+Windows LeCroy installation for `hwprogrammer.exe` and associated
+versioned firmware assets; (2) **offline** binary/resource inspection of
+copies kept private; (3) trace firmware update/control code statically
+only, never executing an update; (4) corroborate JTAG/configuration
+routing from the existing complete PCI schematic and manual; (5) only
+after a spare/recoverable test setup, consider approved readback testing.
+
+Sources:
+- [Xilinx Spartan-IIE datasheet DS077](https://docs.amd.com/v/u/en-US/ds077)
+- [Xilinx configuration and readback XAPP176](https://docs.amd.com/v/u/en-US/xapp176)
+- [LeCroy WaveRunner 6000 service manual (online reference)](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=114)
