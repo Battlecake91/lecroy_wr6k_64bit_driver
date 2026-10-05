@@ -29,11 +29,13 @@ $scatterSource = Join-Path $repo "driver\DmaScatterGatherStage.c"
 $scatterHeader = Join-Path $repo "driver\DmaScatterGatherStage.h"
 $syncSource = Join-Path $repo "driver\DmaSyncStage.c"
 $syncHeader = Join-Path $repo "driver\DmaSyncStage.h"
+$pnpDmaSource = Join-Path $repo "driver\DmaPnpStage.c"
+$pnpDmaHeader = Join-Path $repo "driver\DmaPnpStage.h"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $driverProject, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -55,6 +57,8 @@ $scatterText = Get-Content -LiteralPath $scatterSource -Raw
 $scatterHeaderText = Get-Content -LiteralPath $scatterHeader -Raw
 $syncText = Get-Content -LiteralPath $syncSource -Raw
 $syncHeaderText = Get-Content -LiteralPath $syncHeader -Raw
+$pnpDmaText = Get-Content -LiteralPath $pnpDmaSource -Raw
+$pnpDmaHeaderText = Get-Content -LiteralPath $pnpDmaHeader -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
@@ -362,6 +366,49 @@ Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
     $acquisitionText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
     $deviceText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
     $ioctlText -notmatch 'LecSgSync|GetScatterGatherListEx'
+}
+
+Test-Contract "PnP DMA parent is compiled but remains outside live paths" {
+    $driverProjectText -match 'ClCompile Include="DmaPnpStage.c"' -and
+    $driverProjectText -match 'ClInclude Include="DmaPnpStage.h"' -and
+    $pnpDmaHeaderText -match 'One instance represents one physical-device ownership domain' -and
+    $pnpDmaHeaderText -match 'PLECS65_DMA_ADAPTER_CONTEXT AdapterContext' -and
+    $pnpDmaHeaderText -match 'LECS65_SG_SYNC_OWNER SyncOwner' -and
+    $pnpDmaText -match 'LecDmaCreateAdapterContext' -and
+    $pnpDmaText -match 'LecSgSyncOwnerInit' -and
+    $pnpDmaText -notmatch 'LecMapOwnerLaunch' -and
+    $driverSourceText -notmatch 'LecDmaPnp' -and
+    $acquisitionText -notmatch 'LecDmaPnp' -and
+    $deviceText -notmatch 'LecDmaPnp' -and
+    $ioctlText -notmatch 'LecDmaPnp'
+}
+
+Test-Contract "PnP DMA parent gates rundown and unknown-active retention" {
+    $pnpDmaHeaderText -match 'ULONG ActiveCalls' -and
+    $pnpDmaHeaderText -match 'BOOLEAN AdmissionOpen' -and
+    $pnpDmaText -match 'LecDmaPnpBeginTeardown' -and
+    $pnpDmaText -match 'LecDmaPnpRecordQuiescence' -and
+    $pnpDmaText -match 'LecDmaPnpFinishTeardownNoLaunch' -and
+    $pnpDmaText -match 'LecDmaPnpInterruptDisconnected' -and
+    $pnpDmaText -match 'LecDmaPnpDpcDrained' -and
+    $pnpDmaText -match 'LecDmaPnpTimerStopped' -and
+    $pnpDmaText -match 'LecSgSyncOwnerDrainNoLaunch' -and
+    $pnpDmaText -match 'LecDmaReleaseAdapterContext\(context, TRUE\)' -and
+    $pnpDmaText -match 'LecDmaQuarantineAdapterContext\(context\)' -and
+    $adapterText -match 'LecDmaQuarantineAdapterContext' -and
+    $pnpDmaText -notmatch 'KeWaitForSingleObject|KeDelayExecutionThread'
+}
+
+Test-Contract "PnP DMA parent uses factory lifetime and atomic quarantine" {
+    $pnpDmaHeaderText -match 'LecDmaPnpStageCreate' -and
+    $pnpDmaHeaderText -match 'LecDmaPnpStageDestroy' -and
+    $pnpDmaHeaderText -notmatch 'LecDmaPnpStageConstruct' -and
+    $pnpDmaHeaderText -match 'volatile LONG QuarantineRequested' -and
+    $pnpDmaHeaderText -match 'LECS65_DMA_PNP_CLEANUP_PHASE' -and
+    $pnpDmaText -match 'InterlockedExchange\(&Stage->QuarantineRequested, 1\)' -and
+    $pnpDmaText -match 'LecSgSyncOwnerQuarantine' -and
+    $syncHeaderText -match 'ULONG ReleasesInFlight' -and
+    $syncText -match 'LecSgSyncCommitReleaseLocked'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {

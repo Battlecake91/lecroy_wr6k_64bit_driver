@@ -18,6 +18,7 @@ typedef enum _LECS65_SG_SYNC_OWNER_STATE {
     LecSgSyncOwnerInitializing,
     LecSgSyncOwnerActive,
     LecSgSyncOwnerStopping,
+    LecSgSyncOwnerQuarantined,
     LecSgSyncOwnerDestroying,
     LecSgSyncOwnerDestroyed
 } LECS65_SG_SYNC_OWNER_STATE;
@@ -28,7 +29,10 @@ typedef struct _LECS65_SG_SYNC_OWNER {
     struct _LECS65_SG_SYNC_STAGE* Mappings;
     ULONGLONG NextToken;
     ULONG Outstanding;
+    ULONG ReleasesInFlight;
     ULONG DescriptorSlotCapacity;
+    volatile LONG QuarantineRequested;
+    BOOLEAN LateQuarantine;
     LECS65_SG_SYNC_OWNER_STATE State;
 } LECS65_SG_SYNC_OWNER, *PLECS65_SG_SYNC_OWNER;
 
@@ -60,6 +64,11 @@ NTSTATUS LecSgSyncOwnerInit(
 /* STOP is nonblocking. BUSY means retain parent, adapter and MDLs. */
 NTSTATUS LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
 BOOLEAN LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner);
+
+/* Permanent fail-closed latch. Existing or future allocations are retained. */
+NTSTATUS LecSgSyncOwnerQuarantine(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _Out_opt_ PBOOLEAN ReleaseAlreadyCommitted);
 
 /* Releases every published mapping because this API can never launch DMA. */
 NTSTATUS LecSgSyncOwnerDrainNoLaunch(_Inout_ PLECS65_SG_SYNC_OWNER Owner);

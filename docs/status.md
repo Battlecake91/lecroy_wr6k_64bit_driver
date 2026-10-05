@@ -8,8 +8,9 @@
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge
   and the inactive synchronous v3 no-launch stage. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 25/25, layout 13/13, ownership 17/17,
-  asynchronous SG 27/27 and synchronous v3 81/81; overall 163/163 PASS.
+- Current result: source/ABI 28/28, layout 13/13, ownership 17/17,
+  asynchronous SG 27/27 and synchronous v3/PnP lifetime 149/149; overall
+  234/234 PASS.
 
 ## DMA/PnP staging
 
@@ -24,9 +25,17 @@
   capacity derived from the actual common-buffer length. The owner has an
   explicit construct/init/stop/destroy lifecycle, so failed repeated init does
   not overwrite live mappings or reinitialize an active lock.
-- Ownership exclusion is confirmed only per adapter context. Separate contexts
-  for one physical device are not globally serialized; future PnP integration
-  must enforce a single context or supply a proven device-wide registry.
+- An inactive `LECS65_DMA_PNP_STAGE` now owns one adapter context, one sync
+  owner, parent-call rundown, START generations, STOP/SURPRISE/REMOVE states,
+  ordered IRQ/DPC/timer software-quiescence flags and an authoritative atomic
+  unknown-active latch. It is allocated only through a one-time factory;
+  destruction requires empty stopped/removed state plus external unpublication
+  and caller rundown. Blocked GetEx completion is retained after quarantine;
+  notification after an irreversible no-launch release commit is reported as
+  late and prevents all remaining cleanup.
+  It prevents multiple contexts within one parent. Live PnP does not yet
+  publish one independently resident parent per physical device, so a complete
+  device-wide guarantee and FDO-independent quarantine lifetime remain open.
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.
