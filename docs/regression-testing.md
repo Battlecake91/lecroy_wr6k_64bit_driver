@@ -296,19 +296,24 @@ and terminator capacity, START/STOP/START, failed START rollback, STOP during
 GetEx, REMOVE with an outstanding mapping, repeated STOP/REMOVE, surprise
 removal, concurrent release/teardown, parent-call rundown, stale generation
 tokens, ordered IRQ/DPC/timer software quiescence and unknown-active retention.
+Actual blocked fake DDIs reproduce quarantine during GetEx, committed mapping
+release, Finish drain and failed START cleanup. Concurrent Begin, duplicate
+notification, post-STOP retention, factory allocation failure and parent
+destruction are checked against adapter, common-buffer, mapping, PDO and
+parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
 Current Windows Dry regression on 2026-10-05:
 - Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
   x64 `lecdiag` **PASS**.
-- Source/ABI contracts **27/27 PASS**.
+- Source/ABI contracts **28/28 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
 - Synchronous WDM v3 no-launch and PnP-parent fake-DDI suite
-  **123/123 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**207/207** checks).
+  **149/149 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**234/234** checks).
 
 This test is software-only: no real OS SG mapping, actual PnP rundown
 or physical DMA idle has been proven.

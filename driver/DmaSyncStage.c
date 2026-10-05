@@ -133,6 +133,44 @@ LecSgSyncFreeStage(_Inout_ PLECS65_SG_SYNC_STAGE Stage)
     ExFreePoolWithTag(Stage, LECS65_TAG);
 }
 
+static BOOLEAN
+LecSgSyncQuarantineRequested(_In_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    return (BOOLEAN)(InterlockedCompareExchange(
+        &Owner->QuarantineRequested, 0, 0) != 0);
+}
+
+/* Caller holds Owner->Lock. A TRUE result is an irreversible free commit. */
+static BOOLEAN
+LecSgSyncCommitReleaseLocked(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    if (LecSgSyncQuarantineRequested(Owner)) {
+        Owner->State = LecSgSyncOwnerQuarantined;
+        return FALSE;
+    }
+    ++Owner->ReleasesInFlight;
+    return TRUE;
+}
+
+static VOID
+LecSgSyncCompleteRelease(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
+{
+    KIRQL irql;
+
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (Owner->ReleasesInFlight != 0) {
+        --Owner->ReleasesInFlight;
+    }
+    if (Owner->Outstanding != 0) {
+        --Owner->Outstanding;
+    }
+    if (LecSgSyncQuarantineRequested(Owner)) {
+        Owner->LateQuarantine = TRUE;
+        Owner->State = LecSgSyncOwnerQuarantined;
+    }
+    KeReleaseSpinLock(&Owner->Lock, irql);
+}
+
 /* All functions below are unreachable from current live PCI paths. */
 VOID
 LecSgSyncOwnerConstruct(_Out_ PLECS65_SG_SYNC_OWNER Owner)
@@ -166,7 +204,7 @@ LecSgSyncOwnerInit(
     if ((priorState != LecSgSyncOwnerConstructed &&
          priorState != LecSgSyncOwnerDestroyed) ||
         Owner->AdapterContext != NULL || Owner->Outstanding != 0 ||
-        Owner->Mappings != NULL) {
+        Owner->Mappings != NULL || LecSgSyncQuarantineRequested(Owner)) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
     }
@@ -179,6 +217,13 @@ LecSgSyncOwnerInit(
     KeAcquireSpinLock(&Owner->Lock, &irql);
     if (!NT_SUCCESS(status)) {
         Owner->State = priorState;
+    }
+    else if (LecSgSyncQuarantineRequested(Owner)) {
+        /* The successfully claimed adapter ownership is now retained. */
+        Owner->AdapterContext = AdapterContext;
+        Owner->DescriptorSlotCapacity = descriptorSlotCapacity;
+        Owner->State = LecSgSyncOwnerQuarantined;
+        status = STATUS_DEVICE_BUSY;
     }
     else {
         Owner->AdapterContext = AdapterContext;
@@ -196,7 +241,9 @@ LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     ULONG pending;
     if (!Owner) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->State == LecSgSyncOwnerInitializing ||
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        Owner->State == LecSgSyncOwnerQuarantined ||
+        Owner->State == LecSgSyncOwnerInitializing ||
         Owner->State == LecSgSyncOwnerDestroying) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
@@ -212,6 +259,37 @@ LecSgSyncOwnerStop(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     return pending ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }
 
+NTSTATUS
+LecSgSyncOwnerQuarantine(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _Out_opt_ PBOOLEAN ReleaseAlreadyCommitted)
+{
+    KIRQL irql;
+    BOOLEAN late;
+
+    if (ReleaseAlreadyCommitted != NULL) {
+        *ReleaseAlreadyCommitted = FALSE;
+    }
+    if (Owner == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Latch before taking the lock so waiters cannot pass a later commit. */
+    InterlockedExchange(&Owner->QuarantineRequested, 1);
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    late = (BOOLEAN)(Owner->ReleasesInFlight != 0);
+    if (late) {
+        Owner->LateQuarantine = TRUE;
+    }
+    Owner->State = LecSgSyncOwnerQuarantined;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+
+    if (ReleaseAlreadyCommitted != NULL) {
+        *ReleaseAlreadyCommitted = late;
+    }
+    return STATUS_SUCCESS;
+}
+
 BOOLEAN
 LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 {
@@ -219,8 +297,10 @@ LecSgSyncOwnerCanTeardown(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     BOOLEAN ready;
     if (!Owner) return FALSE;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    ready = (BOOLEAN)(Owner->State == LecSgSyncOwnerStopping &&
+    ready = (BOOLEAN)(!LecSgSyncQuarantineRequested(Owner) &&
+                       Owner->State == LecSgSyncOwnerStopping &&
                        Owner->Outstanding == 0 &&
+                       Owner->ReleasesInFlight == 0 &&
                        Owner->Mappings == NULL);
     KeReleaseSpinLock(&Owner->Lock, irql);
     return ready;
@@ -268,7 +348,8 @@ LecSgSyncMapNoLaunch(
      * Until channel-sharing semantics are proven, allow at most ONE
      * outstanding allocation for this DMA adapter.
      */
-    if (Owner->State != LecSgSyncOwnerActive ||
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        Owner->State != LecSgSyncOwnerActive ||
         Owner->AdapterContext == NULL || Owner->Outstanding != 0 ||
         Owner->NextToken == (ULONGLONG)-1) {
         KeReleaseSpinLock(&Owner->Lock, irql);
@@ -293,7 +374,8 @@ LecSgSyncMapNoLaunch(
     }
 
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->State != LecSgSyncOwnerActive) {
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        Owner->State != LecSgSyncOwnerActive) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         status = STATUS_DELETE_PENDING;
         goto FailReservation;
@@ -333,18 +415,31 @@ LecSgSyncMapNoLaunch(
     }
 
     status = LecSgSyncValidateMappedList(Owner, stage);
-    if (!NT_SUCCESS(status)) {
-        /* GetEx succeeded, so its adapter resources must be released. */
-        LecSgSyncFreeStage(stage);
-        goto FailReservation;
-    }
-
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->State != LecSgSyncOwnerActive) {
+    if (LecSgSyncQuarantineRequested(Owner)) {
+        /* GetEx succeeded: retain even a malformed allocation fail-closed. */
+        stage->Next = Owner->Mappings;
+        Owner->Mappings = stage;
+        Owner->State = LecSgSyncOwnerQuarantined;
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    if (!NT_SUCCESS(status) || Owner->State != LecSgSyncOwnerActive) {
+        NTSTATUS releaseStatus = status;
+
+        if (NT_SUCCESS(releaseStatus)) {
+            releaseStatus = STATUS_DELETE_PENDING;
+        }
+        if (!LecSgSyncCommitReleaseLocked(Owner)) {
+            stage->Next = Owner->Mappings;
+            Owner->Mappings = stage;
+            KeReleaseSpinLock(&Owner->Lock, irql);
+            return STATUS_DEVICE_BUSY;
+        }
         KeReleaseSpinLock(&Owner->Lock, irql);
         LecSgSyncFreeStage(stage);
-        LecSgSyncOwnerDone(Owner);
-        return STATUS_DELETE_PENDING;
+        LecSgSyncCompleteRelease(Owner);
+        return releaseStatus;
     }
     stage->Next = Owner->Mappings;
     Owner->Mappings = stage;
@@ -375,8 +470,9 @@ LecSgSyncCopySegments(
         return STATUS_INVALID_PARAMETER;
     *Copied = 0;
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->State != LecSgSyncOwnerActive &&
-        Owner->State != LecSgSyncOwnerStopping) {
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        (Owner->State != LecSgSyncOwnerActive &&
+         Owner->State != LecSgSyncOwnerStopping)) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_INVALID_PARAMETER;
     }
@@ -415,8 +511,9 @@ LecSgSyncReleaseNoLaunch(
      * never resolve to a different mapping (tokens aren't reused).
      */
     KeAcquireSpinLock(&Owner->Lock, &irql);
-    if (Owner->State != LecSgSyncOwnerActive &&
-        Owner->State != LecSgSyncOwnerStopping) {
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        (Owner->State != LecSgSyncOwnerActive &&
+         Owner->State != LecSgSyncOwnerStopping)) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_INVALID_PARAMETER;
     }
@@ -427,6 +524,10 @@ LecSgSyncReleaseNoLaunch(
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_INVALID_PARAMETER;
     }
+    if (!LecSgSyncCommitReleaseLocked(Owner)) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
     *link = stage->Next;
     KeReleaseSpinLock(&Owner->Lock, irql);
 
@@ -436,7 +537,7 @@ LecSgSyncReleaseNoLaunch(
      * actual/unknown-active WR6k DMA transaction.
      */
     LecSgSyncFreeStage(stage);
-    LecSgSyncOwnerDone(Owner);
+    LecSgSyncCompleteRelease(Owner);
     return STATUS_SUCCESS;
 }
 
@@ -453,7 +554,8 @@ LecSgSyncOwnerDrainNoLaunch(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
 
     for (;;) {
         KeAcquireSpinLock(&Owner->Lock, &irql);
-        if (Owner->State != LecSgSyncOwnerStopping) {
+        if (LecSgSyncQuarantineRequested(Owner) ||
+            Owner->State != LecSgSyncOwnerStopping) {
             KeReleaseSpinLock(&Owner->Lock, irql);
             return STATUS_INVALID_DEVICE_STATE;
         }
@@ -485,13 +587,18 @@ LecSgSyncOwnerDestroy(_Inout_ PLECS65_SG_SYNC_OWNER Owner)
     }
 
     KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        Owner->State == LecSgSyncOwnerQuarantined) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
     if (Owner->State == LecSgSyncOwnerDestroyed) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_INVALID_PARAMETER;
     }
     if (Owner->State != LecSgSyncOwnerStopping ||
         Owner->AdapterContext == NULL || Owner->Outstanding != 0 ||
-        Owner->Mappings != NULL) {
+        Owner->Mappings != NULL || Owner->ReleasesInFlight != 0) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
     }

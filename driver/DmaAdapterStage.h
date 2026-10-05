@@ -16,7 +16,10 @@
  * Ownership serialization is per context, not per PDO or physical device.
  * The inactive DmaPnpStage parent is the required creation boundary and owns
  * at most one context. Live PnP must publish exactly one such parent per PDO
- * and forbid calls that bypass it before mappings can be activated.
+ * and forbid calls that bypass it before mappings can be activated. These
+ * functions do not themselves reference-count Context storage: the parent
+ * cleanup phase must exclude any new quarantine dereference once final
+ * adapter release is committed.
  */
 typedef struct _LECS65_DMA_ADAPTER_CONTEXT {
     PDMA_ADAPTER Adapter;

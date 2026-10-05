@@ -10,7 +10,8 @@ enum {
     MODE_INIT_FAILURE,
     MODE_SUCCESS_WITH_NULL_LIST,
     MODE_BLOCK_GET,
-    MODE_BLOCK_FREE
+    MODE_BLOCK_FREE,
+    MODE_BLOCK_COMMON_FAILURE
 };
 
 static unsigned passed, failed;
@@ -36,6 +37,7 @@ static __declspec(align(4096)) char sameDeviceDescriptorTable[4096];
 static __declspec(align(4096)) char initRaceDescriptorTable[4096];
 static __declspec(align(4096)) char initBlockDescriptorTable[4096];
 static HANDLE getEntered, allowGet, freeEntered, allowFree;
+static HANDLE commonEntered, allowCommon;
 static DMA_ADAPTER adapter, otherAdapter;
 static DMA_OPERATIONS ops, otherOps;
 static FAKE_DEVICE device, otherDevice;
@@ -181,6 +183,11 @@ fakeAllocateCommon(
     UNREFERENCED_PARAMETER(length);
     UNREFERENCED_PARAMETER(cacheEnabled);
     InterlockedIncrement(&commonAllocateCalls);
+    if (mode == MODE_BLOCK_COMMON_FAILURE) {
+        SetEvent(commonEntered);
+        WaitForSingleObject(allowCommon, INFINITE);
+        return NULL;
+    }
     if (!commonAvailable) {
         return NULL;
     }
@@ -262,6 +269,8 @@ static void setup(void)
     allowGet = CreateEvent(NULL, TRUE, FALSE, NULL);
     freeEntered = CreateEvent(NULL, TRUE, FALSE, NULL);
     allowFree = CreateEvent(NULL, TRUE, FALSE, NULL);
+    commonEntered = CreateEvent(NULL, TRUE, FALSE, NULL);
+    allowCommon = CreateEvent(NULL, TRUE, FALSE, NULL);
     passed = failed = 0;
     initCalls = getCalls = freeCalls = 0;
     mainFreeCalls = otherFreeCalls = 0;
@@ -349,6 +358,12 @@ typedef struct _PNP_RELEASE_THREAD {
     NTSTATUS Status;
 } PNP_RELEASE_THREAD;
 
+typedef struct _PNP_ACTION_THREAD {
+    PLECS65_DMA_PNP_STAGE Stage;
+    LECS65_DMA_PNP_TEARDOWN_REASON Reason;
+    NTSTATUS Status;
+} PNP_ACTION_THREAD;
+
 static DWORD WINAPI concurrentMap(void* argument)
 {
     MAP_THREAD* map = (MAP_THREAD*)argument;
@@ -384,6 +399,36 @@ static DWORD WINAPI concurrentPnpRelease(void* argument)
     PNP_RELEASE_THREAD* release = (PNP_RELEASE_THREAD*)argument;
     release->Status = LecDmaPnpReleaseNoLaunch(
         release->Stage, release->Token);
+    return 0;
+}
+
+static DWORD WINAPI concurrentPnpStart(void* argument)
+{
+    PNP_ACTION_THREAD* action = (PNP_ACTION_THREAD*)argument;
+    action->Status = LecDmaPnpStartNoLaunch(
+        action->Stage, 0x100000, 4096);
+    return 0;
+}
+
+static DWORD WINAPI concurrentPnpBegin(void* argument)
+{
+    PNP_ACTION_THREAD* action = (PNP_ACTION_THREAD*)argument;
+    action->Status = LecDmaPnpBeginTeardown(
+        action->Stage, action->Reason);
+    return 0;
+}
+
+static DWORD WINAPI concurrentPnpFinish(void* argument)
+{
+    PNP_ACTION_THREAD* action = (PNP_ACTION_THREAD*)argument;
+    action->Status = LecDmaPnpFinishTeardownNoLaunch(action->Stage);
+    return 0;
+}
+
+static DWORD WINAPI concurrentPnpQuarantine(void* argument)
+{
+    PNP_ACTION_THREAD* action = (PNP_ACTION_THREAD*)argument;
+    action->Status = LecDmaPnpQuarantineUnknownActive(action->Stage);
     return 0;
 }
 
@@ -463,14 +508,20 @@ int main(void)
     INIT_THREAD blockedInit;
     OWNER_THREAD blockedDestroy;
     KIRQL heldIrql;
-    LECS65_DMA_PNP_STAGE pnpStage;
-    LECS65_DMA_PNP_STAGE failedPnpStage;
-    LECS65_DMA_PNP_STAGE surprisePnpStage;
-    LECS65_DMA_PNP_STAGE mapRacePnpStage;
-    LECS65_DMA_PNP_STAGE releaseRacePnpStage;
-    LECS65_DMA_PNP_STAGE removePnpStage;
-    LECS65_DMA_PNP_STAGE teardownRetryPnpStage;
-    LECS65_DMA_PNP_STAGE quarantinePnpStage;
+    PLECS65_DMA_PNP_STAGE pnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE failedPnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE surprisePnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE mapRacePnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE releaseRacePnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE removePnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE teardownRetryPnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE quarantinePnpStage = NULL;
+    PLECS65_DMA_PNP_STAGE getQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE freeQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE beginQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE startQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE stopQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE finishQuarantineStage = NULL;
     LECS65_DMA_PNP_SNAPSHOT pnpSnapshot;
     FAKE_DEVICE pnpDevice;
     FAKE_DEVICE failedPnpDevice;
@@ -480,11 +531,19 @@ int main(void)
     FAKE_DEVICE removePnpDevice;
     FAKE_DEVICE teardownRetryPnpDevice;
     FAKE_DEVICE quarantinePnpDevice;
+    FAKE_DEVICE getQuarantineDevice;
+    FAKE_DEVICE freeQuarantineDevice;
+    FAKE_DEVICE beginQuarantineDevice;
+    FAKE_DEVICE startQuarantineDevice;
+    FAKE_DEVICE stopQuarantineDevice;
+    FAKE_DEVICE finishQuarantineDevice;
     PNP_MAP_THREAD pnpMapRace;
     PNP_RELEASE_THREAD pnpReleaseRace;
+    PNP_ACTION_THREAD pnpActionA, pnpActionB;
     ULONGLONG firstGenerationToken;
     LONG commonFreesAtQuarantine;
     LONG putsAtQuarantine;
+    LONG poolBeforeQuarantineRace;
 
     setup();
     LecSgSyncOwnerConstruct(&owner);
@@ -1002,135 +1061,156 @@ int main(void)
     check("all DDI calls used the required synchronous contract",
         badDdiArguments == 0);
 
+    failNextPoolAllocation = 1;
+    check("PnP parent factory reports allocation shortage without publication",
+        LecDmaPnpStageCreate(&pnpDevice, &pnpStage) ==
+            STATUS_INSUFFICIENT_RESOURCES && pnpStage == NULL &&
+        poolOutstanding == 0);
+
     memset(&pnpDevice, 0, sizeof(pnpDevice));
-    LecDmaPnpStageConstruct(&pnpStage, &pnpDevice);
-    LecDmaPnpSnapshot(&pnpStage, &pnpSnapshot);
+    check("PnP parent factory allocates unique unpublished storage",
+        LecDmaPnpStageCreate(&pnpDevice, &pnpStage) == STATUS_SUCCESS &&
+        pnpStage != NULL);
+    LecDmaPnpSnapshot(pnpStage, &pnpSnapshot);
     check("PnP parent construction performs no DMA allocation",
         pnpSnapshot.State == LecDmaPnpStopped &&
         !pnpSnapshot.HasAdapterContext && !pnpSnapshot.AdmissionOpen &&
         pnpDevice.References == 0);
     check("PnP START creates one owned adapter context",
-        LecDmaPnpStartNoLaunch(&pnpStage, 0x100000, 4096) ==
+        LecDmaPnpStartNoLaunch(pnpStage, 0x100000, 4096) ==
             STATUS_SUCCESS);
-    LecDmaPnpSnapshot(&pnpStage, &pnpSnapshot);
+    LecDmaPnpSnapshot(pnpStage, &pnpSnapshot);
     check("PnP START publishes admission only after full initialization",
         pnpSnapshot.State == LecDmaPnpStarted &&
         pnpSnapshot.HasAdapterContext && pnpSnapshot.AdmissionOpen &&
         pnpSnapshot.Generation == 1 && pnpDevice.References == 1);
     commonFreesBefore = commonAllocateCalls;
     check("one parent cannot create a second adapter context",
-        LecDmaPnpStartNoLaunch(&pnpStage, 0x100000, 4096) ==
+        LecDmaPnpStartNoLaunch(pnpStage, 0x100000, 4096) ==
             STATUS_DEVICE_BUSY && commonAllocateCalls == commonFreesBefore);
     status = LecDmaPnpMapNoLaunch(
-        &pnpStage, mdls, 128, &firstGenerationToken);
+        pnpStage, mdls, 128, &firstGenerationToken);
     check("PnP parent maps through the actual no-launch owner",
         NT_SUCCESS(status) && firstGenerationToken != 0 &&
         pnpDevice.References == 2);
     check("PnP parent copies mapping data under parent rundown",
         LecDmaPnpCopySegments(
-            &pnpStage, firstGenerationToken, elements, 3, &count) ==
+            pnpStage, firstGenerationToken, elements, 3, &count) ==
             STATUS_SUCCESS && count == 2 && elements[0].Length == 64);
     check("STOP closes admission before cleanup",
         LecDmaPnpBeginTeardown(
-            &pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
-        LecDmaPnpMapNoLaunch(&pnpStage, mdls, 128, &second) ==
+            pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
+        LecDmaPnpMapNoLaunch(pnpStage, mdls, 128, &second) ==
             STATUS_DELETE_PENDING && second == 0);
     check("teardown refuses missing software quiescence",
-        LecDmaPnpFinishTeardownNoLaunch(&pnpStage) == STATUS_DEVICE_BUSY);
+        LecDmaPnpFinishTeardownNoLaunch(pnpStage) == STATUS_DEVICE_BUSY);
     check("DPC and timer rundown cannot precede interrupt disconnect",
         LecDmaPnpRecordQuiescence(
-            &pnpStage, LecDmaPnpDpcDrained) ==
+            pnpStage, LecDmaPnpDpcDrained) ==
                 STATUS_INVALID_DEVICE_STATE &&
         LecDmaPnpRecordQuiescence(
-            &pnpStage, LecDmaPnpTimerStopped) ==
+            pnpStage, LecDmaPnpTimerStopped) ==
                 STATUS_INVALID_DEVICE_STATE);
     check("IRQ DPC timer quiescence ordering is accepted",
-        quiescePnpStage(&pnpStage) == STATUS_SUCCESS);
+        quiescePnpStage(pnpStage) == STATUS_SUCCESS);
     check("STOP drains only no-launch mappings and releases ownership",
-        LecDmaPnpFinishTeardownNoLaunch(&pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(pnpStage) == STATUS_SUCCESS &&
         pnpDevice.References == 0);
     check("START after STOP creates a new generation",
-        LecDmaPnpStartNoLaunch(&pnpStage, 0x100000, 4096) ==
+        LecDmaPnpStartNoLaunch(pnpStage, 0x100000, 4096) ==
             STATUS_SUCCESS);
-    LecDmaPnpSnapshot(&pnpStage, &pnpSnapshot);
+    LecDmaPnpSnapshot(pnpStage, &pnpSnapshot);
     check("stale prior-generation token cannot resolve",
         pnpSnapshot.Generation == 2 &&
         LecDmaPnpReleaseNoLaunch(
-            &pnpStage, firstGenerationToken) == STATUS_INVALID_PARAMETER);
-    status = LecDmaPnpMapNoLaunch(&pnpStage, mdls, 128, &id);
+            pnpStage, firstGenerationToken) == STATUS_INVALID_PARAMETER);
+    status = LecDmaPnpMapNoLaunch(pnpStage, mdls, 128, &id);
     check("mapping tokens remain monotonic across START cycles",
         NT_SUCCESS(status) && id > firstGenerationToken);
     check("parent rejects duplicate release without double free",
-        LecDmaPnpReleaseNoLaunch(&pnpStage, id) == STATUS_SUCCESS &&
-        LecDmaPnpReleaseNoLaunch(&pnpStage, id) ==
+        LecDmaPnpReleaseNoLaunch(pnpStage, id) == STATUS_SUCCESS &&
+        LecDmaPnpReleaseNoLaunch(pnpStage, id) ==
             STATUS_INVALID_PARAMETER);
     check("second STOP and REMOVE are idempotent",
         LecDmaPnpBeginTeardown(
-            &pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
-        quiescePnpStage(&pnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&pnpStage) == STATUS_SUCCESS &&
+            pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
+        quiescePnpStage(pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(pnpStage) == STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
+            pnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &pnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&pnpStage) == STATUS_SUCCESS &&
+            pnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(pnpStage) == STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &pnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
-        LecDmaPnpCanDestroy(&pnpStage));
+            pnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
+        LecDmaPnpCanDestroy(pnpStage));
+    check("PnP parent destroy requires completed REMOVE and frees once",
+        LecDmaPnpStageDestroy(pnpStage) == STATUS_SUCCESS);
+    pnpStage = NULL;
 
     memset(&failedPnpDevice, 0, sizeof(failedPnpDevice));
-    LecDmaPnpStageConstruct(&failedPnpStage, &failedPnpDevice);
+    check("failed-START parent factory succeeds",
+        LecDmaPnpStageCreate(&failedPnpDevice, &failedPnpStage) ==
+            STATUS_SUCCESS);
     commonAvailable = FALSE;
     status = LecDmaPnpStartNoLaunch(
-        &failedPnpStage, 0x100000, 4096);
+        failedPnpStage, 0x100000, 4096);
     commonAvailable = TRUE;
-    LecDmaPnpSnapshot(&failedPnpStage, &pnpSnapshot);
+    LecDmaPnpSnapshot(failedPnpStage, &pnpSnapshot);
     check("failed START rolls back partial adapter ownership",
         status == STATUS_INSUFFICIENT_RESOURCES &&
         pnpSnapshot.State == LecDmaPnpStopped &&
         !pnpSnapshot.HasAdapterContext && failedPnpDevice.References == 0);
     check("failed START owner remains reusable",
         LecDmaPnpStartNoLaunch(
-            &failedPnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
+            failedPnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &failedPnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
-        quiescePnpStage(&failedPnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&failedPnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpCanDestroy(&failedPnpStage));
+            failedPnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
+        quiescePnpStage(failedPnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(failedPnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpCanDestroy(failedPnpStage) &&
+        LecDmaPnpStageDestroy(failedPnpStage) == STATUS_SUCCESS);
+    failedPnpStage = NULL;
 
     memset(&surprisePnpDevice, 0, sizeof(surprisePnpDevice));
-    LecDmaPnpStageConstruct(&surprisePnpStage, &surprisePnpDevice);
+    check("surprise-removal parent factory succeeds",
+        LecDmaPnpStageCreate(&surprisePnpDevice, &surprisePnpStage) ==
+            STATUS_SUCCESS);
     check("surprise-removal fixture starts",
         LecDmaPnpStartNoLaunch(
-            &surprisePnpStage, 0x100000, 4096) == STATUS_SUCCESS);
+            surprisePnpStage, 0x100000, 4096) == STATUS_SUCCESS);
     check("surprise removal drains without any hardware-idle claim",
         LecDmaPnpBeginTeardown(
-            &surprisePnpStage, LecDmaPnpTeardownSurprise) ==
+            surprisePnpStage, LecDmaPnpTeardownSurprise) ==
                 STATUS_SUCCESS &&
-        quiescePnpStage(&surprisePnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&surprisePnpStage) ==
+        quiescePnpStage(surprisePnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(surprisePnpStage) ==
             STATUS_SUCCESS);
-    LecDmaPnpSnapshot(&surprisePnpStage, &pnpSnapshot);
+    LecDmaPnpSnapshot(surprisePnpStage, &pnpSnapshot);
     check("surprise-removed owner cannot restart",
         pnpSnapshot.State == LecDmaPnpSurpriseRemoved &&
         LecDmaPnpStartNoLaunch(
-            &surprisePnpStage, 0x100000, 4096) == STATUS_DEVICE_BUSY);
+            surprisePnpStage, 0x100000, 4096) == STATUS_DEVICE_BUSY);
     check("REMOVE after surprise makes parent destroyable",
         LecDmaPnpBeginTeardown(
-            &surprisePnpStage, LecDmaPnpTeardownRemove) ==
+            surprisePnpStage, LecDmaPnpTeardownRemove) ==
                 STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&surprisePnpStage) ==
-            STATUS_SUCCESS && LecDmaPnpCanDestroy(&surprisePnpStage));
+        LecDmaPnpFinishTeardownNoLaunch(surprisePnpStage) ==
+            STATUS_SUCCESS && LecDmaPnpCanDestroy(surprisePnpStage) &&
+        LecDmaPnpStageDestroy(surprisePnpStage) == STATUS_SUCCESS);
+    surprisePnpStage = NULL;
 
     memset(&mapRacePnpDevice, 0, sizeof(mapRacePnpDevice));
-    LecDmaPnpStageConstruct(&mapRacePnpStage, &mapRacePnpDevice);
+    check("mapping-race parent factory succeeds",
+        LecDmaPnpStageCreate(&mapRacePnpDevice, &mapRacePnpStage) ==
+            STATUS_SUCCESS);
     check("mapping-race fixture starts",
         LecDmaPnpStartNoLaunch(
-            &mapRacePnpStage, 0x100000, 4096) == STATUS_SUCCESS);
+            mapRacePnpStage, 0x100000, 4096) == STATUS_SUCCESS);
     mode = MODE_BLOCK_GET;
     ResetEvent(getEntered);
     ResetEvent(allowGet);
-    pnpMapRace.Stage = &mapRacePnpStage;
+    pnpMapRace.Stage = mapRacePnpStage;
     pnpMapRace.Mdl = mdls;
     pnpMapRace.Length = 128;
     pnpMapRace.Token = 0;
@@ -1139,11 +1219,11 @@ int main(void)
     WaitForSingleObject(getEntered, INFINITE);
     check("STOP observes parent reference during mapping submission",
         LecDmaPnpBeginTeardown(
-            &mapRacePnpStage, LecDmaPnpTeardownStop) ==
+            mapRacePnpStage, LecDmaPnpTeardownStop) ==
                 STATUS_DEVICE_BUSY);
     check("owner destruction waits for mapping submission reference",
-        quiescePnpStage(&mapRacePnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&mapRacePnpStage) ==
+        quiescePnpStage(mapRacePnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(mapRacePnpStage) ==
             STATUS_DEVICE_BUSY);
     SetEvent(allowGet);
     WaitForSingleObject(worker, INFINITE);
@@ -1154,27 +1234,31 @@ int main(void)
         pnpMapRace.Token == 0 && mapRacePnpDevice.References == 1);
     check("mapping-race STOP completes after reference rundown",
         LecDmaPnpBeginTeardown(
-            &mapRacePnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&mapRacePnpStage) ==
+            mapRacePnpStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(mapRacePnpStage) ==
             STATUS_SUCCESS && mapRacePnpDevice.References == 0);
     check("mapping-race parent removes cleanly",
         LecDmaPnpBeginTeardown(
-            &mapRacePnpStage, LecDmaPnpTeardownRemove) ==
+            mapRacePnpStage, LecDmaPnpTeardownRemove) ==
                 STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&mapRacePnpStage) ==
-            STATUS_SUCCESS && LecDmaPnpCanDestroy(&mapRacePnpStage));
+        LecDmaPnpFinishTeardownNoLaunch(mapRacePnpStage) ==
+            STATUS_SUCCESS && LecDmaPnpCanDestroy(mapRacePnpStage) &&
+        LecDmaPnpStageDestroy(mapRacePnpStage) == STATUS_SUCCESS);
+    mapRacePnpStage = NULL;
 
     memset(&releaseRacePnpDevice, 0, sizeof(releaseRacePnpDevice));
-    LecDmaPnpStageConstruct(&releaseRacePnpStage, &releaseRacePnpDevice);
+    check("release-race parent factory succeeds",
+        LecDmaPnpStageCreate(&releaseRacePnpDevice,
+            &releaseRacePnpStage) == STATUS_SUCCESS);
     check("release-race fixture maps",
         LecDmaPnpStartNoLaunch(
-            &releaseRacePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
+            releaseRacePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
         LecDmaPnpMapNoLaunch(
-            &releaseRacePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
+            releaseRacePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
     mode = MODE_BLOCK_FREE;
     ResetEvent(freeEntered);
     ResetEvent(allowFree);
-    pnpReleaseRace.Stage = &releaseRacePnpStage;
+    pnpReleaseRace.Stage = releaseRacePnpStage;
     pnpReleaseRace.Token = id;
     pnpReleaseRace.Status = STATUS_INTERNAL_ERROR;
     worker = CreateThread(
@@ -1182,10 +1266,10 @@ int main(void)
     WaitForSingleObject(freeEntered, INFINITE);
     check("STOP and cleanup wait for concurrent mapping release",
         LecDmaPnpBeginTeardown(
-            &releaseRacePnpStage, LecDmaPnpTeardownStop) ==
+            releaseRacePnpStage, LecDmaPnpTeardownStop) ==
                 STATUS_DEVICE_BUSY &&
-        quiescePnpStage(&releaseRacePnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&releaseRacePnpStage) ==
+        quiescePnpStage(releaseRacePnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(releaseRacePnpStage) ==
             STATUS_DEVICE_BUSY);
     SetEvent(allowFree);
     WaitForSingleObject(worker, INFINITE);
@@ -1195,51 +1279,60 @@ int main(void)
         pnpReleaseRace.Status == STATUS_SUCCESS);
     check("release-race owner tears down after reference rundown",
         LecDmaPnpBeginTeardown(
-            &releaseRacePnpStage, LecDmaPnpTeardownRemove) ==
+            releaseRacePnpStage, LecDmaPnpTeardownRemove) ==
                 STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&releaseRacePnpStage) ==
-            STATUS_SUCCESS && LecDmaPnpCanDestroy(&releaseRacePnpStage));
+        LecDmaPnpFinishTeardownNoLaunch(releaseRacePnpStage) ==
+            STATUS_SUCCESS && LecDmaPnpCanDestroy(releaseRacePnpStage) &&
+        LecDmaPnpStageDestroy(releaseRacePnpStage) == STATUS_SUCCESS);
+    releaseRacePnpStage = NULL;
 
     memset(&removePnpDevice, 0, sizeof(removePnpDevice));
-    LecDmaPnpStageConstruct(&removePnpStage, &removePnpDevice);
+    check("REMOVE parent factory succeeds",
+        LecDmaPnpStageCreate(&removePnpDevice, &removePnpStage) ==
+            STATUS_SUCCESS);
     check("REMOVE fixture owns an outstanding no-launch mapping",
         LecDmaPnpStartNoLaunch(
-            &removePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
+            removePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
         LecDmaPnpMapNoLaunch(
-            &removePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
+            removePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
     check("REMOVE drains outstanding no-launch mapping after rundown",
         LecDmaPnpBeginTeardown(
-            &removePnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
-        quiescePnpStage(&removePnpStage) == STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&removePnpStage) ==
+            removePnpStage, LecDmaPnpTeardownRemove) == STATUS_SUCCESS &&
+        quiescePnpStage(removePnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(removePnpStage) ==
             STATUS_SUCCESS && removePnpDevice.References == 0 &&
-        LecDmaPnpCanDestroy(&removePnpStage));
+        LecDmaPnpCanDestroy(removePnpStage) &&
+        LecDmaPnpStageDestroy(removePnpStage) == STATUS_SUCCESS);
+    removePnpStage = NULL;
 
     memset(&teardownRetryPnpDevice, 0, sizeof(teardownRetryPnpDevice));
-    LecDmaPnpStageConstruct(
-        &teardownRetryPnpStage, &teardownRetryPnpDevice);
+    check("teardown-retry parent factory succeeds",
+        LecDmaPnpStageCreate(&teardownRetryPnpDevice,
+            &teardownRetryPnpStage) == STATUS_SUCCESS);
     check("teardown-retry fixture reaches quiesced STOP",
         LecDmaPnpStartNoLaunch(
-            &teardownRetryPnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
+            teardownRetryPnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &teardownRetryPnpStage, LecDmaPnpTeardownStop) ==
+            teardownRetryPnpStage, LecDmaPnpTeardownStop) ==
                 STATUS_SUCCESS &&
-        quiescePnpStage(&teardownRetryPnpStage) == STATUS_SUCCESS);
-    teardownRetryPnpStage.AdapterContext->TableAllocationPending = TRUE;
+        quiescePnpStage(teardownRetryPnpStage) == STATUS_SUCCESS);
+    teardownRetryPnpStage->AdapterContext->TableAllocationPending = TRUE;
     check("adapter-release failure retains detached parent for retry",
-        LecDmaPnpFinishTeardownNoLaunch(&teardownRetryPnpStage) ==
+        LecDmaPnpFinishTeardownNoLaunch(teardownRetryPnpStage) ==
             STATUS_DEVICE_BUSY);
-    LecDmaPnpSnapshot(&teardownRetryPnpStage, &pnpSnapshot);
-    teardownRetryPnpStage.AdapterContext->TableAllocationPending = FALSE;
+    LecDmaPnpSnapshot(teardownRetryPnpStage, &pnpSnapshot);
+    teardownRetryPnpStage->AdapterContext->TableAllocationPending = FALSE;
     check("teardown retry does not destroy the child owner twice",
         pnpSnapshot.SyncOwnerDetached && pnpSnapshot.HasAdapterContext &&
-        LecDmaPnpFinishTeardownNoLaunch(&teardownRetryPnpStage) ==
+        LecDmaPnpFinishTeardownNoLaunch(teardownRetryPnpStage) ==
             STATUS_SUCCESS &&
         LecDmaPnpBeginTeardown(
-            &teardownRetryPnpStage, LecDmaPnpTeardownRemove) ==
+            teardownRetryPnpStage, LecDmaPnpTeardownRemove) ==
                 STATUS_SUCCESS &&
-        LecDmaPnpFinishTeardownNoLaunch(&teardownRetryPnpStage) ==
-            STATUS_SUCCESS && LecDmaPnpCanDestroy(&teardownRetryPnpStage));
+        LecDmaPnpFinishTeardownNoLaunch(teardownRetryPnpStage) ==
+            STATUS_SUCCESS && LecDmaPnpCanDestroy(teardownRetryPnpStage) &&
+        LecDmaPnpStageDestroy(teardownRetryPnpStage) == STATUS_SUCCESS);
+    teardownRetryPnpStage = NULL;
     check("all releasable PnP-stage resources are balanced",
         poolOutstanding == 0 && pnpDevice.References == 0 &&
         failedPnpDevice.References == 0 &&
@@ -1250,40 +1343,250 @@ int main(void)
         teardownRetryPnpDevice.References == 0);
 
     memset(&quarantinePnpDevice, 0, sizeof(quarantinePnpDevice));
-    LecDmaPnpStageConstruct(&quarantinePnpStage, &quarantinePnpDevice);
+    check("quarantine parent factory succeeds",
+        LecDmaPnpStageCreate(&quarantinePnpDevice,
+            &quarantinePnpStage) == STATUS_SUCCESS);
     check("quarantine fixture owns adapter descriptor and mapping",
         LecDmaPnpStartNoLaunch(
-            &quarantinePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
+            quarantinePnpStage, 0x100000, 4096) == STATUS_SUCCESS &&
         LecDmaPnpMapNoLaunch(
-            &quarantinePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
+            quarantinePnpStage, mdls, 128, &id) == STATUS_SUCCESS);
     freesBefore = freeCalls;
     commonFreesAtQuarantine = commonFreeCalls;
     putsAtQuarantine = putCalls;
     check("unknown-active transition latches permanent quarantine",
-        LecDmaPnpQuarantineUnknownActive(&quarantinePnpStage) ==
+        LecDmaPnpQuarantineUnknownActive(quarantinePnpStage) ==
             STATUS_SUCCESS);
-    LecDmaPnpSnapshot(&quarantinePnpStage, &pnpSnapshot);
+    LecDmaPnpSnapshot(quarantinePnpStage, &pnpSnapshot);
     check("quarantine rejects release remove and destruction",
         pnpSnapshot.State == LecDmaPnpQuarantined &&
         pnpSnapshot.UnknownActive && !pnpSnapshot.AdmissionOpen &&
-        LecDmaPnpReleaseNoLaunch(&quarantinePnpStage, id) ==
+        LecDmaPnpReleaseNoLaunch(quarantinePnpStage, id) ==
             STATUS_DELETE_PENDING &&
         LecDmaPnpBeginTeardown(
-            &quarantinePnpStage, LecDmaPnpTeardownRemove) ==
+            quarantinePnpStage, LecDmaPnpTeardownRemove) ==
                 STATUS_DEVICE_BUSY &&
-        LecDmaPnpFinishTeardownNoLaunch(&quarantinePnpStage) ==
+        LecDmaPnpFinishTeardownNoLaunch(quarantinePnpStage) ==
             STATUS_DEVICE_BUSY &&
-        !LecDmaPnpCanDestroy(&quarantinePnpStage));
+        !LecDmaPnpCanDestroy(quarantinePnpStage) &&
+        LecDmaPnpStageDestroy(quarantinePnpStage) == STATUS_DEVICE_BUSY);
     check("quarantine retains mapping adapter table PDO and MDL owner",
         freeCalls == freesBefore &&
         commonFreeCalls == commonFreesAtQuarantine &&
-        putCalls == putsAtQuarantine && poolOutstanding == 2 &&
+        putCalls == putsAtQuarantine && poolOutstanding == 3 &&
         quarantinePnpDevice.References == 2);
+
+    /* Quarantine while GetEx is blocked must retain its later allocation. */
+    memset(&getQuarantineDevice, 0, sizeof(getQuarantineDevice));
+    poolBeforeQuarantineRace = poolOutstanding;
+    check("blocked-Get quarantine fixture starts",
+        LecDmaPnpStageCreate(&getQuarantineDevice,
+            &getQuarantineStage) == STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            getQuarantineStage, 0x100000, 4096) == STATUS_SUCCESS);
+    mode = MODE_BLOCK_GET;
+    ResetEvent(getEntered);
+    ResetEvent(allowGet);
+    pnpMapRace.Stage = getQuarantineStage;
+    pnpMapRace.Mdl = mdls;
+    pnpMapRace.Length = 128;
+    pnpMapRace.Token = 0;
+    pnpMapRace.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(NULL, 0, concurrentPnpMap, &pnpMapRace, 0, NULL);
+    WaitForSingleObject(getEntered, INFINITE);
+    freesBefore = freeCalls;
+    commonFreesAtQuarantine = commonFreeCalls;
+    putsAtQuarantine = putCalls;
+    pnpActionA.Stage = getQuarantineStage;
+    pnpActionB.Stage = getQuarantineStage;
+    pnpActionA.Status = pnpActionB.Status = STATUS_INTERNAL_ERROR;
+    worker2 = CreateThread(
+        NULL, 0, concurrentPnpQuarantine, &pnpActionA, 0, NULL);
+    check("duplicate quarantine is idempotent during blocked GetEx",
+        LecDmaPnpQuarantineUnknownActive(getQuarantineStage) ==
+            STATUS_SUCCESS);
+    WaitForSingleObject(worker2, INFINITE);
+    CloseHandle(worker2);
+    SetEvent(allowGet);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    mode = MODE_NORMAL;
+    LecDmaPnpSnapshot(getQuarantineStage, &pnpSnapshot);
+    check("GetEx completion after quarantine is retained without free",
+        pnpActionA.Status == STATUS_SUCCESS &&
+        pnpMapRace.Status == STATUS_DEVICE_BUSY &&
+        pnpMapRace.Token == 0 && freeCalls == freesBefore &&
+        commonFreeCalls == commonFreesAtQuarantine &&
+        putCalls == putsAtQuarantine &&
+        pnpSnapshot.State == LecDmaPnpQuarantined &&
+        pnpSnapshot.ActiveCalls == 0 && !pnpSnapshot.LateQuarantine &&
+        poolOutstanding == poolBeforeQuarantineRace + 3 &&
+        getQuarantineDevice.References == 2);
+
+    /* A notification after a release commit is explicit and terminal. */
+    memset(&freeQuarantineDevice, 0, sizeof(freeQuarantineDevice));
+    poolBeforeQuarantineRace = poolOutstanding;
+    check("blocked-Free quarantine fixture maps",
+        LecDmaPnpStageCreate(&freeQuarantineDevice,
+            &freeQuarantineStage) == STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            freeQuarantineStage, 0x100000, 4096) == STATUS_SUCCESS &&
+        LecDmaPnpMapNoLaunch(
+            freeQuarantineStage, mdls, 128, &id) == STATUS_SUCCESS);
+    mode = MODE_BLOCK_FREE;
+    ResetEvent(freeEntered);
+    ResetEvent(allowFree);
+    pnpReleaseRace.Stage = freeQuarantineStage;
+    pnpReleaseRace.Token = id;
+    pnpReleaseRace.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(
+        NULL, 0, concurrentPnpRelease, &pnpReleaseRace, 0, NULL);
+    WaitForSingleObject(freeEntered, INFINITE);
+    commonFreesAtQuarantine = commonFreeCalls;
+    putsAtQuarantine = putCalls;
+    check("quarantine accepts notification during committed release",
+        LecDmaPnpQuarantineUnknownActive(freeQuarantineStage) ==
+            STATUS_SUCCESS);
+    SetEvent(allowFree);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    mode = MODE_NORMAL;
+    LecDmaPnpSnapshot(freeQuarantineStage, &pnpSnapshot);
+    check("committed release is marked late and remaining ownership retained",
+        pnpReleaseRace.Status == STATUS_SUCCESS &&
+        pnpSnapshot.State == LecDmaPnpQuarantined &&
+        pnpSnapshot.LateQuarantine && pnpSnapshot.ActiveCalls == 0 &&
+        commonFreeCalls == commonFreesAtQuarantine &&
+        putCalls == putsAtQuarantine &&
+        poolOutstanding == poolBeforeQuarantineRace + 2 &&
+        freeQuarantineDevice.References == 1);
+
+    /* The latch precedes the parent lock, making Begin/notification ordered. */
+    memset(&beginQuarantineDevice, 0, sizeof(beginQuarantineDevice));
+    check("Begin race quarantine fixture starts",
+        LecDmaPnpStageCreate(&beginQuarantineDevice,
+            &beginQuarantineStage) == STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            beginQuarantineStage, 0x100000, 4096) == STATUS_SUCCESS);
+    commonFreesAtQuarantine = commonFreeCalls;
+    putsAtQuarantine = putCalls;
+    KeAcquireSpinLock(&beginQuarantineStage->Lock, &heldIrql);
+    pnpActionA.Stage = beginQuarantineStage;
+    pnpActionA.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(
+        NULL, 0, concurrentPnpQuarantine, &pnpActionA, 0, NULL);
+    while (InterlockedCompareExchange(
+        &beginQuarantineStage->QuarantineRequested, 0, 0) == 0) {
+        Sleep(1);
+    }
+    pnpActionB.Stage = beginQuarantineStage;
+    pnpActionB.Reason = LecDmaPnpTeardownRemove;
+    pnpActionB.Status = STATUS_INTERNAL_ERROR;
+    worker2 = CreateThread(
+        NULL, 0, concurrentPnpBegin, &pnpActionB, 0, NULL);
+    KeReleaseSpinLock(&beginQuarantineStage->Lock, heldIrql);
+    WaitForSingleObject(worker, INFINITE);
+    WaitForSingleObject(worker2, INFINITE);
+    CloseHandle(worker);
+    CloseHandle(worker2);
+    check("concurrent Begin observes authoritative quarantine latch",
+        pnpActionA.Status == STATUS_SUCCESS &&
+        pnpActionB.Status == STATUS_DEVICE_BUSY &&
+        commonFreeCalls == commonFreesAtQuarantine &&
+        putCalls == putsAtQuarantine &&
+        beginQuarantineDevice.References == 1 &&
+        !LecDmaPnpCanDestroy(beginQuarantineStage));
+
+    /* Failed START cannot clean a partial adapter behind quarantine. */
+    memset(&startQuarantineDevice, 0, sizeof(startQuarantineDevice));
+    check("failed-START quarantine fixture is created",
+        LecDmaPnpStageCreate(&startQuarantineDevice,
+            &startQuarantineStage) == STATUS_SUCCESS);
+    mode = MODE_BLOCK_COMMON_FAILURE;
+    ResetEvent(commonEntered);
+    ResetEvent(allowCommon);
+    pnpActionA.Stage = startQuarantineStage;
+    pnpActionA.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(NULL, 0, concurrentPnpStart, &pnpActionA, 0, NULL);
+    WaitForSingleObject(commonEntered, INFINITE);
+    putsAtQuarantine = putCalls;
+    check("quarantine latches while failed START owns partial context",
+        LecDmaPnpQuarantineUnknownActive(startQuarantineStage) ==
+            STATUS_SUCCESS);
+    SetEvent(allowCommon);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    mode = MODE_NORMAL;
+    LecDmaPnpSnapshot(startQuarantineStage, &pnpSnapshot);
+    check("failed START retains partial adapter after quarantine",
+        pnpActionA.Status == STATUS_DEVICE_BUSY &&
+        pnpSnapshot.State == LecDmaPnpQuarantined &&
+        pnpSnapshot.HasAdapterContext && putCalls == putsAtQuarantine &&
+        startQuarantineDevice.References == 1);
+
+    memset(&stopQuarantineDevice, 0, sizeof(stopQuarantineDevice));
+    check("post-STOP quarantine fixture reaches STOP",
+        LecDmaPnpStageCreate(&stopQuarantineDevice,
+            &stopQuarantineStage) == STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            stopQuarantineStage, 0x100000, 4096) == STATUS_SUCCESS &&
+        LecDmaPnpBeginTeardown(
+            stopQuarantineStage, LecDmaPnpTeardownStop) == STATUS_SUCCESS);
+    commonFreesAtQuarantine = commonFreeCalls;
+    putsAtQuarantine = putCalls;
+    check("quarantine after STOP prevents all cleanup",
+        LecDmaPnpQuarantineUnknownActive(stopQuarantineStage) ==
+            STATUS_SUCCESS &&
+        LecDmaPnpFinishTeardownNoLaunch(stopQuarantineStage) ==
+            STATUS_DEVICE_BUSY &&
+        commonFreeCalls == commonFreesAtQuarantine &&
+        putCalls == putsAtQuarantine &&
+        stopQuarantineDevice.References == 1 &&
+        !LecDmaPnpCanDestroy(stopQuarantineStage));
+
+    /* Finish blocked in FreeAdapterObject must retain all later resources. */
+    memset(&finishQuarantineDevice, 0, sizeof(finishQuarantineDevice));
+    check("Finish race quarantine fixture is quiesced",
+        LecDmaPnpStageCreate(&finishQuarantineDevice,
+            &finishQuarantineStage) == STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            finishQuarantineStage, 0x100000, 4096) == STATUS_SUCCESS &&
+        LecDmaPnpMapNoLaunch(
+            finishQuarantineStage, mdls, 128, &id) == STATUS_SUCCESS &&
+        LecDmaPnpBeginTeardown(
+            finishQuarantineStage, LecDmaPnpTeardownRemove) ==
+                STATUS_SUCCESS &&
+        quiescePnpStage(finishQuarantineStage) == STATUS_SUCCESS);
+    mode = MODE_BLOCK_FREE;
+    ResetEvent(freeEntered);
+    ResetEvent(allowFree);
+    pnpActionA.Stage = finishQuarantineStage;
+    pnpActionA.Status = STATUS_INTERNAL_ERROR;
+    worker = CreateThread(NULL, 0, concurrentPnpFinish, &pnpActionA, 0, NULL);
+    WaitForSingleObject(freeEntered, INFINITE);
+    commonFreesAtQuarantine = commonFreeCalls;
+    putsAtQuarantine = putCalls;
+    check("quarantine accepts notification during Finish mapping drain",
+        LecDmaPnpQuarantineUnknownActive(finishQuarantineStage) ==
+            STATUS_SUCCESS);
+    SetEvent(allowFree);
+    WaitForSingleObject(worker, INFINITE);
+    CloseHandle(worker);
+    mode = MODE_NORMAL;
+    LecDmaPnpSnapshot(finishQuarantineStage, &pnpSnapshot);
+    check("Finish race records late release and retains adapter ownership",
+        pnpActionA.Status == STATUS_DEVICE_BUSY &&
+        pnpSnapshot.State == LecDmaPnpQuarantined &&
+        pnpSnapshot.LateQuarantine &&
+        commonFreeCalls == commonFreesAtQuarantine &&
+        putCalls == putsAtQuarantine && finishQuarantineDevice.References == 1);
 
     CloseHandle(getEntered);
     CloseHandle(allowGet);
     CloseHandle(freeEntered);
     CloseHandle(allowFree);
+    CloseHandle(commonEntered);
+    CloseHandle(allowCommon);
 
     printf("SG SYNC V3: %u/%u passed; %u failed.\n",
         passed, passed + failed, failed);

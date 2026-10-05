@@ -280,8 +280,9 @@ installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
   slot consumption, including 4-KiB splitting, page-chain slots and the
   final zero descriptor. Cyclic or unlocked MDL chains are rejected.
 - Adds a nonpaged parent `LECS65_SG_SYNC_OWNER` with an explicit spinlocked
-  `Constructed -> Initializing -> Active -> Stopping -> Destroying ->
-  Destroyed` lifecycle and an `Outstanding` count. One-time construction
+  `Constructed -> Initializing -> Active -> Stopping/Quarantined ->
+  Destroying -> Destroyed` lifecycle and `Outstanding` plus
+  `ReleasesInFlight` counts. One-time construction
   initializes the lock without inspecting prior storage. Init never clears or
   reinitializes a published owner; repeated or concurrent init returns BUSY
   without changing its mapping list, token sequence, adapter pointer or count.
@@ -302,6 +303,10 @@ installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
   request that loses the STOP race releases its never-launched mapping
   and returns `STATUS_DELETE_PENDING`; published no-launch mappings can
   be drained explicitly before the owner relinquishes the adapter claim.
+  Unknown-active notification instead sets a permanent atomic latch. A
+  successful GetEx allocation completing after that latch is retained and
+  published only to the internal quarantine list; it is never returned as a
+  usable token or passed to `FreeAdapterObject`.
 - In the specific no-launch case calls `FreeAdapterObject`, drops
   the per-mapping device-object reference, invalidates the mapping token
   and deallocates stage memory. A successful GetEx result with a malformed
@@ -328,7 +333,11 @@ release, copy/release and map/release races, STOP during GetEx, explicit
 PnP-style no-launch drain, context-scoped adapter ownership, multiple contexts
 for the same fake adapter, 48-MiB MDL chains, cyclic/unlocked MDLs,
 map-register limits, missing/inconsistent tables and exact descriptor
-page-chain capacity. The current full Dry result is recorded in
+page-chain capacity. Parent tests additionally block GetEx,
+`FreeAdapterObject` and failed-START common-buffer allocation while a real
+second thread requests quarantine; they cover Begin/Finish races, duplicate
+notification, post-STOP notification and exact retained ownership. The current
+full Dry result is recorded in
 `docs/regression-testing.md` and `docs/status.md`. These synthetic tests
 do not exercise actual OS DMA resource allocation, real PnP REMOVE or
 hardware bus-master idle.
@@ -366,6 +375,15 @@ sync ownership ended at each independently created context, so there was no
 parent START generation, request rundown or single context boundary. The new
 inactive parent corrects that software architecture without changing live PnP.
 
+Parent storage now comes only from `LecDmaPnpStageCreate`. The private
+construction step initializes fresh, uniquely owned, unpublished nonpaged
+storage; there is no public reconstruct-in-place API that can clear a live
+lock, token, counter or quarantine latch. `LecDmaPnpStageDestroy` accepts only
+an empty `Stopped` or `Removed` stage. Its caller must first unpublish the
+pointer and complete external/remove-lock rundown; the internal call count
+cannot protect a caller that has not yet entered an API. This publication and
+external-rundown obligation remains part of future live-PnP integration.
+
 The parent implements `Stopped -> Starting -> Started` and explicit STOP,
 surprise-removal and REMOVE states. START publishes admission only after the
 adapter, descriptor table and child owner all succeed. Failed partial START
@@ -393,11 +411,32 @@ resident parent for each physical device and must forbid direct adapter-context
 creation outside it. Parent storage cannot be embedded only in an FDO if an
 unknown-active quarantine must survive FDO deletion.
 
-`LecDmaPnpQuarantineUnknownActive` closes admission and permanently latches
-both the parent and adapter context. It does not drain, destroy or unmap the
-child. REMOVE and owner destruction then remain blocked. This is retention,
-not recovery, and it intentionally leaves the adapter, descriptor common
-buffer, mapping, PDO references and external MDL ownership outstanding.
+`LecDmaPnpQuarantineUnknownActive` first uses an interlocked operation to set
+an authoritative permanent latch, before waiting for either parent or child
+spin lock. Every admission and cleanup commit checks this latch. The parent
+then closes admission and marks the sync owner and adapter context
+quarantined outside the parent lock. A blocked successful GetEx completion is
+retained with its stage, PDO reference and borrowed pinned MDL chain. A failed
+START publishes partial adapter ownership before common-buffer allocation, so
+a concurrent notification can retain it rather than losing it to rollback.
+
+Mapping release has an explicit irreversible commit: the stage is removed and
+`ReleasesInFlight` is incremented under the child lock before
+`FreeAdapterObject` runs without a spin lock. A notification that wins before
+that commit prevents the release. A notification observed after the commit
+cannot undo the WDM call; it records `LateQuarantine` and retains every
+remaining adapter/common-buffer/owner resource. The same phase marker prevents
+the notification path from dereferencing an adapter context while its final
+release is already committed. This late outcome is an unresolved integration
+condition, not proof that releasing an active mapping is safe. It is tolerated
+only in this inactive API because no operation can launch DMA. Future live
+integration must exclude unknown-active notification before any release commit
+or independently prove hardware idle.
+
+Duplicate notifications are idempotent. Teardown attempts after the latch,
+including STOP/REMOVE cleanup, remain blocked. This is retention, not recovery,
+and may intentionally leave the parent, adapter, descriptor common buffer,
+mapping, PDO references and external MDL ownership outstanding.
 
 ### Unresolved activation blockers
 
@@ -413,7 +452,9 @@ and remove locks, without waiting on permanently quarantined mappings.
 The stage also does not own or unlock its borrowed MDLs. A real parent must
 join independently resident parent storage, MDL ownership, the per-device
 parent instance and PnP remove-lock lifetime before any request can reach this
-code.
+code. It must unpublish the parent and finish that external rundown before
+freeing parent storage. The software-only phase/latch protocol does not by
+itself close the physical notification-versus-release window for active DMA.
 
 Sources:
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),

@@ -24,8 +24,17 @@ typedef enum _LECS65_DMA_PNP_STATE {
     LecDmaPnpSurpriseRemoved,
     LecDmaPnpRemoving,
     LecDmaPnpRemoved,
-    LecDmaPnpQuarantined
+    LecDmaPnpQuarantined,
+    LecDmaPnpDestroying
 } LECS65_DMA_PNP_STATE;
+
+typedef enum _LECS65_DMA_PNP_CLEANUP_PHASE {
+    LecDmaPnpCleanupIdle = 0,
+    LecDmaPnpCleanupMappings,
+    LecDmaPnpCleanupOwner,
+    LecDmaPnpCleanupAdapterPending,
+    LecDmaPnpCleanupAdapterCommitted
+} LECS65_DMA_PNP_CLEANUP_PHASE;
 
 typedef enum _LECS65_DMA_PNP_TEARDOWN_REASON {
     LecDmaPnpTeardownStop = 0,
@@ -47,6 +56,8 @@ typedef struct _LECS65_DMA_PNP_STAGE {
     LECS65_DMA_PNP_STATE State;
     ULONG ActiveCalls;
     ULONG Generation;
+    volatile LONG QuarantineRequested;
+    LECS65_DMA_PNP_CLEANUP_PHASE CleanupPhase;
     BOOLEAN AdmissionOpen;
     BOOLEAN CleanupActive;
     BOOLEAN SyncOwnerDetached;
@@ -54,6 +65,7 @@ typedef struct _LECS65_DMA_PNP_STAGE {
     BOOLEAN DpcDrained;
     BOOLEAN TimerStopped;
     BOOLEAN UnknownActive;
+    BOOLEAN LateQuarantine;
 } LECS65_DMA_PNP_STAGE, *PLECS65_DMA_PNP_STAGE;
 
 typedef struct _LECS65_DMA_PNP_SNAPSHOT {
@@ -68,12 +80,23 @@ typedef struct _LECS65_DMA_PNP_SNAPSHOT {
     BOOLEAN DpcDrained;
     BOOLEAN TimerStopped;
     BOOLEAN UnknownActive;
+    BOOLEAN LateQuarantine;
+    LECS65_DMA_PNP_CLEANUP_PHASE CleanupPhase;
 } LECS65_DMA_PNP_SNAPSHOT, *PLECS65_DMA_PNP_SNAPSHOT;
 
-/* One-time construction; does not allocate an adapter or a DMA mapping. */
-VOID LecDmaPnpStageConstruct(
-    _Out_ PLECS65_DMA_PNP_STAGE Stage,
-    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject);
+/*
+ * Allocates and constructs unique, unpublished nonpaged storage. The caller
+ * must publish it only once and must complete external/remove-lock rundown
+ * before Destroy. Destroy accepts only an empty Stopped or Removed stage;
+ * its caller proves that the pointer is unpublished and all external calls
+ * have completed. Neither routine allocates an adapter or DMA mapping.
+ */
+NTSTATUS LecDmaPnpStageCreate(
+    _In_opt_ PDEVICE_OBJECT PhysicalDeviceObject,
+    _Outptr_ PLECS65_DMA_PNP_STAGE* Stage);
+
+NTSTATUS LecDmaPnpStageDestroy(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage);
 
 /*
  * Inactive START transaction. All potentially blocking/callback DDIs execute

@@ -399,6 +399,18 @@ Test-Contract "PnP DMA parent gates rundown and unknown-active retention" {
     $pnpDmaText -notmatch 'KeWaitForSingleObject|KeDelayExecutionThread'
 }
 
+Test-Contract "PnP DMA parent uses factory lifetime and atomic quarantine" {
+    $pnpDmaHeaderText -match 'LecDmaPnpStageCreate' -and
+    $pnpDmaHeaderText -match 'LecDmaPnpStageDestroy' -and
+    $pnpDmaHeaderText -notmatch 'LecDmaPnpStageConstruct' -and
+    $pnpDmaHeaderText -match 'volatile LONG QuarantineRequested' -and
+    $pnpDmaHeaderText -match 'LECS65_DMA_PNP_CLEANUP_PHASE' -and
+    $pnpDmaText -match 'InterlockedExchange\(&Stage->QuarantineRequested, 1\)' -and
+    $pnpDmaText -match 'LecSgSyncOwnerQuarantine' -and
+    $syncHeaderText -match 'ULONG ReleasesInFlight' -and
+    $syncText -match 'LecSgSyncCommitReleaseLocked'
+}
+
 Test-Contract "public packed register ABI size guards are still present" {
     $required = @(
         'sizeof\(LECS65_REG_READ_LEGACY\) == 4',
