@@ -5,18 +5,21 @@
 - Windows x64 Debug driver and `lecdiag` build successfully with the installed
   WDK 10.0.28000.0 toolchain.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
-  descriptor layout, mapping ownership, the quarantined asynchronous SG bridge
+  descriptor layout, mapping ownership, the quarantined asynchronous SG bridge,
   the inactive synchronous v3 no-launch stage, the live PnP publication
-  lifetime anchor and actual IRP/remove-lock forwarding helpers. See
+  lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
+  completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 30/30, layout 13/13, ownership 17/17,
+- Current result: source/ABI 33/33, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 38/38 plus IRP/remove-lock 8/8; overall 282/282 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 17/17;
+  overall 302/302 PASS.
 
 ## DMA/PnP staging
 
-- The active acquisition path is unchanged and still uses PFN-derived DMA
-  addresses. Adapter-mapped staging is not reachable from acquisition, IOCTL
+- The active acquisition path still uses PFN-derived DMA addresses; its
+  software completion attribution and rundown are now generation-checked.
+  Adapter-mapped staging is not reachable from acquisition, IOCTL
   or live PnP paths. Live PnP reaches only the software lifetime-publication
   layer; it cannot start the adapter stage or create mappings.
 - The synchronous v3 stage uses `GetScatterGatherListEx` with
@@ -48,6 +51,17 @@
   retained list before that notification can fail. Production IRP forwarding
   is software-tested for synchronous/pending/error/power completion and exact
   remove-lock release.
+- Live legacy DMA completion now records explicit 64-bit generations and
+  `NeverLaunched`, `DeviceActive`, `CompletionObserved`, `IdleProved`,
+  `UnknownActive` and `Quarantined` evidence states. The ISR cannot infer
+  idle, an old recorded generation cannot signal a later transfer, and a DPC
+  holds the completion lock while touching the selected event. A queued MAM
+  request rechecks terminal DMA failure after serialization and before MMIO.
+- Successful legacy acquisition behavior remains unchanged: a matching
+  physical IRQ produces `CompletionObserved`, not `IdleProved`. Later release
+  of its PFN-based resources therefore still depends on an unverified hardware
+  IRQ-to-final-memory-access ordering premise. WDM mapping release remains
+  forbidden on that evidence alone.
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.

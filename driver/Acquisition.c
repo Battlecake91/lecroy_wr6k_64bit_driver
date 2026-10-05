@@ -66,6 +66,9 @@ LecFreeTransfer(
             &Transfer->QuarantineOwnership,
             LECS65_TRANSFER_QUARANTINE_FDO,
             LECS65_TRANSFER_QUARANTINE_FDO);
+        (void)LecDmaCompletionMarkQuarantined(
+            &DevExt->DmaCompletion,
+            Transfer->DmaGeneration);
         LecTrace(
             "DMA quarantine: token=%lu retained across teardown status=0x%08X owner=%ld\n",
             Transfer->Token,
@@ -88,6 +91,75 @@ LecFreeTransfer(
     Transfer->SourceMdlChain = NULL;
 
     ExFreePoolWithTag(Transfer, LECS65_TAG);
+}
+
+NTSTATUS
+LecSelectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _Out_ PULONGLONG Generation)
+{
+    KIRQL irql;
+    ULONGLONG generation;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (DevExt == NULL || Transfer == NULL || Generation == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    generation = (ULONGLONG)InterlockedIncrement64(
+        &DevExt->DmaGenerationCounter);
+    if (generation == 0) {
+        generation = (ULONGLONG)InterlockedIncrement64(
+            &DevExt->DmaGenerationCounter);
+    }
+    if (!LecDmaCompletionPrepare(&DevExt->DmaCompletion, generation)) {
+        return STATUS_DEVICE_NOT_READY;
+    }
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    if (DevExt->CurrentTransfer != NULL ||
+        DevExt->DmaActiveGeneration != 0) {
+        status = STATUS_DEVICE_BUSY;
+    }
+    else {
+        Transfer->DmaGeneration = generation;
+        DevExt->DmaActiveGeneration = (LONG64)generation;
+        DevExt->CurrentTransfer = Transfer;
+        *Generation = generation;
+    }
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
+    return status;
+}
+
+BOOLEAN
+LecMarkSelectedDmaLaunched(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ ULONGLONG Generation)
+{
+    return LecDmaCompletionMarkDeviceActive(
+        &DevExt->DmaCompletion,
+        Generation);
+}
+
+VOID
+LecDeselectDmaTransfer(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PLECS65_TRANSFER Transfer,
+    _In_ ULONGLONG Generation)
+{
+    KIRQL irql;
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    if (DevExt->CurrentTransfer == Transfer &&
+        (ULONGLONG)DevExt->DmaActiveGeneration == Generation) {
+        DevExt->CurrentTransfer = NULL;
+        DevExt->DmaActiveGeneration = 0;
+        (void)LecDmaCompletionConsumeSignal(
+            &DevExt->DmaCompletion,
+            Generation);
+    }
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
 }
 
 VOID
@@ -527,6 +599,13 @@ LecReleaseAllTransfers(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
     )
 {
+    KIRQL irql;
+
+    KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
+    DevExt->CurrentTransfer = NULL;
+    DevExt->DmaActiveGeneration = 0;
+    KeReleaseSpinLock(&DevExt->DmaCompletionLock, irql);
+
     for (;;) {
         PLECS65_TRANSFER transfer = NULL;
 
@@ -545,7 +624,6 @@ LecReleaseAllTransfers(
                 Link);
         }
 
-        DevExt->CurrentTransfer = NULL;
         KeReleaseMutex(&DevExt->TransferMutex, FALSE);
 
         if (transfer == NULL) {
@@ -640,9 +718,13 @@ LecInterruptService(
      * synchronous acquisition thread's later cleanup.
      */
     if ((status & 0x01UL) != 0) {
-        if (devExt->CurrentTransfer != NULL) {
-            (VOID)InterlockedExchange(
-                &devExt->DmaCompletionIrqSeen, 1);
+        ULONGLONG generation = (ULONGLONG)InterlockedCompareExchange64(
+            &devExt->DmaActiveGeneration, 0, 0);
+
+        if (generation != 0) {
+            (void)LecDmaCompletionObservePhysicalIrq(
+                &devExt->DmaCompletion,
+                generation);
         }
         iimcl = (volatile ULONG*)(
             devExt->Bar[0] + LECS65_BAR0_IIMCL);
@@ -775,15 +857,23 @@ LecInterruptDpc(
         0);
 
     if ((pending & 0x01UL) != 0) {
-        PLECS65_TRANSFER transfer =
-            (PLECS65_TRANSFER)devExt->CurrentTransfer;
+        PLECS65_TRANSFER transfer;
+        ULONGLONG generation;
 
-        if (transfer != NULL) {
+        KeAcquireSpinLockAtDpcLevel(&devExt->DmaCompletionLock);
+        transfer = (PLECS65_TRANSFER)devExt->CurrentTransfer;
+        generation = (ULONGLONG)devExt->DmaActiveGeneration;
+        if (transfer != NULL &&
+            transfer->DmaGeneration == generation &&
+            LecDmaCompletionConsumeSignal(
+                &devExt->DmaCompletion,
+                generation)) {
             KeSetEvent(
                 &transfer->CompletionEvent,
                 IO_NO_INCREMENT,
                 FALSE);
         }
+        KeReleaseSpinLockFromDpcLevel(&devExt->DmaCompletionLock);
     }
 
     if ((pending & (0x02UL | 0x04UL | 0x10UL | 0x20UL)) != 0) {

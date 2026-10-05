@@ -114,11 +114,13 @@
     <ClInclude Include="DmaSyncStage.h" />
     <ClInclude Include="DmaPnpStage.h" />
     <ClInclude Include="DmaPnpPublication.h" />
+    <ClInclude Include="DmaCompletion.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="PnpIrpLifetime.c" />
     <ClCompile Include="Pci.c" />
     <ClCompile Include="Acquisition.c" />
+    <ClCompile Include="DmaCompletion.c" />
     <ClCompile Include="DmaLayout.c" />
     <ClCompile Include="DmaAdapterStage.c" />
     <ClCompile Include="DmaMappingOwner.c" />

@@ -150,6 +150,8 @@ LecS65AddDevice(
     InitializeListHead(&devExt->TransferList);
     devExt->NextTransferToken = 0;
     devExt->CurrentTransfer = NULL;
+    KeInitializeSpinLock(&devExt->DmaCompletionLock);
+    LecDmaCompletionInitialize(&devExt->DmaCompletion);
     KeInitializeDpc(&devExt->InterruptDpc, LecInterruptDpc, devExt);
     KeInitializeSpinLock(&devExt->LegacyEventLock);
     KeInitializeSpinLock(&devExt->TraceLock);

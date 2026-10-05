@@ -1881,6 +1881,7 @@ LecExecuteLegacyMttTransferLocked(
     volatile ULONG* mttrgo;
     ULONG currentMask;
     ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     LARGE_INTEGER timeout;
     NTSTATUS status;
     NTSTATUS disableStatus;
@@ -1923,14 +1924,17 @@ LecExecuteLegacyMttTransferLocked(
         Transfer->TotalDwords);
 
     KeResetEvent(&Transfer->CompletionEvent);
-    (VOID)InterlockedExchange(&DevExt->DmaCompletionIrqSeen, 0);
     (VOID)InterlockedAnd(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        Transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        Transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
     transferSelected = TRUE;
 
     currentMask = (ULONG)InterlockedCompareExchange(
@@ -1946,6 +1950,10 @@ LecExecuteLegacyMttTransferLocked(
     }
     transferInterruptEnabled = TRUE;
 
+    if (!LecMarkSelectedDmaLaunched(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Cleanup;
+    }
     WRITE_REGISTER_ULONG(iimcl, 1UL);
     WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
     dmaLaunched = TRUE;
@@ -1968,10 +1976,10 @@ Cleanup:
      * Retain both the user-page MDLs and descriptor pages indefinitely,
      * and refuse later DMA starts on this FDO. No guessed abort writes.
      */
-    if (dmaLaunched &&
-        (status != STATUS_SUCCESS ||
-         InterlockedCompareExchange(
-             &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
+    if (dmaLaunched && LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS))) {
         LecMarkDmaUnknownActive(DevExt, Transfer);
         if (status == STATUS_SUCCESS) {
             status = STATUS_IO_DEVICE_ERROR;
@@ -1995,9 +2003,10 @@ Cleanup:
     }
 
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            Transfer,
+            dmaGeneration);
     }
 
     LecTrace(
@@ -3524,6 +3533,7 @@ LecIoctlAcquireBufferedOneChannel(
     ULONG launchCount;
     ULONG currentMask;
     ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     ULONG gpioValue;
     ULONG iimStatus;
     ULONG mamValues[5];
@@ -3595,6 +3605,18 @@ LecIoctlAcquireBufferedOneChannel(
         KernelMode,
         FALSE,
         NULL);
+
+    /*
+     * Another already-admitted IOCTL can wait here while a prior DMA request
+     * times out and permanently closes admission. Recheck the terminal fault
+     * after serialization and before any MAM setup MMIO.
+     */
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(
+            &DevExt->DmaUnknownActive, 0, 0) != 0) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto Exit;
+    }
 
     transfer = LecFindTransferOwned(
         DevExt,
@@ -3728,14 +3750,17 @@ LecIoctlAcquireBufferedOneChannel(
         transfer->TotalDwords);
 
     KeResetEvent(&transfer->CompletionEvent);
-    (VOID)InterlockedExchange(&DevExt->DmaCompletionIrqSeen, 0);
     (VOID)InterlockedAnd(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
     transferSelected = TRUE;
 
     currentMask = (ULONG)InterlockedCompareExchange(
@@ -3751,6 +3776,10 @@ LecIoctlAcquireBufferedOneChannel(
     }
     transferInterruptEnabled = TRUE;
 
+    if (!LecMarkSelectedDmaLaunched(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto CleanupTransfer;
+    }
     WRITE_REGISTER_ULONG(iimcl, 1UL);
     WRITE_REGISTER_ULONG(mamRgo, launchCount);
     dmaLaunched = TRUE;
@@ -3768,10 +3797,10 @@ LecIoctlAcquireBufferedOneChannel(
     }
 
 CleanupTransfer:
-    if (dmaLaunched &&
-        (status != STATUS_SUCCESS ||
-         InterlockedCompareExchange(
-             &DevExt->DmaCompletionIrqSeen, 0, 0) == 0)) {
+    if (dmaLaunched && LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS))) {
         LecMarkDmaUnknownActive(DevExt, transfer);
         if (status == STATUS_SUCCESS) {
             status = STATUS_IO_DEVICE_ERROR;
@@ -3795,9 +3824,10 @@ CleanupTransfer:
     }
 
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            transfer,
+            dmaGeneration);
     }
 
     /*

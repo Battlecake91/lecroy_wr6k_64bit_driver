@@ -1,7 +1,7 @@
 # WR6k DMA completion, timeout and memory lifetime
 
 Status: **software-only staged lifetime hardening**, 2026-10-05.
-Base reviewed: `fix/p0-irq-start-dma-gating` at `1de0a753`.
+Base reviewed: `fix/p0-irq-start-dma-gating` at `9f2ffa9`.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -55,8 +55,20 @@ are kept in the focused audit.
 This is **partial damage containment**, not DMA engine stop/recovery:
 
 1. The existing DMA start paths (`LecExecuteLegacyMttTransferLocked` and `LecIoctlAcquireBufferedOneChannel`) reject a latched `DmaUnknownActive` device.
-2. Launch clears `DmaCompletionIrqSeen`. Only the physical ISR sets that marker when real INTST bit 0 is processed for an attached transfer.
-3. On a launched request with timeout/failed wait or a supposedly successful event with no hardware-IRQ marker, mark its transfer `DmaUnsafeToFree`, latch `DmaUnknownActive` and disable new IOCTL admission. A software-event-only success becomes `STATUS_IO_DEVICE_ERROR`; ordinary timeout remains `STATUS_IO_TIMEOUT`.
+2. Each serialized launch now has a nonzero 64-bit software generation and an
+   explicit completion-evidence state. The physical ISR can change only the
+   current `DeviceActive` generation to `CompletionObserved`; the DPC signals
+   the event only when its recorded IRQ generation, the selected transfer and
+   the current generation still match. A completion spin lock keeps the
+   selected transfer resident through `KeSetEvent` while launch cleanup
+   deselects it.
+3. On a launched request with timeout/failed wait or a supposedly successful
+   event without matching physical-IRQ evidence, transition to
+   `UnknownActive`, mark its transfer `DmaUnsafeToFree`, latch
+   `DmaUnknownActive` and disable new IOCTL admission. An IRQ observed just
+   before a software timeout still becomes `UnknownActive`; it is not allowed
+   to rescue the timed-out request. A software-event-only success becomes
+   `STATUS_IO_DEVICE_ERROR`; ordinary timeout remains `STATUS_IO_TIMEOUT`.
 4. `LecFreeTransfer` does not release poisoned descriptor pool storage, descriptor MDLs, or user MDLs. `LecUnregisterTransfer` and process cleanup cannot free them; STOP/REMOVE detach them without freeing. **This deliberately leaks pinned pages and kernel allocations until system restart** when the device's inactivity cannot be proved, to avoid returning possibly DMA-owned memory to the OS. A driver unload or new attachment is **not** proven safe recovery.
 5. `CFDC2400` continues to accept the known zero-mask diagnostic but rejects software completion bit 0. Source and debug ABI contracts must not interpret this as full legacy opcode parity.
 6. STOP/REMOVE still unmap BARs and detach the FDO after quiesce. Retaining DMA memory is necessary but **insufficient** to prove a fully safe PnP lifecycle (PCI transaction completion and hardware reset remain unverified).
@@ -65,6 +77,45 @@ The defensive active-path patch has not been executed under Driver Verifier,
 in a DMA fault-injection simulation or on real PCI hardware. The current Dry
 result covers source contracts and inactive staging only; do not treat it as
 runtime evidence for the active path.
+
+### Live completion evidence states
+
+The live legacy path uses the following explicit software states. They record
+ownership evidence, not undocumented FPGA behavior:
+
+| State | Entry | Permitted consequence |
+| --- | --- | --- |
+| `NeverLaunched` | Fresh generation prepared before GO, or no-launch staging | A real WDM mapping may be released only if no device launch occurred. |
+| `DeviceActive` | Software commits the exact generation immediately before the launch writes | Transfer resources and mappings remain owned; no release is permitted. |
+| `CompletionObserved` | Physical ISR accepts INTST bit 0 for the current active generation | Matching DPC may signal that transfer's event. This is **not** `IdleProved` and cannot release a WDM mapping. |
+| `IdleProved` | Reserved for a future independent, documented board/platform idle predicate | Mapping release may be considered. No live call site performs this transition. |
+| `UnknownActive` | Timeout, failed wait, successful event without matching IRQ, STOP/REMOVE uncertainty or generation inconsistency after launch | Terminal FDO fault; close admission and retain DMA-owned memory. |
+| `Quarantined` | Unknown-active transfer reaches cleanup and its MDLs/descriptors are retained | Ownership survives FDO teardown through the publication anchor; no recovery or release. |
+
+`CompletionObserved -> NeverLaunched` is permitted only when the existing
+legacy compatibility path prepares a later serialized acquisition. Software
+generation matching prevents a queued old DPC or recorded old IRQ from
+signaling a different transfer, and repeated completion cannot create
+`IdleProved`. It cannot identify the physical origin of an untagged board IRQ:
+if an IRQ from an earlier transfer is asserted only after a later generation
+has already entered `DeviceActive`, the driver has no hardware generation tag
+with which to distinguish it. That remains an unproven live-path premise.
+
+The successful legacy PFN path intentionally remains behavior-compatible:
+`CompletionObserved` satisfies its historical synchronous wait and ordinary
+legacy MDLs/descriptors may later be freed. This is an explicit compatibility
+policy based on an **unverified IRQ-to-final-memory-access ordering
+assumption**, not a safety proof and not permission to release future WDM/IOMMU
+mappings. Strict enforcement would require disabling successful acquisition
+or quarantining every normally completed transfer indefinitely; that design
+decision is reserved for the owner after hardware evidence is available.
+
+An already-admitted MAM IOCTL can wait behind another request on
+`TransferMutex`. It now rechecks `DmaUnknownActive` after acquiring that mutex
+and before any MAM setup MMIO, so a prior timeout cannot be followed by a
+second launch from the queued request. STOP/SURPRISE/REMOVE still close the
+outer admission gate and wait for already-admitted synchronous IOCTLs before
+resource teardown.
 
 ## Windows DMA-adapter migration design (not activated)
 
@@ -517,6 +568,14 @@ the tests verify exact remove-lock release and the held-IRP contract used by
 START/REMOVE. They do not execute real kernel PnP concurrency, HAL/IOMMU
 mappings, Driver Verifier, power transitions or physical DMA.
 
+The production completion tracker is additionally compiled into a native
+host test. Deterministic cases cover IRQ immediately before timeout, event
+without physical IRQ, early and repeated completion, stale/wrong generation,
+completion versus STOP/REMOVE uncertainty, quarantine versus attempted
+release and the exact `NeverLaunched`/`CompletionObserved`/`IdleProved`
+mapping-release boundary. These tests establish software attribution and
+retention only; they cannot tag a real board IRQ or prove PCI bus-idle.
+
 The publication factory now treats its output slot as an in/out ownership
 slot and rejects a non-NULL existing publication rather than overwriting and
 leaking it. This enforces one publication in the live device extension. It is
@@ -551,7 +610,7 @@ teardown ordering remain unverified until controlled kernel tests are possible.
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
-- Validate unexpected/premature IRQ, completion vs timeout, DPC pointer lifetime, STOP/REMOVE races and multiple handles under fault-injected software tests before any controlled hardware test.
+- Validate the remaining untagged physical-IRQ attribution premise, completion ordering and DPC/STOP/REMOVE behavior under Driver Verifier and a recoverable fault-injection target. The deterministic host tests cover software generations and pointer rundown, not the board's IRQ origin or final PCI transaction.
 - Replace direct PFN-derived bus addresses (`MmGetMdlPfnArray` and PFN shift) with an appropriate Windows DMA adapter/mapping model for supported DMA-remapping/IOMMU configurations. Retain the hardware 32-bit address and descriptor format limits; DMA mappings must not be released before hardware inactivity is proven.
 - Replace the emergency pinned-memory quarantine with verified abort/drain/recovery ownership, including what happens across driver remove/reinstallation. It is not a viable final production resource-management model.
 
