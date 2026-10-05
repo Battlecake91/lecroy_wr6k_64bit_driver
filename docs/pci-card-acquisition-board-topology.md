@@ -475,3 +475,27 @@ This identifies a **PCI FPGA update image** for this XStream release,
 but determining the actual *live* firmware revision requires additional
 safe evidence. Preserve the private payloads offline; no reflash or JTAG
 on the only functional licensed PCI card.
+
+### Device-pack image version strings (read-only verification)
+
+The same `s65devicepacksvr.dll` constructor also registers default
+`MicroVerResId = 101` (`0x100043E6`), `AcqFpgaVerResId = 102`
+(`0x100044EA`), `PciFpgaVerResId = 103` (`0x100046F2`),
+and `AcqAtcFpgaVerResId = 104` (`0x100045EE`).
+
+The corresponding *PE STRING-table* entries (block `7`, language
+`1033`) decode exactly as follows:
+
+| STRING ID | Registered role | Exact string |
+|---|---|---|
+| 101 | Microcontroller | `00.03#02` |
+| 102 | Acq FPGA | `00.03#00` |
+| 103 | **PCI FPGA** | **`00.02#00`** |
+| 104 | Acq/ATC FPGA | `00.18#00` |
+
+These identify **the installed XStream device-pack's advertised
+firmware versions**, not verified revisions running on the
+production oscilloscope. Neither these version strings nor the
+successfully decoded update images prove device-internal bus-idle
+semantics, and firmware upgrades remain prohibited on the sole
+functional device.
