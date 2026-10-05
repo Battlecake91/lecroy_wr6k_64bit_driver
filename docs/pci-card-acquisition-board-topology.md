@@ -374,3 +374,51 @@ bitstreams into a public repository, extracting license contents or
 performing JTAG/MMIO/programming. A confirmed resource table can identify
 candidate PCI images for later **private** offline study. Even an identified
 or extracted bitstream does not establish an RTL-level PCI bus-idle proof.
+
+## Confirmed embedded configuration images in S65 device pack (2026-10-06)
+
+The owner provided a **private local copy** of the installed
+`s65devicepacksvr.dll` (PE32/i386, 1,854,040 bytes, SHA-256
+`4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bdbe9d`).
+It was analyzed *offline* by a read-only PE resource parser without
+DLL execution, firmware writes, JTAG access or any scope interaction.
+The complete binary and extracted image data are **not** stored in
+this public repository.
+
+The DLL has three custom `BINARY` resources in locale ID `1033`:
+
+| PE resource | Encoded bytes (Intel HEX ASCII) | Valid decoded data bytes | Evidence |
+|---|---:|---:|---|
+| `BINARY/203` | 139,676 | 56,792 | Intel HEX, 1,840 data records plus extended-address records, one EOF |
+| `BINARY/204` | 1,014,084 | 360,520 | Intel HEX, two distinct Xilinx sync sequences at decoded offsets 4 and 180,264; 2 × 180,260-byte contiguous streams |
+| `BINARY/205` | 507,026 | 180,252 | Intel HEX, one Xilinx sync sequence at decoded offset 4; 180,252 contiguous bytes |
+
+**All records have valid Intel-HEX lengths and checksums, and all three
+resources have a single EOF record.** Both FPGA-like resources begin with
+dummy words followed by `55 99 AA 66`, consistent with the encoding
+used in the installed Xilinx configuration streams. None of the binary
+data needs hardware readback to obtain its private offline copy.
+
+The manufacturer Xilinx Spartan-IIE datasheet `DS077` Table 8, and
+application note `XAPP176` Table 4, specify **1,442,016 configuration
+bits for XC2S200E**. This is exactly **180,252 bytes**, matching resource
+`205` after Intel-HEX decoding. The device installed on the photographed
+PCI card is `XC2S200E-6 PQ208`. This is **strong evidence** that
+`BINARY/205` is the PCI-FPGA image. Two independent, same-family
+configuration sync points in `204` strongly suggest a combined
+Acquisition/ATC FPGA image; `203` is structurally unlike FPGA data
+and is a likely microcontroller flash image. These specific functional
+assignments are not yet directly proved by callsite-to-resource-ID
+cross-references in the programmer's disassembly.
+
+**Follow-up evidence:** In `s65devicepacksvr.dll`, reverse engineer the
+read-only handlers that bind `PciFpgaResId`, `AcqFpgaResId` and
+microcontroller IDs to `BINARY/203..205`. No actual firmware loader or
+upgrade should be called. If confirmed, the PCI image can be privately
+studied using FPGA configuration frame/command decoders, with the
+important limitation that a bitstream is not RTL or proof of DMA
+completion/PCI write drain.
+
+References:
+- [Xilinx DS077, configuration-file size table](https://home.agh.edu.pl/~jamro/xsb/spartan2E.pdf)
+- [Xilinx XAPP176, frame/data format](https://docs.amd.com/api/khub/documents/Hcm12rAU9l9qlRD43FOX3g/content)
