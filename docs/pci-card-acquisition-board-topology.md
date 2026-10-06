@@ -761,3 +761,53 @@ References:
 - [Project Combine Spartan-IIE feature database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
 - [Project Combine pad and tile definitions](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/defs.rs)
 - [Project Combine configuration packet/frame parser](https://github.com/prjunnamed/prjcombine/blob/main/public/xilinx-bitstream/src/parse.rs)
+
+
+### First interrupt-tristate routing hop (private PCI update image)
+
+The `INTA#` pad of the pictured `900890-00` PCI interface
+is U3 pin 30 = `IOB_W12_3`. Its programmed path is
+the following **partial** net trace (from actual firmware-update
+image feature bits plus Project Combine wiring definitions):
+
+```text
+physical PCI INTA# (active-low, U3 pin 30)
+  <- IOB_W12_3 PAD
+  <- IOI[3] output enable T, selected directly (MUX_T=T)
+  <- IMUX_IO_T[3] = SINGLE_W_BUF[3]  (encoded 0b001000)
+  <- permabuf SINGLE_W_BUF[3] = SINGLE_W[3]
+  <- [upstream source/selected PIP NOT YET RECOVERED]
+```
+
+The pad's output-data path is **independent** of this T signal:
+`IOI[3].O = inverted PULLUP`, so the driven level is
+constant low. Thus `INTA#` is electrically emitted by
+switching the output buffer between **low** and **high-Z**.
+This is directly consistent with PCI interrupt semantics,
+but does *not* reveal the IRQ asserted/cleared condition.
+
+`IMUX_IO_T[3]` is a **six-bit routing mux** at the west
+edge `IO_W` tile, with `SINGLE_W_BUF[3]` selected.
+Project Combine `IO_W` defines
+`permabuf SINGLE_W_BUF[3] = SINGLE_W[3]`: an
+always-present wiring element, **not** a new control register.
+The source driving `SINGLE_W[3]` must be recovered across
+the tile boundary and its predecessor multiplexer(s). Do not
+interpret similarly numbered `SINGLE_W[3]` paths at
+`IRDY#` row 15 or `TRDY#` row 14 as the *same net*:
+those belong to different FPGA tile/row coordinates.
+
+Likewise, U3 pin 18 (`REQ#`) output data selects
+`OMUX_E0` with registered `FFO`, but the
+`OMUX_E0` upstream source and any busmaster DMA
+request state machine are **not** yet resolved.
+
+This stage verifies a **pad-level signal netlist fragment**,
+not an abort operation. The external host PCI bridge's
+posted writes and descriptor-memory lifetime are still
+outside what a local FPGA `INTA#` trace can establish.
+No claim of proven bus idle or safe unmapping follows.
+
+Database references:
+- [`IO_W` `IMUX_IO_T[3]` and `permabuf` entries](https://raw.githubusercontent.com/prjunnamed/prjcombine/main/databases/virtex.txt)
+- [IOI `MUX_O`/`MUX_T` and inversions](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/defs.rs)
