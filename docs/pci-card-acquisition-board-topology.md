@@ -776,7 +776,8 @@ physical PCI INTA# (active-low, U3 pin 30)
   <- IOI[3] output enable T, selected directly (MUX_T=T)
   <- IMUX_IO_T[3] = SINGLE_W_BUF[3]  (encoded 0b001000)
   <- permabuf SINGLE_W_BUF[3] = SINGLE_W[3]
-  <- [upstream source/selected PIP NOT YET RECOVERED]
+  <- PASS_W connector: SINGLE_W[3] = SINGLE_E[3]
+  <- neighboring west-edge source region (driver/PIP still unknown)
 ```
 
 The pad's output-data path is **independent** of this T signal:
@@ -791,6 +792,14 @@ edge `IO_W` tile, with `SINGLE_W_BUF[3]` selected.
 Project Combine `IO_W` defines
 `permabuf SINGLE_W_BUF[3] = SINGLE_W[3]`: an
 always-present wiring element, **not** a new control register.
+The architecture's west-neighbor `PASS_W` connector defines
+`SINGLE_W[3] = SINGLE_E[3]`, independently tying the west-edge
+INTA tristate net to the corresponding neighboring column signal.
+The same connector defines `OMUX_E0 = OMUX[0]`, allowing
+`REQ#` output data to be traced one column inward. These are
+**fixed inter-tile connectivity edges**, not validated
+configurable source PIPs or downstream state-machine logic.
+
 The source driving `SINGLE_W[3]` must be recovered across
 the tile boundary and its predecessor multiplexer(s). Do not
 interpret similarly numbered `SINGLE_W[3]` paths at
