@@ -303,6 +303,8 @@ External WDM contracts:
 [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex).
 
 ## PCI-card FPGA and acquisition-link physical boundary (2026-10-06)
+**PCI firmware evidence:** [PCI FPGA firmware analysis](pci-fpga-firmware-analysis.md) records the installed XC2S200E update image, checked pin-to-pad mapping and the partial INTA# routing trace. No decoded signal has yet demonstrated physical DMA bus-idle or posted-write drain.
+
 
 Read-only corroboration against the separately documented, owner-supplied PCI
 card schematic (`docs/pci-card-acquisition-board-topology.md`), the manufacturer
