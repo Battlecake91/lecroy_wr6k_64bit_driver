@@ -529,7 +529,7 @@ yields:
 | `BINARY/205` decoded size | **180,252 bytes** |
 | Bitstream SHA-256 (decoded but still bit-reversed per-byte) | `f2195ae57bb87bb3ef6ea27cc70771c451d1be6de972a87b7e861be6dcd970ab` |
 | Parsed header + payload | **45,063 × 32-bit words** |
-| FDRI payload | **45,018 × 32-bit words**, i.e. **2,501 × 576-bit frames** |
+| FDRI payload | **45,018 × 32-bit words**, i.e. **2,501 × 18-word transfer slots (72 bytes per slot; 540 configuration bits and 36 pad bits per slot)** |
 | First Type-2 FDRI block | **40,338 words = 2,241 frames** |
 | Subsequent FDRI blocks | **1,170 + 1,170 + 1,170 + 1,152 + 18 words = 260 frames** |
 | Subsequent FAR selectors | `0x02020000`, `0x02040000`, `0x02060000`, `0x02080000` |
@@ -592,3 +592,78 @@ architectures do not automatically support this older FPGA.
 Primary configuration reference:
 [Xilinx XAPP176, §§Bitstream Format, Configuration Registers and
 Readback](https://docs.amd.com/v/u/en-US/xapp176).
+
+
+### Verified bitstream-to-device coordinate mapping (Project Combine)
+
+**Independent open reference:** [Project Combine](https://github.com/prjunnamed/prjcombine),
+`databases/virtex.txt` / `public/virtex/src/{chip.rs,expand.rs,expanded.rs}`.
+This family database explicitly lists the exact `xc2s200e-pq208` part,
+speed grade `-6`. `CHIP18` is a **Virtex-E-compatible** architecture
+model with **48 columns × 30 rows**, main columns for BRAM at
+`X1/X14/X33/X46`, 8 central spine frames, and `BOND87` PQ208
+package mappings. Its modeled disabled resources include the primary
+DLLs and BRAM at `X14/X33`; these modeled disables have *not* been
+validated for each physical LeCroy board. Project Combine's published
+database is a research reconstruction, not vendor source RTL or a
+verified replacement FPGA image.
+
+**Precisely reconciled frame totals:**
+
+| Transfer area | Actual geometry frames | Zero dummy/padding frames | Observed 18-word slots |
+|---|---:|---:|---:|
+| Central spine (8), 42 normal columns × 48 (2016), 4 BRAM columns × 27 (108), 2 edge I/O columns × 54 (108) | **2240** | **1** | **2241** |
+| 4 BRAM-data blocks × 64 | **256** | **4** | **260** |
+| **Total** | **2496** | **5** | **2501** |
+
+This count comes independently from the project geometry expansion in
+`public/virtex/src/expand.rs` (`fill_frame_info`) and from the
+private LeCroy FDRI packet lengths. The five dummy transfer slots are
+all-zero in the LeCroy stream: the final slot in the 2241-slot main
+region, then one at the end of each 65-slot BRAM region. A 18-word
+transfer slot encodes a **540-bit** effective configuration frame
+(`rows × 18`): its final DWORD is zero and the low 4 bits of its
+17th DWORD are zero for all 2,501 observed transfer slots. The
+previous shorthand “2,501 configuration frames of 576 bits” meant
+packet-aligned slots, not 2,501 real device frames; this table
+supersedes that interpretation.
+
+**Package-to-resource mapping** (from `BOND87`; exact board-level nets
+and configured features require *separate* schematic correlation):
+
+| PQ208 pin | Candidate FPGA IOB | Config frame span (0-based within main FDRI payload) | 18-bit row slice (0-based) |
+|---|---|---|---|
+| `P24` | `IOB_W15_3` | **2186..2239** | **270..287** |
+| `P27` | `IOB_W14_1` | **2186..2239** | **252..269** |
+| `P129` | `IOB_E14_1` | **2132..2185** | **252..269** |
+| `P132` | `IOB_E15_3` | **2132..2185** | **270..287** |
+
+Those four package pins have PCI-compatible alternate
+`IRDY`/`TRDY` pad capabilities, but the *actual* PCI net assignment
+on the LeCroy PCB is not established by that naming alone. The row
+slices follow `btile_main` from `expanded.rs`: one tile occupies
+18 bits for its row; edge I/O columns occupy 54 consecutive frames.
+Additional package-level dedicated clock pad pins: `P77` (`CLK5`),
+`P80` (`CLK4`), `P182` (`CLK1`), `P185` (`CLK0`).
+
+Project Combine also lists architecture-specific IOB/LUT/interconnect
+feature bitfields in `databases/virtex.txt`, including `IOB_W_VE`
+feature patterns. Their polarities and layout should be cross-checked
+against a known synthetic ISE reference before drawing conclusions
+about **actual** LeCroy signal direction, net routing or DMA logic.
+The internal PCI protocol state machine, interrupt timing, outstanding
+PCI master cycles and PCI bridge posted-write drain remain unproved.
+
+**Follow-up without hardware access:** Select exact PCI physical
+pins from the already-held `900890-00` schematic, correlate to
+`BOND87`, inspect their `BitRect` and primitive/mux features in
+this offline bitstream using Project Combine's database and decoder,
+then trace neighboring interconnect features stepwise. Any ambiguous
+feature or actual PCI bus-idle criterion remains explicitly unknown.
+Vendor binary/bitstream and schematic material must remain private.
+
+References:
+- [Project Combine family DB text](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
+- [Project Combine frame layout](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
+- [Project Combine IOB-to-frame bit rectangles](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expanded.rs)
+- [Project Combine PCI/package bonds](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/bond.rs)
