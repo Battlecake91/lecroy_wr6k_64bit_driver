@@ -667,3 +667,40 @@ References:
 - [Project Combine frame layout](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
 - [Project Combine IOB-to-frame bit rectangles](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expanded.rs)
 - [Project Combine PCI/package bonds](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/bond.rs)
+
+
+### Preliminary IOB input-buffer feature cross-check
+
+An **independent manual read of the private PCI update image**, using
+the above FDRI frame offsets and Project Combine's
+`IOB_W_VE`/`IOB_E_VE` `IBUF_MODE` bit positions, gives a useful
+orientation sanity check. Interpreting bit indices in the same
+(low-to-high row-offset) direction as
+`public/xilinx-bitstream/src/parse.rs::insert_virtex_frame` and
+`public/virtex/src/expanded.rs::btile_main`:
+
+| Package pad / modeled tile | Two raw mode bits | Database label under this mapping |
+|---|---|---|
+| `P24/IOB_W15_3` | `00` | CMOS |
+| `P27/IOB_W14_1` | `00` | CMOS |
+| `P129/IOB_E14_1` | `11` | NONE |
+| `P132/IOB_E15_3` | `11` | NONE |
+
+Across the *84 modeled west-side IOBs* (rows 1–28 × 3), the
+same simple mapping yields 34 `CMOS`, 50 `NONE`, and no other
+`IBUF_MODE` values. Across *84 east-side IOBs* it yields
+3 `CMOS`, 76 `NONE`, and 5 `DIFF` values.
+This distribution is compatible with nontrivial west-side input
+usage, but **does not establish** which LeCroy net uses which pad,
+whether configuration-specific exceptions apply, or whether the
+raw bit orientation and DB's `Vertical (54, rev 18)` rect
+convention have been modeled perfectly. Specifically, reversing
+the local 18-bit Y order produces a very different set of modes;
+a full Project Combine decoder or known synthetic ISE bitstream
+is required before attributing functional settings definitively.
+No DLLs or instruments were run for the cross-check.
+
+Do **not** treat `CMOS` as proof that a pad is `IRDY#`, `TRDY#`,
+a PCI bus-master enable, or DMA idle; the original card schematic
+must independently fix the signal name and the LUT/routing
+chain must be decoded before such conclusions.
