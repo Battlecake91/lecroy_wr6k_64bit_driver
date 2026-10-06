@@ -499,3 +499,96 @@ production oscilloscope. Neither these version strings nor the
 successfully decoded update images prove device-internal bus-idle
 semantics, and firmware upgrades remain prohibited on the sole
 functional device.
+
+## Spartan-IIE bitstream packet/frame baseline: private offline analysis (2026-10-06)
+
+**Scope and provenance:** The previously recovered `BINARY/205`
+(PCI update image), and both embedded streams in `BINARY/204`
+(Acquisition/ATC update image), were parsed **strictly offline**.
+Original binaries/bitstreams remain private and are **not** part
+of the public Git history. Analysis did not load Windows vendor
+DLLs, execute an updater, probe JTAG, or use PCI BARs.
+
+**Bit-order discovery:** The packed Intel-HEX-decoded bytes represent
+**bit-reversed bytes**, not the canonical big-endian packet encoding
+printed in Xilinx `XAPP176`. Reversing bits **within each byte**
+yields:
+
+- Raw byte sync `55 99 AA 66` at `BINARY/205` offset `0x4`
+  becoming documented `AA 99 55 66`.
+- Following command header becomes `0x30008001`, followed by
+  `RCRC=7`; `FLR=0x11` (18 32-bit words/576 bits per frame),
+  `COR=0x00813D2D`, `MASK=0`, `SWITCH=9`,
+  `FAR=0`, `WCFG=1`; trailer includes `LFRM=3`,
+  `START=5`. The `COR` internal field meaning is not decoded.
+
+**Complete PCI configuration structural check:**
+
+| Feature | Observed |
+|---|---|
+| `BINARY/205` decoded size | **180,252 bytes** |
+| Bitstream SHA-256 (decoded but still bit-reversed per-byte) | `f2195ae57bb87bb3ef6ea27cc70771c451d1be6de972a87b7e861be6dcd970ab` |
+| Parsed header + payload | **45,063 × 32-bit words** |
+| FDRI payload | **45,018 × 32-bit words**, i.e. **2,501 × 576-bit frames** |
+| First Type-2 FDRI block | **40,338 words = 2,241 frames** |
+| Subsequent FDRI blocks | **1,170 + 1,170 + 1,170 + 1,152 + 18 words = 260 frames** |
+| Subsequent FAR selectors | `0x02020000`, `0x02040000`, `0x02060000`, `0x02080000` |
+| Leading/intermediate commands | `RCRC`, `FLR`, `COR`, `MASK`, `SWITCH`, `FAR`, `WCFG` |
+| Trailing commands | `CRC`, `LFRM`, final `FDRI`, `START`, `CTL`, final `CRC` |
+| Parser validity | Consumes entire `BINARY/205` with no unsupported/truncated packets |
+| All-zero 72-byte frame payloads | **271 / 2,501** (descriptive only, not a resource-utilization statistic) |
+
+The first (2,241-frame) span is the **CLB frame** region described
+in Xilinx XAPP176; later blocks correspond to its Block-RAM address
+regions. The split and the `0x50009D92` Type-2 header match
+`XAPP176` Table 16 for `XC2S200E` exactly.
+
+**Comparison:** `BINARY/204` contains two separate, structurally
+valid XC2S200E-size streams with `FLR=0x11`, each having
+2,501 FDRI frames and the same FDRI packet lengths. The first
+stream's `COR=0x008B3D2D`, the second stream's
+`COR=0x01C05E55`. They have, respectively, 207 and 281
+all-zero 72-byte frames. Versus the `205` PCI image,
+2,250 and 2,184 frame payloads differ. **There is an
+additional two-word inter-stream region** after the first
+204 bitstream's trailing words, before the second stream's
+dummy/sync preamble. Its semantics are not yet resolved:
+do not treat the combined file as an immediately programmable
+`*.bit` image or infer netlist similarity from identical chip geometry.
+
+**Limits:** Successful packet decoding yields frame data but **not
+placed-and-routed FPGA logic, LUT equations, net connectivity,
+signal names, PCI state machines or DMA guarantees**. The two
+CRC fields were read but not independently recalculated with
+Xilinx's polynomial. Reconstructing DMA control logic would
+require a validated XC2S200E bit-to-tile/LUT/IOB/PIP mapping
+and backtracking the physically known PCI/LVDS pins.
+The tools/data for later Xilinx 7-Series and UltraScale
+architectures do not automatically support this older FPGA.
+
+**Next research priorities (offline-only):**
+
+1. Correlate PCI physical pin list from the `900890-00` schematic
+   and PCI PnP enumeration to a suitable *architecture-specific*
+   tile/IOB/CLB mapping. Seek legacy Xilinx ISE/JBits-compatible
+   architecture databases or verified academic work, checking
+   whether `XC2S200E` is actually supported; avoid assuming
+   any newer FPGA decoder is compatible.
+2. Where possible, construct **synthetic, separate development-board
+   test bitstreams** for the same FPGA part using legacy ISE tools
+   and compare changed configuration bits for individual LUTs,
+   IOBs, routing PIPs and sequential logic. Do not alter or program
+   the production LeCroy board and do not publish its actual
+   proprietary bitstream.
+3. Derive the PCI DMA/interrupt *logical* requirements from the
+   existing Windows x86 driver disassembly and bus-level
+   evidence; use FPGA reverse engineering to verify narrow
+   hypotheses (e.g. what makes `IIMST` change), not to assert
+   bus-idle without proof.
+4. Keep Windows x64 `UnknownActive` quarantine/fail-closed
+   behavior as-is. Neither a conventional IRQ nor a status bit
+   by itself establishes that all posted PCI DMA writes have drained.
+
+Primary configuration reference:
+[Xilinx XAPP176, §§Bitstream Format, Configuration Registers and
+Readback](https://docs.amd.com/v/u/en-US/xapp176).
