@@ -669,38 +669,95 @@ References:
 - [Project Combine PCI/package bonds](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/bond.rs)
 
 
-### Preliminary IOB input-buffer feature cross-check
+### PCI control-pin configuration corroborated against board wiring
 
-An **independent manual read of the private PCI update image**, using
-the above FDRI frame offsets and Project Combine's
-`IOB_W_VE`/`IOB_E_VE` `IBUF_MODE` bit positions, gives a useful
-orientation sanity check. Interpreting bit indices in the same
-(low-to-high row-offset) direction as
-`public/xilinx-bitstream/src/parse.rs::insert_virtex_frame` and
-`public/virtex/src/expanded.rs::btile_main`:
+**Input sources:** privately held LeCroy PCI-interface electrical drawing,
+a private *installed XStream update image* (`BINARY/205`, rather than a
+readback of the currently running FPGA), the independent
+Project Combine `CHIP18` / `BOND87` device and package database, and
+its `IOB_W_VE` and `IO_W` tile feature definitions. Only derived
+observations are published.
 
-| Package pad / modeled tile | Two raw mode bits | Database label under this mapping |
-|---|---|---|
-| `P24/IOB_W15_3` | `00` | CMOS |
-| `P27/IOB_W14_1` | `00` | CMOS |
-| `P129/IOB_E14_1` | `11` | NONE |
-| `P132/IOB_E15_3` | `11` | NONE |
+**Critical frame-order check:** Project Combine classifies `xc2s200e`
+as `ChipKind::VirtexE`, so `split_bram = kind != VirtexE`
+in `expand.rs::fill_frame_info` is **false**. The four BRAM-associated
+main columns are interleaved within the regular main-frame sequence,
+*not* postponed to a separate end segment. Counting the eight spine
+frames, paired normal columns, interleaved BRAM main columns and
+outer I/O columns yields: BRAM-main X46 frame 2078; **east I/O
+X47 frame 2132; west I/O X0 frame 2186**, followed by one null
+transfer slot at index 2240. The total is 2240 actual main frames.
+Do not erroneously use 2024/2078 as the I/O starts; those are
+CLB/BRAM frames. The remaining four BRAM data regions each
+contain 64 real frames plus one null transfer slot.
 
-Across the *84 modeled west-side IOBs* (rows 1–28 × 3), the
-same simple mapping yields 34 `CMOS`, 50 `NONE`, and no other
-`IBUF_MODE` values. Across *84 east-side IOBs* it yields
-3 `CMOS`, 76 `NONE`, and 5 `DIFF` values.
-This distribution is compatible with nontrivial west-side input
-usage, but **does not establish** which LeCroy net uses which pad,
-whether configuration-specific exceptions apply, or whether the
-raw bit orientation and DB's `Vertical (54, rev 18)` rect
-convention have been modeled perfectly. Specifically, reversing
-the local 18-bit Y order produces a very different set of modes;
-a full Project Combine decoder or known synthetic ISE bitstream
-is required before attributing functional settings definitively.
-No DLLs or instruments were run for the cross-check.
+Correlating the LeCroy net labels and FPGA U3 PQ208 pin numbers
+with Project Combine `BOND87` gives the following PCI control nets:
 
-Do **not** treat `CMOS` as proof that a pad is `IRDY#`, `TRDY#`,
-a PCI bus-master enable, or DMA idle; the original card schematic
-must independently fix the signal name and the LUT/routing
-chain must be decoded before such conclusions.
+| Net in board drawing | U3 package pin | Modeled FPGA IOB | Input mode | Output-data and tristate configuration |
+|---|---:|---|---|---|
+| `REQ#` | 18 | `IOB_W18_2` | `NONE` | `MUX_O=FFO`, `MUX_T=FFT`, `IMUX_IO_O[2]=OMUX_E0`, `IMUX_IO_T[2]=PULLUP`, output tristate polarity inverted |
+| `GNT#` | 22 | `IOB_W16_2` | `CMOS` | `MUX_O=O`, `MUX_T=T`, both O and T fed by `PULLUP`, T polarity normal (high-Z input) |
+| `STOP#` | 23 | `IOB_W15_2` | `CMOS` | Additional internal input behavior not yet traced |
+| `IRDY#` | 24 | `IOB_W15_3` | `CMOS` | `MUX_O=FFO`, `MUX_T=FFT`, data `OMUX_E1`, T `SINGLE_W_BUF[3]` |
+| `TRDY#` | 27 | `IOB_W14_1` | `CMOS` | `MUX_O=FFO`, `MUX_T=FFT`, data `OMUX_E0`, T `SINGLE_W_BUF[3]` |
+| `FRAME#` | 29 | `IOB_W13_2` | `CMOS` | Tristate mux also uses the `SINGLE_W_BUF` routing family |
+| `INTA#` | 30 | `IOB_W12_3` | `NONE` | `MUX_O=O`, `MUX_T=T`, O sourced from `PULLUP` **with output polarity inverted** (constant low), T from `SINGLE_W_BUF[3]` with normal polarity |
+
+`REQ#` has a disabled input buffer and actively driven output;
+`GNT#` has a CMOS input and high-Z output; bidirectional
+`IRDY#`/`TRDY#` have CMOS input buffers and registered data/
+tristate paths. `INTA#` outputs **low or high-Z** under a
+programmable T control, consistent with conventional PCI's
+active-low interrupt signaling. These *pad-level* assignments
+correlate with the original electric nets and are supported by
+a reverse-bit/row-orientation comparison: the opposite row-bit
+ordering incorrectly disables `GNT#` and yields unsupported
+intermediate input modes on `IRDY#` and `TRDY#`.
+
+For reproducibility, the bitstream byte order was reversed to
+canonical Xilinx configuration-packet order; FDRI frames were
+decoded per `public/xilinx-bitstream/src/parse.rs` and the
+`VirtexE` frame geometry; tile `MAIN` coordinates used
+`public/virtex/src/expanded.rs::btile_main`. The
+`IOB_W_VE` two-bit input modes and single-bit `MUX_O`,
+`MUX_T` settings were compared with the literal bitfield values
+in `databases/virtex.txt` and routed data/tristate mux
+`IO_W` encodings. For enum patterns, the database bit-list
+order must be followed (not treated as a natural binary integer),
+otherwise selections are misreported. `@!` inversion markers
+are likewise essential for `REQ#` output enable and
+`INTA#` constant-low interpretation.
+
+**What this does not establish:**
+
+- This is a **PCI firmware-update image**, not a verified live
+  FPGA configuration readback. The installed firmware version may
+  differ from the currently running card revision.
+- `INTA#` T input `SINGLE_W_BUF[3]` is a **routing-node**
+  selection, not a reconstructed interrupt state machine.
+  Its preceding driver/LUT/FF chain is **not yet proven**.
+- `REQ#` and `IRDY#` output inputs `OMUX_E0/E1` and
+  `TRDY#` tristate input likewise have not been traced to
+  the original BAR/register logic or DMA engine.
+- No internal idle, FIFO-empty, descriptor-fetch-finished,
+  DMA busmaster disabled or host-bridge posted-write-drained
+  signal has been demonstrated. **No abort or DMA idle
+  guarantee follows from these pin-level facts.**
+
+**Next offline target:** Trace `INTA#` tristate's
+`SINGLE_W_BUF[3]` and `REQ#` output's `OMUX_E0`
+through active interconnect PIPs and into potential
+flip-flops/LUTs, then compare any candidate condition to
+the legacy x86 ISR and IIMST/IIMCL behavior. Full routing
+reconstruction must be checked against an independent
+reference or synthetic configuration test before translating
+a candidate FPGA signal into driver safety logic.
+No hardware probing or invasive programming on the only
+licensed working PCI card.
+
+References:
+- [Project Combine frame layout and VirtexE interleaving](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
+- [Project Combine Spartan-IIE feature database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
+- [Project Combine pad and tile definitions](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/defs.rs)
+- [Project Combine configuration packet/frame parser](https://github.com/prjunnamed/prjcombine/blob/main/public/xilinx-bitstream/src/parse.rs)
