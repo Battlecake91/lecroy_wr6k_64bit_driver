@@ -532,8 +532,9 @@ PCI INTA# (U3 pin 30)  [0 or Hi-Z]
   <- IOB_W12_3 output enable T
   <- west IOI[3] IMUX_IO_T[3]
   <- SINGLE_E_BUF[3] = SINGLE_E[3]
-  <- inter-tile connector to adjacent X1 column SINGLE_W[3]
-  <- [specific active X1 source/PIP NOT YET DECODED]
+  <- west-to-east PASS connection (X1 is skipped for main fabric)
+  <- X2,Y12 SINGLE_W[3], with X1 BRAM_W output taps on this net
+  <- [actual enabled upstream driver NOT YET ESTABLISHED]
 ```
 
 The local west-edge candidates `HEX_V6[0]` and
@@ -542,12 +543,16 @@ row. They are not upstream sources of this interrupt
 control net. This is an actual configuration-bit
 filter, not merely a list of potential routing paths.
 
-The neighboring `X1` column is part of the device's
-BRAM-associated fabric. Follow that column's corresponding
-`SINGLE_W[3]` interconnect and selected source PIPs
-before asserting any connection to a LUT/FF or
-interrupt state machine. Do **not** confuse
-`SINGLE_W[3]` nets at different row coordinates.
+The `X1` column is the **intervening BRAM column**, not
+the next main-fabric connector endpoint. Project Combine's
+`fill_main_passes` skips BRAM columns when connecting
+`PASS_W`/`PASS_E` between main-fabric cells. The west
+I/O column `X0,Y12` is therefore paired with `X2,Y12`
+across `X1`, while `BRAM_W` has its own programmable
+output taps into the `X0` west-cell wire. The active
+source search is tracked in the next section. Do **not**
+confuse similarly numbered `SINGLE_W[3]` tracks in
+different rows/tiles.
 
 **Safety limitation:** Nothing above establishes
 DMA termination, descriptor-read completion, a
@@ -561,14 +566,84 @@ Project Combine reference:
 - [Frame decoding](https://github.com/prjunnamed/prjcombine/blob/main/public/xilinx-bitstream/src/parse.rs)
 - [Tile geometry and interconnect](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expanded.rs)
 
-### Next investigation
+### Cross-BRAM interrupt-source search (offline-only)
 
-Trace the source of `X1,Y12:SINGLE_W[3]` through the
-BRAM-column switchbox into actual enabled fabric
-routing and sequential/LUT primitives. Then trace the
-`REQ#` output and `GNT#` input arbitration path and
-cross-compare each recovered control condition to
-the original x86 `IIMCL/IIMST`, `INTST`, and
-SG descriptor flow. A device DMA-abort/bus-idle proof
-must account for producer/link shutdown, local master
-transfers and host PCI(-bridge) outstanding writes.
+**Milestone:** Project Combine's physical fabric model identifies the
+correct **`X0 -> X2` main-fabric connector**, spanning the
+intervening `X1` BRAM column. The prior tentative statement that
+`INTA#` necessarily enters an `X1:SINGLE_W[3]` switchbox as its
+first upstream driver was incorrect.
+
+**Source:** `public/virtex/src/expand.rs::fill_main_passes`
+explicitly skips `cols_bram`, and the matching
+`public/virtex/src/defs.rs` `PASS_W` connector wires
+`SINGLE_W = SINGLE_E`. `fill_bram` places
+`BRAM_W` tiles on column `X1` with side cells
+`CELL_W[i]` and `CELL_E[i]`, so the BRAM's own
+programmable outputs remain possible additional drivers.
+
+The original, privately held `BINARY/205` FPGA update image
+was decoded *again* as Xilinx big-endian configuration words
+(with bytewise bit reversal), checking exactly
+`[40338, 1170, 1170, 1170, 1152, 18]` FDRI DWORD
+counts and the Project Combine per-frame bit placement.
+The following **six exact configuration-bit observations**
+apply to west I/O row `Y12` and its three candidate
+injection locations. The presence and polarity of these
+switchbox features come from
+`databases/virtex.txt`; only non-confidential derived
+bit values are recorded.
+
+| Tile / target | Candidate programmable source | Feature bits in Project Combine format | Raw bit(s) | Interpretation |
+|---|---|---|---|---|
+| `X0,Y12 IO_W` | `HEX_V6[0]` -> `SINGLE_E[3]` | `@MAIN[39][8]` | `0` | Off |
+| `X0,Y12 IO_W` | `OUT_TBUF_W[3]` -> `SINGLE_E[3]` | `@MAIN[41][8]` | `0` | Off |
+| `X1 BRAM_W` (`CELL_W[3]`, row 12) | `BRAM_QUAD_DOUT[15]` -> `CELL_W[3].SINGLE_E[3]` | `@MAIN[3][7][8]` | `0` | Off |
+| `X1 BRAM_W` (`CELL_W[3]`, row 12) | `BRAM_QUAD_DOUT[31]` -> `CELL_W[3].SINGLE_E[3]` | `@MAIN[3][7][9]` | `0` | Off |
+| `X2,Y12 CLB` | `HEX_W6[0]` -> `SINGLE_W[3]` | `@!MAIN[43][3]` | `1` | Off due to inverted polarity |
+| `X2,Y12 CLB` | `HEX_V3[0]` -> `SINGLE_W[3]` | `@MAIN[44][4]` | `0` | Off |
+
+The corresponding main FDRI offsets are `X0=2186`,
+`X1=2105`, and `X2=2030`, with 18 actual
+configuration bits per `Y` row. `X1` uses
+`BRAM_W` cell index `3` for row `12` (tile
+root `Y9`, four local rows), and its `MAIN[3]`
+feature region follows the same row-12 slice in the
+27-frame column.
+
+A separate control check reads
+`X0,Y12:IMUX_IO_T[3] = 001000`, selecting
+`SINGLE_E_BUF[3]` as documented in the previous
+section, so the path investigation is based on an
+actual configured sink mux, not just a potential pad.
+
+**Conclusion:** None of the **six currently mapped programmable
+driver alternatives** at `X0`, `X1 BRAM_W`, or
+`X2` is enabled in the analyzed update image. This
+is a meaningful *negative* bitstream result. It does
+**not** prove `INTA#` is unconnected or inactive
+in the installed hardware: the Project Combine graph,
+the frame interpretation, alternate architectural
+sources, and the actual live FPGA revision have not
+been independently validated as a complete electrical
+netlist. Do not infer a missing IRQ or driver defect
+from the negative result.
+
+**Next analysis:** Validate the full `PASS_E/PASS_W`
+and `BRAM_W` graph using the Project Combine machine
+decoder rather than manually correlating individual
+muxes. Cross-check either an ISE-generated
+`XC2S200E` reference design or a second independent
+signal path. Then trace `REQ#` and `GNT#`
+using the validated net-graph to get closer to
+the PCI busmaster state machine. The PCI DMA abort/idle
+criterion remains **unproved**, including physical
+device outstanding requests and host-bridge
+posted-write drain.
+
+**References:**
+
+- [Main-fabric connector skips BRAM columns](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
+- [`BRAM_W` cell placement](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
+- [`PASS_W` connector mapping](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/defs.rs)
+- [Bit feature definitions in the Virtex database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
