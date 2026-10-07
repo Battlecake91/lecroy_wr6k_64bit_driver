@@ -705,15 +705,13 @@ In particular, none of the recovered signals is yet identified as:
 Consequently, `INTA#` assertion/deassertion remains **insufficient**
 to authorize DMA mapping/page release.
 
-### Next investigation
+### Pending interrupt-cone work
 
-Trace the `X7,Y10 SLICE[1]` state flip-flop's **BX data source,
-CE and SR** to their logic origins, and decode the three combinational
-sources feeding `G1..G3`. In parallel, reconstruct `REQ#`/`GNT#`
-to determine whether the interrupt state cone intersects the PCI
-busmaster arbitration/transaction state machine. Only then compare the
-recovered conditions with legacy `IIMCL/IIMST`, `INTST` and SG
-descriptor behavior.
+The `X7,Y10 SLICE[1]` state flip-flop's **BX data source, CE and SR**
+and the three combinational sources feeding the interrupt LUT's
+`G1..G3` remain open. This work is still required, but the discovery
+of the configured hard `PCILOGIC` block makes its input cone and
+`PCI_CE` fanout the more direct PCI-busmaster lead.
 
 References:
 
@@ -762,14 +760,149 @@ which physical PCI handshake/control nets feed them, whether `PCI_CE`
 means DMA idle, or whether all initiated/posted PCI writes have drained.
 No safe DMA-unmap criterion follows yet.
 
-**Next analysis:** trace the three selected `HEX_V*` nets backward
-through the active switchbox PIPs until they terminate at physical PCI
-inputs or logic primitives. In parallel, trace the regional `PCI_CE`
-consumers in the west I/O column to determine which registered PCI
-outputs it gates. Correlate the resulting paths with `REQ#`,
-`GNT#`, `FRAME#`, `IRDY#`, `TRDY#` and the legacy
-`IIMCL/IIMST` / completion path.
+**Status:** the selected `PCILOGIC` input nets and the installed
+`PCI_CE` fanout are traced in the following section. Their semantic
+connection to PCI arbitration/transaction state remains open.
 
 References:
 - [Project Combine Virtex feature database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
 - [Project Combine PCILOGIC placement](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
+
+
+### PCILOGIC fabric inputs terminate at concrete G LUTs
+
+The three configured west-side `PCILOGIC` fabric inputs were traced
+backward through the **active** Project Combine routing graph in the
+installed `BINARY/205` image. All three terminate at ordinary CLB
+G-LUT outputs rather than directly at package inputs:
+
+| PCILOGIC input | Configured entry wire | Active route summary | Concrete source |
+|---|---|---|---|
+| `I1` | `X0,Y13 HEX_V5[3]` | root `X0,Y11 HEX_V3[3]` -> active `X0,Y14 HEX_V6[3]` endpoint -> `LV[6]` tree -> `SINGLE_E_BUF[5]` -> `X2,Y14 SINGLE_W[5]` -> `OMUX[1]` -> `OUT_CLB_Y[1]` | **`X2,Y14 SLICE[1] G`** |
+| `I2` | `X0,Y13 HEX_V1[3]` | root `X0,Y15 HEX_V3[3]` -> active `X0,Y18 HEX_V6[3]` endpoint -> same long-line tree, driven at `X0,Y12 LV[0]` -> `SINGLE_E_BUF[22]` -> `X2,Y12 SINGLE_W[22]` -> `OMUX[7]` -> `OUT_CLB_Y[0]` | **`X2,Y12 SLICE[0] G`** |
+| `I3` | `X0,Y13 HEX_V4[1]` | root `X0,Y12 HEX_V3[1]` -> active `X0,Y9 HEX_V0[1]` endpoint -> `LV[0]` -> `SINGLE_E_BUF[22]` -> `X2,Y9 SINGLE_W[22]` -> `HEX_N6[3]` tree -> `X2,Y3 HEX_N0[3]` -> `OMUX[7]` -> `OUT_CLB_Y[0]` | **`X2,Y3 SLICE[0] G`** |
+
+At the final CLBs, the configured `GYMUX` selection is direct `G`,
+not a registered or alternate source. The decoded G-LUT attribute
+vectors are:
+
+- `I1` source, `X2,Y14 SLICE[1] G`: `1111000011111111`;
+- `I2` source, `X2,Y12 SLICE[0] G`: `1111111111111010`;
+- `I3` source, `X2,Y3 SLICE[0] G`: `1010111110101111`.
+
+These vectors are recorded as configuration evidence only. No Boolean
+meaning is assigned until the old-family LUT input-order convention and
+the four input routes of each LUT have been independently checked.
+
+This replaces the earlier broad `HEX_V*` search boundary with three
+specific combinational cones in the main fabric.
+
+### PCI_CE drives 29 registered PCI datapath outputs
+
+The installed image uses the `PCILOGIC.PCI_CE` output as an actual
+I/O output-register clock enable, not merely as an instantiated but
+unused hard-block output.
+
+In the west I/O column, 17 `IMUX_IO_OCE` instances select the
+dedicated regional `PCI_CE` source directly. Every corresponding
+`MUX_O` selects `FFO`, proving that these are registered-output
+clock-enable consumers. Package/schematic correlation identifies them
+as:
+
+| Package pins | PCI nets |
+|---|---|
+| P4, P5, P6, P7, P8, P9, P10 | `AD22..AD16` |
+| P11, P15, P16, P17 | `AD15..AD12` |
+| P33, P34, P35, P36 | `C/BE3#..C/BE0#` |
+| P42, P43 | `AD11..AD10` |
+
+Both west-side corner injection PIPs are also enabled:
+
+- southwest: `PCI_CE -> HEX_H0[3]`;
+- northwest: `PCI_CE -> HEX_H0[3]`.
+
+The southwest branch spans its first horizontal HEX segment and does
+not continue past `X7`. Four bonded I/O output registers select that
+CE branch, all with `MUX_O = FFO`:
+
+- P55 = `AD3`;
+- P56 = `AD2`;
+- P57 = `AD1`;
+- P58 = `AD0`.
+
+The northwest branch is repeated once at `X7` and stops after the
+second segment at `X13`. Eight bonded output registers select it, all
+with `MUX_O = FFO`:
+
+- P199 = `AD31`;
+- P200 = `AD30`;
+- P201 = `AD29`;
+- P202 = `AD28`;
+- P203 = `AD27`;
+- P204 = `AD26`;
+- P205 = `AD25`;
+- P206 = `AD24`.
+
+Therefore the installed `PCI_CE` network has **29 proven functional
+FFO clock-enable consumers**:
+
+- `AD31..AD24`: 8;
+- `AD22..AD10`: 13;
+- `C/BE3#..C/BE0#`: 4;
+- `AD3..AD0`: 4.
+
+`AD23` and `AD9..AD4` are not among these recovered
+`PCI_CE`-gated output registers. This statement does **not** imply
+that those nets are unregistered or unused; it only describes the
+decoded `PCI_CE` fanout.
+
+The active north/south CE segments were also checked against their
+available `ICE`, `OCE`, and `TCE` muxes. Only the `OCE`
+selections listed above use the CE branch; no active `ICE` or
+`TCE` selection was found.
+
+One additional configured north-edge routing stub exists:
+
+```text
+PCI_CE
+  -> X4,Y29 HEX_H3[3]
+  -> SINGLE_S[22]
+  -> X4,Y28 SINGLE_N[22]
+  -> SINGLE_E[18]
+  -> X5,Y28 SINGLE_W[18]
+```
+
+At `X5,Y28`, no CLB input mux selects that `SINGLE_W[18]` signal
+and no further bypass is enabled. The branch therefore terminates
+without a configured logic/state consumer and is not counted among the
+29 functional sinks.
+
+The result matches the architectural purpose of the hard PCI timing
+resource: `PCI_CE` is demonstrably part of the registered PCI
+datapath-output timing path. It is **not** an idle indication. Its
+assertion/deassertion cannot by itself prove that descriptor reads,
+DMA writes, internal FIFOs, remote producers, or upstream posted writes
+have drained.
+
+**What this proves:** each configurable `PCILOGIC` fabric input now
+has a concrete CLB G-LUT source, and `PCI_CE` is proven to gate 29
+registered PCI AD/CBE output paths in the installed image.
+
+**What it does not prove:** the semantic meaning of the three G-LUT
+conditions, the state of the hard block's dedicated PCI handshake
+inputs, the role of `REQ#/GNT#`, or any safe DMA-unmap/bus-idle
+predicate.
+
+**Next analysis:** decode and trace the four inputs of
+`X2,Y14 SLICE[1] G`, `X2,Y12 SLICE[0] G`, and
+`X2,Y3 SLICE[0] G` to identify the three `PCILOGIC` conditions.
+Then reconstruct `REQ#`/`GNT#` and `FRAME#`/`IRDY#`/`TRDY#`
+and compare those transaction-state cones with the already recovered
+interrupt state and, only afterward, with `IIMCL/IIMST`,
+`INTST`, `SGTA/IIMTC`, and the legacy SG descriptor flow.
+
+References:
+
+- [Project Combine Virtex feature database, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
+- [Project Combine Virtex wire-tree definitions, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/defs.rs)
+- [Project Combine wire-tree resolver, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/interconnect/src/grid.rs)
