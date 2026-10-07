@@ -5,11 +5,13 @@
 observations only. **Do not publish firmware/bitstream image bytes,
 vendor binaries, schematics or license data.**
 
-**Current milestone:** The PCI update image has been identified and
-decoded to Xilinx frames; package/pad mapping verified; the
-`INTA#` output-enable signal is routed onto `SINGLE_E[3]`
-on west I/O row 12, and both locally selectable drivers have been
-shown inactive. The upstream X1 column source remains unknown.
+**Current milestone:** The installed PCI update image is decoded to
+XC2S200E configuration frames and the `INTA#` output-enable cone has
+been traced through configured routing to a concrete **SLICE[1] G LUT
+at CLB X11/Y8**. All four LUT inputs have been traced to specific CLB
+logic sources; one input is a registered state bit at **X7/Y10**, and
+that state flip-flop is now independently proven to run from the
+**PCI CLK input on U3 pin 185 / GCLKPAD3 / GCLK3**.
 
 **Important:** The update image is not proof of the currently
 running firmware revision, and an IRQ does not establish DMA bus idle.
@@ -566,84 +568,156 @@ Project Combine reference:
 - [Frame decoding](https://github.com/prjunnamed/prjcombine/blob/main/public/xilinx-bitstream/src/parse.rs)
 - [Tile geometry and interconnect](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expanded.rs)
 
-### Cross-BRAM interrupt-source search (offline-only)
+### Reconstructed INTA# control cone to a concrete CLB LUT
 
-**Milestone:** Project Combine's physical fabric model identifies the
-correct **`X0 -> X2` main-fabric connector**, spanning the
-intervening `X1` BRAM column. The prior tentative statement that
-`INTA#` necessarily enters an `X1:SINGLE_W[3]` switchbox as its
-first upstream driver was incorrect.
+The earlier six-candidate negative search was incomplete because it
+did not include all configured `bipass` alternatives on the
+Project Combine switchbox graph. It is superseded by the route below.
 
-**Source:** `public/virtex/src/expand.rs::fill_main_passes`
-explicitly skips `cols_bram`, and the matching
-`public/virtex/src/defs.rs` `PASS_W` connector wires
-`SINGLE_W = SINGLE_E`. `fill_bram` places
-`BRAM_W` tiles on column `X1` with side cells
-`CELL_W[i]` and `CELL_E[i]`, so the BRAM's own
-programmable outputs remain possible additional drivers.
+Using the Project Combine `resolve_wire`/connector semantics and
+re-reading every selected mux/pass bit from the private
+`BINARY/205` update image, the `INTA#` output-enable route is:
 
-The original, privately held `BINARY/205` FPGA update image
-was decoded *again* as Xilinx big-endian configuration words
-(with bytewise bit reversal), checking exactly
-`[40338, 1170, 1170, 1170, 1152, 18]` FDRI DWORD
-counts and the Project Combine per-frame bit placement.
-The following **six exact configuration-bit observations**
-apply to west I/O row `Y12` and its three candidate
-injection locations. The presence and polarity of these
-switchbox features come from
-`databases/virtex.txt`; only non-confidential derived
-bit values are recorded.
+```text
+PCI INTA# (U3 P30; low or Hi-Z)
+ <- X0,Y12 IOB_W12_3 T
+ <- X0,Y12 SINGLE_E[3]
+ <- X2,Y12 SINGLE_W[3]
+ <- X2,Y12 SINGLE_N[22]
+ <- X2,Y13 SINGLE_S[22]
+ <- X2,Y14 SINGLE_S[22]
+ <- X2,Y14 SINGLE_W[20]
+ <- X2,Y14 SINGLE_N[19]
+ <- X2,Y14 HEX_W3[3]
+ <- ... horizontal branch ...
+ <- X5,Y14 HEX_W0[3]  -> HEX_W6[3]
+ <- ... horizontal branch ...
+ <- X11,Y14 HEX_W0[3] -> HEX_N6[3]
+ <- ... vertical branch ...
+ <- X11,Y8 HEX_N0[3] -> OMUX[7]
+ <- X11,Y8 OUT_CLB_Y[1]
+ <- X11,Y8 SLICE[1] G LUT
+```
 
-| Tile / target | Candidate programmable source | Feature bits in Project Combine format | Raw bit(s) | Interpretation |
-|---|---|---|---|---|
-| `X0,Y12 IO_W` | `HEX_V6[0]` -> `SINGLE_E[3]` | `@MAIN[39][8]` | `0` | Off |
-| `X0,Y12 IO_W` | `OUT_TBUF_W[3]` -> `SINGLE_E[3]` | `@MAIN[41][8]` | `0` | Off |
-| `X1 BRAM_W` (`CELL_W[3]`, row 12) | `BRAM_QUAD_DOUT[15]` -> `CELL_W[3].SINGLE_E[3]` | `@MAIN[3][7][8]` | `0` | Off |
-| `X1 BRAM_W` (`CELL_W[3]`, row 12) | `BRAM_QUAD_DOUT[31]` -> `CELL_W[3].SINGLE_E[3]` | `@MAIN[3][7][9]` | `0` | Off |
-| `X2,Y12 CLB` | `HEX_W6[0]` -> `SINGLE_W[3]` | `@!MAIN[43][3]` | `1` | Off due to inverted polarity |
-| `X2,Y12 CLB` | `HEX_V3[0]` -> `SINGLE_W[3]` | `@MAIN[44][4]` | `0` | Off |
+Representative configured decisions along that path:
 
-The corresponding main FDRI offsets are `X0=2186`,
-`X1=2105`, and `X2=2030`, with 18 actual
-configuration bits per `Y` row. `X1` uses
-`BRAM_W` cell index `3` for row `12` (tile
-root `Y9`, four local rows), and its `MAIN[3]`
-feature region follows the same row-12 slice in the
-27-frame column.
+| Location | Configured decision |
+|---|---|
+| `X2,Y12 SINGLE_W[3]` | `SINGLE_N[22]` bipass enabled |
+| `X2,Y13 SINGLE_S[22]` | north/south continuation enabled |
+| `X2,Y14 SINGLE_S[22]` | `SINGLE_W[20]` bipass enabled |
+| `X2,Y14 SINGLE_W[20]` | `SINGLE_N[19]` bipass enabled |
+| `X2,Y14 SINGLE_N[19]` | inverted-polarity `HEX_W3[3]` pass enabled |
+| `X5,Y14 HEX_W0[3]` | source `HEX_W6[3]` |
+| `X11,Y14 HEX_W0[3]` | source `HEX_N6[3]` |
+| `X11,Y8 HEX_N0[3]` | source `OMUX[7]` |
+| `X11,Y8 OMUX[7]` | source `OUT_CLB_Y[1]` |
+| `X11,Y8 SLICE[1].GYMUX` | direct G-LUT result |
 
-A separate control check reads
-`X0,Y12:IMUX_IO_T[3] = 001000`, selecting
-`SINGLE_E_BUF[3]` as documented in the previous
-section, so the path investigation is based on an
-actual configured sink mux, not just a potential pad.
+This is the first recovered path that reaches a concrete logic primitive
+rather than stopping at an interconnect wire.
 
-**Conclusion:** None of the **six currently mapped programmable
-driver alternatives** at `X0`, `X1 BRAM_W`, or
-`X2` is enabled in the analyzed update image. This
-is a meaningful *negative* bitstream result. It does
-**not** prove `INTA#` is unconnected or inactive
-in the installed hardware: the Project Combine graph,
-the frame interpretation, alternate architectural
-sources, and the actual live FPGA revision have not
-been independently validated as a complete electrical
-netlist. Do not infer a missing IRQ or driver defect
-from the negative result.
+#### Interrupt LUT inputs
 
-**Next analysis:** Validate the full `PASS_E/PASS_W`
-and `BRAM_W` graph using the Project Combine machine
-decoder rather than manually correlating individual
-muxes. Cross-check either an ISE-generated
-`XC2S200E` reference design or a second independent
-signal path. Then trace `REQ#` and `GNT#`
-using the validated net-graph to get closer to
-the PCI busmaster state machine. The PCI DMA abort/idle
-criterion remains **unproved**, including physical
-device outstanding requests and host-bridge
-posted-write drain.
+The same private update image configures the four inputs of
+`X11,Y8 SLICE[1] G` as:
 
-**References:**
+| G input | Local mux selection | Recovered source |
+|---|---|---|
+| `G1` | `OMUX_W6` | **X12,Y8 SLICE[1] F LUT** |
+| `G2` | `SINGLE_E_BUF[9]` | **X13,Y8 SLICE[0] G LUT** |
+| `G3` | `SINGLE_E_BUF[18]` | **X16,Y7 SLICE[1] G LUT** |
+| `G4` | `SINGLE_N_BUF[14]` | **X7,Y10 SLICE[1] XQ flip-flop** |
 
-- [Main-fabric connector skips BRAM columns](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
-- [`BRAM_W` cell placement](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
-- [`PASS_W` connector mapping](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/defs.rs)
-- [Bit feature definitions in the Virtex database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
+The G-LUT's recovered logical INIT vector, after applying the database's
+per-bit inversion markers, is:
+
+```text
+1111111100000100
+```
+
+All four inputs affect this truth table. Under the conventional Xilinx
+LUT input-index convention it corresponds to
+`!G4 OR (G1 & !G2 & G3)`; keep that Boolean form **provisional**
+until the old-family LUT input-order convention is independently checked.
+The raw 16-bit logical vector and source connectivity above do not depend
+on that Boolean simplification.
+
+### PCI-clocked state input into the interrupt LUT
+
+The `G4` input comes from `X7,Y10 SLICE[1].XQ`.
+Its recovered sequential configuration is:
+
+- `DXMUX = BX`: the flip-flop data input is the routed `BX` input,
+  not the local combinational X output.
+- `BX = SINGLE_S_BUF[12]`.
+- `CLK = GCLK_LEAF[3]`.
+- `CE = SINGLE_N_BUF[23]`.
+- `SR = HEX_V0[1]`.
+- `FF_LATCH=0`, `FF_SR_ENABLE=1`, `FF_REV_ENABLE=0`,
+  `FF_SR_SYNC=0`.
+
+The **clock-domain identity is independently established**, not inferred
+from a GCLK number:
+
+1. The private LeCroy PCI schematic routes conventional PCI `CLK`
+   through a PI5C3861 bus switch onto net `CLK_BUF`.
+2. Vector connectivity in that drawing connects `CLK_BUF` directly to
+   U3 **pin 185**, whose Xilinx symbol name is `GCK3_185`.
+3. Project Combine `BOND87` maps P185 to `CLK0`.
+4. Project Combine's raw-device converter shows that raw pad
+   `GCLKPAD3` becomes `BondPad::Clk(0)`.
+5. Its Virtex naming layer maps north-clock-tile
+   `GCLK_IOB[1]` to **`GCLKPAD3`** and `BUFGCE[1]` to
+   **`GCLKBUF3`**.
+6. In the private update image, north-clock-tile
+   `IMUX_BUFGCE_CLK[1]` is `00000000001`, selecting
+   **`OUT_CLKPAD[1]`**. `GCLK_IOB[1]` is configured as a CMOS input.
+7. The same tile permanently maps `BUFGCE[1].O` to
+   **`GCLK[3]`**, then to `GCLK_LEAF[3]`.
+8. `BUFGCE[1]` CE's source mux selects `PULLUP`
+   (`0000000`); its dedicated inversion configuration bit is zero.
+
+Therefore the `X7,Y10` state bit feeding the interrupt LUT is in the
+**PCI clock domain** in this installed update image.
+
+For comparison, U3 P182 is the other north global-clock pad
+(`GCK2_182` / Project Combine `CLK1` / raw `GCLKPAD2`);
+the electrical drawing routes it from the acquisition-link
+`RX_CLOCK_N` net, not PCI `CLK_BUF`.
+
+### Evidence boundary
+
+This is strong evidence that the physical PCI interrupt output is
+generated by a small logic cone containing at least one **PCI-clocked
+state register** plus three combinational-LUT inputs. It still does not
+prove what event that state bit represents.
+
+In particular, none of the recovered signals is yet identified as:
+
+- descriptor fetch complete;
+- PCI request deasserted/accepted;
+- DMA write FIFO empty;
+- no outstanding target/master transaction;
+- link producer stopped;
+- or upstream host-bridge posted writes drained.
+
+Consequently, `INTA#` assertion/deassertion remains **insufficient**
+to authorize DMA mapping/page release.
+
+### Next investigation
+
+Trace the `X7,Y10 SLICE[1]` state flip-flop's **BX data source,
+CE and SR** to their logic origins, and decode the three combinational
+sources feeding `G1..G3`. In parallel, reconstruct `REQ#`/`GNT#`
+to determine whether the interrupt state cone intersects the PCI
+busmaster arbitration/transaction state machine. Only then compare the
+recovered conditions with legacy `IIMCL/IIMST`, `INTST` and SG
+descriptor behavior.
+
+References:
+
+- [Project Combine Virtex switchbox database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
+- [Project Combine wire-tree resolver](https://github.com/prjunnamed/prjcombine/blob/main/public/interconnect/src/grid.rs)
+- [Project Combine Virtex naming, including GCLKPAD/GCLKBUF mapping](https://github.com/prjunnamed/prjcombine/blob/main/re/xilinx/naming/virtex/src/lib.rs)
+- [Project Combine Virtex bond reconstruction](https://github.com/prjunnamed/prjcombine/blob/main/re/xilinx/rd2db/virtex/src/bond.rs)
