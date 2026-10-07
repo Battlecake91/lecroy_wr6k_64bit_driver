@@ -721,3 +721,55 @@ References:
 - [Project Combine wire-tree resolver](https://github.com/prjunnamed/prjcombine/blob/main/public/interconnect/src/grid.rs)
 - [Project Combine Virtex naming, including GCLKPAD/GCLKBUF mapping](https://github.com/prjunnamed/prjcombine/blob/main/re/xilinx/naming/virtex/src/lib.rs)
 - [Project Combine Virtex bond reconstruction](https://github.com/prjunnamed/prjcombine/blob/main/re/xilinx/rd2db/virtex/src/bond.rs)
+
+
+### Hard PCI timing block is configured in the installed update image
+
+Project Combine models a dedicated west-side `PCILOGIC` BEL at
+`X0,Y13` for the `xc2s200e` Virtex-E architecture. Its three
+fabric inputs are selected through `IMUX_PCI_I1/I2/I3`; the BEL
+outputs the regional `PCI_CE` signal used by the device's PCI
+timing resources.
+
+The private `BINARY/205` update image was decoded at the exact
+`PCI_W_VE` bit rectangle (`X0` frame base 2186, row 13).
+The configured mux values are:
+
+| PCILOGIC input | Raw mux field | Selected routing wire |
+|---|---|---|
+| `I1` | `1010000` | `HEX_V5[3]` |
+| `I2` | `1000001` | `HEX_V1[3]` |
+| `I3` | `0001` | `HEX_V4[1]` |
+
+The companion input-polarity bits at `MAIN[52][3]` and
+`MAIN[53][3]` are both set in the update image. Their final
+logical inversion meaning has not yet been independently
+validated and is therefore not interpreted here.
+
+This is the first direct evidence that the installed PCI FPGA image
+uses the device's dedicated **hard PCI timing/clock-enable block**,
+rather than implementing all PCI timing purely in ordinary LUT fabric.
+It narrows the busmaster investigation substantially: the next trace
+target is no longer the whole west-edge routing fabric, but the three
+specific vertical nets `HEX_V5[3]`, `HEX_V1[3]`, and
+`HEX_V4[1]` feeding `PCILOGIC`.
+
+**What this proves:** a configured hard PCI timing block and its three
+selected fabric inputs in the installed update image.
+
+**What it does not prove:** the semantic role of those three inputs,
+which physical PCI handshake/control nets feed them, whether `PCI_CE`
+means DMA idle, or whether all initiated/posted PCI writes have drained.
+No safe DMA-unmap criterion follows yet.
+
+**Next analysis:** trace the three selected `HEX_V*` nets backward
+through the active switchbox PIPs until they terminate at physical PCI
+inputs or logic primitives. In parallel, trace the regional `PCI_CE`
+consumers in the west I/O column to determine which registered PCI
+outputs it gates. Correlate the resulting paths with `REQ#`,
+`GNT#`, `FRAME#`, `IRDY#`, `TRDY#` and the legacy
+`IIMCL/IIMST` / completion path.
+
+References:
+- [Project Combine Virtex feature database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
+- [Project Combine PCILOGIC placement](https://github.com/prjunnamed/prjcombine/blob/main/public/virtex/src/expand.rs)
