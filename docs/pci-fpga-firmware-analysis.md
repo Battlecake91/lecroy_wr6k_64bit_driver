@@ -1013,3 +1013,45 @@ Evidence: private LeCroy `BINARY/205` (not published);
 [Project Combine feature fields](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt),
 [Project Combine frame packing](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/xilinx-bitstream/src/parse.rs),
 [main bit-rectangle geometry](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expanded.rs).
+
+
+### PCI_CE clock-enable muxes cross-checked against registered output selection
+
+A second offline per-bit decode of private `BINARY/205` cross-checked every
+previously reported `X0` west-edge `IMUX_IO_OCE[1..3]=PCI_CE`
+selection against that same I/O's `IOI.MUX_O` output-path selection.
+For all **17** configured PCI_CE OCE selections, `MUX_O=1`
+selects `FFO` (registered output rather than direct combinational O).
+This applies to the following exact (row, IOI) pairs:
+
+```text
+Y6:  1
+Y7:  3
+Y8:  1,2
+Y11: 2,3
+Y18: 1
+Y21: 1,2,3
+Y22: 1,3
+Y23: 3
+Y24: 1,2
+Y25: 3
+Y26: 1
+```
+
+`IO_W` feature definitions use `IOI[1].MUX_O=MAIN[40][16]`,
+`IOI[2].MUX_O=MAIN[25][16]`, and
+`IOI[3].MUX_O=MAIN[10][16]` (bit value 1 means `FFO`).
+The complete local control test also reproduces at `X0,Y13`:
+`PCILOGIC.I1=1010000`, `I2=1000001`,
+`I3=0001`.
+
+**Interpretation limit:** This verifies that all 17 selected OCE
+inputs belong to **configured registered output data paths**. Further
+work must still validate the OCLK source and FFO's actual operational
+enable, map each IOB to the PQ208 package and PCI schematic nets,
+and trace the PCILOGIC input cones. Registered output selection does
+not establish any PCI DMA drain/idle predicate.
+
+The calculation used exclusively a private, offline parsed
+`BINARY/205`; no board access, writes, licensing data or bitstream
+bytes were published.
