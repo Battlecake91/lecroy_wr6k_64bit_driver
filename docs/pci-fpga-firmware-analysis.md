@@ -1133,3 +1133,38 @@ DMA mappings on the basis of this finding.
 Public references:
 - [Pinned Project Combine Virtex package database](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
 - [Pinned Project Combine Virtex device geometry](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expanded.rs)
+
+
+### PCI clock confirmed for the PCI_CE-gated AD/CBE output registers
+
+The private `BINARY/205` configuration was independently re-decoded
+to examine `IO_W IMUX_IO_CLK[n]` for all 17 package pins correlated
+above. All 17 local I/O clock muxes select **`GCLK_LEAF[3]`** with
+exact 11-bit selection `00000111011`.
+
+The control path for each is now confirmed at the configuration level:
+
+```text
+PCI CLK -> card CLK_BUF -> U3 P185
+        -> GCLKPAD3 -> GCLKBUF3 -> GCLK_LEAF[3]
+        -> IO_W IOI[n] OCLK
+PCI_CE -> IO_W IMUX_IO_OCE[n]
+        -> IOI[n] OCE
+IOI[n] MUX_O=FFO -> PCI AD[10:22], C/BE#[0:3] physical pins
+```
+
+This is strong source-backed evidence that the dedicated PCILOGIC
+clock-enable signal controls **PCI-clocked, registered output
+data paths** for the 13 specified multiplexed AD bus lines and four
+C/BE lines. The clock decoder was independently checked against the
+known `PCILOGIC` fields at `X0,Y13`:
+`1010000 / 1000001 / 0001`.
+
+This does **not** establish the exact temporal relation between
+PCILOGIC inputs and particular PCI transactions, the direction/drive
+enable of every pad, any busmaster idle state, completion of all PCI
+writes, or safe DMA unmap.
+
+Reference: pinned Project Combine
+[`IO_W` `IMUX_IO_CLK` definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt);
+board clock provenance documented earlier in this file.
