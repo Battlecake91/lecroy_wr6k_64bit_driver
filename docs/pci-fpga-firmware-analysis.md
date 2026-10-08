@@ -1333,3 +1333,53 @@ for ICLK, OCLK and TCLK, but per-pin optional clock inversions
 remain separate and should not be presumed identical.
 This is an offline configuration fact, not a live transaction
 trace and not a DMA-drain proof.
+
+
+### PCILOGIC HEX_V input segment roots from Project Combine connector traversal
+
+The west-side PCILOGIC tile is `X0,Y13` for the 30-row
+Virtex-E device model. Using Project Combine's explicit
+`HEX_V*` `MultiBranch N/S` declarations, adjacent-row
+`PASS_N/PASS_S` connector mappings in `virtex.txt`, and
+`resolve_wire`'s connector traversal in
+`public/interconnect/src/grid.rs`, the **passive segment
+resolution** of its three selected input wires is:
+
+```text
+I1 <- X0,Y13 HEX_V5[3]
+   -> X0,Y12 HEX_V4[3]
+   -> X0,Y11 HEX_V3[3]   (MultiRoot)
+
+I2 <- X0,Y13 HEX_V1[3]
+   -> X0,Y14 HEX_V2[3]
+   -> X0,Y15 HEX_V3[3]   (MultiRoot)
+
+I3 <- X0,Y13 HEX_V4[1]
+   -> X0,Y12 HEX_V3[1]   (MultiRoot)
+```
+
+`PASS_S` defines `HEX_V5 = HEX_V4` and
+`HEX_V4 = HEX_V3`, while `PASS_N` defines
+`HEX_V1 = HEX_V2` and `HEX_V2 = HEX_V3`.
+Unlike the former corner-tile exploration, this identifies
+the nearby **coordinate-specific resolved routing roots**
+that must be searched for actual enabled drivers. The
+segment passes are fixed architecture connectors, not
+individually selected programmable PIPs.
+
+**Boundary:** The three `HEX_V3` root coordinates are not
+yet identified as logic outputs, physical PCI inputs,
+or active programmable source PIPs. A proper `wire_tree` /
+`wire_pips_bwd` search, including BRAM-adjacent west-edge
+tiles and programmed pass connections, remains necessary.
+In particular, do not assert a long-distance corner path
+or logical signal role from shared wire names.
+
+This graph deduction uses the pinned Project Combine
+architecture, with PCILOGIC source-select bit values already
+independently validated against private `BINARY/205`.
+It does not establish PCI/DMA idle.
+
+References:
+- [Pinned Project Combine connector definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
+- [Pinned wire resolver](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/interconnect/src/grid.rs)
