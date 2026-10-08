@@ -1205,3 +1205,36 @@ similarly numbered `HEX_V5[3]` resources at different rows.
 No DMA bus-idle or posted-write-drain proof has been obtained.
 Reference: pinned Project Combine `CNR_SW`, `CNR_NW` and
 `HEX_V` wire definitions, plus private offline `BINARY/205`.
+
+
+### Uniform PCI output-register control bits on the 17 PCILOGIC-gated pins
+
+A further independent, private offline decode tested each of the **17
+PCI AD/CBE IOI entries** for three local control fields beyond the
+previously recorded `PCI_CE` OCE and `GCLK_LEAF[3]` clock selection.
+Every one of the 17 has the **same observed raw bit pattern**:
+
+| Local IO_W IOI field | Every tested PCI AD/CBE pin |
+|---|---|
+| `OCLK` optional inversion bit | `0` |
+| `OCE` optional inversion bit | `1` |
+| `MUX_T` (tristate path) | `0` = direct `T`, **not** `FFT` |
+| `FFO_SR_ENABLE` | `1` |
+
+The individual coordinates are `OCLK`:
+`IOI[1] MAIN[33][14]`, `IOI[2] MAIN[14][14]`,
+`IOI[3] MAIN[11][14]`;
+`OCE`: `MAIN[14][10]`, `MAIN[13][9]`,
+`MAIN[10][9]` respectively;
+`MUX_T`: `MAIN[35][16]`, `MAIN[30][16]`,
+`MAIN[5][16]`, respectively.
+This confirms uniform treatment of those output paths within the
+update-image configuration.
+
+**Important limit:** `MUX_T=direct` shows the output tri-state
+selection comes from the separate `T` fabric route, not an
+output-enable flip-flop. It does **not** prove the pad is permanently
+driven. The two `^...` optional inversion annotations must not
+be assigned effective voltage polarity without validating Project
+Combine's inversion-bit semantics for this device family. This raw
+bit-table is not a DMA quiescence criterion.
