@@ -1305,3 +1305,31 @@ criterion follows yet.
 
 Evidence: local read-only decode of owner-provided `BINARY/205`;
 pinned Project Combine `IO_W` `IOI` and T-mux fields.
+
+
+### PCI-clock timing and TCE gating for registered PCI handshake tristates
+
+A further read-only bitfield check covered the five named handshake
+nets previously verified to use `FFT` registered tristate paths:
+
+| Net | IOI clock-mux selection (ICLK/OCLK/TCLK) | Tristate clock enable TCE |
+|---|---|---|
+| REQ# | `00000111011` = `GCLK_LEAF[3]` | `000000` = `PULLUP` |
+| STOP# | `00000111011` = `GCLK_LEAF[3]` | `000000` = `PULLUP` |
+| IRDY# | `00000111011` = `GCLK_LEAF[3]` | `000000` = `PULLUP` |
+| TRDY# | `00000111011` = `GCLK_LEAF[3]` | `000000` = `PULLUP` |
+| FRAME# | `00000111011` = `GCLK_LEAF[3]` | `000100` = `SINGLE_E_BUF[12]` |
+
+`GCLK_LEAF[3]` was independently established as PCI CLK via
+U3 P185 and the north BUFGCE mapping earlier in this document.
+Thus the five `FFT` register clock paths are PCI-clocked.
+The `TCE` routing on FRAME# notably differs from the four
+other named outputs; its actual source remains to be traced.
+A TCE mux selecting `PULLUP` is a constant clock-enable
+source, not proof of a constant driven PCI output.
+
+The selected `IMUX_IO_CLK` field is the **shared source**
+for ICLK, OCLK and TCLK, but per-pin optional clock inversions
+remain separate and should not be presumed identical.
+This is an offline configuration fact, not a live transaction
+trace and not a DMA-drain proof.
