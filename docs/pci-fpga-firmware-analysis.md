@@ -1268,3 +1268,40 @@ idle/posted-write drain acknowledgement. No hardware access occurred.
 
 Source: owner-provided private PCI image `BINARY/205`,
 [Project Combine `IO_W.IMUX_IO_T`](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt).
+
+
+### Registered tri-state control on named PCI handshake pins
+
+An offline verification of seven electrically documented handshake
+pins (private schematic + XC2S200E package bond) checked their
+`IO_W.IMUX_IO_T`, `IOI.MUX_T` and `IOI.MUX_O` settings:
+
+| Net | T-input mux | Output data MUX_O | Tristate MUX_T |
+|---|---|---|---|
+| REQ# | `PULLUP` | `FFO` | **`FFT`** |
+| GNT# | `PULLUP` | direct `O` | direct `T` |
+| STOP# | `SINGLE_E_BUF[2]` | `FFO` | **`FFT`** |
+| IRDY# | `SINGLE_E_BUF[3]` | `FFO` | **`FFT`** |
+| TRDY# | `SINGLE_E_BUF[3]` | `FFO` | **`FFT`** |
+| FRAME# | `SINGLE_E_BUF[0]` | `FFO` | **`FFT`** |
+| INTA# | `SINGLE_E_BUF[3]` | direct `O` | direct `T` |
+
+For `REQ#`, `STOP#`, `IRDY#`, `TRDY#` and
+`FRAME#`, both `MUX_O=1` (registered output data) and
+`MUX_T=1` (registered tristate/output-enable) were observed.
+Unlike the 17 previously decoded AD/CBE pins, these named PCI
+control/handshake pins therefore have a configured **FFT**
+tri-state path, with a separately clocked/stateful enable.
+For `GNT#`, this is not evidence of driving the pin; the
+electrical role is an input. `INTA#` retains its already
+independently traced direct combinational tri-state route.
+
+**Important:** `REQ#` selecting a PULLUP source to the
+*input* of the FFT must not be interpreted as a static output-drive
+state without analyzing register initialization, set/reset and clock
+sequences. The registered tristate control must be traced before
+deducing PCI busmaster ownership or bus-idle. No such completion
+criterion follows yet.
+
+Evidence: local read-only decode of owner-provided `BINARY/205`;
+pinned Project Combine `IO_W` `IOI` and T-mux fields.
