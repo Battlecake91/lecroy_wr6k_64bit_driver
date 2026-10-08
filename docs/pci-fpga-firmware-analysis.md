@@ -906,3 +906,44 @@ References:
 - [Project Combine Virtex feature database, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
 - [Project Combine Virtex wire-tree definitions, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/defs.rs)
 - [Project Combine wire-tree resolver, pinned analysis reference](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/interconnect/src/grid.rs)
+
+
+### PCILOGIC regional PCI_CE routing: database-verified scope
+
+Project Combine at pinned commit `234343d23e737e57f2727630e19008b509d7d522`
+was re-opened successfully through GitHub's REST contents endpoint, after the
+ordinary file reader returned an empty body for the large
+`databases/virtex.txt`. This is an independent *architecture database*
+inspection, not a recovered active netlist.
+
+- `PCI_W_VE` explicitly wires `PCILOGIC.I1/I2/I3` to
+  `IMUX_PCI_I1/I2/I3` and the BEL output to regional `PCI_CE`
+  (database lines 109202-109255). The previously decoded input
+  selections `HEX_V5[3]`, `HEX_V1[3]` and `HEX_V4[1]` are valid
+  enumerated selections for this exact Virtex-E tile class.
+- In `public/virtex/src/expand.rs`, `fill_pcilogic` assigns the
+  `PCI_CE` region root of every cell in each west/east edge column
+  to that column's clock row (lines 307-323). This is regional edge
+  distribution, **not** evidence of a DMA-completion or bus-idle signal.
+- The feature database exposes potential `PCI_CE` destinations in
+  edge routing: `HEX_H0[3]` programmable-buffer sources
+  (`MAIN[7][0]` or `MAIN[9][0]`, dependent on edge tile class)
+  and `HEX_H6[3]` (`MAIN[37][0]`). These are *possible*
+  source-to-routing-wire taps. The corresponding feature bits have
+  **not yet been checked per row against BINARY/205**, so no consumer
+  or registered PCI output is claimed to be active.
+- Other enumerated `PCI_CE` options occur in edge switchbox muxes.
+  They likewise require per-tile bit decode and path traversal.
+- The two `PCILOGIC.I1/I2` polarity-bit annotations use
+  `@!MAIN[52][3]` and `@!MAIN[53][3]` syntax in the database.
+  Their actual effective signal sense remains pending verification
+  against the bit encoding and family semantics.
+
+**Unresolved:** Trace the three selected `HEX_V*` nets to concrete
+sources and validate each proposed `PCI_CE` tap against the actual
+BINARY/205 frame bits. A routing possibility is not a configured
+consumer, and neither constitutes a safe DMA-unmap predicate.
+
+Sources:
+- [Pinned Project Combine Virtex feature database](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
+- [Pinned PCI region expansion](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expand.rs)
