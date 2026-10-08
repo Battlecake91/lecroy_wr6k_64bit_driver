@@ -947,3 +947,69 @@ consumer, and neither constitutes a safe DMA-unmap predicate.
 Sources:
 - [Pinned Project Combine Virtex feature database](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
 - [Pinned PCI region expansion](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expand.rs)
+
+
+### Configured west-edge PCI_CE output-register clock-enable selections
+
+A fresh offline decode of private `BINARY/205`, with each byte bit-reversed
+before parsing the Virtex configuration packets, identified the main FDRI
+payload at offset 72 (`0x50009d92`: 40,338 32-bit words, or 2,241
+18-word transfer slots). Frame bits were decoded using
+`insert_virtex_frame` in pinned Project Combine: the 540-bit frame's
+first 28 logical bits come from the final packed DWORD at bit offsets
+4..31; subsequent 32-bit chunks are read in reverse DWORD order.
+West I/O starts at main-frame slot 2,186, with tile bit address
+`Y * 18 + local_bit`.
+
+**Independent bit-addressing control:** At `X0,Y13`,
+`PCILOGIC.I1=1010000` (`HEX_V5[3]`),
+`I2=1000001` (`HEX_V1[3]`) and
+`I3=0001` (`HEX_V4[1]`), matching the earlier milestone.
+The I3 control bits reside at local bit 4, whereas I1/I2 are at
+local bit 3. The I1 and I2 input-polarity configuration bits are both
+1. This establishes a reproducible local frame-bit reader without
+claiming semantic signal polarity.
+
+The pinned database's `IO_W` switchbox defines
+`IMUX_IO_OCE[0..3]` as six-bit mux fields, where `010001`
+selects the regional `PCI_CE` net. These fields were independently
+decoded for every `X0,Y0..Y29` west I/O row. The following *actual
+configured selections* were observed:
+
+| West tile row | OCE indices selecting PCI_CE |
+|---|---|
+| Y6 | 1 |
+| Y7 | 3 |
+| Y8 | 1, 2 |
+| Y11 | 2, 3 |
+| Y18 | 1 |
+| Y21 | 1, 2, 3 |
+| Y22 | 1, 3 |
+| Y23 | 3 |
+| Y24 | 1, 2 |
+| Y25 | 3 |
+| Y26 | 1 |
+
+No `OCE[0]` selected `PCI_CE` in this decoded west-column
+scan. All other OCE selections are other nets or `PULLUP`, not
+`PCI_CE`. This table describes selected **I/O output-register
+clock-enable muxes**, not proof that their corresponding output FFs
+are enabled and clocked, that the package pins are connected to PCI
+signals, or that the selected clock enable is an idle indication.
+
+The database also exposes `PCI_CE` programmable taps on
+`HEX_H0[3]` or `HEX_H6[3]` in **corner tile classes** (`CNR_SW`,
+`CNR_NW`, `CNR_SE`, `CNR_NE`), not arbitrary west-edge
+`IO_W` rows. The prior generic candidate description must not
+be used as a claim of configured row-wise routing.
+
+**Outstanding:** Correlate each configured OCE with the matching IOB
+output-FF activation, physical package bond and schematic PCI net.
+Trace the `HEX_V5[3]`, `HEX_V1[3]`, `HEX_V4[1]` input
+drivers through active PIPs. No busmaster-idle, FIFO-empty,
+posted-write-drain or DMA-unmap predicate follows.
+
+Evidence: private LeCroy `BINARY/205` (not published);
+[Project Combine feature fields](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt),
+[Project Combine frame packing](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/xilinx-bitstream/src/parse.rs),
+[main bit-rectangle geometry](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expanded.rs).
