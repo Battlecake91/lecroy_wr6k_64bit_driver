@@ -1168,3 +1168,40 @@ writes, or safe DMA unmap.
 Reference: pinned Project Combine
 [`IO_W` `IMUX_IO_CLK` definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt);
 board clock provenance documented earlier in this file.
+
+
+### PCI_CE corner injection and HEX_V corner source bitfields
+
+An additional read-only decode inspected the **configured west corner
+tile classes** `CNR_SW` at `X0,Y0` and `CNR_NW` at `X0,Y29`
+in the same private `BINARY/205` image. Both use Project Combine's
+Virtex-E (not Spartan-II-specific `_S2`) corner definitions.
+
+- Southwest corner `Y0`: `PCI_CE -> HEX_H0[3]` programmable
+  tap at `MAIN[7][0]` is **enabled**; `HEX_V5[3]` mux
+  field `01` selects `HEX_H0[3]` and its progbuf at
+  `MAIN[12][2]` is **enabled**.
+- Southwest corner `Y0`: `HEX_V1[3]` and `HEX_V4[1]`
+  both have mux field `01`, but their output programmable buffers
+  are **disabled**. Their mux fields alone do not constitute net drivers.
+- Northwest corner `Y29`: `PCI_CE -> HEX_H0[3]` tap at
+  `MAIN[9][0]` is **enabled**.
+- Northwest corner `Y29`: `HEX_V1[3]` selects `LV[11]`
+  (field `11`) and its progbuf is **enabled**.
+  `HEX_V4[1]` selects `HEX_H3[1]` (field `01`) and
+  `HEX_V5[3]` selects `HEX_H4[3]` (field `01`);
+  their respective progbufs are **enabled**.
+
+These are actual corner-routing configuration bits, but **do not yet
+prove connectivity from either corner to the PCILOGIC I1/I2/I3
+inputs at Y13**. Project Combine defines `HEX_V1` as north-directed
+multi-branch and `HEX_V4/5` as south-directed multi-branch; wire
+segment traversal and active intermediate routes are required before
+attributing a corner's source to the Y13 PCI input. In particular,
+do not infer that the southwest `PCI_CE` corner tap creates
+feedback into `PCILOGIC.I1` merely because both touch
+similarly numbered `HEX_V5[3]` resources at different rows.
+
+No DMA bus-idle or posted-write-drain proof has been obtained.
+Reference: pinned Project Combine `CNR_SW`, `CNR_NW` and
+`HEX_V` wire definitions, plus private offline `BINARY/205`.
