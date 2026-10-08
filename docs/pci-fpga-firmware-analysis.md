@@ -1086,3 +1086,50 @@ This rules out the overly broad statement that `PCI_CE` directly
 gates *these named handshake pins' OCE muxes*; it does not rule out
 `PCI_CE` being involved elsewhere in the PCI master state machine,
 nor establish DMA bus idle.
+
+
+### Physical PCI bus mapping of the 17 configured PCI_CE registered outputs
+
+A pin-by-pin correlation of the **17 previously verified**
+`IO_W IMUX_IO_OCE=PCI_CE` and `MUX_O=FFO` occurrences with the
+exact `xc2s200e-pq208` `BOND87` package map and the private
+LeCroy assembly `900890-00` schematic establishes their physical
+PCI bus connectivity:
+
+| FPGA west IOI | U3 pin | PCI schematic net |
+|---|---|---|
+| X0,Y26 IOI[1] | P4 | AD22_BUF |
+| X0,Y25 IOI[3] | P5 | AD21_BUF |
+| X0,Y24 IOI[1] | P6 | AD20_BUF |
+| X0,Y24 IOI[2] | P7 | AD19_BUF |
+| X0,Y23 IOI[3] | P8 | AD18_BUF |
+| X0,Y22 IOI[1] | P9 | AD17_BUF |
+| X0,Y22 IOI[3] | P10 | AD16_BUF |
+| X0,Y21 IOI[1] | P11 | AD15_BUF |
+| X0,Y21 IOI[2] | P15 | AD14_BUF |
+| X0,Y21 IOI[3] | P16 | AD13_BUF |
+| X0,Y18 IOI[1] | P17 | AD12_BUF |
+| X0,Y11 IOI[2] | P33 | CBE3#_BUF |
+| X0,Y11 IOI[3] | P34 | CBE2#_BUF |
+| X0,Y8 IOI[1] | P35 | CBE1#_BUF |
+| X0,Y8 IOI[2] | P36 | CBE0#_BUF |
+| X0,Y7 IOI[3] | P42 | AD11_BUF |
+| X0,Y6 IOI[1] | P43 | AD10_BUF |
+
+**Milestone:** The actual configured `PCI_CE` OCE+FFO paths have
+now been tied to **PCI AD[10:22] and C/BE#[0:3] output
+registers**, not merely anonymous regional routes. Both the device
+package and source-card wiring are independently cross-checked.
+This is evidence of PCI bus output-timing usage, not an identified
+PCI transaction-state/idle signal.
+
+The net-to-pin map was derived locally from the private schematic;
+the proprietary schematic itself and configuration payload remain
+private. Remaining uncertainty includes OCLK timing, output-enable
+control, input provenance of `PCILOGIC.I1/I2/I3`, and the completion
+conditions for busmaster DMA and posted host writes. Do not free
+DMA mappings on the basis of this finding.
+
+Public references:
+- [Pinned Project Combine Virtex package database](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
+- [Pinned Project Combine Virtex device geometry](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/virtex/src/expanded.rs)
