@@ -1055,3 +1055,34 @@ not establish any PCI DMA drain/idle predicate.
 The calculation used exclusively a private, offline parsed
 `BINARY/205`; no board access, writes, licensing data or bitstream
 bytes were published.
+
+
+### PCI handshake pin comparison: no direct PCI_CE OCE selection
+
+The same offline `BINARY/205` bit reader was applied to the
+electrical-schematic-to-package-to-IOB mappings for seven PCI pins:
+
+| PCI net | West IOB | `IMUX_IO_OCE` | `IOI.MUX_O` |
+|---|---|---|---|
+| REQ# | `Y18 IOI[2]` | `000000` (PULLUP) | FFO |
+| GNT# | `Y16 IOI[2]` | `000000` (PULLUP) | direct O |
+| STOP# | `Y15 IOI[2]` | `000000` (PULLUP) | FFO |
+| IRDY# | `Y15 IOI[3]` | `000000` (PULLUP) | FFO |
+| TRDY# | `Y14 IOI[1]` | `000000` (PULLUP) | FFO |
+| FRAME# | `Y13 IOI[2]` | `000010` (SINGLE_E_BUF[16]) | FFO |
+| INTA# | `Y12 IOI[3]` | `000000` (PULLUP) | direct O |
+
+**Negative but concrete finding:** None of these seven specific
+IOI output-register clock-enable muxes directly selects `PCI_CE`.
+For `GNT#`, an input, output path configuration is not evidence that
+the output is actually enabled. Likewise `INTA#`'s direct O field
+does not supersede the previously documented constant-low/output-
+tristate behavior. Other PCI bus signals, including AD/CBE,
+may still use `PCI_CE`; the 17 configured west-side clock enables
+must be correlated to their actual package pins before concluding
+which signals they gate.
+
+This rules out the overly broad statement that `PCI_CE` directly
+gates *these named handshake pins' OCE muxes*; it does not rule out
+`PCI_CE` being involved elsewhere in the PCI master state machine,
+nor establish DMA bus idle.
