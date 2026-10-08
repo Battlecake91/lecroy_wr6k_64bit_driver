@@ -1238,3 +1238,33 @@ driven. The two `^...` optional inversion annotations must not
 be assigned effective voltage polarity without validating Project
 Combine's inversion-bit semantics for this device family. This raw
 bit-table is not a DMA quiescence criterion.
+
+
+### PCI_CE-gated AD/CBE tri-state sources decoded per pad
+
+A further offline decode of private `BINARY/205` resolved
+`IO_W.IMUX_IO_T[n]` for **all 17** previously mapped `PCI_CE`-
+gated and PCI-clocked FFO outputs. The observed `MUX_T=direct T`
+setting is paired with these exact configured tri-state input routes:
+
+| Routed source | PCI signal(s) | Configuration encoding |
+|---|---|---|
+| `SINGLE_E_BUF[0]` | AD12, AD18, AD22 | `000001` |
+| `SINGLE_E_BUF[2]` | AD10, AD11, AD13–AD17, AD19–AD21, C/BE#2, C/BE#3 | `000100` |
+| `SINGLE_E_BUF[3]` | C/BE#0, C/BE#1 | `001000` |
+
+All 17 local `IMUX_IO_T` fields resolved to one of the
+above defined Project Combine selections, with no unknown encodings.
+Their `IOI.MUX_T` bits were already verified as `0` (direct T).
+This is concrete configuration-level evidence of **shared routing
+classes for PCI pad output-enable control**, but identical wire names
+in different IO_W tiles do **not** prove the same originating logic:
+the switchbox row coordinates and programmed upstream connections
+must be traversed individually.
+
+This result does not establish the drive value/polarity of T, the
+PCI transaction-state condition that enables each output, or an
+idle/posted-write drain acknowledgement. No hardware access occurred.
+
+Source: owner-provided private PCI image `BINARY/205`,
+[Project Combine `IO_W.IMUX_IO_T`](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt).
