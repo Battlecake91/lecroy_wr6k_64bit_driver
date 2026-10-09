@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $decoder = Join-Path $repoRoot 'tools\fpga\virtexe_xc2s200e_decode.py'
+$routingTests = Join-Path $repoRoot 'tests\dry\test_fpga_routing.py'
+$pythonArgs = @('-B')
 
 $python = $env:PYTHON
 if (-not $python) {
@@ -13,22 +15,38 @@ if (-not $python) {
 if (-not $python) {
     $cmd = Get-Command py -ErrorAction SilentlyContinue
     if ($cmd) {
-        & $cmd.Source -3 $decoder --self-test
-        exit $LASTEXITCODE
+        $python = $cmd.Source
+        $pythonArgs = @('-3', '-B')
     }
 }
 if (-not $python) {
     throw 'Python was not found. Set PYTHON to a Python 3 executable.'
 }
 
-& $python $decoder --self-test
+Write-Host 'Synthetic frame and routing tests (no private firmware required)'
+& $python @pythonArgs $decoder --self-test
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+& $python @pythonArgs $routingTests -v
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
 if ($env:WR6K_FPGA_BINARY_205) {
-    & $python $decoder $env:WR6K_FPGA_BINARY_205 --validate-knowns
+    Write-Host 'Private firmware frame calibration'
+    & $python @pythonArgs $decoder $env:WR6K_FPGA_BINARY_205 --validate-knowns
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
+    if ($env:WR6K_PRJCOMBINE -and $env:WR6K_ROUTING_ADAPTER) {
+        Write-Host 'Private firmware native architecture calibration and XQ source trace'
+        & $python @pythonArgs $decoder $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --trace '2,14,IMUX_CLB_F1[0]'
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } else {
+        Write-Host 'SKIP native architecture calibration: set WR6K_PRJCOMBINE and WR6K_ROUTING_ADAPTER'
+    }
+} else {
+    Write-Host 'SKIP private firmware validation: set WR6K_FPGA_BINARY_205'
 }

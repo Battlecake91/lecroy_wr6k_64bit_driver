@@ -1540,7 +1540,7 @@ remain the next verification tasks.
 
 ### Seven selected PCILOGIC source-LUT inputs (offline decode, 2026-10-09)
 
-Using pinned Project Combine commit `234343d23e737e57f2727630e19008b509d7d522`, the local firmware decoder independently reproduces PCILOGIC I1/I2/I3 mux values `1010000 / 1000001 / 0001` and the three G-LUT vectors `F0FF / FFFA / AFAF`. The bit-reversed input packet's 18-word frame array begins at byte offset 68; the CLB X2 MAIN frame base is 2030. Both are cross-checked against known control values.
+Using pinned Project Combine commit `234343d23e737e57f2727630e19008b509d7d522`, the local firmware decoder independently reproduces PCILOGIC I1/I2/I3 mux values `1010000 / 1000001 / 0001` and the three G-LUT vectors `F0FF / FFFA / AFAF`. The bit-reversed input packet's Type-2 header is at byte offset 68 and its 18-word frame payload begins at byte offset 72; the CLB X2 MAIN frame base is 2030. Both are cross-checked against known control values.
 
 | Condition | G1 | G2 | G3 | G4 |
 |---|---|---|---|---|
@@ -1603,79 +1603,11 @@ This is the first recovered *registered logic source* in one of the
 three PCILOGIC source-LUT cones, and is distinct from any physical
 PCI pin. `XQ` denotes the slice X flip-flop path in the architecture.
 
-**Unknown:** The register's D input, CE, clock, synchronous/asynchronous
-set/reset and actual protocol meaning have not yet been traced.
-A configured XQ source alone does not prove its active transition
-sequence, handshake role, or DMA-drain semantics. PCI busmaster
-quiescence is still **not proven**; retain `UnknownActive`.
-
-
-### FDRI packet-boundary cross-check and XQ source verification caveat (2026-10-09)
-
-A fresh examination of the privately supplied `BINARY_205_decoded.bin`
-shows that, after reversing each byte's bit order, the four bytes at
-offset **68..71** are `50 00 9d 92`, i.e. the packet header
-`0x50009D92`; bytes at **72..75** are `00 12 00 00`,
-the beginning of the FDRI packet payload. Thus **offset 68 is a packet
-header, not the first FDRI frame word**. Previous text describing a
-frame array beginning at offset 68 is corrected here.
-
-**Verification warning:** In a separate newly implemented local bit
-reader, CLK/CE/SR mux values decoded for the reported
-`X2,Y14 SLICE[0].XQ` source did **not** all map to valid mux entries
-under the currently assumed CLB/frame address mapping. This mismatch
-means that decoder's register-control results are **not verified**.
-The earlier documentation's `XQ` routing attribution is retained as
-a previously reported result, but is **pending independent
-reproduction** with fully cross-checked frame alignment, geometry,
-and bit ordering. No fresh register clock, CE, reset, state transition,
-or handshake semantics can be asserted from this attempted decode.
-
-**Safety consequence:** No PCI busmaster-idle / abort acknowledgement
-criterion has been established. Do not relax `UnknownActive` or
-unmap indeterminate DMA buffers based on any of these candidates.
-
-
-### Independent LUT frame-map audit: prior decode requires correction (2026-10-09)
-
-An independent offline reader checked the supplied private decoded
-`BINARY/205` stream against the pinned Project Combine parser,
-rather than assuming the previous feature-decoding conclusions.
-
-**Verified packet bytes:** after reversing bits within each byte,
-offset `0x44` (decimal 68) contains the big-endian word `0x50009D92`;
-offset `0x48` (decimal 72) starts with `0x00120000`.
-The first word is the Type-2 FDRI header, not frame contents.
-
-**Independent negative control:** With an 18-DWORD/540-bit frame
-interpretation, frame-word reversal and the 28-bit partial last
-word according to `insert_virtex_frame`, a straightforward
-linear frame/row reader at asserted CLB X2 main-frame base 2030
-does **not** reproduce the three previously recorded G-LUT vectors:
-- `X2,Y14 SLICE[1].G`: expected `F0FF`, obtained `FBEF`;
-- `X2,Y12 SLICE[0].G`: expected `FFFA`, obtained `0000`;
-- `X2,Y3 SLICE[0].G`: expected `AFAF`, obtained `7DF8`.
-
-As an additional control, the exact three 16-bit vectors were not
-matched separately at any candidate linear base from 0 to 2192
-under **that same naive model**. This is evidence that the naive
-frame-to-tile mapping, frame data ordering, or current assumptions
-are incomplete; it does **not** establish different firmware or
-disprove the earlier reverse-engineered routes.
-
-**Status correction:** Do not treat the later reported seven
-G-input selections, local pass bits, or XQ/OMUX registered source
-as *independently replicated* by this audit. They remain **reported
-earlier findings pending reconciliation** with an independently
-verified geometry/packet/frame-coordinate model. No fresh
-PCI-state-register or DMA-idle interpretation follows.
-
-**Next action:** Construct the frame lookup using Project Combine's
-actual device `expanded` geometry, column-width and frame ownership
-and parse the complete FDRI packet sequence as the reference parser
-does; cross-check several unrelated known IOB and PCILOGIC fields
-and all three G-LUT vectors before continuing driver tracing.
-Keep `UnknownActive` quarantine unchanged.
+The calibrated local D path, clock/CE mux selections and reset-control
+bits are recorded in the decoder calibration section below. The
+upstream signal meanings and reset source remain unknown. A configured
+XQ source alone does not prove its protocol role or DMA-drain semantics.
+PCI busmaster quiescence is still **not proven**; retain `UnknownActive`.
 
 
 ### Resolved FDRI transfer-word off-by-one and verified XQ control sources (2026-10-09)
@@ -1839,8 +1771,7 @@ These local checks do not exhaust neighboring-tile connectivity.
 same slice's G-LUT, which participates in the selected F5 XQ D path.
 **Inferred:** This is a plausible sequential-state feedback cone,
 not a decoded PCI arbitration state or a proven hold/advance equation.
-**Unknown:** The G2 truth-table pin ordering, F5 BX selection polarity,
-the independent inputs, SR effects, and the conditions under which
+**Unknown:** The independent inputs, SR effects, and the conditions under which
 this feedback actually determines XQ. No DMA bus-idle criterion follows;
 retain `UnknownActive`.
 
@@ -1870,18 +1801,16 @@ the 16-bit INIT vector. The distinct `b1=1` branch is particularly
 simple: it passes `b2`. No external physical signal is needed to
 verify this truth-table property.
 
-**Inferred, conditional on pin ordering:** The previously verified
+**Verified local cofactor:** The previously verified
 configured routing takes `SLICE[0].XQ` back to `SLICE[0].G2`.
-If Project Combine's physical LUT addressing maps `G2` to abstract
-`b1`, these cofactors describe the combinatorial G branch for
+The physical LUT ordering established below maps `G2` to abstract
+`b1`; these cofactors describe the combinatorial G branch for
 `Q=0` and `Q=1`, respectively. That alone is **not** the full
 flip-flop next-state equation: `F5` also selects the F-LUT versus
 G-LUT using BX, and the flip-flop reset/set behavior still applies.
-If the physical LUT pin permutation differs, do not equate `b1`
-with the XQ feedback signal.
 
 **Unknown:** The upstream drivers for G1/G3/G4, BX, F1/F2,
-the physical LUT pin-to-address-bit ordering, set/reset transitions,
+set/reset transitions,
 and any relationship to a PCI transaction-ending or all-writes-drained
 acknowledgement. No DMA bus-idle or safe unmap predicate is
 demonstrated; preserve `UnknownActive`.
@@ -1909,9 +1838,9 @@ G = (g1 & g2) | (g2 & !g0) | (g2 & !g3) |
     (!g0 & !g1 & !g3)
 ```
 
-Here `f0/f1` and `g0..g3` are *abstract* zero-based LUT
-address bits, not yet proven electrical F1/F2 or G1..G4
-pin names. The above G expression has the exact cofactors
+Here `f0/f1` and `g0..g3` are zero-based LUT address bits,
+mapped to F1/F2 and G1..G4 by the physical-order evidence below.
+The above G expression has the exact cofactors
 `G(g1=1)=g2` and
 `G(g1=0)=majority(g2,!g0,!g3)`,
 where `majority(a,b,c)=(a&b)|(a&c)|(b&c)`.
@@ -1923,20 +1852,18 @@ and clock semantics, is therefore:
 D_XQ = MUXF5(I0=G, I1=F, S=effective_BX)
 ```
 
-If the standard mux selection convention and un-inverted BX apply,
-`D_XQ = effective_BX ? F : G`; otherwise its select polarity
-must be adjusted. If `G2` really maps to address bit `g1`,
-the verified Q feedback into G2 yields the following **conditional**
-state transition:
+The calibrated BX inversion is disabled, so
+`D_XQ = BX ? F : G`. With G2 mapped to address bit `g1`,
+the verified Q feedback into G2 yields the following local
+G-branch cofactors:
 
 ```text
 G_when_Q0 = majority(g2, !g0, !g3)
 G_when_Q1 = g2
 ```
 
-**Verified:** The MUXF5 structural connections and algebraic truth
-tables. **Inferred:** The XQ state-dependent cofactors conditional on
-physical LUT pin ordering. **Unknown:** BX polarity, complete
+**Verified:** The MUXF5 structural connections, algebraic truth
+tables, pin ordering and disabled BX inversion. **Unknown:** Complete
 g/f input signal provenance, flip-flop reset operation,
 PCI ownership/termination state, DMA FIFO and outstanding-write drain.
 No DMA-bus-idle or abort acknowledgement is proven.
@@ -1970,8 +1897,7 @@ cofactors, the configured feedback to G2, and F5 input wiring.
 The cofactor relation is valid for the configured G branch
 without speculative PCI signal naming.
 
-**Unknown:** Selected BX inversion in this actual slice, the
-upstream sources/meaning of G1/G3/G4/F1/F2/BX, and the
+**Unknown:** The upstream sources/meaning of G1/G3/G4/F1/F2/BX, and the
 SR and clock polarity details. The feedback alone does not
 identify arbitration ownership, transaction completion or an
 absence of outstanding posted writes; therefore no DMA-unmap
@@ -1995,105 +1921,16 @@ The verifier's `gen_muxf5` construction confirms
 `I0=G`, `I1=F`, `S=BX`; the architecture's input inversion
 annotation must be applied before interpreting `S`.
 
-**Verification boundary:** A fresh, minimal standalone packet reader
-recognizes the FDRI Type-2 header `0x50009D92` at offset 68
-and payload at 72, but its independently reconstructed CLB frame
-reader has **not yet reproduced** the three reference G-LUT words
-simultaneously. Consequently, this attempt supplies **no verified
-firmware value** for `MAIN[38][13]`. In particular, neither BX
-polarity nor an exact XQ next-state equation is established by the
-current recheck. Reconcile transfer-slot ownership and reference
-`insert_virtex_frame` geometry before publishing such a bit value.
+**Verified:** The calibrated repository decoder reproduces all five
+reference LUTs and reads `MAIN[38][13]=0`. BX inversion is disabled;
+the local F5 relation is `BX ? F : G`. See the reproducible decoder
+calibration below. The upstream sources and protocol meaning remain
+unknown.
 
 The current safe conclusion remains unchanged: no proven PCI
 busmaster-quiescent, abort-acknowledged or posted-write-drained
 predicate, so the x64 `UnknownActive` quarantine stays in place.
 
-
-### Independent BX bit read gate: triple-LUT calibration failed (2026-10-09)
-
-The owner-provided Project Combine source archive and private
-`BINARY_205_decoded.bin` have been reopened and inspected locally.
-The image contains the expected Type-2 FDRI header `0x50009D92`
-at byte 68 after reversing the bit order within each byte.
-The upstream Project Combine `insert_virtex_frame` reads
-`ceil(540/32)=17` frame data words from 18-word Virtex
-transfer slots and ignores the extra transfer word.
-
-A fresh standalone checker with packet payload offset 72,
-assumed CLB X2 frame base 2030, and a simple frame-indexing
-model **does not reproduce** the previously reported three
-G-LUT reference values together. Consequently a value
-obtained by that checker for `MAIN[38][13]` is not verified
-and must not be promoted to an actual configured BX
-inversion bit. The authoritative architecture location is
-still `input BX = ^IMUX_CLB_BX[0] @MAIN[38][13]`
-in the pinned CLB definition.
-
-**Next reproducibility requirement:** Explicitly derive FDRI
-frame-to-column assignments from the pinned expanded-device
-frame geometry (including block types, any padding/skip slots
-and exact XC2S200E column offsets) and simultaneously validate
-three G-LUT INITs, the PCILOGIC input fields and at least one
-independent west-side IOB feature. Only then decode the BX
-polarity and upstream arbitration state.
-
-This audit changes no hardware or driver code; PCI busmaster
-quiescence and posted-write draining remain unproven. Preserve
-`UnknownActive`.
-
-
-### Independent FDRI/LUT validation audit (2026-10-09)
-
-A new standalone offline reader was implemented against private
-`BINARY_205_decoded.bin` and pinned Project Combine source
-`234343d23e737e57f2727630e19008b509d7d522`. The file
-is 180252 bytes and is bit-reversed per byte to recover the
-configuration packet stream. The Type-2 FDRI header at byte
-68 decodes to `0x50009D92`, and the FDRI payload begins at
-byte 72. The Type-2 word count is 40338, exactly
-`2241 * 18` 32-bit transfer words.
-
-The pinned `insert_virtex_frame` implementation places 540
-configuration bits from the **first 17 words** of each
-18-word transfer slot: word 16's bits 4..31 provide
-logical frame positions 0..27, and words 0..15 fill
-positions 28..539 in reverse word order. Word 17 is not
-part of the 540-bit frame data.
-
-Under a direct sequential-slot interpretation with
-the previously asserted X2 CLB MAIN base 2030,
-and pinned `CLB` G-LUT bit coordinates
-(`SLICE[1].G = !MAIN[0..15][15]`,
-`SLICE[0].G = !MAIN[47..32][15]`),
-the independent decode produces:
-
-| LUT | Earlier documented | Fresh independent reading |
-|---|---|---|
-| X2,Y14 SLICE[1].G | `F0FF` | `FF0F` |
-| X2,Y12 SLICE[0].G | `FFFA` | `5FFF` |
-| X2,Y3 SLICE[0].G | `AFAF` | `F5F5` |
-
-A scan of candidate sequential frame bases found no single
-base which reproduces all three stored LUT values at once.
-This is a **calibration failure** for the simple sequential
-frame index mapping, not proof that the FPGA has different
-logic. The reference `fill_frame_info` in
-`public/virtex/src/expand.rs` constructs frame addresses
-in an interleaved center-out column order with device-specific
-column widths and separate BRAM-related sections; a simple
-uniform column/slot assumption is not independently established.
-
-**Status:** The earlier reported XQ feedback routes, LUT
-vectors, F5 selections and upstream muxes are prior analytical
-claims but their exact firmware bit locations have not yet been
-reproduced by this independent audit. Do not extend them into
-a claimed complete PCI state machine, BX polarity, or DMA
-shutdown acknowledgement until actual device geometry and
-frame-address placement are validated against multiple
-independent fields. The immutable driver rule remains:
-`UnknownActive` mappings must not be released without a real
-DMA-quiescence proof.
 
 ### Reproducible CHIP18 decoder calibration (2026-10-09)
 
@@ -2133,11 +1970,10 @@ independent calibration points:
 | X2,Y14 `OMUX[0]` | `0011011` = `OUT_CLB_XQ[0]` |
 | X2,Y14 `OMUX[7]` | `0011011` = `OUT_CLB_XQ[0]` |
 
-This supersedes the immediately preceding simple sequential-frame
-audit failure: the failure came from not applying the Project Combine
-CHIP18 column frame order and per-feature bit ordering. The corrected
-decoder re-establishes the calibrated X2/Y14 XQ feedback/F5 evidence
-and the attached frame-map result that BX inversion is disabled.
+The decoder applies the Project Combine CHIP18 column frame order
+and per-feature bit ordering, reproducing the calibrated X2/Y14 XQ
+feedback/F5 evidence and the frame-map result that BX inversion is
+disabled.
 
 **Current X2,Y14 XQ equation boundary:** With the verified LUT pin
 ordering and `MAIN[38][13]=0`, the local combinational D path is:
@@ -2157,3 +1993,80 @@ control, DMA producer/fifo state, or something else. No FPGA-visible
 predicate has been proven to cover outstanding PCI transactions,
 internal pending data, or host bridge posted-write drain. Preserve the
 x64 `UnknownActive` quarantine.
+
+### Configuration-aware routing tool and verification boundary
+
+`tools/fpga/virtexe_routing.py` extends the calibrated frame reader.
+`tools/fpga/prjcombine_graph.rs` is a public-architecture adapter for
+the pinned Project Combine source. It accepts architecture queries
+only; firmware remains in Python and is never passed to Cargo or the
+adapter. Generated manifests and build output reside in the local
+temporary directory, outside version control.
+
+The adapter source calls `expand_grid`, `resolve_wire`, `wire_tree`,
+`wire_pips_bwd` and `tile_bits` directly. It exports canonical and raw
+wire coordinates, fixed connector equivalence trees, BEL pins,
+attributes, and absolute configuration-bit addresses. Python evaluates
+mux, programmable-buffer, pass, bidirectional-pass and inverter
+encodings; disabled connections are retained as evidence but never
+traversed. Missing or multiple encodings remain Unknown. Unsupported
+bit rectangles or frames outside the decoded first FDRI block remain
+Unknown rather than being treated as zero.
+
+**Verified:** Fourteen synthetic Python tests pass, covering enabled and
+disabled selections, bit polarity, absent/duplicate encodings, unavailable
+frames, reconvergent paths, distinct-driver/polarity ambiguity, cycles, bounded
+traversal, a 1102-node chain, LUT support and register feedback. The
+PowerShell test distinguishes these from private-image validation and
+reports skipped private/native checks explicitly. The Python fallback
+through `py -3` now executes the same complete test sequence.
+
+**Verified:** Private-image calibration passes the existing five LUTs,
+BX inversion and eleven XQ controls, plus nine independent PCILOGIC,
+IOB and routing-control checks. These include `I1/I2/I3` fields
+`1010000/1000001/0001`, REQ IOI[2] `MUX_O/MUX_T=1/1`, GNT
+IOI[2] `MUX_O/MUX_T=0/0`, enabled X2,Y14 `OMUX[0] -> SINGLE_S[1]`
+and disabled X0,Y11 `SINGLE_E[19] -> HEX_V3[3]`. These reproduce
+established observations; they do not establish additional paths.
+
+**Unknown / execution dependency:** The native Rust adapter has not
+been compiled or executed in this analysis batch. `cargo build --offline`
+fails because the public dependency `bimap` is absent from the local
+Cargo cache; further missing dependencies may follow. Automatic approval
+review rejected a network-enabled Cargo build under the offline-only
+constraint. Therefore native database calibration, upstream XQ tracing,
+the generated register network and new PCI transition findings are
+**not verified**. Rust formatting/syntax acceptance is not a type-check
+or an integration test. The tooling is experimental analysis code.
+
+Once the public dependencies are available locally, build and run:
+
+```powershell
+python -B tools/fpga/virtexe_xc2s200e_decode.py --project-combine $env:WR6K_PRJCOMBINE --build-adapter --cargo-offline
+# Set WR6K_ROUTING_ADAPTER to the printed executable path.
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --trace '2,14,IMUX_CLB_F1[0]'
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --analyze-pci --output private_evidence/pci-control-cones.json
+```
+
+Every routing invocation first validates the existing frame calibration
+and independent native BEL/mux checks. `--bel '2,14,SLICE[0]'` reports
+decoded local attributes and pin inversion. `--analyze-pci` seeds XQ,
+PCILOGIC I1/I2/I3, the six documented PCI control pads, and representative
+AD/CBE output/OE paths. The bounded logic worklist follows supported
+LUT/F5/register paths with only truth-table-relevant inputs. It records
+clock, CE, SR and FF modes; it leaves carry, F6, hard-block and RAM/shift
+semantics unresolved. It emits configuration relations, not presumed
+PCI protocol state names or host ordering guarantees. Full generated
+reports can expose proprietary logic and must remain private.
+
+**Inferred:** No new protocol inference is warranted before native
+execution and review of those paths.
+
+**Unknown:** All six DMA release proof obligations remain unmet:
+producer stopped, descriptor consumption blocked, new master starts
+blocked, outstanding transactions terminated, pending data/FIFOs drained,
+and host-side ordering/posted-write completion. The last obligation needs
+host/bridge/DMA-contract evidence independently of FPGA configuration.
+The calibrated local XQ equation does not establish any of these as an
+observable acknowledgement. Preserve `UnknownActive`; this experimental
+branch must not be merged blindly into the production driver.

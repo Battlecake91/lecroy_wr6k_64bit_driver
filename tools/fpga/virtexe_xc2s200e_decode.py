@@ -111,6 +111,8 @@ class Xc2s200eBitstream:
         payload = self.packet_bytes[
             self.fdri_payload_offset : self.fdri_payload_offset + payload_len
         ]
+        if len(payload) != payload_len:
+            raise ValueError("truncated Type-2 FDRI payload")
         words = [
             int.from_bytes(payload[pos : pos + 4], "big")
             for pos in range(0, len(payload), 4)
@@ -216,6 +218,19 @@ KNOWN_VALUES = {
     "X2,Y14 SLICE[0].G": (2, 14, SLICE0_G, 0xD0F1),
 }
 
+# Listed-bit order, matching the pinned human-readable database (MSB first).
+KNOWN_ROUTING_CONTROLS = {
+    "PCILOGIC.I1": (0, 13, feature_range([51, 50, 5, 4, 2, 3, 49], 3), "1010000"),
+    "PCILOGIC.I2": (0, 13, feature_range([7, 6, 48, 0, 1, 8, 9], 3), "1000001"),
+    "PCILOGIC.I3": (0, 13, [FeatureBit(m, 4) for m in [9, 5, 6, 48]], "0001"),
+    "REQ IOI[2].MUX_O": (0, 18, [FeatureBit(25, 16)], "1"),
+    "REQ IOI[2].MUX_T": (0, 18, [FeatureBit(30, 16)], "1"),
+    "GNT IOI[2].MUX_O": (0, 16, [FeatureBit(25, 16)], "0"),
+    "GNT IOI[2].MUX_T": (0, 16, [FeatureBit(30, 16)], "0"),
+    "X2,Y14 OMUX[0] to SINGLE_S[1]": (2, 14, [FeatureBit(47, 5)], "1"),
+    "X0,Y11 SINGLE_E[19] to HEX_V3[3]": (0, 11, [FeatureBit(9, 8)], "0"),
+}
+
 
 def validate_knowns(bitstream: Xc2s200eBitstream) -> dict[str, object]:
     checks: dict[str, object] = {
@@ -225,6 +240,7 @@ def validate_knowns(bitstream: Xc2s200eBitstream) -> dict[str, object]:
         "chip18_col_frame_x2": COL_FRAME[2],
         "known_luts": {},
         "x2y14_slice0_controls": {},
+        "routing_and_iob_controls": {},
     }
 
     failures: list[str] = []
@@ -262,6 +278,12 @@ def validate_knowns(bitstream: Xc2s200eBitstream) -> dict[str, object]:
         if actual != expected:
             failures.append(f"{name}: expected {expected}, got {actual}")
 
+    for name, (col, row, features, expected) in KNOWN_ROUTING_CONTROLS.items():
+        actual = bitstream.bit_string(col, row, features)
+        checks["routing_and_iob_controls"][name] = {"actual": actual, "expected": expected}
+        if actual != expected:
+            failures.append(f"{name}: expected {expected}, got {actual}")
+
     checks["failures"] = failures
     checks["status"] = "PASS" if not failures else "FAIL"
     return checks
@@ -294,7 +316,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--self-test", action="store_true", help="run public-data-free unit checks"
     )
+    parser.add_argument("--project-combine", type=Path, help="clean pinned Project Combine checkout")
+    parser.add_argument("--build-adapter", action="store_true", help="build the public architecture adapter")
+    cargo_mode = parser.add_mutually_exclusive_group()
+    cargo_mode.add_argument("--cargo-offline", action="store_true", help="build using cached Rust dependencies only (default)")
+    cargo_mode.add_argument("--allow-dependency-download", action="store_true", help="explicitly allow Cargo to download public build dependencies")
+    parser.add_argument("--adapter", type=Path, help="previously built prjcombine_graph executable")
+    parser.add_argument("--trace", help="upstream routing tree: X,Y,WIRE (e.g. 2,14,IMUX_CLB_F1[0])")
+    parser.add_argument("--bel", help="decode BEL inputs and attributes: X,Y,BEL")
+    parser.add_argument("--analyze-pci", action="store_true", help="reconstruct XQ and PCI control cones")
+    parser.add_argument("--max-logic", type=int, default=200, help="maximum logic network nodes")
+    parser.add_argument("--max-nodes", type=int, default=500, help="maximum routing nodes per trace")
+    parser.add_argument("--max-depth", type=int, default=100, help="maximum routing depth")
+    parser.add_argument("--output", type=Path, help="write private analysis JSON locally")
     args = parser.parse_args(argv)
+
+    if args.build_adapter:
+        if args.project_combine is None:
+            parser.error("--build-adapter requires --project-combine")
+        from virtexe_routing import build_adapter
+        print(build_adapter(args.project_combine, not args.allow_dependency_download))
+        return 0
 
     if args.self_test:
         run_self_test()
@@ -305,6 +347,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("image path is required unless --self-test is used")
 
     bitstream = Xc2s200eBitstream(args.image)
+    if args.trace or args.bel or args.analyze_pci:
+        if args.adapter is None or args.project_combine is None:
+            parser.error("routing requires --adapter and --project-combine")
+        from virtexe_routing import Architecture, Router, analyze_pci, validate_architecture, verify_checkout
+        checks = validate_knowns(bitstream)
+        if checks["status"] != "PASS":
+            print(json.dumps(checks, indent=2))
+            return 1
+        source = verify_checkout(args.project_combine)
+        architecture = Architecture(args.adapter, source / "databases" / "virtex.zstd")
+        try:
+            router = Router(bitstream, architecture)
+            native_checks = validate_architecture(router)
+            if native_checks["status"] != "PASS":
+                print(json.dumps(native_checks, indent=2))
+                return 1
+            result = {"frame_validation": checks, "architecture_validation": native_checks}
+            if args.trace:
+                x, y, name = args.trace.split(",", 2)
+                result["trace"] = router.trace([int(x), int(y), name], args.max_nodes, args.max_depth)
+            if args.bel:
+                x, y, name = args.bel.split(",", 2)
+                result["bel"] = router.bel(int(x), int(y), name)
+            if args.analyze_pci:
+                if args.max_logic < 1:
+                    parser.error("--max-logic must be positive")
+                result["pci_analysis"] = analyze_pci(router, args.max_logic)
+            encoded = json.dumps(result, indent=2, sort_keys=True)
+            if args.output:
+                args.output.write_text(encoded + "\n", encoding="utf-8")
+                print(json.dumps({"output": str(args.output), "validation": "PASS"}))
+            else:
+                print(encoded)
+            return 0
+        finally:
+            architecture.close()
     if args.validate_knowns:
         checks = validate_knowns(bitstream)
         print(json.dumps(checks, indent=2, sort_keys=True))
