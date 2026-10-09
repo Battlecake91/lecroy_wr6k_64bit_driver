@@ -1537,3 +1537,19 @@ these abstract variables as PCI handshake signals yet or use any of
 these reductions as a DMA-idle predicate. The exact architectural
 input-bit mapping and four upstream configured routes per source LUT
 remain the next verification tasks.
+
+### Seven selected PCILOGIC source-LUT inputs (offline decode, 2026-10-09)
+
+Using pinned Project Combine commit `234343d23e737e57f2727630e19008b509d7d522`, the local firmware decoder independently reproduces PCILOGIC I1/I2/I3 mux values `1010000 / 1000001 / 0001` and the three G-LUT vectors `F0FF / FFFA / AFAF`. The bit-reversed input packet's 18-word frame array begins at byte offset 68; the CLB X2 MAIN frame base is 2030. Both are cross-checked against known control values.
+
+| Condition | G1 | G2 | G3 | G4 |
+|---|---|---|---|---|
+| I1: X2,Y14 SLICE[1] G | off | off | SINGLE_S_BUF[1] | SINGLE_N_BUF[14] |
+| I2: X2,Y12 SLICE[0] G | SINGLE_N_BUF[23] | off | SINGLE_E_BUF[3] | SINGLE_E_BUF[0] |
+| I3: X2,Y3 SLICE[0] G | SINGLE_S_BUF[5] | off | SINGLE_N_BUF[11] | off |
+
+**Verified:** These twelve decoded selections each match Project Combine's enumerated mux settings. Only seven physical LUT inputs are relevant to the recovered truth tables: two for I1, three for I2, two for I3.
+
+**Inferred:** Under the standard direct G1..G4 LUT address-bit ordering the reduced functions are I1 = `G3 | !G4`, I2 = `G1 | G3 | G4`, I3 = `G1 | !G3`. Independently validating the old-family LUT pin ordering and PCILOGIC input polarity is still required.
+
+**Unknown:** The configured upstream drivers of these seven selected SINGLE routing wires, their ties to PCI control pins/registered state, and the PCI transaction completion/write-drain predicate. This establishes no safe DMA unmap criterion. The x64 `UnknownActive` quarantine remains mandatory.
