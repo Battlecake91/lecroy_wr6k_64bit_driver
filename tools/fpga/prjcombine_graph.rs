@@ -176,7 +176,16 @@ fn query(ed: &ExpandedDevice, q: &Value) -> Value {
     }
     terminals.sort_by_key(|v| v.to_string());
     terminals.dedup();
-    json!({"root":wire(ed.db,root), "tree":tree.iter().map(|&w| wire(ed.db,w)).collect::<Vec<_>>(), "pips":ed.wire_pips_bwd(root).iter().map(|p| pip_config(ed,p)).collect::<Vec<_>>(), "terminals":terminals, "wire_kind":format!("{:?}",ed.db[root.slot])})
+    // wire_pips_bwd expands MultiRoot trees itself, but not Regional wires.
+    // Regional taps can be placed away from the canonical region root.
+    let pips = if matches!(ed.db[root.slot], WireKind::Regional(_)) {
+        tree.iter()
+            .flat_map(|&w| ed.wire_pips_bwd(w))
+            .collect::<Vec<_>>()
+    } else {
+        ed.wire_pips_bwd(root)
+    };
+    json!({"root":wire(ed.db,root), "tree":tree.iter().map(|&w| wire(ed.db,w)).collect::<Vec<_>>(), "pips":pips.iter().map(|p| pip_config(ed,p)).collect::<Vec<_>>(), "terminals":terminals, "wire_kind":format!("{:?}",ed.db[root.slot])})
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1).expect("virtex.zstd path");

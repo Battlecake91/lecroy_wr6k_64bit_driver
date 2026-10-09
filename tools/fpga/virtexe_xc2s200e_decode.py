@@ -325,10 +325,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--trace", help="upstream routing tree: X,Y,WIRE (e.g. 2,14,IMUX_CLB_F1[0])")
     parser.add_argument("--bel", help="decode BEL inputs and attributes: X,Y,BEL")
     parser.add_argument("--analyze-pci", action="store_true", help="reconstruct XQ and PCI control cones")
+    parser.add_argument("--validate-architecture", action="store_true", help="validate native database and configured upstream routes")
+    parser.add_argument("--register-table", help="D-path truth table for X,Y,BEL.PIN")
+    parser.add_argument("--local-table", action="store_true", help="treat immediate register D-path sources as symbolic variables")
     parser.add_argument("--max-logic", type=int, default=200, help="maximum logic network nodes")
     parser.add_argument("--max-nodes", type=int, default=500, help="maximum routing nodes per trace")
     parser.add_argument("--max-depth", type=int, default=100, help="maximum routing depth")
     parser.add_argument("--output", type=Path, help="write private analysis JSON locally")
+    parser.add_argument("--compact", action="store_true", help="omit disabled PIP candidates from JSON, retaining counts")
     args = parser.parse_args(argv)
 
     if args.build_adapter:
@@ -347,10 +351,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("image path is required unless --self-test is used")
 
     bitstream = Xc2s200eBitstream(args.image)
-    if args.trace or args.bel or args.analyze_pci:
+    if args.trace or args.bel or args.analyze_pci or args.validate_architecture or args.register_table:
         if args.adapter is None or args.project_combine is None:
             parser.error("routing requires --adapter and --project-combine")
-        from virtexe_routing import Architecture, Router, analyze_pci, validate_architecture, verify_checkout
+        from virtexe_routing import (Architecture, Router, LogicAnalyzer, analyze_pci,
+                                    validate_architecture, verify_checkout, compact_report, state_table)
+        if (args.analyze_pci or args.register_table) and args.max_logic < 1:
+            parser.error("--max-logic must be positive")
         checks = validate_knowns(bitstream)
         if checks["status"] != "PASS":
             print(json.dumps(checks, indent=2))
@@ -371,9 +378,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 x, y, name = args.bel.split(",", 2)
                 result["bel"] = router.bel(int(x), int(y), name)
             if args.analyze_pci:
-                if args.max_logic < 1:
-                    parser.error("--max-logic must be positive")
                 result["pci_analysis"] = analyze_pci(router, args.max_logic)
+            if args.register_table:
+                x, y, name = args.register_table.split(",", 2)
+                bel, pin = name.rsplit(".", 1)
+                analyzer = LogicAnalyzer(router, args.max_logic)
+                key = analyzer.output({"x": int(x), "y": int(y), "bel": bel, "pin": pin})
+                report = analyzer.report([key])
+                result["register_analysis"] = report
+                result["register_table"] = state_table(report, key, local=args.local_table)
+            if args.compact:
+                compact_report(result)
             encoded = json.dumps(result, indent=2, sort_keys=True)
             if args.output:
                 args.output.write_text(encoded + "\n", encoding="utf-8")

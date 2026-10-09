@@ -14,10 +14,15 @@ COMMIT = "234343d23e737e57f2727630e19008b509d7d522"
 
 def verify_checkout(source: Path):
     source = source.resolve()
+    root = subprocess.check_output(["git", "-C", str(source), "rev-parse", "--show-toplevel"], text=True).strip()
+    if Path(root).resolve() != source:
+        raise ValueError("Project Combine path must be the Git checkout root")
     head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if head != COMMIT:
         raise ValueError(f"Project Combine must be at {COMMIT}, got {head}")
-    subprocess.run(["git", "-C", str(source), "diff", "--exit-code", "HEAD", "--", "public", "databases/virtex.zstd"], check=True, stdout=subprocess.DEVNULL)
+    status = subprocess.check_output(["git", "-C", str(source), "status", "--porcelain"], text=True)
+    if status.strip():
+        raise ValueError("Project Combine checkout must be clean")
     return source
 
 
@@ -28,13 +33,35 @@ def build_adapter(source: Path, offline: bool = True) -> Path:
     build = Path(tempfile.gettempdir()) / f"wr6k-routing-{key}"
     build.mkdir(exist_ok=True)
     shutil.copyfile(rust, build / "main.rs")
+    # Rust 1.89 compatibility, isolated from the pinned Git checkout. Neither
+    # change affects device definitions, routing, bit geometry or serialization.
+    public = build / "public"
+    shutil.copytree(source / "public", public, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("target"))
+    replacements = {
+        "emit.rs": ("stream.extend([Punct::new(';', Spacing::Alone)]);",
+                    "stream.extend([TokenTree::Punct(Punct::new(';', Spacing::Alone))]);"),
+        "eval.rs": ("n.strict_add_signed(*offset)",
+                    'n.checked_add_signed(*offset).expect("template index overflow")'),
+    }
+    for filename, (old, new) in replacements.items():
+        path = public / "tablegen" / "src" / filename
+        content = path.read_text(encoding="utf-8")
+        if content.count(old) != 1:
+            raise ValueError(f"unexpected pinned tablegen compatibility site: {filename}")
+        path.write_text(content.replace(old, new), encoding="utf-8")
     manifest = ['[package]', 'name = "wr6k-routing"', 'version = "0.1.0"', 'edition = "2024"',
                 '[[bin]]', 'name = "wr6k-routing"', 'path = "main.rs"', '[dependencies]', 'serde_json = "1"']
     for crate in ("entity", "interconnect", "types", "virtex", "xilinx-bitstream"):
-        path = (source / "public" / crate).as_posix()
+        path = (public / crate).as_posix()
         manifest.append(f'prjcombine-{crate} = {{ path = {json.dumps(path)} }}')
     (build / "Cargo.toml").write_text("\n".join(manifest) + "\n", encoding="utf-8")
+    lock = Path(__file__).with_name("Cargo.lock")
+    if lock.exists():
+        shutil.copyfile(lock, build / "Cargo.lock")
     command = ["cargo", "build", "--manifest-path", str(build / "Cargo.toml")]
+    if lock.exists():
+        command.append("--locked")
     if offline:
         command.append("--offline")
     subprocess.run(command, check=True)
@@ -132,6 +159,18 @@ class Router:
         x, y, name = signal
         node = dict(self.architecture.query(x=x, y=y, wire=name))
         node["pips"] = [classify_pip(self.image, p) for p in node["pips"]]
+        node["disabled_terminals"] = []
+        enabled = []
+        for terminal in node["terminals"]:
+            if terminal["bel"].startswith("IOI[") and terminal["pin"] == "I":
+                pad = self.bel(terminal["x"], terminal["y"],
+                               terminal["bel"].replace("IOI[", "IOB["))
+                mode = pad["attributes"].get("IBUF_MODE", {})
+                if mode.get("selections") == ["NONE"]:
+                    node["disabled_terminals"].append({"terminal": terminal, "IBUF_MODE": mode})
+                    continue
+            enabled.append(terminal)
+        node["terminals"] = enabled
         return node
 
     def trace(self, signal, max_nodes=500, max_depth=100):
@@ -164,7 +203,9 @@ class Router:
         leaves = [n["root"] for n in nodes.values() if not n["terminals"] and
                   not any(p["status"] == "active" for p in n["pips"])]
         constants = [r for r in leaves if r and r[2] == "PULLUP"]
-        unresolved = [r for r in leaves if r not in constants]
+        inactive = [n["root"] for n in nodes.values() if n.get("disabled_terminals") and
+                    not n["terminals"] and not any(p["status"] == "active" for p in n["pips"])]
+        unresolved = [r for r in leaves if r not in constants and r not in inactive]
         polarities, seen = {}, set()
         pending = [(json.dumps(requested_signal), False)]
         while pending:
@@ -185,7 +226,7 @@ class Router:
         resolved = not (limits or unknown or unresolved) and bool(terminals or constants) and not ambiguous
         return {"signal": requested_signal, "nodes": nodes, "terminals": list(terminals.values()),
                 "cycles": cycles, "limits": limits, "unknown_pips": unknown,
-                "constants": constants, "unresolved": unresolved,
+                "constants": constants, "inactive_sources": inactive, "unresolved": unresolved,
                 "driver_polarities": {k: sorted(v) for k, v in sorted(polarities.items())},
                 "inversion": next(iter(next(iter(polarities.values())))) if resolved else None,
                 "driver_status": "ambiguous" if ambiguous else "resolved" if resolved else "unknown"}
@@ -224,6 +265,22 @@ def validate_architecture(router):
     pin = router.bel(2, 14, "SLICE[0]")["inputs"]["BX"]
     checks.append({"feature": "X2,Y14 SLICE[0].BX inversion", "actual": pin["inv"],
                    "expected": False, "pass": pin["inv"] is False})
+    for name, expected in (
+        ("F1", (2, 14, "SLICE[0]", "XQ")),
+        ("F2", (3, 16, "SLICE[1]", "X")),
+        ("G1", (2, 15, "SLICE[0]", "XQ")),
+        ("G2", (2, 14, "SLICE[0]", "XQ")),
+        ("G3", (3, 16, "SLICE[1]", "X")),
+        ("G4", (0, 15, "IOI[3]", "I")),
+        ("BX", (0, 13, "IOI[2]", "I")),
+        ("SR", (12, 29, "IOI[1]", "I")),
+        ("CLK", (24, 29, "BUFGCE[1]", "O")),
+    ):
+        trace = router.trace([2, 14, f"IMUX_CLB_{name}[0]"])
+        actual = [tuple(t[k] for k in ("x", "y", "bel", "pin")) for t in trace["terminals"]]
+        checks.append({"feature": f"X2,Y14 SLICE[0].{name} upstream",
+                       "actual": actual, "expected": expected,
+                       "pass": trace["driver_status"] == "resolved" and actual == [expected] and trace["inversion"] is False})
     return {"kind": "private_firmware_native_architecture", "checks": checks,
             "status": "PASS" if all(c["pass"] for c in checks) else "FAIL"}
 
@@ -366,9 +423,121 @@ class LogicAnalyzer:
             terminal, key = self.pending[index]
             self.populate(terminal, key)
             index += 1
+        for name, node in self.logic.items():
+            pending = [node.get("data", {})]
+            while pending:
+                value = pending.pop()
+                if isinstance(value, dict):
+                    if "unknown" in value:
+                        self.boundaries.append({"signal": name, "reason": value["unknown"]})
+                    pending.extend(value.values())
         return {"project_combine_commit": COMMIT, "roots": roots, "logic": self.logic,
                 "routes": self.routes, "boundaries": self.boundaries,
                 "interpretation": "Configured logic network; protocol states and DMA quiescence are not assumed."}
+
+
+def compact_report(result):
+    """Keep every active/unknown PIP's evidence while omitting disabled candidates."""
+    if isinstance(result, dict):
+        if "pips" in result:
+            result["disabled_pip_count"] = sum(p["status"] == "disabled" for p in result["pips"])
+            result["pips"] = [p for p in result["pips"] if p["status"] != "disabled"]
+        for value in result.values():
+            compact_report(value)
+    elif isinstance(result, list):
+        for value in result:
+            compact_report(value)
+    return result
+
+
+def evaluate_data(expression, logic, values, stack=()):
+    """Evaluate configured combinational data; registers and pads are variables."""
+    if "unknown" in expression:
+        raise ValueError(expression["unknown"])
+    if "constant" in expression:
+        value = bool(expression["constant"])
+    elif "source" in expression:
+        source = expression["source"]
+        if source in values:
+            value = bool(values[source])
+        else:
+            if source in stack:
+                raise ValueError("combinational cycle: " + source)
+            node = logic.get(source, {})
+            if node.get("kind") != "combinational":
+                raise ValueError("unassigned or unresolved source: " + source)
+            value = evaluate_data(node["data"], logic, values, stack + (source,))
+    elif expression.get("op") == "mux":
+        select = evaluate_data(expression["select"], logic, values, stack)
+        value = evaluate_data(expression["one" if select else "zero"], logic, values, stack)
+    elif expression.get("op") == "lut4":
+        address = sum(int(evaluate_data(pin, logic, values, stack)) << int(index)
+                      for index, pin in expression["inputs"].items())
+        value = bool(expression["init"] & (1 << address))
+    else:
+        raise ValueError("unmodeled combinational expression")
+    return value ^ expression.get("inv", False)
+
+
+def data_support(expression, logic, stack=()):
+    if "unknown" in expression:
+        raise ValueError(expression["unknown"])
+    if "source" in expression:
+        source = expression["source"]
+        if source in stack:
+            raise ValueError("combinational cycle: " + source)
+        node = logic.get(source)
+        if node is None:
+            raise ValueError("missing logic node: " + source)
+        if node["kind"] in ("register", "pad_input"):
+            return {source}
+        if node["kind"] == "combinational":
+            return data_support(node["data"], logic, stack + (source,))
+        raise ValueError("architecture boundary: " + source)
+    if "constant" in expression:
+        return set()
+    if expression.get("op") == "mux":
+        parts = [expression[n] for n in ("select", "zero", "one")]
+    elif expression.get("op") == "lut4":
+        parts = expression["inputs"].values()
+    else:
+        raise ValueError("unmodeled combinational expression")
+    return set().union(*(data_support(part, logic, stack) for part in parts))
+
+
+def state_table(report, signal, max_inputs=10, local=False):
+    """Exhaustive D-path table, before CE/SR/clock; no protocol labels assumed."""
+    node = report["logic"][signal]
+    result = {"signal": signal, "controls": node.get("controls", {}),
+              "mode": node.get("mode", {}), "semantics": "D-path only; apply CE, SR and clock separately"}
+    try:
+        if "data" not in node:
+            raise ValueError("signal has no modeled D path")
+        if local:
+            inputs = set()
+            pending = [node["data"]]
+            while pending:
+                value = pending.pop()
+                if isinstance(value, dict):
+                    if "unknown" in value:
+                        raise ValueError(value["unknown"])
+                    if "source" in value:
+                        inputs.add(value["source"])
+                    pending.extend(value.values())
+            inputs = sorted(inputs)
+            result["semantics"] += "; immediate sources treated as symbolic variables, including combinational outputs"
+        else:
+            inputs = sorted(data_support(node["data"], report["logic"]))
+        result["inputs"] = inputs
+        if len(inputs) > max_inputs:
+            raise ValueError(f"truth table needs {len(inputs)} inputs; limit is {max_inputs}")
+        result["rows"] = [{"address": address, "d": int(evaluate_data(node["data"], report["logic"],
+                           {name: bool(address & (1 << i)) for i, name in enumerate(inputs)}))}
+                          for address in range(1 << len(inputs))]
+        result["status"] = "verified_combinational_table"
+    except ValueError as exc:
+        result.update(status="unknown", reason=str(exc))
+    return result
 
 
 # Board correlation already documented from private schematic and BOND87.

@@ -5,13 +5,14 @@
 observations only. **Do not publish firmware/bitstream image bytes,
 vendor binaries, schematics or license data.**
 
-**Current milestone:** The installed PCI update image is decoded to
-XC2S200E configuration frames and the `INTA#` output-enable cone has
-been traced through configured routing to a concrete **SLICE[1] G LUT
-at CLB X11/Y8**. All four LUT inputs have been traced to specific CLB
-logic sources; one input is a registered state bit at **X7/Y10**, and
-that state flip-flop is now independently proven to run from the
-**PCI CLK input on U3 pin 185 / GCLKPAD3 / GCLK3**.
+**Current milestone:** The pinned native routing adapter builds and runs.
+All seven unresolved X2,Y14 F5/SR inputs now resolve to configured drivers,
+including physical FRAME#, IRDY# and RST#_BUF. The PCI-clocked Q/P
+transition relations, FRAME output/OE shadow registers, delayed IRDY OE,
+REQ output and grant-qualified start logic are reconstructed below in
+[Verified PCI Control Register Network](#verified-pci-control-register-network).
+The INTA# output-enable cone and its PCI-clocked X7/Y10 state remain
+independently established. No complete DMA-quiescence predicate is proven.
 
 **Important:** The update image is not proof of the currently
 running firmware revision, and an IRQ does not establish DMA bus idle.
@@ -1489,10 +1490,10 @@ and DMA API completion/ordering. Neither `REQ#` deassertion nor a final
 `FRAME#` deassertion alone supplies this proof. No visible indication
 currently binds all four conditions.
 
-**Unknown / necessary next decoding:** Trace the configured G1..G4
-input muxes and active upstream routes for the three named PCILOGIC
-source LUTs, then correlate their final registers/IOBs with physical
-`REQ#`, `GNT#`, `FRAME#`, `IRDY#`, `TRDY#`, and `STOP#`.
+**Current decoding boundary:** The relevant PCILOGIC source-LUT routes
+and reachable PCI control registers are resolved in the current
+register-network section below. Complete dedicated carry/TBUS semantics
+and the transaction/producer/drain contract still require verification.
 Decode the `REQ#`/`FRAME#`/`IRDY#` FFT data, CE, set/reset and
 TCE cones, including the PCI-clocked state-transition logic, and test
 whether an acknowledged idle state really implies no in-flight write.
@@ -1529,14 +1530,11 @@ I1, three influence I2, and two influence I3. These equations are
 exact for the published vectors with the explicit address-bit
 convention above.
 
-**Unknown:** Which physical `G1..G4` pins correspond to these abstract
-address bits, whether the bitstream's serialized LUT field requires
-additional permutation/inversion, the polarity of the PCILOGIC inputs,
-and the active upstream input-net sources. Accordingly, **do not** label
-these abstract variables as PCI handshake signals yet or use any of
-these reductions as a DMA-idle predicate. The exact architectural
-input-bit mapping and four upstream configured routes per source LUT
-remain the next verification tasks.
+The direct G1..G4 address-bit ordering, effective PCILOGIC input
+polarity and truth-table-relevant upstream drivers are verified below.
+Do not treat abstract LUT variables as physical PCI handshake pins
+without that routing evidence, or use these reductions as a DMA-idle
+predicate.
 
 ### Seven selected PCILOGIC source-LUT inputs (offline decode, 2026-10-09)
 
@@ -1550,9 +1548,9 @@ Using pinned Project Combine commit `234343d23e737e57f2727630e19008b509d7d522`, 
 
 **Verified:** These twelve decoded selections each match Project Combine's enumerated mux settings. Only seven physical LUT inputs are relevant to the recovered truth tables: two for I1, three for I2, two for I3.
 
-**Inferred:** Under the standard direct G1..G4 LUT address-bit ordering the reduced functions are I1 = `G3 | !G4`, I2 = `G1 | G3 | G4`, I3 = `G1 | !G3`. Independently validating the old-family LUT pin ordering and PCILOGIC input polarity is still required.
+**Verified:** Direct G1..G4 LUT address-bit ordering and effective noninverted PCILOGIC inputs give I1 = `G3 | !G4`, I2 = `G1 | G3 | G4`, I3 = `G1 | !G3`. Native configured routing confirms the seven drivers in the current register-network section below.
 
-**Unknown:** The configured upstream drivers of these seven selected SINGLE routing wires, their ties to PCI control pins/registered state, and the PCI transaction completion/write-drain predicate. This establishes no safe DMA unmap criterion. The x64 `UnknownActive` quarantine remains mandatory.
+**Unknown:** PCI transaction completion/write-drain semantics. The resolved input routes do not establish a safe DMA unmap criterion. The x64 `UnknownActive` quarantine remains mandatory.
 
 ### Immediate CLB-local programmable connections for seven PCILOGIC inputs (2026-10-09)
 
@@ -1578,13 +1576,11 @@ local `pass` and `bipass` configuration annotations. They are not
 a complete source-tree resolution, and a disabled local pass does
 not mean that the corresponding routing net is undriven.
 
-**Unknown:** The apparent dual selected annotations for `I2.G4`
-must be resolved against Project Combine's pip semantics and physical
-routing-tree/connector representation before assigning an effective
-single electrical producer. Likewise, even the selected `OMUX[0]`
-source of `I1.G3` has not yet been traced to a specific F/G LUT,
-registered output or relevant PCI signal. This is **not** a reconstructed
-PCI arbitration/transaction-state machine and provides no DMA idle proof.
+**Verified resolution:** Native canonical wire-tree traversal resolves
+`I2.G4` to the single producer X2,Y21 SLICE[1].XQ and `I1.G3`
+to X2,Y14 SLICE[0].XQ. Multiple selected routing annotations are not
+necessarily multiple electrical producers. The register-network section
+below supplies the remaining upstream identities; none proves DMA idle.
 
 **Driver consequence:** Keep `UnknownActive` quarantine unchanged.
 
@@ -1670,7 +1666,7 @@ path for the XQ state feeding PCILOGIC I1.G3:
 |---|---|---|
 | `SLICE[0].DXMUX` (`MAIN[46][16]`) | `0` | **X**, not BX |
 | `SLICE[0].FXMUX` (`MAIN[29][15],MAIN[31][16]`) | `10` | **F5** |
-| `SLICE[0].FF_SR_SYNC` | `0` | control-bit observation; reset behavior not yet established |
+| `SLICE[0].FF_SR_SYNC` | `0` | asynchronous SR; effective reset detailed below |
 | `SLICE[0].FF_LATCH` | `0` | control-bit observation |
 | `IMUX_CLB_BX[0]` | `001000` | `SINGLE_S_BUF[9]` (not selected by DXMUX) |
 | `IMUX_CLB_F1[0]` | `100000001` | `SINGLE_E_BUF[14]` |
@@ -1679,14 +1675,13 @@ path for the XQ state feeding PCILOGIC I1.G3:
 
 **Verified selection chain:** `XQ` receives registered X-path
 data rather than the separate BX input; the configured X-path mux
-selects F5. It is **not** yet proven how the F5 combinational
-function is formed from SLICE[0]/SLICE[1] F-LUT results, which inputs
-are live through other architecture muxes, or how the selected SR
-signal alters transitions. The XQ register is PCI-clock-muxed and
-its CE source selects PULLUP as documented above, but this does
-not identify a PCI busmaster phase or prove write drain.
+selects F5. Its same-slice F/G inputs, physical FRAME# select,
+PCI clock and inverted RST#_BUF asynchronous preset are resolved in
+the current register-network section below. CE selects PULLUP; neither
+this enable nor the decoded D equation identifies a busmaster phase
+or proves write drain.
 
-**Unknown:** F5 logic cone, full state transitions, and upstream
+**Unknown:** Full reachable-machine semantics and upstream
 transaction termination/posted-write conditions. No DMA unmap
 predicate is established. Keep `UnknownActive`.
 
@@ -1707,7 +1702,7 @@ previously identified XQ register at `X2,Y14 SLICE[0]`.
 | SLICE[0].F1 | `100000001` | `SINGLE_E_BUF[14]` |
 | SLICE[0].F2 | `110000100` | `SINGLE_E_BUF[6]` |
 | SLICE[0].F3 / F4 | `000000000` | Off / off |
-| SLICE[0].FF_SR_ENABLE | `1` | SR logic enabled, polarity/source behavior not yet traced |
+| SLICE[0].FF_SR_ENABLE | `1` | SR enabled; inverted RST#_BUF preset, resolved below |
 | SLICE[0].FFX_INIT | `1` | Configured initial value bit; operational initialization still contextual |
 
 **Verified configuration:** The relevant XQ input is selected as
@@ -1771,8 +1766,8 @@ These local checks do not exhaust neighboring-tile connectivity.
 same slice's G-LUT, which participates in the selected F5 XQ D path.
 **Inferred:** This is a plausible sequential-state feedback cone,
 not a decoded PCI arbitration state or a proven hold/advance equation.
-**Unknown:** The independent inputs, SR effects, and the conditions under which
-this feedback actually determines XQ. No DMA bus-idle criterion follows;
+The independent inputs, SR effects and local transition conditions are
+now resolved below. No DMA bus-idle criterion follows;
 retain `UnknownActive`.
 
 
@@ -1809,9 +1804,8 @@ The physical LUT ordering established below maps `G2` to abstract
 flip-flop next-state equation: `F5` also selects the F-LUT versus
 G-LUT using BX, and the flip-flop reset/set behavior still applies.
 
-**Unknown:** The upstream drivers for G1/G3/G4, BX, F1/F2,
-set/reset transitions,
-and any relationship to a PCI transaction-ending or all-writes-drained
+The upstream drivers and configured preset are now resolved below.
+**Unknown:** Any relationship to a PCI transaction-ending or all-writes-drained
 acknowledgement. No DMA bus-idle or safe unmap predicate is
 demonstrated; preserve `UnknownActive`.
 
@@ -1863,9 +1857,9 @@ G_when_Q1 = g2
 ```
 
 **Verified:** The MUXF5 structural connections, algebraic truth
-tables, pin ordering and disabled BX inversion. **Unknown:** Complete
-g/f input signal provenance, flip-flop reset operation,
-PCI ownership/termination state, DMA FIFO and outstanding-write drain.
+tables, pin ordering and disabled BX inversion. Input provenance and
+configured preset are resolved below. **Unknown:** Complete PCI
+ownership/termination state, DMA FIFO and outstanding-write drain.
 No DMA-bus-idle or abort acknowledgement is proven.
 Do not change the x64 UnknownActive quarantine.
 
@@ -1897,8 +1891,8 @@ cofactors, the configured feedback to G2, and F5 input wiring.
 The cofactor relation is valid for the configured G branch
 without speculative PCI signal naming.
 
-**Unknown:** The upstream sources/meaning of G1/G3/G4/F1/F2/BX, and the
-SR and clock polarity details. The feedback alone does not
+Upstream sources and effective SR/clock polarity are now resolved below.
+**Unknown:** Complete protocol-state meaning. The feedback alone does not
 identify arbitration ownership, transaction completion or an
 absence of outstanding posted writes; therefore no DMA-unmap
 criterion exists and UnknownActive must remain in effect.
@@ -2013,39 +2007,54 @@ traversed. Missing or multiple encodings remain Unknown. Unsupported
 bit rectangles or frames outside the decoded first FDRI block remain
 Unknown rather than being treated as zero.
 
-**Verified:** Fourteen synthetic Python tests pass, covering enabled and
+**Verified:** Twenty-two synthetic Python tests pass, covering enabled and
 disabled selections, bit polarity, absent/duplicate encodings, unavailable
 frames, reconvergent paths, distinct-driver/polarity ambiguity, cycles, bounded
-traversal, a 1102-node chain, LUT support and register feedback. The
+traversal, a 1102-node chain, LUT support, register feedback, symbolic
+D-path tables, combinational cycles, source correlation, compact evidence,
+disabled-pad driver exclusion and clean/pinned Git checkout guards. The
 PowerShell test distinguishes these from private-image validation and
 reports skipped private/native checks explicitly. The Python fallback
 through `py -3` now executes the same complete test sequence.
 
-**Verified:** Private-image calibration passes the existing five LUTs,
-BX inversion and eleven XQ controls, plus nine independent PCILOGIC,
+**Verified:** Private-image calibration passes the existing five LUTs
+and eleven XQ controls (including BX inversion), plus nine independent PCILOGIC,
 IOB and routing-control checks. These include `I1/I2/I3` fields
 `1010000/1000001/0001`, REQ IOI[2] `MUX_O/MUX_T=1/1`, GNT
 IOI[2] `MUX_O/MUX_T=0/0`, enabled X2,Y14 `OMUX[0] -> SINGLE_S[1]`
 and disabled X0,Y11 `SINGLE_E[19] -> HEX_V3[3]`. These reproduce
 established observations; they do not establish additional paths.
 
-**Unknown / execution dependency:** The native Rust adapter has not
-been compiled or executed in this analysis batch. `cargo build --offline`
-fails because the public dependency `bimap` is absent from the local
-Cargo cache; further missing dependencies may follow. Automatic approval
-review rejected a network-enabled Cargo build under the offline-only
-constraint. Therefore native database calibration, upstream XQ tracing,
-the generated register network and new PCI transition findings are
-**not verified**. Rust formatting/syntax acceptance is not a type-check
-or an integration test. The tooling is experimental analysis code.
+**Verified build:** A real, clean Git checkout at exactly
+`234343d23e737e57f2727630e19008b509d7d522` was used, not an archive.
+The explicitly authorized `--allow-dependency-download` Cargo invocation
+downloaded public crates only, including `bimap 0.6.3`. Rust/Cargo 1.89
+then exposed two upstream `tablegen` compatibility errors. The Python
+builder copies `public/` into its temporary build directory and applies
+two exact, occurrence-checked substitutions there:
 
-Once the public dependencies are available locally, build and run:
+- `emit.rs`: wrap `Punct::new(';', Spacing::Alone)` in `TokenTree::Punct`
+  before extending `TokenStream`.
+- `eval.rs`: replace unstable `strict_add_signed` with
+  `checked_add_signed(...).expect("template index overflow")`.
+
+Neither changes device definitions, routing, serialization or bit geometry.
+The original pinned checkout remains clean; no persistent Git safe-directory
+exception was installed. The generated public `tools/fpga/Cargo.lock`
+pins dependencies; subsequent builds pass with `--locked --offline`.
+The native adapter compiles and executes successfully. Native calibration
+passes 25 checks: the previous 16 feature/polarity checks plus nine
+upstream source regressions (F1/F2/G1/G2/G3/G4/BX/SR/CLK).
+
+Build and run (downloads require separate explicit authorization):
 
 ```powershell
 python -B tools/fpga/virtexe_xc2s200e_decode.py --project-combine $env:WR6K_PRJCOMBINE --build-adapter --cargo-offline
 # Set WR6K_ROUTING_ADAPTER to the printed executable path.
 python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --trace '2,14,IMUX_CLB_F1[0]'
-python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --analyze-pci --output private_evidence/pci-control-cones.json
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --validate-architecture
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --analyze-pci --max-logic 1200 --compact --output $env:TEMP/pci-control-cones.json
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --register-table '2,14,SLICE[0].XQ' --local-table --max-logic 1200 --compact --output $env:TEMP/x2y14-state-table.json
 ```
 
 Every routing invocation first validates the existing frame calibration
@@ -2059,8 +2068,185 @@ semantics unresolved. It emits configuration relations, not presumed
 PCI protocol state names or host ordering guarantees. Full generated
 reports can expose proprietary logic and must remain private.
 
-**Inferred:** No new protocol inference is warranted before native
-execution and review of those paths.
+The native API's `wire_pips_bwd` expands MultiRoot trees but not Regional
+trees. The adapter explicitly visits every member of Regional trees;
+otherwise GCLK_LEAF paths falsely stop at their canonical root. The
+clock-source regression covers this fix. Disabled `IBUF_MODE=NONE` pad
+terminals are excluded with their bit evidence retained. This resolves
+the apparent DLL.LOCKED/pad double producer at X27,Y27 G3[0] to the
+enabled north-east DLL; the unused X23,Y29 IOI[2] input is disabled.
+
+### Verified PCI Control Register Network
+
+All results below derive from offline BINARY/205, the compiled adapter,
+and the private PCI schematic/package correlation. Generated full routing,
+register and truth-table reports remain local. Source identities are
+verified configuration facts, not names recovered from vendor RTL.
+`!`, `&`, `|`, and `?:` denote Boolean operations; PCI signal variables
+are physical pin levels, not active-high assertions of the # signals.
+
+#### Seven F5/SR Input Drivers
+
+All seven routes at X2,Y14 SLICE[0] resolve to one enabled producer,
+without unknown PIPs or traversal limits. Route inversion is false for
+each; effective SR includes its separate BEL inversion.
+
+| Input | Actual configured driver | Correlation |
+|---|---|---|
+| F1 | X2,Y14 SLICE[0].XQ | Q feedback, via local OMUX[4] |
+| F2 | X3,Y16 SLICE[1].X | A, combinational F LUT |
+| G1 | X2,Y15 SLICE[0].XQ | P, adjacent state register |
+| G3 | X3,Y16 SLICE[1].X | Same A as F2, not an independent input |
+| G4 | X0,Y15 IOI[3].I | P24, IRDY# |
+| BX | X0,Y13 IOI[2].I | P29, FRAME#; effective inversion false |
+| SR | X12,Y29 IOI[1].I | P198, RST#_BUF; effective inversion true |
+
+G2 independently resolves to Q. G4 follows SINGLE_N[10] to the west
+IOB output tap; BX follows SINGLE_S_BUF[9] to the FRAME# input tap.
+The longer SR path crosses HEX_V/LV/LH trees to the north IOB_N12_1.
+BOND87 maps this IOB to P198; the private schematic independently
+connects P198 to RST#_BUF. CLK resolves through the Regional GCLK tree
+to X24,Y29 BUFGCE[1].O. Its CE is constant 1 and I is
+GCLK_IOB[1].I, the previously established PCI CLK / P185 source.
+
+Let Q = X2,Y14 SLICE[0].XQ, P = X2,Y15 SLICE[0].XQ,
+A = X3,Y16 SLICE[1].X, f = FRAME#, and i = IRDY#.
+Q has CE=1, noninverted PCI clock, FF_LATCH=0, FF_REV_ENABLE=0,
+FF_SR_ENABLE=1, FF_SR_SYNC=0 and FFX_INIT=1. The pinned
+`re/xilinx/v2xdl-verify/src/clb_lut4.rs::make_ffs` maps these settings
+to asynchronous preset to 1 when effective SR=`!RST#_BUF` is active.
+This is a configured reset behavior, not a demonstrated software reset
+command or a guarantee that reset drains PCI writes.
+
+The local D equation exhaustively matches all 32 assignments:
+
+| Current condition, with SR inactive | D_Q |
+|---|---|
+| Q=1 | A |
+| Q=0, f=1 | 1 |
+| Q=0, f=0, A=0 | `!P & !i` |
+| Q=0, f=0, A=1 | `!P | !i` |
+
+Thus F=`A | !Q`; G at Q=0 is `majority(A,!P,!i)`, and G at
+Q=1 is A. The F5 select is physical FRAME#. This replaces the
+previous unconstrained F/G-variable relation with a PCI-correlated
+next-state relation, but does not justify naming Q "idle".
+
+#### Reachable State and Output Relations
+
+P uses F5, F=0x0A3A, G=0x70FF, select i; its clock, CE, reset and
+initial value equal Q's. Let U=X2,Y19 SLICE[1].X,
+V=X2,Y19 SLICE[0].Y and W=X2,Y19 SLICE[1].Y. All 128 local
+assignments verify:
+
+```text
+D_P = i ? (P ? (!U & !V) : f) : (!W | (f & !(Q & P)))
+A   = (!C & !D) | (K & !P)
+```
+
+Here C=X3,Y18 SLICE[0].Y, D=X3,Y17 SLICE[0].Y,
+K=X2,Y17 SLICE[0].XQ. A's F LUT is 0x222F (16/16 assignments
+checked). K is another CE=1, reset-to-1 PCI register: its F5 selects
+FRAME# between F=0x01FF and G=0x001D. C/D and U/V/W are resolved
+combinational nets, not constants or unexplained independent state bits.
+
+The seven relevant PCILOGIC source-LUT inputs also now resolve:
+
+| Source-LUT pin | Driver |
+|---|---|
+| I1.G3 / I1.G4 | Q / X5,Y15 SLICE[0].YQ |
+| I2.G1 / I2.G3 / I2.G4 | X3,Y13 SLICE[1].Y / X4,Y9 SLICE[1].XQ / X2,Y21 SLICE[1].XQ |
+| I3.G1 / I3.G3 | X2,Y15 SLICE[1].XQ / X5,Y5 SLICE[0].YQ |
+
+The native reconstruction establishes these output-state relations:
+
+| Register | Configured data and enable | Interpretation |
+|---|---|---|
+| B = X2,Y13 SLICE[0].XQ | Same X-path F5 data, CE, clock, SR and INIT=1 as FRAME#.FFO | FRAME output-data shadow |
+| T = X3,Y13 SLICE[0].XQ | Same X-path F5 data, CE, clock, SR and INIT=1 as FRAME#.FFT | FRAME tristate shadow |
+| IRDY#.FFT | D=T, TCE=1, PCI clock, INIT=1, asynchronous preset | One-cycle delayed T, outside reset |
+| REQ#.FFO | D=X2,Y18 SLICE[0].X, OCE=1, PCI clock, INIT=1, asynchronous preset | Registered active-low request data |
+| REQ#.FFT | D=0, TCE=1, PCI clock, INIT=1, asynchronous preset | High impedance at reset, enabled after a clock |
+
+The shadow equalities follow from matching effective D/CE/CLK/SR and
+initialization, not merely proximity. B selects STOP# between F=0x0151
+and G=0xC4F5; TRDY# and GNT# occur in its live D inputs. T selects
+X5,Y10 SLICE[0].Y between F=0xCEEE and G=0x7F55; its D inputs
+include B, TRDY# and STOP#. Neither shadow is a decoded all-writes-drained
+bit. The raw PULLUP source of REQ#.T is inverted at the BEL, so its
+effective D is **0**, not 1.
+
+Let S=X4,Y9 SLICE[1].XQ, M=X5,Y3 SLICE[0].YQ,
+N=X5,Y10 SLICE[1].YQ, and g=GNT#. S has CE=1, the same PCI
+clock/reset and INIT=0. Its F=0x2000 and companion G=0x00A0 give:
+
+```text
+D_S  = f & !g & i & M & N & !S
+CE_T = !T | (S & M)             # X3,Y12 SLICE[0].F = 0x88FF
+```
+
+This is a grant-qualified pulse with feedback, not an unqualified
+grant sampler: S=1 forces the next D_S to 0. The T update enable is
+unconditional while T=0 and requires S&M while T=1. It is therefore
+connected to bus-output acquisition/retention, not established as DMA
+completion. The F and CE relations were exhaustively checked (16 and
+8 assignments); companion G gives `M & N & !S` directly.
+
+For REQ data, let R=X2,Y12 SLICE[1].YQ,
+Rd=X2,Y16 SLICE[1].YQ and H=X2,Y18 SLICE[1].YQ. R/Rd/H
+all have CE=1, the same PCI clock/reset and INIT=0. Rd.D=R is a
+one-cycle delay. With E=X2,Y18 SLICE[0].Y, the F=0xFFAB and
+G=0xEE00 output cone reduces to:
+
+```text
+D_REQ_FFO = R | Rd | (!H & !E)
+E         = N & (M | X4,Y20 SLICE[1].YQ)
+```
+
+These match 16/16 and 8/8 local assignments. The active-low REQ
+assertion condition is the complement of D_REQ_FFO after its clock;
+it is not a present-cycle assertion, and REQ deassertion alone is not
+a transaction/FIFO-empty acknowledgement.
+
+#### Actual Verification Boundary
+
+The expanded run contains **866 logic nodes and 2704 resolved routes**,
+with no route/logic limits or unknown routing encodings. It reaches 454
+register nodes, but this is not a claim of a completely decoded FSM:
+63 data paths stop at FXOR/GXOR, five at XB/YB, and hard blocks include
+dedicated TBUS structures, DLL and PCILOGIC semantics. REQ's disabled
+input is correctly a boundary, not read-back of the output.
+
+Concrete dependencies blocking a closed, independently verified machine:
+
+- Q -> A -> K -> X6,Y16 SLICE[0].Y -> X6,Y14 SLICE[0].Y
+  -> X8,Y27 SLICE[1].YB, configured YBMUX=GCY and CYINIT=CIN.
+- REQ#.FFO -> X2,Y18 SLICE[0].X -> E -> N -> X4,Y2 TBUS.OUT;
+  JOINER_E=1 does not identify the runtime-enabled TBUF driver.
+- B -> S -> X4,Y9 SLICE[1].Y -> N reaches the same TBUS dependency.
+
+Pinned `public/virtex/src/defs.rs` omits typed CIN/COUT and TBUS
+driver inputs: the generic routing API cannot resolve those connections.
+Public `re/xilinx/rdverify/virtex/src/lib.rs::verify_slice` supplies the
+dedicated carry relation to the same slice in the preceding row;
+`verify_tbus`/`verify_tbus_we` supply rotated bus lanes and BRAM-column
+skips. These are available architecture evidence, **not** proof that
+all lanes/drivers are enabled by this firmware. A next extension must
+decode OUT_A/OUT_B/JOINER controls, model TBUF enable-dependent driving
+and contention/high impedance, implement carry/XOR semantics, and
+independently calibrate those dedicated paths. Do not substitute a
+neighbor-name heuristic, choose a convenient bus driver, or interpret a
+truth-table input limit as a hardware boundary. Q/P expanded combinational
+support has 31/32 state/pad inputs; exhaustive tables deliberately use
+the documented local symbolic cuts instead of enumerating billions of rows.
+
+**Inferred:** The named shadows and grant-qualified enable are concrete
+PCI transaction-control state candidates. The whole reachable machine's
+protocol labeling and any software-visible stop/drain acknowledgement
+remain unproved. Static update-image analysis also cannot establish the
+running revision, runtime FIFO contents, or host-bridge posted-write
+retirement. Those need independent observations/contracts; no hardware
+writes or speculative runtime tests were performed.
 
 **Unknown:** All six DMA release proof obligations remain unmet:
 producer stopped, descriptor consumption blocked, new master starts

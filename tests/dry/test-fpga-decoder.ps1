@@ -41,8 +41,8 @@ if ($env:WR6K_FPGA_BINARY_205) {
         exit $LASTEXITCODE
     }
     if ($env:WR6K_PRJCOMBINE -and $env:WR6K_ROUTING_ADAPTER) {
-        Write-Host 'Private firmware native architecture calibration and XQ source trace'
-        & $python @pythonArgs $decoder $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --trace '2,14,IMUX_CLB_F1[0]'
+        Write-Host 'Private firmware native architecture calibration and F5/clock upstream routes'
+        & $python @pythonArgs $decoder $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --validate-architecture
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-Host 'SKIP native architecture calibration: set WR6K_PRJCOMBINE and WR6K_ROUTING_ADAPTER'
