@@ -1757,3 +1757,42 @@ not identify a PCI busmaster phase or prove write drain.
 **Unknown:** F5 logic cone, full state transitions, and upstream
 transaction termination/posted-write conditions. No DMA unmap
 predicate is established. Keep `UnknownActive`.
+
+
+### X2,Y14 XQ F5 mux: same-slice F/G sources and BX select (2026-10-09)
+
+A further independent bit-exact read of the corrected 540-bit frame
+decode resolves the remaining local *F5 source selection* for the
+previously identified XQ register at `X2,Y14 SLICE[0]`.
+
+| Configured item | Recovered value | Meaning / limit |
+|---|---|---|
+| SLICE[0].F LUT | `0xDDDD` | Truth-table function `b1 OR NOT b0` |
+| SLICE[0].G LUT | `0xD0F1` | Full 16-entry truth table recovered; no PCI net labels yet |
+| SLICE[0].FXMUX | `10` | `F5` |
+| SLICE[0].DXMUX | `0` | `X` (not direct `BX`) |
+| SLICE[0].BX input | `001000` | `SINGLE_S_BUF[9]` |
+| SLICE[0].F1 | `100000001` | `SINGLE_E_BUF[14]` |
+| SLICE[0].F2 | `110000100` | `SINGLE_E_BUF[6]` |
+| SLICE[0].F3 / F4 | `000000000` | Off / off |
+| SLICE[0].FF_SR_ENABLE | `1` | SR logic enabled, polarity/source behavior not yet traced |
+| SLICE[0].FFX_INIT | `1` | Configured initial value bit; operational initialization still contextual |
+
+**Verified configuration:** The relevant XQ input is selected as
+`FXMUX=F5 -> X -> DXMUX -> XQ`. Pinned Project Combine's
+Virtex-family `gen_muxf5` reference in
+`re/xilinx/v2xdl-verify/src/clb_lut4.rs` connects MUXF5
+`I1` to the **same slice's F LUT**, `I0` to the **same slice's
+G LUT**, and `S` to `BX`. Thus the F5 path combines
+`SLICE[0].F`, `SLICE[0].G`, and selected
+`SLICE[0].BX = SINGLE_S_BUF[9]`; the independently recovered
+`SLICE[1].F = 0x0300` is **not** automatically a source for this F5.
+
+**Important interpretation boundary:** The two LUT functions are
+indexed with abstract truth-table address bits; physical F/G
+pin ordering and any inversion at the BX connection need independent
+cross-checking before asserting an exact logic-level state transition.
+Tracing the three selected F1/F2/BX lines and all genuinely relevant G
+pins remains necessary. No physical PCI busmaster/posted-write
+termination or DMA quiescence proof follows, and `UnknownActive`
+must remain in force.
