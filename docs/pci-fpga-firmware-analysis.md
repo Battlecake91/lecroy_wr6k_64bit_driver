@@ -1843,3 +1843,45 @@ not a decoded PCI arbitration state or a proven hold/advance equation.
 the independent inputs, SR effects, and the conditions under which
 this feedback actually determines XQ. No DMA bus-idle criterion follows;
 retain `UnknownActive`.
+
+
+### Algebraic cofactors of the XQ-feedback G-LUT (2026-10-09)
+
+The already recovered `X2,Y14 SLICE[0].G` truth table is
+`0xD0F1`. An offline exhaustive enumeration of all sixteen
+entries, independently simplified to sum-of-products, gives
+the following exact expression using **abstract LUT address bits**
+`b0..b3` (the rightmost printed truth-table bit is entry 0):
+
+```text
+G = (b1 & b2) | (b2 & !b0) | (b2 & !b3) |
+    (!b0 & !b1 & !b3)
+```
+
+Cofactoring on `b1` gives:
+
+```text
+G(b1=0) = (b2 & !b0) | (b2 & !b3) | (!b0 & !b3)
+G(b1=1) = b2
+```
+
+**Verified mathematics:** The two cofactors are exact consequences of
+the 16-bit INIT vector. The distinct `b1=1` branch is particularly
+simple: it passes `b2`. No external physical signal is needed to
+verify this truth-table property.
+
+**Inferred, conditional on pin ordering:** The previously verified
+configured routing takes `SLICE[0].XQ` back to `SLICE[0].G2`.
+If Project Combine's physical LUT addressing maps `G2` to abstract
+`b1`, these cofactors describe the combinatorial G branch for
+`Q=0` and `Q=1`, respectively. That alone is **not** the full
+flip-flop next-state equation: `F5` also selects the F-LUT versus
+G-LUT using BX, and the flip-flop reset/set behavior still applies.
+If the physical LUT pin permutation differs, do not equate `b1`
+with the XQ feedback signal.
+
+**Unknown:** The upstream drivers for G1/G3/G4, BX, F1/F2,
+the physical LUT pin-to-address-bit ordering, set/reset transitions,
+and any relationship to a PCI transaction-ending or all-writes-drained
+acknowledgement. No DMA bus-idle or safe unmap predicate is
+demonstrated; preserve `UnknownActive`.
