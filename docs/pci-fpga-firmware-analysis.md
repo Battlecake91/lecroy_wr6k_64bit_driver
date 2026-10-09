@@ -1506,3 +1506,34 @@ there is no justified shortcut from the three LUT INIT strings.
 ownership cannot be resolved. Do not release them on IRQ, `REQ#`,
 `PCI_CE`, or an unverified inferred state. Do not change the production
 driver on the strength of this documentation update.
+
+
+### PCILOGIC source LUT truth-table reduction (2026-10-09)
+
+The three 16-bit G-LUT vectors already recovered from private
+`BINARY/205` can be minimized *without any assumption* about physical
+signal names. Number the sixteen truth-table positions 0..15 with
+position zero the rightmost printed bit. Define abstract truth-table
+address bits `b3 b2 b1 b0` (where `b0` is the least significant
+position-address bit). Exhaustive truth-table reduction gives:
+
+| PCILOGIC input / LUT source | 16-bit vector | Reduced truth-table function |
+|---|---|---|
+| I1 / X2,Y14 SLICE[1] G | `0xF0FF` | `b2 OR NOT b3` |
+| I2 / X2,Y12 SLICE[0] G | `0xFFFA` | `b0 OR b2 OR b3` |
+| I3 / X2,Y3 SLICE[0] G | `0xAFAF` | `b0 OR NOT b2` |
+
+**Verified (as a mathematical consequence of the recorded table
+vectors):** Only two independent truth-table address bits influence
+I1, three influence I2, and two influence I3. These equations are
+exact for the published vectors with the explicit address-bit
+convention above.
+
+**Unknown:** Which physical `G1..G4` pins correspond to these abstract
+address bits, whether the bitstream's serialized LUT field requires
+additional permutation/inversion, the polarity of the PCILOGIC inputs,
+and the active upstream input-net sources. Accordingly, **do not** label
+these abstract variables as PCI handshake signals yet or use any of
+these reductions as a DMA-idle predicate. The exact architectural
+input-bit mapping and four upstream configured routes per source LUT
+remain the next verification tasks.
