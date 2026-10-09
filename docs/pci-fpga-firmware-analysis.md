@@ -1451,3 +1451,58 @@ incoming switchbox / inter-tile paths still require a full
 `wire_tree` and configured-PIP traversal. In particular, do
 not infer a constant value, signal polarity, or DMA safety
 condition from these disabled `SINGLE_E` passes.
+
+
+### PCI busmaster quiescence: evidence-gated handoff (2026-10-09)
+
+This section consolidates the current **safety conclusion** without
+claiming new firmware-derived PIPs or a verified busmaster-state decode.
+The active routes for `PCILOGIC.I1/I2/I3` already terminate at
+`X2,Y14 SLICE[1] G`, `X2,Y12 SLICE[0] G`, and
+`X2,Y3 SLICE[0] G`, respectively (see the active-route table above).
+They are not direct PCI package inputs. The decoded LUT vectors are
+configuration evidence, not identified PCI protocol state predicates.
+
+| Protocol or DMA condition | Evidence status in BINARY/205 | Safe DMA mapping release? |
+|---|---|---|
+| Master requests access (`REQ#`) | Verified: PCI-clocked registered output-enable path; no decoded upstream state cone | **No** |
+| Master has grant (`GNT#`) | Verified: physical pin/IOB mapping; grant-to-master state transition not established | **No** |
+| Transaction is active (`FRAME#`, `IRDY#`, `TRDY#`, `STOP#`) | Verified: mapped PCI pins and registered handshake output paths; no complete handshake FSM | **No** |
+| Transaction terminated or target aborted | **Unknown**: no proven decode of final PCI transfer and retry/disconnect/abort state | **No** |
+| Internal DMA producer/descriptor engine stopped | **Unknown**: no proven complete producer-state-to-empty predicate | **No** |
+| Last PCI write accepted/retired, no outstanding write remains | **Unknown**: neither source-side outstanding-write count nor upstream bridge/posting ordering is proven | **No** |
+| Acquisition completion IRQ or `IIMST` | Not demonstrated to imply all preceding conditions | **No** |
+
+**Verified:** The hard `PCILOGIC.PCI_CE` drives 29 registered AD/CBE
+output clock enables. This demonstrates an active PCI datapath timing
+function, **not** a quiescence/abort acknowledgement. The physical
+`REQ#`, `FRAME#`, `IRDY#`, `TRDY#`, and `STOP#` tristate
+registers are PCI-clocked, but their actual state sequencing and
+release semantics remain unresolved.
+
+**Inferred:** A conclusive idle predicate would need an independently
+validated relationship between (1) stopping the remote/acquisition DMA
+producer and descriptor consumption, (2) absence of further busmaster
+requests/starts, (3) completion of every outstanding PCI transaction,
+including termination/error/retry paths, and (4) appropriate host bridge
+and DMA API completion/ordering. Neither `REQ#` deassertion nor a final
+`FRAME#` deassertion alone supplies this proof. No visible indication
+currently binds all four conditions.
+
+**Unknown / necessary next decoding:** Trace the configured G1..G4
+input muxes and active upstream routes for the three named PCILOGIC
+source LUTs, then correlate their final registers/IOBs with physical
+`REQ#`, `GNT#`, `FRAME#`, `IRDY#`, `TRDY#`, and `STOP#`.
+Decode the `REQ#`/`FRAME#`/`IRDY#` FFT data, CE, set/reset and
+TCE cones, including the PCI-clocked state-transition logic, and test
+whether an acknowledged idle state really implies no in-flight write.
+An installed *update* resource is not proof that this firmware is the
+version executing on the scope. This task needs a complete pinned
+Project Combine architecture graph plus per-bit active-PIP validation;
+there is no justified shortcut from the three LUT INIT strings.
+
+**x64 implementation consequence:** Keep the existing
+`UnknownActive` quarantine and pinned DMA mappings when transfer
+ownership cannot be resolved. Do not release them on IRQ, `REQ#`,
+`PCI_CE`, or an unverified inferred state. Do not change the production
+driver on the strength of this documentation update.
