@@ -1421,3 +1421,33 @@ release predicate.
 
 Evidence: locally decoded private `BINARY/205` (not published) and
 [pinned Project Combine IO_W pass definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt).
+
+
+### Adjacent HEX_V0/HEX_V6 west-edge pass candidates
+
+The same read-only decoder also tested the two additional `IO_W`
+`SINGLE_E` pass locations at each three-row segment endpoint,
+using the Project Combine `HEX_V0/HEX_V3/HEX_V6` wire geometry.
+Together with the six root-local checks above, **all 18 candidate
+west I/O pass bits tested on these three seven-row vertical
+segments are zero**:
+
+| PCILOGIC input | Segment row / west wire | Passes | Raw configuration bits |
+|---|---|---|---|
+| I1 | Y8 `HEX_V6[3]` | `SINGLE_E[18]`, `[21]` | 0, 0 |
+| I1 | Y11 `HEX_V3[3]` | `SINGLE_E[19]`, `[22]` | 0, 0 |
+| I1 | Y14 `HEX_V0[3]` | `SINGLE_E[20]`, `[23]` | 0, 0 |
+| I2 | Y12 `HEX_V6[3]` | `SINGLE_E[18]`, `[21]` | 0, 0 |
+| I2 | Y15 `HEX_V3[3]` | `SINGLE_E[19]`, `[22]` | 0, 0 |
+| I2 | Y18 `HEX_V0[3]` | `SINGLE_E[20]`, `[23]` | 0, 0 |
+| I3 | Y9 `HEX_V6[1]` | `SINGLE_E[6]`, `[9]` | 0, 0 |
+| I3 | Y12 `HEX_V3[1]` | `SINGLE_E[7]`, `[10]` | 0, 0 |
+| I3 | Y15 `HEX_V0[1]` | `SINGLE_E[8]`, `[11]` | 0, 0 |
+
+The tested `IO_W` pass features are not configured active.
+These results are **not** proof that the corresponding PCI inputs
+are unconnected: the seven-row segment assignment and all other
+incoming switchbox / inter-tile paths still require a full
+`wire_tree` and configured-PIP traversal. In particular, do
+not infer a constant value, signal polarity, or DMA safety
+condition from these disabled `SINGLE_E` passes.
