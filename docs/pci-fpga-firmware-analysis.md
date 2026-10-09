@@ -1587,3 +1587,24 @@ registered output or relevant PCI signal. This is **not** a reconstructed
 PCI arbitration/transaction-state machine and provides no DMA idle proof.
 
 **Driver consequence:** Keep `UnknownActive` quarantine unchanged.
+
+### I1 G3 source register: X2,Y14 SLICE[0] XQ (2026-10-09)
+
+The selected I1.G3 upstream local pass from the previous section is
+`OMUX[0] -> SINGLE_S[1]`, at `X2,Y14`.
+A bit-exact decode of the same CLB's
+`mux OMUX[0] @[MAIN[39][17], MAIN[45][17], MAIN[43][17], MAIN[40][17], MAIN[44][17], MAIN[41][17], MAIN[42][17]]`
+gives the configured field **`0011011`**, matching the pinned
+database selection **`OUT_CLB_XQ[0]`**.
+
+**Verified configured routing:**
+`X2,Y14 SLICE[0].XQ -> OMUX[0] -> SINGLE_S[1] -> SINGLE_S_BUF[1] -> X2,Y14 SLICE[1].G3`.
+This is the first recovered *registered logic source* in one of the
+three PCILOGIC source-LUT cones, and is distinct from any physical
+PCI pin. `XQ` denotes the slice X flip-flop path in the architecture.
+
+**Unknown:** The register's D input, CE, clock, synchronous/asynchronous
+set/reset and actual protocol meaning have not yet been traced.
+A configured XQ source alone does not prove its active transition
+sequence, handshake role, or DMA-drain semantics. PCI busmaster
+quiescence is still **not proven**; retain `UnknownActive`.
