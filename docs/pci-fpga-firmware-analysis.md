@@ -1726,3 +1726,34 @@ reset polarity and the origin of `HEX_V5[1]` still require decoding.
 `PULLUP` is an enabled CE source, not DMA-idle acknowledgement.
 Nothing yet proves a complete PCI busmaster stop/abort transaction
 drain or absence of upstream posted writes. Keep `UnknownActive`.
+
+
+### X2,Y14 SLICE[0].XQ D-path selection (2026-10-09)
+
+A further offline bit-exact decode of the same verified CLB frame
+rectangle identifies the upstream X-flipflop D mux and local X-data
+path for the XQ state feeding PCILOGIC I1.G3:
+
+| Attribute/input mux | Configured bits | Decoded selection |
+|---|---|---|
+| `SLICE[0].DXMUX` (`MAIN[46][16]`) | `0` | **X**, not BX |
+| `SLICE[0].FXMUX` (`MAIN[29][15],MAIN[31][16]`) | `10` | **F5** |
+| `SLICE[0].FF_SR_SYNC` | `0` | control-bit observation; reset behavior not yet established |
+| `SLICE[0].FF_LATCH` | `0` | control-bit observation |
+| `IMUX_CLB_BX[0]` | `001000` | `SINGLE_S_BUF[9]` (not selected by DXMUX) |
+| `IMUX_CLB_F1[0]` | `100000001` | `SINGLE_E_BUF[14]` |
+| `IMUX_CLB_F2[0]` | `110000100` | `SINGLE_E_BUF[6]` |
+| `IMUX_CLB_F3[0]`, `F4[0]` | `000000000` each | off |
+
+**Verified selection chain:** `XQ` receives registered X-path
+data rather than the separate BX input; the configured X-path mux
+selects F5. It is **not** yet proven how the F5 combinational
+function is formed from SLICE[0]/SLICE[1] F-LUT results, which inputs
+are live through other architecture muxes, or how the selected SR
+signal alters transitions. The XQ register is PCI-clock-muxed and
+its CE source selects PULLUP as documented above, but this does
+not identify a PCI busmaster phase or prove write drain.
+
+**Unknown:** F5 logic cone, full state transitions, and upstream
+transaction termination/posted-write conditions. No DMA unmap
+predicate is established. Keep `UnknownActive`.
