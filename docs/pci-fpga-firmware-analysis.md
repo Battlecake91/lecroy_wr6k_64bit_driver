@@ -1383,3 +1383,41 @@ It does not establish PCI/DMA idle.
 References:
 - [Pinned Project Combine connector definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt)
 - [Pinned wire resolver](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/public/interconnect/src/grid.rs)
+
+
+### Local west-edge pass candidates at the three PCILOGIC input roots
+
+A bit-exact recheck of private `BINARY/205` using the pinned Project
+Combine `IO_W` feature definitions tested both programmable
+`SINGLE_E` pass connections on each resolved `HEX_V3` root.
+The reader was independently controlled against **all three** known
+`PCI_W_VE` mux selections at `X0,Y13`:
+`I1=1010000`, `I2=1000001`, `I3=0001`.
+The mux encoding uses the listed bit order, most significant first,
+with west main frames starting at slot 2186.
+
+| Input / resolved root | Candidate IO_W pass | Feature bit | Observed raw bit |
+|---|---|---|---|
+| I1 / X0,Y11 `HEX_V3[3]` | `SINGLE_E[19]` | `MAIN[9][8]` | 0 |
+| I1 / X0,Y11 `HEX_V3[3]` | `SINGLE_E[22]` | `MAIN[1][8]` | 0 |
+| I2 / X0,Y15 `HEX_V3[3]` | `SINGLE_E[19]` | `MAIN[9][8]` | 0 |
+| I2 / X0,Y15 `HEX_V3[3]` | `SINGLE_E[22]` | `MAIN[1][8]` | 0 |
+| I3 / X0,Y12 `HEX_V3[1]` | `SINGLE_E[7]` | `MAIN[33][8]` | 0 |
+| I3 / X0,Y12 `HEX_V3[1]` | `SINGLE_E[10]` | `MAIN[25][8]` | 0 |
+
+**Verified configuration result:** None of these six west-edge
+programmable pass bits is set. Therefore the two direct
+`SINGLE_E` pass connections enumerated for each root are not
+evidence of an active signal driver in this image.
+
+**Not yet established:** These are only the explicitly enumerated
+local `IO_W` passes, **not** a complete enumeration of the root's
+incoming switchbox PIPs or all architecture connectors. Upstream
+`HEX_V3` connectivity, other tile classes, and actual logic/IOB
+drivers require graph traversal. The input signal meanings, active
+board firmware identity, busmaster idle, FIFO-empty and posted-write
+drain are still unknown. Do not use this negative result as a DMA
+release predicate.
+
+Evidence: locally decoded private `BINARY/205` (not published) and
+[pinned Project Combine IO_W pass definitions](https://github.com/prjunnamed/prjcombine/blob/234343d23e737e57f2727630e19008b509d7d522/databases/virtex.txt).
