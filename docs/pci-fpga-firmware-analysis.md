@@ -1676,3 +1676,53 @@ and parse the complete FDRI packet sequence as the reference parser
 does; cross-check several unrelated known IOB and PCILOGIC fields
 and all three G-LUT vectors before continuing driver tracing.
 Keep `UnknownActive` quarantine unchanged.
+
+
+### Resolved FDRI transfer-word off-by-one and verified XQ control sources (2026-10-09)
+
+The earlier independent negative LUT check was caused by a **decoder
+bug**, now identified against pinned Project Combine
+`public/xilinx-bitstream/src/parse.rs` `insert_virtex_frame`.
+For a 540-bit Virtex frame, 17 packed data words are decoded from each
+18-word transfer slot: words 0..15 map descending 32-bit chunks,
+word 16 contributes its high 28 bits to positions 0..27, while the
+additional transfer word 17 is **not** a data word. The packet header
+is at byte offset 68, with the FDRI payload beginning at byte 72.
+
+The earlier independent reader incorrectly mapped low frame bits to
+transfer word 17 and all remaining positions one word too late.
+That error fully explains its failure to reproduce the expected LUT
+vectors and does **not** invalidate the prior source locations.
+Using the corrected word mapping and MAIN frame base 2030 at X2,
+all three source LUTs now match the original vectors exactly:
+
+| Source LUT | Previously established | Independently re-decoded |
+|---|---|---|
+| X2,Y14 SLICE[1].G | `F0FF` | `F0FF` |
+| X2,Y12 SLICE[0].G | `FFFA` | `FFFA` |
+| X2,Y3 SLICE[0].G | `AFAF` | `AFAF` |
+
+The same corrected reader also reproduces **all twelve** earlier
+`IMUX_CLB_G1..G4` selections and the X2,Y14 `OMUX[0]` value
+`0011011 = OUT_CLB_XQ[0]`. Thus the configured register-source
+routing `X2,Y14 SLICE[0].XQ -> OMUX[0] -> SINGLE_S[1] ->
+SLICE[1].G3` is independently replicated rather than merely
+reported. Note that a routed register output is not an established
+PCI transaction-state predicate.
+
+Fresh **verified mux source selections** at X2,Y14:
+
+| CLB control | Configured value | Project Combine mux source |
+|---|---|---|
+| `IMUX_CLB_CLK[0]` | `001000` | `GCLK_LEAF[3]` |
+| `IMUX_CLB_CLK[1]` | `001000` | `GCLK_LEAF[3]` |
+| `IMUX_CLB_CE[0]` | `000000` | `PULLUP` |
+| `IMUX_CLB_SR[0]` | `000010` | `HEX_V5[1]` |
+
+The documented package/BUFG mapping identifies `GCLK_LEAF[3]`
+with PCI CLK. The clock and enable **mux source** are now verified;
+per-slice optional inversion, actual X FF D mux, SR semantics,
+reset polarity and the origin of `HEX_V5[1]` still require decoding.
+`PULLUP` is an enabled CE source, not DMA-idle acknowledgement.
+Nothing yet proves a complete PCI busmaster stop/abort transaction
+drain or absence of upstream posted writes. Keep `UnknownActive`.
