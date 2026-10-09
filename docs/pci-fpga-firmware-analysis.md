@@ -1885,3 +1885,59 @@ the physical LUT pin-to-address-bit ordering, set/reset transitions,
 and any relationship to a PCI transaction-ending or all-writes-drained
 acknowledgement. No DMA bus-idle or safe unmap predicate is
 demonstrated; preserve `UnknownActive`.
+
+
+### F5 structural netlist and conditional XQ transition (2026-10-09)
+
+An independent inspection of pinned Project Combine commit
+`234343d23e737e57f2727630e19008b509d7d522`,
+`re/xilinx/v2xdl-verify/src/clb_lut4.rs`, function
+`gen_muxf5`, confirms that the Virtex-family MUXF5
+connects `I0` to the **same slice G LUT**, `I1` to the
+**same slice F LUT**, and `S` to the slice `BX` input.
+The verifier also explicitly models optional BX inversion
+(`BXMUX` for original Virtex, `BXINV` in later variants).
+This verifies the functional source topology without determining
+the programmed BX inversion or external PCI meanings.
+
+For X2,Y14 SLICE[0], the documented LUT truth tables independently
+reduce to:
+
+```text
+F = f1 | !f0
+G = (g1 & g2) | (g2 & !g0) | (g2 & !g3) |
+    (!g0 & !g1 & !g3)
+```
+
+Here `f0/f1` and `g0..g3` are *abstract* zero-based LUT
+address bits, not yet proven electrical F1/F2 or G1..G4
+pin names. The above G expression has the exact cofactors
+`G(g1=1)=g2` and
+`G(g1=0)=majority(g2,!g0,!g3)`,
+where `majority(a,b,c)=(a&b)|(a&c)|(b&c)`.
+
+The structural combinational next-data relation, before reset
+and clock semantics, is therefore:
+
+```text
+D_XQ = MUXF5(I0=G, I1=F, S=effective_BX)
+```
+
+If the standard mux selection convention and un-inverted BX apply,
+`D_XQ = effective_BX ? F : G`; otherwise its select polarity
+must be adjusted. If `G2` really maps to address bit `g1`,
+the verified Q feedback into G2 yields the following **conditional**
+state transition:
+
+```text
+G_when_Q0 = majority(g2, !g0, !g3)
+G_when_Q1 = g2
+```
+
+**Verified:** The MUXF5 structural connections and algebraic truth
+tables. **Inferred:** The XQ state-dependent cofactors conditional on
+physical LUT pin ordering. **Unknown:** BX polarity, complete
+g/f input signal provenance, flip-flop reset operation,
+PCI ownership/termination state, DMA FIFO and outstanding-write drain.
+No DMA-bus-idle or abort acknowledgement is proven.
+Do not change the x64 UnknownActive quarantine.
