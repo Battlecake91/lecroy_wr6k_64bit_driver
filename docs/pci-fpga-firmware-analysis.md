@@ -1809,3 +1809,37 @@ The calibrated offline bit reader reports the following candidate selections at 
 | G4 | SINGLE_N_BUF[10] |
 
 These selections require independent upstream PIP and wire-tree verification. They are not physical PCI signal identities and do not establish busmaster idle or write drain. The existing UnknownActive quarantine is unchanged.
+
+
+### Independently verified XQ feedback into local F5 G-LUT (2026-10-09)
+
+At `X2,Y14`, the `SLICE[0].G2` input is configured to
+`SINGLE_E_BUF[23]`. The pinned `CLB` tile database lists
+`OMUX[7] -> SINGLE_E[23]` on `MAIN[1][5]`, which
+is **1** in decoded private `BINARY/205`. The same tile's
+`OMUX[7]` source-select field
+`MAIN[8,2,4,7,3,6,5][17]` is **0011011**, exactly
+`OUT_CLB_XQ[0]`. Thus there is a bit-verified feedback route:
+
+`X2,Y14 SLICE[0].XQ -> OMUX[7] -> SINGLE_E[23] ->
+SINGLE_E_BUF[23] -> SLICE[0].G2`.
+
+The same decoder checked the listed local direct driver candidates
+for the other G-LUT wires: `G1=SINGLE_N[15]` has
+`!MAIN[17][3]` **disabled** (raw 1);
+`G3=SINGLE_N[4]` has `MAIN[38][4]` **disabled**
+(raw 0) and `!MAIN[38][3]` **disabled** (raw 1);
+`G4=SINGLE_N[10]` has `MAIN[26][4]` **disabled**
+(raw 0) and `!MAIN[26][3]` **disabled** (raw 1).
+For G2, other locally enumerated `HEX_H6[3]` and
+`SINGLE_S[21]/SINGLE_N[23]` entries are disabled.
+These local checks do not exhaust neighboring-tile connectivity.
+
+**Verified:** The configured register output is routed back into the
+same slice's G-LUT, which participates in the selected F5 XQ D path.
+**Inferred:** This is a plausible sequential-state feedback cone,
+not a decoded PCI arbitration state or a proven hold/advance equation.
+**Unknown:** The G2 truth-table pin ordering, F5 BX selection polarity,
+the independent inputs, SR effects, and the conditions under which
+this feedback actually determines XQ. No DMA bus-idle criterion follows;
+retain `UnknownActive`.
