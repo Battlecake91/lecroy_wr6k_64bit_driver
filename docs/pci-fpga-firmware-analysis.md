@@ -1941,3 +1941,38 @@ g/f input signal provenance, flip-flop reset operation,
 PCI ownership/termination state, DMA FIFO and outstanding-write drain.
 No DMA-bus-idle or abort acknowledgement is proven.
 Do not change the x64 UnknownActive quarantine.
+
+
+### LUT4 physical input ordering resolves XQ feedback variable (2026-10-09)
+
+Pinned Project Combine `re/xilinx/v2xdl-verify/src/clb_lut4.rs`,
+`make_lut4`, connects source `LUT4.I0..I3` directly to
+physical target `F1..F4` or `G1..G4` (loop index + 1).
+Its `compile_lut` maps truth-table entry index `i` directly
+to bit `1 << i` in the 16-bit INIT value. Thus the reference
+architecture's normal LUT indexing is
+`g0=G1, g1=G2, g2=G3, g3=G4`; similarly
+`f0=F1, f1=F2`.
+
+Together with the independently bit-verified local feedback route
+`XQ -> OMUX[7] -> SINGLE_E[23] -> G2`, this permits a
+**specific combinatorial XQ-feedback cofactor** in the G half of F5:
+
+```text
+G(Q=0) = majority(G3, !G1, !G4)
+G(Q=1) = G3
+F      = F2 | !F1
+D_XQ   = MUXF5(I0=G, I1=F, S=effective_BX)
+```
+
+**Verified:** Normal LUT pin order, exact LUT truth-table
+cofactors, the configured feedback to G2, and F5 input wiring.
+The cofactor relation is valid for the configured G branch
+without speculative PCI signal naming.
+
+**Unknown:** Selected BX inversion in this actual slice, the
+upstream sources/meaning of G1/G3/G4/F1/F2/BX, and the
+SR and clock polarity details. The feedback alone does not
+identify arbitration ownership, transaction completion or an
+absence of outstanding posted writes; therefore no DMA-unmap
+criterion exists and UnknownActive must remain in effect.
