@@ -5,9 +5,11 @@
 observations only. **Do not publish firmware/bitstream image bytes,
 vendor binaries, schematics or license data.**
 
-**Current milestone:** The pinned native routing adapter builds and runs.
-All seven unresolved X2,Y14 F5/SR inputs now resolve to configured drivers,
-including physical FRAME#, IRDY# and RST#_BUF. The PCI-clocked Q/P
+**Current milestone:** The pinned native adapter models configured carry/XOR
+and dedicated TBUS lanes, conditional drivers and contention. Native firmware
+calibration passes 47 checks; 19 PCI local equation/alias checks pass. The
+expanded network has 3,359 logic nodes and 9,129 resolved routing paths, with
+261 routing paths still Unknown/ambiguous. The PCI-clocked Q/P
 transition relations, FRAME output/OE shadow registers, delayed IRDY OE,
 REQ output and grant-qualified start logic are reconstructed below in
 [Verified PCI Control Register Network](#verified-pci-control-register-network).
@@ -1492,11 +1494,11 @@ currently binds all four conditions.
 
 **Current decoding boundary:** The relevant PCILOGIC source-LUT routes
 and reachable PCI control registers are resolved in the current
-register-network section below. Complete dedicated carry/TBUS semantics
-and the transaction/producer/drain contract still require verification.
-Decode the `REQ#`/`FRAME#`/`IRDY#` FFT data, CE, set/reset and
-TCE cones, including the PCI-clocked state-transition logic, and test
-whether an acknowledged idle state really implies no in-flight write.
+register-network section below. Dedicated carry/TBUS semantics are now
+modeled and calibrated, but the expanded cones reach runtime RAM state,
+BRAM routing/semantics and unmodeled hard blocks. The local
+`REQ#`/`FRAME#`/`IRDY#` data/enable/reset relations do not establish an
+acknowledged idle state implying no in-flight write.
 An installed *update* resource is not proof that this firmware is the
 version executing on the scope. This task needs a complete pinned
 Project Combine architecture graph plus per-bit active-PIP validation;
@@ -2007,12 +2009,15 @@ traversed. Missing or multiple encodings remain Unknown. Unsupported
 bit rectangles or frames outside the decoded first FDRI block remain
 Unknown rather than being treated as zero.
 
-**Verified:** Twenty-two synthetic Python tests pass, covering enabled and
+**Verified:** Thirty-nine synthetic Python tests pass, covering enabled and
 disabled selections, bit polarity, absent/duplicate encodings, unavailable
 frames, reconvergent paths, distinct-driver/polarity ambiguity, cycles, bounded
 traversal, a 1102-node chain, LUT support, register feedback, symbolic
 D-path tables, combinational cycles, source correlation, compact evidence,
-disabled-pad driver exclusion and clean/pinned Git checkout guards. The
+disabled-pad driver exclusion and clean/pinned Git checkout guards, plus
+carry/XOR modes, rotated TBUS lanes and independent taps, floating and
+contending drivers, register reset/CE/clock priority, RAM16X1D runtime state,
+shadow equivalence and incomplete-reconstruction reporting. The
 PowerShell test distinguishes these from private-image validation and
 reports skipped private/native checks explicitly. The Python fallback
 through `py -3` now executes the same complete test sequence.
@@ -2043,8 +2048,10 @@ The original pinned checkout remains clean; no persistent Git safe-directory
 exception was installed. The generated public `tools/fpga/Cargo.lock`
 pins dependencies; subsequent builds pass with `--locked --offline`.
 The native adapter compiles and executes successfully. Native calibration
-passes 25 checks: the previous 16 feature/polarity checks plus nine
-upstream source regressions (F1/F2/G1/G2/G3/G4/BX/SR/CLK).
+passes 47 checks: the previous 25 feature/polarity/upstream-source checks,
+ten carry/XOR configuration checks, one dedicated CIN relation, one rotated
+bus/BRAM-skip check, two configured TBUF sets, and eight RAM configuration
+checks. All checks use actual configuration bits or the pinned native grid.
 
 Build and run (downloads require separate explicit authorization):
 
@@ -2053,7 +2060,8 @@ python -B tools/fpga/virtexe_xc2s200e_decode.py --project-combine $env:WR6K_PRJC
 # Set WR6K_ROUTING_ADAPTER to the printed executable path.
 python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --trace '2,14,IMUX_CLB_F1[0]'
 python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --validate-architecture
-python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --analyze-pci --max-logic 1200 --compact --output $env:TEMP/pci-control-cones.json
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --validate-pci-state --max-logic 10000
+python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --analyze-pci --max-logic 10000 --compact --output $env:TEMP/pci-control-cones.json
 python -B tools/fpga/virtexe_xc2s200e_decode.py $env:WR6K_FPGA_BINARY_205 --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER --register-table '2,14,SLICE[0].XQ' --local-table --max-logic 1200 --compact --output $env:TEMP/x2y14-state-table.json
 ```
 
@@ -2062,9 +2070,10 @@ and independent native BEL/mux checks. `--bel '2,14,SLICE[0]'` reports
 decoded local attributes and pin inversion. `--analyze-pci` seeds XQ,
 PCILOGIC I1/I2/I3, the six documented PCI control pads, and representative
 AD/CBE output/OE paths. The bounded logic worklist follows supported
-LUT/F5/register paths with only truth-table-relevant inputs. It records
-clock, CE, SR and FF modes; it leaves carry, F6, hard-block and RAM/shift
-semantics unresolved. It emits configuration relations, not presumed
+LUT/F5/carry/XOR/register paths with only truth-table-relevant inputs. It
+records clock, CE, SR and FF modes, conditional TBUS producers, and the
+decoded RAM16X1D read/write contract. Other RAM/shift modes, F6 and hard-block
+semantics remain explicit boundaries. It emits configuration relations, not presumed
 PCI protocol state names or host ordering guarantees. Full generated
 reports can expose proprietary logic and must remain private.
 
@@ -2132,7 +2141,7 @@ Q=1 is A. The F5 select is physical FRAME#. This replaces the
 previous unconstrained F/G-variable relation with a PCI-correlated
 next-state relation, but does not justify naming Q "idle".
 
-#### Reachable State and Output Relations
+#### Configuration State and Output Relations
 
 P uses F5, F=0x0A3A, G=0x70FF, select i; its clock, CE, reset and
 initial value equal Q's. Let U=X2,Y19 SLICE[1].X,
@@ -2210,49 +2219,132 @@ a transaction/FIFO-empty acknowledgement.
 
 #### Actual Verification Boundary
 
-The expanded run contains **866 logic nodes and 2704 resolved routes**,
-with no route/logic limits or unknown routing encodings. It reaches 454
-register nodes, but this is not a claim of a completely decoded FSM:
-63 data paths stop at FXOR/GXOR, five at XB/YB, and hard blocks include
-dedicated TBUS structures, DLL and PCILOGIC semantics. REQ's disabled
-input is correctly a boundary, not read-back of the output.
+The full offline run at `--max-logic 10000` contains **3,359 logic nodes**:
+1,405 registers, 1,480 combinational outputs, 352 tristate drivers, 64 input
+pads and 58 architecture boundaries. There are **9,390 routing paths:
+9,129 resolved, 250 Unknown and 11 ambiguous**. None hit traversal limits
+or unknown PIP encodings. These larger counts reflect the newly reachable
+memory and BRAM paths, not regressions in the earlier control routes.
+There are also 143 conditional bus observations and 32 runtime RAM16X1D
+arrays. Counts describe the configured dependency network, not physically
+reachable PCI protocol states or proof of one-hot bus ownership.
 
-Concrete dependencies blocking a closed, independently verified machine:
+The emitted `summary` distinguishes local regression PASS from incomplete
+reconstruction. `state_model` records each register's D, CE, effective clock,
+SR mode/priority, INIT and configuration evidence, plus buses, RAM write/read
+contracts and output data versus disable conditions. Feedback is retained
+as state rather than flattened into combinational cycles. Full generated
+netlists/traces must remain outside the public repository.
 
-- Q -> A -> K -> X6,Y16 SLICE[0].Y -> X6,Y14 SLICE[0].Y
-  -> X8,Y27 SLICE[1].YB, configured YBMUX=GCY and CYINIT=CIN.
-- REQ#.FFO -> X2,Y18 SLICE[0].X -> E -> N -> X4,Y2 TBUS.OUT;
-  JOINER_E=1 does not identify the runtime-enabled TBUF driver.
-- B -> S -> X4,Y9 SLICE[1].Y -> N reaches the same TBUS dependency.
+#### Carry/XOR and TBUS Reconstruction
 
-Pinned `public/virtex/src/defs.rs` omits typed CIN/COUT and TBUS
-driver inputs: the generic routing API cannot resolve those connections.
-Public `re/xilinx/rdverify/virtex/src/lib.rs::verify_slice` supplies the
-dedicated carry relation to the same slice in the preceding row;
-`verify_tbus`/`verify_tbus_we` supply rotated bus lanes and BRAM-column
-skips. These are available architecture evidence, **not** proof that
-all lanes/drivers are enabled by this firmware. A next extension must
-decode OUT_A/OUT_B/JOINER controls, model TBUF enable-dependent driving
-and contention/high impedance, implement carry/XOR semantics, and
-independently calibrate those dedicated paths. Do not substitute a
-neighbor-name heuristic, choose a convenient bus driver, or interpret a
-truth-table input limit as a hardware boundary. Q/P expanded combinational
-support has 31/32 state/pad inputs; exhaustive tables deliberately use
-the documented local symbolic cuts instead of enumerating billions of rows.
+**Verified architecture:** The adapter exports CIN using native
+`bel_delta` and the actual BEL grid, following pinned
+`re/xilinx/rdverify/virtex/src/lib.rs::verify_slice`. Python models
+`CYINIT`, shared `CY0`, `CYSELF`, `CYSELG`, FCY/GCY/COUT, XB, YBMUX and
+FXOR/GXOR. A carry stage is `select ? carry_in : carry_data`; a CONST_1
+select bypasses that stage. PROD uses the respective LUT's first two
+inputs, and XOR uses the LUT result and incoming carry. Missing CIN or
+invalid controls remain Unknown. Synthetic coverage exhaustively checks
+64 control profiles, 8,192 input assignments and 40,960 output comparisons.
 
-**Inferred:** The named shadows and grant-qualified enable are concrete
-PCI transaction-control state candidates. The whole reachable machine's
-protocol labeling and any software-visible stop/drain acknowledgement
-remain unproved. Static update-image analysis also cannot establish the
-running revision, runtime FIFO contents, or host-bridge posted-write
-retirement. Those need independent observations/contracts; no hardware
-writes or speculative runtime tests were performed.
+The Q -> A -> K path no longer ends at X8,Y27 SLICE[1].YB. That output
+selects GCY; its CYINIT selects native X8,Y26 SLICE[1].COUT. Its CY0 is
+CONST_0 and both carry selects use their LUTs. The resulting dependency is
+explicit, including the actual registered input-pad sources; it is not an
+idle indicator.
 
-**Unknown:** All six DMA release proof obligations remain unmet:
-producer stopped, descriptor consumption blocked, new master starts
-blocked, outstanding transactions terminated, pending data/FIFOs drained,
-and host-side ordering/posted-write completion. The last obligation needs
-host/bridge/DMA-contract evidence independently of FPGA configuration.
-The calibrated local XQ equation does not establish any of these as an
-observable acknowledgement. Preserve `UnknownActive`; this experimental
-branch must not be merged blindly into the production driver.
+**Verified architecture:** TBUS topology follows pinned `verify_tbus` and
+`verify_tbus_we`, including lane rotation and BRAM-column skips. JOINER_E
+ownership follows `ise-hammer/src/virtex/tbus.rs::ClbTbusRight` rather than
+the destination tile's name. OUT_A and OUT_B are decoded independently.
+The reverse JOINER PIP is represented as the single bidirectional switch
+claimed by the pinned verifier. Unknown joiner/tap bits conservatively
+retain possible connections and an explicit Unknown reason.
+
+X4,Y2 TBUS.OUT in REQ's N dependency has eleven configured candidate
+drivers: TBUF[0] at columns 2/4/6/8/10/12, and TBUF[1] at 3/5/7/11/13.
+Each retains its effective I and T expressions; a driver is active only
+when effective T=0. Multiple drivers are never arbitrarily collapsed.
+The evaluator distinguishes one driver, agreeing multiple drivers,
+opposing-driver contention, high impedance and Unknown controls/data.
+The configured set is verified; mutual exclusion of the runtime enables
+has not been proved. N also occurs in S and FRAME's enable path, so this
+boundary is relevant to transaction initiation and retention.
+
+#### Local Transition Validation
+
+`--validate-pci-state` checks 15 D/CE relations and four alias contracts:
+**19/19 PASS**, covering **2,234 exhaustive local assignments**, including
+the alias subchecks. Symbolic cuts and coordinate mappings are emitted
+with each result. The checks include the previously documented Q/P/A,
+REQ, delayed R, grant-qualified S, FRAME data/OE and delayed IRDY OE
+relations. New verified local relations include:
+
+| State/output | Local relation with SR inactive | Boundary |
+|---|---|---|
+| M = X5,Y3 SLICE[0].YQ | `D_M = !S & (M | (N & c))`, c=X5,Y3 SLICE[0].X | N depends on conditional TBUS |
+| h = X5,Y8 SLICE[0].YQ | D=1 | D alone does not establish current state or drain |
+| O = IRDY#.FFO | D depends on STOP#, TRDY#, B, d, h, v, z and k | Output data is separate from its tristate |
+| FRAME B / FFO | D, CE, SR, clock, INIT and FF modes equivalent | Equality requires matched clock events/initialization |
+| FRAME T / FFT | Same complete register contract | External pin remains high impedance while disable=1 |
+| IRDY O / X2,Y15 SLICE[1].XQ | Same complete register contract | Establishes the local shadow used in CE equations |
+
+The two different-order LUT cones used as symbolic j are exhaustively
+equivalent; this is checked before accepting their correlated variable.
+Reset priority, CE hold and asynchronous versus synchronous SR are tested
+separately. A disabled CE does not sample a floating D bus. RAM16X1D INIT
+is only power-up configuration: runtime reads/writes require an explicit
+memory value, and SR is write enable rather than a RAM clear/drain.
+
+#### Protocol and DMA Proof Obligations
+
+| Required reconstruction | Supported result | Remaining evidence |
+|---|---|---|
+| Bus request | Verified registered REQ D and OE relations | Producer/descriptor stop contract |
+| Grant recognition | Verified `D_S=f & !g & i & M & N & !S` | Reachability and conditional N bus ownership |
+| Transaction initiation | Inferred association of S with FRAME/OE acquisition | Complete externally observable state transition |
+| Address/data phases | Verified local FRAME/IRDY data/OE relations | CBE/DEVSEL correlation and global phase decoding |
+| Wait states | Verified dependence on sampled TRDY#/STOP# | Global phase guards and reachability |
+| Retry/disconnect | STOP#/TRDY# occur in control equations | Distinct terminal/restart states not established |
+| Target/master abort | Unknown | DEVSEL#/timeout/error-state reconstruction |
+| Transaction termination | Local FRAME/IRDY deassertion conditions only | Every initiated transaction has a terminal outcome |
+| Further starts blocked | Unknown | Stable stop acknowledgement binding REQ/S/N and producers |
+| Pending requests/write data | Explicit TBUS and RAM dependencies | Occupancy/pointer meaning and complete BRAM contract |
+
+All six **DMA-quiescence obligations remain Unknown**, individually:
+
+| Obligation | Exact blocker to a proof |
+|---|---|
+| Producer stopped | No decoded software-observable handshake binds the remote acquisition producer to PCI admission; external input registers and conditional TBUS remain live dependencies. |
+| Descriptor engine stopped | No established descriptor-consumption enable/ack contract, including restart and pending requests. |
+| New PCI transactions blocked | S depends on M/N and conditional bus data; no proved invariant keeps every future start disabled after a software acknowledgement. |
+| Existing transactions terminated | Local FRAME/IRDY equations do not classify every retry, disconnect, target-abort and master-abort path or track outstanding transactions to completion. |
+| Internal buffers drained | 32 RAM16X1D runtime arrays and BRAM outputs occur in the expanded cones; no proved occupancy-empty/flush acknowledgement. INIT=0 is not runtime empty. |
+| Host-side completion | The FPGA update bitstream contains no contract proving host-bridge posted-write retirement or the necessary Windows DMA ordering/completion. |
+
+Concrete remaining model limits include X1,Y21 BRAM_QUAD_DOUT[7]
+(upstream of X7,Y22 FCY and X7,Y23 YQ), X46,Y9/X46,Y13 BRAM output paths
+feeding runtime RAM writes, and unmodeled PCILOGIC.PCI_CE/DLL behavior.
+Some BRAM routes expose competing pad/CLB and BRAM terminals; they remain
+ambiguous until native BRAM width/port/quad connectivity is accounted for.
+The five prioritized data/non-clock-control cones each retain 53 boundary
+nodes, including 32 runtime arrays. Hard-clock boundaries are retained
+separately in the register model. These are tool/model limitations that
+further offline work can reduce, not proof that the hardware is inherently
+ambiguous. Global reachability over the resulting memory-bearing machine
+has not been established.
+
+**Conclusion:** Carry/XOR and conditional TBUS reconstruction are implemented
+and regression-tested. The full busmaster FSM and a software-observable
+stop/drain acknowledgement are not closed. Static update-image analysis
+also cannot independently establish the running firmware revision or host
+bridge retirement. The x64 driver **must not release quarantined DMA
+mappings** on this evidence; `UnknownActive` remains required. No hardware
+access, production-driver change or merge of PR #9 is part of this analysis.
+
+Offline verification additionally passes all eight driver dry suites:
+35 source contracts and 276 native C cases (DMA completion 24, layout 13,
+ownership 17, SG bridge 27, SG sync 149, PnP IRP lifetime 8 and PnP
+publication 38). These protect the existing quarantine behavior; they
+do not count as hardware tests or DMA-quiescence proof.

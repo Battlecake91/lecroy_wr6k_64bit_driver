@@ -2,7 +2,7 @@
 use prjcombine_entity::{EntityBundleItemIndex, EntityId};
 use prjcombine_interconnect::{db::*, grid::*};
 use prjcombine_types::bsdata::{PolTileBit, TileBit};
-use prjcombine_virtex::{db::Database, expanded::ExpandedDevice};
+use prjcombine_virtex::{db::Database, defs::bslots, expanded::ExpandedDevice};
 use prjcombine_xilinx_bitstream::BitRect;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
@@ -87,7 +87,20 @@ fn bel(ed: &ExpandedDevice, t: TileCoord, bs: BelSlotId, b: &Bel) -> Value {
         };
         attrs.insert(cls.attributes.key(id).clone(), value);
     }
-    json!({"x":t.col.to_idx(), "y":t.row.to_idx(), "bel":ed.db.bel_slots.key(bs), "class":ed.db.tile_classes.key(ed[t].class), "inputs":inputs, "outputs":outputs, "attributes":attrs})
+    let mut dedicated = json!({});
+    if ed.db.bel_slots.key(bs).starts_with("SLICE[") {
+        // Pinned rdverify/virtex::verify_slice: CIN uses the same slice's
+        // preceding-row COUT, only when that BEL actually exists in the grid.
+        dedicated["CIN"] = ed
+            .bel_delta(t.cell, 0, -1, bs)
+            .map(|prev| {
+                json!({"x":prev.col.to_idx(), "y":prev.row.to_idx(),
+                   "bel":ed.db.bel_slots.key(prev.slot), "pin":"COUT"})
+            })
+            .unwrap_or(Value::Null);
+        dedicated["evidence"] = json!("re/xilinx/rdverify/virtex/src/lib.rs::verify_slice");
+    }
+    json!({"x":t.col.to_idx(), "y":t.row.to_idx(), "bel":ed.db.bel_slots.key(bs), "class":ed.db.tile_classes.key(ed[t].class), "inputs":inputs, "outputs":outputs, "attributes":attrs, "dedicated":dedicated})
 }
 fn pip_config(ed: &ExpandedDevice, p: &TilePip) -> Value {
     let t = p.tile;
@@ -130,10 +143,69 @@ fn pip_config(ed: &ExpandedDevice, p: &TilePip) -> Value {
     }
     json!({"source":wire(ed.db,p.wire_in), "source_raw":wire(ed.db,p.wire_in_raw), "destination_raw":wire(ed.db,p.wire_out_raw), "tile":[t.col.to_idx(),t.row.to_idx(),ed.db.tile_classes.key(ed[t].class)], "inv":p.inv, "config":matches})
 }
+fn bus_row(ed: &ExpandedDevice, y: usize) -> Value {
+    let mut columns = vec![];
+    let mut fixed = vec![];
+    let mut joiners = vec![];
+    for x in 0..ed.chip.columns {
+        let cell = CellCoord {
+            die: DieId::from_idx(0),
+            col: ColId::from_idx(x),
+            row: RowId::from_idx(y),
+        };
+        let slot = if x == 0 || x == ed.chip.columns - 1 {
+            bslots::TBUS_WE
+        } else {
+            bslots::TBUS
+        };
+        if !ed.has_bel(cell.bel(slot)) {
+            continue;
+        }
+        let tile = ed.bel_tile(cell.bel(slot));
+        let BelInfo::Bel(b) = &ed.db[ed[tile].class].bels[slot] else {
+            unreachable!()
+        };
+        let tbufs = bslots::TBUF
+            .into_iter()
+            .map(|bs| {
+                let tile = ed.bel_tile(cell.bel(bs));
+                let BelInfo::Bel(b) = &ed.db[ed[tile].class].bels[bs] else {
+                    unreachable!()
+                };
+                bel(ed, tile, bs, b)
+            })
+            .collect::<Vec<_>>();
+        columns.push(json!({"x":x, "bus":bel(ed,tile,slot,b), "tbufs":tbufs}));
+        // Exact dedicated nets from rdverify/virtex::{verify_tbus,verify_tbus_we}.
+        if x < ed.chip.columns - 1 {
+            let next = if x == 0 || ed.chip.cols_bram.contains(&(cell.col + 1)) {
+                x + 2
+            } else {
+                x + 1
+            };
+            for lane in 0..3 {
+                fixed.push(json!([[x, lane], [next, lane + 1]]));
+            }
+            fixed.push(json!([[x, 4], [next, 0]])); // 4 denotes BUS3_E.
+        }
+        if x == 0 {
+            joiners.push(json!({"a":[x,3],"b":[x,4],"owner":x,"attribute":"JOINER"}));
+        } else if x < ed.chip.columns - 1 {
+            // Fuzzer ClbTbusRight: JOINER_E is owned by the preceding bus tile.
+            let owner = columns[columns.len() - 2]["x"].as_u64().unwrap();
+            joiners.push(json!({"a":[x,3],"b":[x,4],"owner":owner,"attribute":"JOINER_E"}));
+        }
+    }
+    json!({"columns":columns,"fixed":fixed,"joiners":joiners,
+           "evidence":"re/xilinx/rdverify/virtex/src/lib.rs::verify_tbus; re/xilinx/ise-hammer/src/virtex/tbus.rs::ClbTbusRight"})
+}
 fn query(ed: &ExpandedDevice, q: &Value) -> Value {
     let x = q["x"].as_u64().unwrap() as usize;
     let y = q["y"].as_u64().unwrap() as usize;
     assert!(x < ed.chip.columns && y < ed.chip.rows);
+    if q.get("bus_row").and_then(Value::as_bool) == Some(true) {
+        return bus_row(ed, y);
+    }
     let cell = CellCoord {
         die: DieId::from_idx(0),
         col: ColId::from_idx(x),
