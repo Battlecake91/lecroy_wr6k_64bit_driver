@@ -1553,3 +1553,37 @@ Using pinned Project Combine commit `234343d23e737e57f2727630e19008b509d7d522`, 
 **Inferred:** Under the standard direct G1..G4 LUT address-bit ordering the reduced functions are I1 = `G3 | !G4`, I2 = `G1 | G3 | G4`, I3 = `G1 | !G3`. Independently validating the old-family LUT pin ordering and PCILOGIC input polarity is still required.
 
 **Unknown:** The configured upstream drivers of these seven selected SINGLE routing wires, their ties to PCI control pins/registered state, and the PCI transaction completion/write-drain predicate. This establishes no safe DMA unmap criterion. The x64 `UnknownActive` quarantine remains mandatory.
+
+### Immediate CLB-local programmable connections for seven PCILOGIC inputs (2026-10-09)
+
+A passive bit-level scan using the pinned Project Combine `CLB` tile
+pass/bipass feature definitions, decoded `BINARY/205`, X2 MAIN
+frame base 2030, and tile bit index `Y*18+bit`, examined the
+seven selected input routing wires. `SINGLE_*_BUF` is an architectural
+permanent buffer from the respective `SINGLE_*` wire, so its local
+programmable producers were evaluated at the same tile coordinate.
+
+| Target | Active tested local pass/bypass annotations |
+|---|---|
+| I1 G3 at X2,Y14, `SINGLE_S[1]` | `OMUX[0] -> SINGLE_S[1]` (`MAIN[47][5]=1`) |
+| I1 G4 at X2,Y14, `SINGLE_N[14]` | No tested local direct pass enabled |
+| I2 G1 at X2,Y12, `SINGLE_N[23]` | No tested local direct pass enabled |
+| I2 G3 at X2,Y12, `SINGLE_E[3]` | No tested local direct pass/bypass enabled |
+| I2 G4 at X2,Y12, `SINGLE_E[0]` | `HEX_S3[0] -> SINGLE_E[0]` (`!MAIN[42][2]`, raw 0), and `SINGLE_S[6] -> SINGLE_E[0]` (`MAIN[39][7]=1`) |
+| I3 G1 at X2,Y3, `SINGLE_S[5]` | `HEX_S6[2] -> SINGLE_S[5]` (`!MAIN[34][3]`, raw 0) |
+| I3 G3 at X2,Y3, `SINGLE_N[11]` | No tested local direct pass enabled |
+
+**Verified scope:** The values above are direct tests of the enumerated
+local `pass` and `bipass` configuration annotations. They are not
+a complete source-tree resolution, and a disabled local pass does
+not mean that the corresponding routing net is undriven.
+
+**Unknown:** The apparent dual selected annotations for `I2.G4`
+must be resolved against Project Combine's pip semantics and physical
+routing-tree/connector representation before assigning an effective
+single electrical producer. Likewise, even the selected `OMUX[0]`
+source of `I1.G3` has not yet been traced to a specific F/G LUT,
+registered output or relevant PCI signal. This is **not** a reconstructed
+PCI arbitration/transaction-state machine and provides no DMA idle proof.
+
+**Driver consequence:** Keep `UnknownActive` quarantine unchanged.
