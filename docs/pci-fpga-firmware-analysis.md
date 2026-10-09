@@ -1608,3 +1608,29 @@ set/reset and actual protocol meaning have not yet been traced.
 A configured XQ source alone does not prove its active transition
 sequence, handshake role, or DMA-drain semantics. PCI busmaster
 quiescence is still **not proven**; retain `UnknownActive`.
+
+
+### FDRI packet-boundary cross-check and XQ source verification caveat (2026-10-09)
+
+A fresh examination of the privately supplied `BINARY_205_decoded.bin`
+shows that, after reversing each byte's bit order, the four bytes at
+offset **68..71** are `50 00 9d 92`, i.e. the packet header
+`0x50009D92`; bytes at **72..75** are `00 12 00 00`,
+the beginning of the FDRI packet payload. Thus **offset 68 is a packet
+header, not the first FDRI frame word**. Previous text describing a
+frame array beginning at offset 68 is corrected here.
+
+**Verification warning:** In a separate newly implemented local bit
+reader, CLK/CE/SR mux values decoded for the reported
+`X2,Y14 SLICE[0].XQ` source did **not** all map to valid mux entries
+under the currently assumed CLB/frame address mapping. This mismatch
+means that decoder's register-control results are **not verified**.
+The earlier documentation's `XQ` routing attribution is retained as
+a previously reported result, but is **pending independent
+reproduction** with fully cross-checked frame alignment, geometry,
+and bit ordering. No fresh register clock, CE, reset, state transition,
+or handshake semantics can be asserted from this attempted decode.
+
+**Safety consequence:** No PCI busmaster-idle / abort acknowledgement
+criterion has been established. Do not relax `UnknownActive` or
+unmap indeterminate DMA buffers based on any of these candidates.
