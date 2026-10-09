@@ -2008,3 +2008,36 @@ current recheck. Reconcile transfer-slot ownership and reference
 The current safe conclusion remains unchanged: no proven PCI
 busmaster-quiescent, abort-acknowledged or posted-write-drained
 predicate, so the x64 `UnknownActive` quarantine stays in place.
+
+
+### Independent BX bit read gate: triple-LUT calibration failed (2026-10-09)
+
+The owner-provided Project Combine source archive and private
+`BINARY_205_decoded.bin` have been reopened and inspected locally.
+The image contains the expected Type-2 FDRI header `0x50009D92`
+at byte 68 after reversing the bit order within each byte.
+The upstream Project Combine `insert_virtex_frame` reads
+`ceil(540/32)=17` frame data words from 18-word Virtex
+transfer slots and ignores the extra transfer word.
+
+A fresh standalone checker with packet payload offset 72,
+assumed CLB X2 frame base 2030, and a simple frame-indexing
+model **does not reproduce** the previously reported three
+G-LUT reference values together. Consequently a value
+obtained by that checker for `MAIN[38][13]` is not verified
+and must not be promoted to an actual configured BX
+inversion bit. The authoritative architecture location is
+still `input BX = ^IMUX_CLB_BX[0] @MAIN[38][13]`
+in the pinned CLB definition.
+
+**Next reproducibility requirement:** Explicitly derive FDRI
+frame-to-column assignments from the pinned expanded-device
+frame geometry (including block types, any padding/skip slots
+and exact XC2S200E column offsets) and simultaneously validate
+three G-LUT INITs, the PCILOGIC input fields and at least one
+independent west-side IOB feature. Only then decode the BX
+polarity and upstream arbitration state.
+
+This audit changes no hardware or driver code; PCI busmaster
+quiescence and posted-write draining remain unproven. Preserve
+`UnknownActive`.
