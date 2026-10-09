@@ -2092,5 +2092,68 @@ a claimed complete PCI state machine, BX polarity, or DMA
 shutdown acknowledgement until actual device geometry and
 frame-address placement are validated against multiple
 independent fields. The immutable driver rule remains:
-`UnknownActive` mappings must not be released without a
-real DMA-quiescence proof.
+`UnknownActive` mappings must not be released without a real
+DMA-quiescence proof.
+
+### Reproducible CHIP18 decoder calibration (2026-10-09)
+
+A repository-local offline decoder now exists at
+`tools/fpga/virtexe_xc2s200e_decode.py`. It contains no private
+firmware bytes; the private `BINARY_205_decoded.bin` is supplied
+only as an input path during local validation. The decoder implements
+the pinned Project Combine `CHIP18`/`xc2s200e-pq208` frame order from
+commit `234343d23e737e57f2727630e19008b509d7d522`, including the
+spine frames and center-out column sequence from `fill_frame_info`.
+For this device, Project Combine gives `X2` main-frame base **2030**.
+
+The same tool parses the bit-reversed Xilinx packet stream, locates
+the first Type-2 FDRI packet at byte 68, starts the payload at byte
+72, decodes the `40338` transfer words as `2241 * 18` Virtex transfer
+slots, and inserts only the first 2240 main frames. Each 540-bit frame
+uses the pinned `insert_virtex_frame` layout: word 16 bits 4..31 form
+frame positions 0..27, words 15..0 fill positions 28..539 in LSB-first
+word order, and transfer word 17 is not frame data.
+
+Local validation against private `BINARY_205_decoded.bin` passes these
+independent calibration points:
+
+| Feature | Re-decoded value |
+|---|---|
+| X2,Y14 SLICE[1].G | `0xF0FF` |
+| X2,Y12 SLICE[0].G | `0xFFFA` |
+| X2,Y3 SLICE[0].G | `0xAFAF` |
+| X2,Y14 SLICE[0].F | `0xDDDD` |
+| X2,Y14 SLICE[0].G | `0xD0F1` |
+| X2,Y14 SLICE[0].BX inversion, `MAIN[38][13]` | `0` |
+| X2,Y14 `IMUX_CLB_CLK[0]` | `001000` = `GCLK_LEAF[3]` |
+| X2,Y14 `IMUX_CLB_CE[0]` | `000000` = `PULLUP` |
+| X2,Y14 `IMUX_CLB_SR[0]` | `000010` = `HEX_V5[1]` |
+| X2,Y14 `SLICE[0].DXMUX` | `0` = `X` |
+| X2,Y14 `SLICE[0].FXMUX` | `10` = `F5` |
+| X2,Y14 `OMUX[0]` | `0011011` = `OUT_CLB_XQ[0]` |
+| X2,Y14 `OMUX[7]` | `0011011` = `OUT_CLB_XQ[0]` |
+
+This supersedes the immediately preceding simple sequential-frame
+audit failure: the failure came from not applying the Project Combine
+CHIP18 column frame order and per-feature bit ordering. The corrected
+decoder re-establishes the calibrated X2/Y14 XQ feedback/F5 evidence
+and the attached frame-map result that BX inversion is disabled.
+
+**Current X2,Y14 XQ equation boundary:** With the verified LUT pin
+ordering and `MAIN[38][13]=0`, the local combinational D path is:
+
+```text
+D_XQ = BX ? F : G
+F    = F2 | !F1
+G(Q=0) = majority(G3, !G1, !G4)
+G(Q=1) = G3
+```
+
+This remains a local state-register equation, not a decoded PCI
+busmaster-idle acknowledgement. The upstream sources and meanings of
+`F1`, `F2`, `G1`, `G3`, `G4`, `BX`, and `SR` are still not traced far
+enough to classify the register as PCI arbitration, transaction
+control, DMA producer/fifo state, or something else. No FPGA-visible
+predicate has been proven to cover outstanding PCI transactions,
+internal pending data, or host bridge posted-write drain. Preserve the
+x64 `UnknownActive` quarantine.
