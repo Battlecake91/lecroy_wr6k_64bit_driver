@@ -1976,3 +1976,35 @@ SR and clock polarity details. The feedback alone does not
 identify arbitration ownership, transaction completion or an
 absence of outstanding posted writes; therefore no DMA-unmap
 criterion exists and UnknownActive must remain in effect.
+
+
+### F5 BX polarity: exact architecture bit and independent decode boundary (2026-10-09)
+
+The pinned Project Combine `databases/virtex.txt` CLB definition
+specifies the actual polarity control of `X2,Y14 SLICE[0].BX`:
+
+```text
+input BX = ^IMUX_CLB_BX[0] @MAIN[38][13];
+```
+
+The earlier `IMUX_CLB_BX[0]` mux selection
+(`SINGLE_S_BUF[9]`) therefore establishes only the **source wire**.
+The effective MUXF5 select polarity depends additionally on
+`MAIN[38][13]`, and cannot be concluded from the routing mux alone.
+The verifier's `gen_muxf5` construction confirms
+`I0=G`, `I1=F`, `S=BX`; the architecture's input inversion
+annotation must be applied before interpreting `S`.
+
+**Verification boundary:** A fresh, minimal standalone packet reader
+recognizes the FDRI Type-2 header `0x50009D92` at offset 68
+and payload at 72, but its independently reconstructed CLB frame
+reader has **not yet reproduced** the three reference G-LUT words
+simultaneously. Consequently, this attempt supplies **no verified
+firmware value** for `MAIN[38][13]`. In particular, neither BX
+polarity nor an exact XQ next-state equation is established by the
+current recheck. Reconcile transfer-slot ownership and reference
+`insert_virtex_frame` geometry before publishing such a bit value.
+
+The current safe conclusion remains unchanged: no proven PCI
+busmaster-quiescent, abort-acknowledged or posted-write-drained
+predicate, so the x64 `UnknownActive` quarantine stays in place.
