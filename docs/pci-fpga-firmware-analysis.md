@@ -1796,3 +1796,16 @@ Tracing the three selected F1/F2/BX lines and all genuinely relevant G
 pins remains necessary. No physical PCI busmaster/posted-write
 termination or DMA quiescence proof follows, and `UnknownActive`
 must remain in force.
+
+### F5 G input selection audit (2026-10-09)
+
+The calibrated offline bit reader reports the following candidate selections at X2,Y14 SLICE[0].G, whose INIT was previously decoded as 0xD0F1:
+
+| Input | Selected wire |
+|---|---|
+| G1 | SINGLE_N_BUF[15] |
+| G2 | SINGLE_E_BUF[23] |
+| G3 | SINGLE_N_BUF[4] |
+| G4 | SINGLE_N_BUF[10] |
+
+These selections require independent upstream PIP and wire-tree verification. They are not physical PCI signal identities and do not establish busmaster idle or write drain. The existing UnknownActive quarantine is unchanged.
