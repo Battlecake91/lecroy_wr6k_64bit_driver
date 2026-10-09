@@ -1634,3 +1634,45 @@ or handshake semantics can be asserted from this attempted decode.
 **Safety consequence:** No PCI busmaster-idle / abort acknowledgement
 criterion has been established. Do not relax `UnknownActive` or
 unmap indeterminate DMA buffers based on any of these candidates.
+
+
+### Independent LUT frame-map audit: prior decode requires correction (2026-10-09)
+
+An independent offline reader checked the supplied private decoded
+`BINARY/205` stream against the pinned Project Combine parser,
+rather than assuming the previous feature-decoding conclusions.
+
+**Verified packet bytes:** after reversing bits within each byte,
+offset `0x44` (decimal 68) contains the big-endian word `0x50009D92`;
+offset `0x48` (decimal 72) starts with `0x00120000`.
+The first word is the Type-2 FDRI header, not frame contents.
+
+**Independent negative control:** With an 18-DWORD/540-bit frame
+interpretation, frame-word reversal and the 28-bit partial last
+word according to `insert_virtex_frame`, a straightforward
+linear frame/row reader at asserted CLB X2 main-frame base 2030
+does **not** reproduce the three previously recorded G-LUT vectors:
+- `X2,Y14 SLICE[1].G`: expected `F0FF`, obtained `FBEF`;
+- `X2,Y12 SLICE[0].G`: expected `FFFA`, obtained `0000`;
+- `X2,Y3 SLICE[0].G`: expected `AFAF`, obtained `7DF8`.
+
+As an additional control, the exact three 16-bit vectors were not
+matched separately at any candidate linear base from 0 to 2192
+under **that same naive model**. This is evidence that the naive
+frame-to-tile mapping, frame data ordering, or current assumptions
+are incomplete; it does **not** establish different firmware or
+disprove the earlier reverse-engineered routes.
+
+**Status correction:** Do not treat the later reported seven
+G-input selections, local pass bits, or XQ/OMUX registered source
+as *independently replicated* by this audit. They remain **reported
+earlier findings pending reconciliation** with an independently
+verified geometry/packet/frame-coordinate model. No fresh
+PCI-state-register or DMA-idle interpretation follows.
+
+**Next action:** Construct the frame lookup using Project Combine's
+actual device `expanded` geometry, column-width and frame ownership
+and parse the complete FDRI packet sequence as the reference parser
+does; cross-check several unrelated known IOB and PCILOGIC fields
+and all three G-LUT vectors before continuing driver tracing.
+Keep `UnknownActive` quarantine unchanged.
