@@ -2041,3 +2041,56 @@ polarity and upstream arbitration state.
 This audit changes no hardware or driver code; PCI busmaster
 quiescence and posted-write draining remain unproven. Preserve
 `UnknownActive`.
+
+
+### Independent FDRI/LUT validation audit (2026-10-09)
+
+A new standalone offline reader was implemented against private
+`BINARY_205_decoded.bin` and pinned Project Combine source
+`234343d23e737e57f2727630e19008b509d7d522`. The file
+is 180252 bytes and is bit-reversed per byte to recover the
+configuration packet stream. The Type-2 FDRI header at byte
+68 decodes to `0x50009D92`, and the FDRI payload begins at
+byte 72. The Type-2 word count is 40338, exactly
+`2241 * 18` 32-bit transfer words.
+
+The pinned `insert_virtex_frame` implementation places 540
+configuration bits from the **first 17 words** of each
+18-word transfer slot: word 16's bits 4..31 provide
+logical frame positions 0..27, and words 0..15 fill
+positions 28..539 in reverse word order. Word 17 is not
+part of the 540-bit frame data.
+
+Under a direct sequential-slot interpretation with
+the previously asserted X2 CLB MAIN base 2030,
+and pinned `CLB` G-LUT bit coordinates
+(`SLICE[1].G = !MAIN[0..15][15]`,
+`SLICE[0].G = !MAIN[47..32][15]`),
+the independent decode produces:
+
+| LUT | Earlier documented | Fresh independent reading |
+|---|---|---|
+| X2,Y14 SLICE[1].G | `F0FF` | `FF0F` |
+| X2,Y12 SLICE[0].G | `FFFA` | `5FFF` |
+| X2,Y3 SLICE[0].G | `AFAF` | `F5F5` |
+
+A scan of candidate sequential frame bases found no single
+base which reproduces all three stored LUT values at once.
+This is a **calibration failure** for the simple sequential
+frame index mapping, not proof that the FPGA has different
+logic. The reference `fill_frame_info` in
+`public/virtex/src/expand.rs` constructs frame addresses
+in an interleaved center-out column order with device-specific
+column widths and separate BRAM-related sections; a simple
+uniform column/slot assumption is not independently established.
+
+**Status:** The earlier reported XQ feedback routes, LUT
+vectors, F5 selections and upstream muxes are prior analytical
+claims but their exact firmware bit locations have not yet been
+reproduced by this independent audit. Do not extend them into
+a claimed complete PCI state machine, BX polarity, or DMA
+shutdown acknowledgement until actual device geometry and
+frame-address placement are validated against multiple
+independent fields. The immutable driver rule remains:
+`UnknownActive` mappings must not be released without a
+real DMA-quiescence proof.
