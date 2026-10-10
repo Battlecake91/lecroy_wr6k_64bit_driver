@@ -614,6 +614,14 @@ handlers are:
 - `POWER 0x1B096`, `SYSTEM_CONTROL 0x10CEA`,
   and `PNP 0x1A6EA` use their respective WDM paths.
 
+In particular, the SHUTDOWN entry is **not** a DMA shutdown callback: its
+concrete unsupported handler issues no MMIO or stop/idle wait. STOP/REMOVE
+use separate callbacks; `0x1082E` conditionally unmaps three MMIO resource
+wrappers through `0x106A0`, then disconnects the interrupt through `0x18648`.
+These are software resource operations, not a revocation of host-memory DMA.
+See the [cross-layer shutdown audit](legacy-dma-abort-bus-idle-audit.md#additional-focused-shutdown-and-command-findings)
+for the command/acknowledgement distinction and FPGA correlation boundary.
+
 **Table boundary:** the dump requested 30 DWORDs, but only
 the first **28** at `0x1CD10..0x1CD7F` are dispatch pointers.
 The next words at `0x1CD80` (`0x00000004`) and

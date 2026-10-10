@@ -13,7 +13,7 @@ Both original acquisition variants converge through `0x17478 → 0x171DE`:
 
 Original `0x171DE` writes BAR0 `SGTA +0x040` at `0x171EA–171ED`, `IIMTC +0x044` at `0x17204–1720A`, resets completion event at `0x1721B–17222`, enables INTEN bit 0 at `0x17228–1722C`, sets `IIMCL +0x048 = 1` at `0x1722F–17235`, launches MAMRGO (BAR1 `+0x064`) or MTTRGO (BAR1 `+0x084`) at `0x1723A–1724F`, waits up to five seconds at `0x17254–17279` and disables INTEN bit 0 at `0x17281–17285`. Timeout `0x102` becomes `STATUS_IO_TIMEOUT (0xC00000B5)` at `0x1728C–17294`.
 
-Cleanup `0x137C4` handles/acknowledges interrupts (`0x1260E`, `0x126EE`), writes BAR1 `MTTCTL +0x080 = 0`, sets BAR0 `ERRM +0x008 = 0xFFFFFFFF`, clears the software interrupt mask and synchronously sets BAR0 `INTEN +0x084 = 0`. Quiesce `0x138D4` saves/masks interrupts but does not visibly abort DMA. The MAM postlude `0x12D6A` reads `IIMST +0x04C`, writes `IIMCL=0` if bit 0 is set, and reads ERRS; it does **not** poll until a proven idle state.
+Cleanup `0x137C4` handles/acknowledges interrupts (`0x1260E`, `0x126EE`), writes BAR1 `MTTCTL +0x080 = 0`, sets BAR0 `ERRM +0x008 = 0xFFFFFFFF`, clears the software interrupt mask and requests synchronized BAR0 `INTEN +0x084 = 0`. The actual INTEN write in `0x11E46` is gated by `DAT_0001CD08 != -1`. Quiesce `0x138D4` saves/masks interrupts but does not visibly abort DMA. The MAM postlude `0x12D6A` reads `IIMST +0x04C`, writes `IIMCL=0` if bit 0 is set, and reads ERRS; it does **not** poll until a proven idle state.
 
 **No original abort/idle protocol was proved.** In particular, `MTTCTL=0`, `IIMCL=0`, `IIMST` bit 0, an IRQ, or masking INTEN must not be treated as proof of completed bus transactions. A logged timeout is not a hardware reset. Physical DMA completion's memory-ordering guarantee also remains unknown.
 
@@ -49,6 +49,53 @@ Full evidence, per-register access table,
 confidence levels, x86/x64 differences,
 and safe future verification requirements
 are kept in the focused audit.
+
+### Applicable release decision
+
+For a transfer that **never launched**, cleanup may release its correctly owned
+resources only after launch admission is irrevocably closed for that generation
+and all software callbacks/readers that could use them are retired. This is
+software ownership proof, not a hardware idle observation. An older unknown
+transfer must not be relabeled NeverLaunched by preparing a new generation.
+
+For a transfer that **did launch**, there is currently **no verified release
+point after abort, timeout, shutdown, STOP or REMOVE**. A future release requires
+all six obligations in the
+[cross-layer audit](legacy-dma-abort-bus-idle-audit.md#six-independent-release-obligations),
+a stable no-restart condition, the applicable Windows DMA completion/release
+operations, and software ISR/DPC/timer/IRP ownership rundown. An ack must be
+attributable to the affected transfer and remain valid until explicit restart;
+loss of MMIO access or cleared/reset status cannot substitute for it.
+
+The Windows obligations are additional to device stop, not a way to obtain it:
+
+- [WRITE_REGISTER_ULONG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_ulong)
+  supplies a memory barrier for CPU-issued operations. It does not document
+  completion of this FPGA's autonomous writes to host memory.
+- [KeSynchronizeExecution](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kesynchronizeexecution)
+  serializes a callback with the ISR. It does not stop an autonomous PCI engine.
+- [PutScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pput_scatter_gather_list)
+  is the adapter cleanup operation after scatter/gather I/O; it flushes adapter
+  buffers and releases map registers/list. It must not be treated as an
+  undocumented WR6k abort command. The active legacy PFN builder has no such
+  adapter mapping to release and cannot gain IOMMU safety retroactively.
+- [CancelMappedTransfer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pcancel_mapped_transfer)
+  concerns mapped **system DMA** and its transfer context/completion callback.
+  Its success is not a documented stop of this custom busmaster. Required
+  adapter flushing remains necessary after cancellation or completion.
+- [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex)
+  supplies cache coherency and applicable system-controller flushing after a
+  transfer; calling it before transfer completion can cancel the transfer or
+  produce undefined behavior. It is not an FPGA/FIFO idle poll. Do not prescribe
+  every DDI together: cleanup must match the API and adapter resources actually
+  acquired, including IRQL and callback lifetime requirements.
+
+The focused audit also verifies unsupported legacy `IRP_MJ_SHUTDOWN`, the
+timer rather than DMA-event wait preceding family-2 MTTCTL writes, and the
+discarded INTST read during source cleanup. None supplies `IdleProved`.
+No production code or compatibility policy is changed by this analysis;
+the known successful-PFN-path exception below remains an unresolved risk,
+not certified release behavior. `UnknownActive` quarantine stays mandatory.
 
 ## Defensive x64 behavior staged on the draft branch
 

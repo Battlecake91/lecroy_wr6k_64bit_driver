@@ -2499,10 +2499,12 @@ MMIO sequence is proposed. The smallest missing evidence set is:
 1. Correlate the **actual stop command and a readable acknowledgement bit** to
    decoded producer/descriptor admission and PCI-start guards. Establish that
    the acknowledgement remains true until software explicitly restarts.
-2. Close the **21 unresolved/ambiguous routes**, particularly X1,Y21 quad output
-   and X46,Y9/Y13 RAM-write dependencies, plus PCILOGIC.PCI_CE, DLL.LOCKED and
+2. Close the relevant **unresolved/ambiguous routes** (21 currently retained),
+   particularly X1,Y21 quad output and X46,Y9/Y13 RAM-write dependencies,
+   plus PCILOGIC.PCI_CE, DLL.LOCKED and
    the three effective clock relationships. Supply BRAM INIT/startup and
-   collision timing only where those properties actually depend on them.
+   collision timing only where those properties actually depend on them;
+   do not expand unrelated cones merely to increase coverage.
 3. Correlate **DEVSEL#/timeout/abort states and buffer pointers/occupancy** to the
    same acknowledgement. Prove no new start, every outstanding transaction
    terminal, and no pending internal data under an explicit legal environment.
@@ -2514,3 +2516,13 @@ Until those conditions are established, the driver implementation workstream
 must preserve `UnknownActive`, pinned mappings and quarantine. This analysis
 changes no production driver, performs no hardware access/programming/reset,
 and does not authorize release, speculative register writes, or merging PR #9.
+
+The focused [legacy-to-FPGA evidence matrix](legacy-dma-abort-bus-idle-audit.md#cross-layer-evidence-matrix)
+records the current correlation boundary at the target address/BAR/write
+decode and status read mux. Existing private model roots identify PCI control
+pads, two datapath output pads and PCILOGIC inputs, **not** a decoded IIMCL,
+IIMST, MTTCTL or INTEN register. No stop/ack symbol was introduced or bound to
+an arbitrary FF. Consequently post-ack restart, outstanding-transfer,
+IRQ-before-idle and reset-hiding-status properties are not yet executable WR6k queries.
+The [passive observation plan](dma-quiescence-read-only-plan.md) describes the
+smallest independent observations, without authorizing hardware execution.
