@@ -320,6 +320,16 @@ def validate_architecture(router):
     carry = router.bel(8, 27, "SLICE[1]").get("dedicated", {}).get("CIN")
     expected = {"x": 8, "y": 26, "bel": "SLICE[1]", "pin": "COUT"}
     checks.append({"feature": "dedicated CIN", "actual": carry, "expected": expected, "pass": carry == expected})
+    pci = router.bel(0, 13, "PCILOGIC")
+    checks.append({"feature": "Spartan-IIE PCILOGIC tile and absent delay encoding",
+                   "actual": [pci["class"], sorted(pci["attributes"])],
+                   "expected": ["PCI_W_VE", []],
+                   "pass": pci["class"] == "PCI_W_VE" and not pci["attributes"]})
+    for pin, expected in (("IRDY", {"x": 0, "y": 15, "bel": "IOI[3]", "pin": "PCI"}),
+                          ("TRDY", {"x": 0, "y": 14, "bel": "IOI[1]", "pin": "PCI"})):
+        actual = pci.get("dedicated", {}).get(pin)
+        checks.append({"feature": "PCILOGIC dedicated " + pin, "actual": actual,
+                       "expected": expected, "pass": actual == expected})
     row = router.bus_row(2)
     fixed = row["fixed"]
     topology = all(edge in fixed for edge in ([[0, 4], [2, 0]], [[13, 4], [15, 0]],
@@ -494,6 +504,8 @@ class LogicAnalyzer:
         else:
             entry.update(kind="architecture_boundary", reason="hard block semantics not modeled",
                          inputs={n: self.input(p) for n, p in inputs.items()})
+            if name == "PCILOGIC":
+                entry.update(architecture_class=bel["class"], dedicated=bel.get("dedicated", {}))
             self.boundaries.append({"signal": key, "reason": entry["reason"]})
 
     def slice(self, entry, pin, attrs, inputs, terminal, dedicated):

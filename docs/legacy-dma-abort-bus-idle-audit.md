@@ -216,9 +216,19 @@ qualification resolves AD20 and the BAR0/DEVSEL route without choosing a
 preferred driver. All three BAR comparator functions and conditional bit-0
 status muxes are now verified. IIMCL/IIMST combine local and receive state;
 BAR1 retains its previous value until a receive-selection pulse. None is an
-accepted-read or idle proof. The exact PCILOGIC.PCI_CE behavioral/timing model,
+accepted-read or idle proof. The dedicated PCILOGIC IRDY/TRDY connections are
+now exposed from the pinned verifier; their PCIIOB.PCI tap behavior is not an
+I/IQ alias. This Spartan-IIE PCI_W_VE tile has no encoded PCI_DELAY attribute,
+unlike the different PCI_W_V tile. The exact applicable PCILOGIC.PCI_CE behavioral/timing model,
 effective-clock/CDC contract, byte-qualified write/TBUS ownership, target read
 acceptance and remote packet/status identity still block MMIO-to-idle semantics.
+Eleven conditional address/payload fields and six fast transmit mux functions
+are verified, including correction of address bit 10 (previously mislabeled 8).
+Legacy MTTCTL/MTTRGO/MAMRGO offsets have distinct conditional address projections,
+not certified packet opcodes or remote commands. Joint eight-edge BAR0 read
+diagnostics require assumed CE=1; BAR1 remains waiting without remote edges.
+A late-IRDY abstract early-release witness prevents generalizing this fixture
+to a PCI wait-state/stability contract. It is not a reachable hardware defect.
 
 Every entry labels the **connection**, not merely the existence of a register.
 V = Verified, I = Inferred, U = Unknown. Physical PCI termination at U3 is
@@ -228,10 +238,10 @@ functions, but BAR1 alone does not prove which FPGA implements a register.
 
 | Legacy function -> MMIO | Register -> hardware block | Block -> configured FPGA state | Software-visible acknowledgement | DMA safety implication |
 |---|---|---|---|---|
-| V: `0x171DE`, SGTA/IIMTC, IIMCL=1, MAMRGO/MTTRGO=count | V: host PCI path ends at U3; U: local versus forwarded register implementation | U: no verified BAR/address/byte-enable/write-data decode to a named FF | V: event wait; U: relation to all final host accesses | U: launch recorded, no stop/idle proof |
-| V: ISR `0x108D6`, INTST bit 0 -> IIMCL=0 | I: acquisition completion indication; U: originating block | U: INTST/IIMCL-to-FF correlation | V: physical ISR/DPC/event; U: drain semantics | U: completion observation is not release permission |
-| V: `0x12D6A`, IIMST&1 -> conditional IIMCL=0, ERRS read | U: IIMST producer and register implementation | U: read mux, bit polarity and outstanding/FIFO dependence | V: a single status sample; U: idle predicate | U: no repeat-until-idle or restart exclusion |
-| V: `0x163B2`, optional timer wait -> MTTCTL=0/1 | I: MTT acquisition control; U: exact implementing FPGA | U: producer/descriptor/PCI-start effect | V: locally synthesized response; U: hardware acknowledgement | U: stop request at most, not DMA cancellation proof |
+| V: `0x171DE`, SGTA/IIMTC, IIMCL=1, MAMRGO/MTTRGO=count | V: host path ends at U3; local storage and BAR1 staging distinguished; U: full remote implementation | V: local CE predicates/control replicas and conditional launch-address fields; U: accepted byte-qualified payload/packet | V: event wait; U: relation to all final host accesses | U: launch recorded, no stop/idle proof |
+| V: ISR `0x108D6`, INTST bit 0 -> IIMCL=0 | V: conditional local IRQ bit-0 mux; U: complete accepted word and acquisition meaning | V: local IIMCL control-latch topology; U: clear-to-quiescence implication | V: physical ISR/DPC/event; U: drain semantics | U: completion observation is not release permission |
+| V: `0x12D6A`, IIMST&1 -> conditional IIMCL=0, ERRS read | V: mixed local/receive bit-0 mux; U: accepted status semantics | V: conditional read source; U: outstanding/FIFO meaning | V: a single status sample; U: idle predicate | U: no repeat-until-idle or restart exclusion |
+| V: `0x163B2`, optional timer wait -> MTTCTL=0/1 | V: BAR1 staging and conditional transmit source; I: MTT acquisition control | U: remote packet validity and producer/descriptor/PCI-start effect | V: locally synthesized response; U: hardware acknowledgement | U: stop request at most, not DMA cancellation proof |
 | V: `0x1260E/0x126EE`, IRQ/error acknowledgements, discarded INTST read | V: host-visible status; U: source and forwarding semantics | U: pending/retirement state and clear priority | V: clear/read operations; U: durable idle acknowledgement | U: cleared status can conceal information, not prove drain |
 | V: `0x137C4`, MTTCTL=0, ERRM=all ones, gated INTEN=0 | I: acquisition disable plus IRQ/error masking | U: no decoded fail-closed stop transition | V: return 0; U: post-stop hardware state | U: REMOVE cleanup is not a bus-idle certificate |
 | V: `0x138D4`, ERRM=all ones, gated INTEN=0 | V: IRQ/error control access; U: physical producer effect | U: no proven transaction-admission guard | V: SW mask update; U: DMA acknowledgement | U: interrupt masking cannot certify DMA stopped |
@@ -244,7 +254,7 @@ BAR/write/read structures, but not their complete transaction qualification or
 stop semantics. There is no defensible substitution of a local REQ state FF
 for IIMCL, or of an inactive pad for IIMST. The existing Z3 transitions also
 allow conditional IIMCL-candidate clear with REQ still active (abstract SAT,
-221 unknowns); this is not a hardware trace. No invented stop logic was added:
+219 unknowns); this is not a hardware trace. No invented stop logic was added:
 a free symbol named `stop_ack` would make the proposed safety checks vacuous.
 
 ### Six independent release obligations

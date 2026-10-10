@@ -135,6 +135,64 @@ def functional_expression(value):
     return value
 
 
+def pcilogic_contract(node):
+    """Describe recovered configuration, never invent a hardblock equation.
+
+    Pinned misc.rs::collect_fuzzers encodes PCI_DELAY only for *_V, not *_VE.
+    Hidden PCIIOB.PCI ready taps are connectivity, not established I/IQ aliases.
+    """
+    tile = node.get("architecture_class")
+    result = {"status": "Unknown", "tile_class": tile,
+              "inputs": functional_expression(node.get("inputs", {})),
+              "dedicated": node.get("dedicated", {}),
+              "reason": "No applicable manufacturer transfer/timing definition available",
+              "missing": ["I1/I2/I3 and dedicated IRDY/TRDY transfer function",
+                          "PCIIOB.PCI tap polarity and timing",
+                          "PCI_CE settling/edge behavior and reset/startup contract"]}
+    delay = node.get("configuration", {}).get("PCI_DELAY")
+    if tile in ("PCI_W_VE", "PCI_E_VE") and delay is None:
+        result["delay"] = {"status": "Verified", "encoding": "absent_in_pinned_tile",
+                           "meaning": "Not a decoded zero or proof of zero propagation delay"}
+    elif tile in ("PCI_W_V", "PCI_E_V") and delay is not None:
+        result["delay"] = {"status": "Unknown", "configuration": delay,
+                           "meaning": "Encoded selector; timing semantics unavailable"}
+        result["missing"].append("PCI_DELAY selector-to-delay relation")
+    else:
+        result["delay"] = {"status": "Unknown", "reason": "Unsupported or incomplete tile/configuration"}
+    return result
+
+
+def conditional_mux_field(report, name, address_signals, payload_signals):
+    """Recognize an exact address/payload mux in one outer branch only.
+
+    Checks all eight local input assignments without assigning packet slots,
+    write ownership, or timing. Other forms and unavailable paths fail closed.
+    """
+    logic = report["logic"]
+    data = logic[name].get("data", {})
+    unknown = {"status": "Unknown", "signal": name}
+    if data.get("op") != "mux" or "source" not in data["select"]:
+        return dict(unknown, reason="No explicit outer source-controlled mux")
+    try:
+        used = data_support(data["zero"], logic)
+        address, payload = used & address_signals.keys(), used & payload_signals.keys()
+        phase = used - address - payload
+        if len(address) != 1 or len(payload) != 1 or len(phase) != 1:
+            return dict(unknown, reason="Branch is not a three-input field candidate")
+        a, p, phase = next(iter(address)), next(iter(payload)), next(iter(phase))
+        for bits in range(8):
+            values = {phase: bool(bits & 1), a: bool(bits & 2), p: bool(bits & 4)}
+            if evaluate_data(data["zero"], logic, values) != (values[p] if values[phase] else values[a]):
+                return dict(unknown, reason="Branch is not exact phase-selected address/payload")
+    except (ValueError, KeyError) as exc:
+        return dict(unknown, reason=str(exc))
+    return {"status": "Verified", "signal": name, "condition": {"select":
+                functional_expression(data["select"]), "value": False},
+            "phase": phase, "address_source": a, "address_bit": address_signals[a],
+            "payload_source": p, "tbus_pci_ad_producer_bit": payload_signals[p],
+            "scope": "Conditional D function only; payload producer is topology, not unique ownership"}
+
+
 def capture_candidates(report, locations):
     """Group input-fed FFs by exact decoded clock/CE/SR, not assumed purpose."""
     aliases = {signal(loc, pin): net for net, loc in locations.items() for pin in ("I", "IQ")}
@@ -166,6 +224,7 @@ def summarize(report, locations):
     groups = capture_candidates(report, locations)
     return {"project_combine_commit": COMMIT, "locations": locations,
             "capture_groups": groups, "output_cuts": outputs,
+            "pcilogic": pcilogic_contract(report["logic"].get("X0,Y13 PCILOGIC.PCI_CE", {})),
             "logic_nodes": len(report["logic"]), "boundaries": report["boundaries"],
             "interpretation": "Configured pin/capture structure only; no BAR, register semantic or idle claim"}
 

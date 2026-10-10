@@ -99,6 +99,17 @@ fn bel(ed: &ExpandedDevice, t: TileCoord, bs: BelSlotId, b: &Bel) -> Value {
             })
             .unwrap_or(Value::Null);
         dedicated["evidence"] = json!("re/xilinx/rdverify/virtex/src/lib.rs::verify_slice");
+    } else if bs == bslots::PCILOGIC {
+        // verify_pcilogic connects hidden ready inputs to PCIIOB.PCI taps.
+        // Their electrical/timing behavior is not an alias for IOI.I or IQ.
+        for (name, row, index) in [
+            ("IRDY", ed.chip.row_mid(), 3),
+            ("TRDY", ed.chip.row_mid() - 1, 1),
+        ] {
+            dedicated[name] = json!({"x":t.col.to_idx(), "y":row.to_idx(),
+                "bel":format!("IOI[{index}]"), "pin":"PCI"});
+        }
+        dedicated["evidence"] = json!("re/xilinx/rdverify/virtex/src/lib.rs::verify_pcilogic; verify_iob");
     }
     json!({"x":t.col.to_idx(), "y":t.row.to_idx(), "bel":ed.db.bel_slots.key(bs), "class":ed.db.tile_classes.key(ed[t].class), "inputs":inputs, "outputs":outputs, "attributes":attrs, "dedicated":dedicated})
 }

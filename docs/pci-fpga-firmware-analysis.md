@@ -2733,20 +2733,32 @@ retains captured AD[17:2] under
 Two 16-FF TBUS payload banks use S&&W. The staging registers are PCI-clocked;
 their transmit consumers use `X24,Y0 BUFGCE[0].O` before fast-clock output muxing.
 
-Four exact staging D-functions select retained address versus retained TBUS
+Eleven exact staging D-functions select retained address versus retained TBUS
 data when their outer mux selects its zero branch:
 
 | Transmit staging FF | Retained address bit | TBUS snapshot FF | PCI AD producer on that bus |
 |---|---|---|---|
 | X28,Y5 SLICE[0].XQ | 2 | X20,Y3 SLICE[0].YQ | 0 |
+| X24,Y2 SLICE[1].XQ | 3 | X20,Y3 SLICE[0].XQ | 1 |
 | X27,Y3 SLICE[0].XQ | 4 | X23,Y3 SLICE[1].YQ | 2 |
+| X28,Y3 SLICE[1].XQ | 5 | X23,Y3 SLICE[1].XQ | 3 |
+| X28,Y3 SLICE[0].XQ | 6 | X22,Y3 SLICE[0].YQ | 4 |
 | X25,Y2 SLICE[0].XQ | 7 | X24,Y2 SLICE[0].YQ | 5 |
-| X26,Y5 SLICE[1].XQ | 8 | X26,Y5 SLICE[0].YQ | 8 |
+| X27,Y2 SLICE[0].XQ | 8 | X26,Y1 SLICE[1].YQ | 6 |
+| X26,Y1 SLICE[0].XQ | 9 | X26,Y1 SLICE[1].XQ | 7 |
+| X26,Y5 SLICE[1].XQ | 10 | X26,Y5 SLICE[0].YQ | 8 |
+| X24,Y5 SLICE[1].XQ | 11 | X20,Y5 SLICE[0].YQ | 9 |
+| X26,Y4 SLICE[0].XQ | 12 | X23,Y4 SLICE[0].YQ | 10 |
 
-The first three use outer selector X28,Y6 SLICE[1].Y and local phase
-X25,Y1 SLICE[0].YQ; the fourth uses X28,Y5 SLICE[1].Y and phase
+Address bits 2..9 use outer selector X28,Y6 SLICE[1].Y and local phase
+X25,Y1 SLICE[0].YQ; bits 10..12 use X28,Y5 SLICE[1].Y and phase
 X25,Y1 SLICE[1].YQ. Phase zero selects address, one selects retained TBUS data,
-verified for all eight local assignments per field. The AD producer identity
+verified for all eight local assignments per field (88 assignments). The
+previous address-bit-8 label for X26,Y5 SLICE[1].XQ was incorrect: following
+the complete capture bank proves address bit **10**, paired with payload bit 8.
+All 32 payload snapshot FFs have one identified PCI AD producer each across
+their shared TBUS components; this is topology, not proof of enabled ownership.
+The AD producer identity
 does not prove it is the only enabled TBUS driver during an accepted write.
 These are conditional field identities, **not** MTTCTL's exact packet slot/opcode,
 command-valid, retry or remote response semantics.
@@ -2755,11 +2767,122 @@ state and returned acknowledgement are **Unknown**. Local config storage and
 the DMA-offset CE/storage candidates demonstrate why treating every BAR access
 as either entirely local or entirely acquisition-controller-owned is invalid.
 
+#### PCILOGIC Source Audit And Exact Missing Contract
+
+**Not resolved:** No applicable manufacturer PCILOGIC transfer/timing model is
+available in the inspected local evidence. Offline inventory checked the usual
+Xilinx installation paths, project/download/private evidence paths, applicable
+Verilog/VHDL/library filenames and installed Altium HDL/library text, as well as
+the pinned Project Combine source/database/docs. No ISE installation or matching
+UNISIM/SIMPRIM primitive was found there. This is a bounded inventory, not a claim
+that no such model exists elsewhere. No network lookup or hardware access was
+performed. Manufacturer behavior must not be attributed to reverse-engineering
+configuration metadata.
+
+Exact available sources at `234343d23e737e57f2727630e19008b509d7d522`:
+
+- `public/virtex/src/defs.rs::PCILOGIC`: three fabric inputs and PCI_CE output;
+  class-wide PCI_DELAY declaration, no behavioral equation.
+- `databases/virtex.txt::PCI_W_VE,PCI_E_VE` and
+  `re/xilinx/ise-hammer/src/virtex/misc.rs::{add_fuzzers,collect_fuzzers}`:
+  **this device uses PCI_W_VE**, whose I1/I2 inputs have separate active-low
+  inversion encodings and whose I3 input is fixed-polarity. All three effective
+  configured input inversions are false. **No PCI_DELAY attribute is encoded
+  for VE.** The collector checks all four global PCIDELAY setting differences
+  empty for VE; only the different PCI_W_V/PCI_E_V tiles encode a delay selector.
+  This is not proof of zero propagation delay or permission to reuse another
+  family's behavioral model. The fuzzer itself flags uncertainty about ISE's
+  I1/I2 constant-versus-inversion naming.
+- `re/xilinx/rdverify/virtex/src/lib.rs::{verify_pcilogic,verify_iob}`:
+  two previously omitted **dedicated ready inputs** connect to PCIIOB.PCI:
+  IRDY -> X0,Y15 IOI[3].PCI (board pin 24),
+  TRDY -> X0,Y14 IOI[1].PCI (board pin 27). The adapter now exposes both endpoints.
+  These connectivity claims do not establish whether the dedicated taps equal
+  asynchronous I, registered IQ, their inverse, or a delayed internal signal.
+- `docs/src/virtex/pcilogic.md`: tile references only, no transfer function.
+  The related Virtex-II/Spartan-3/Spartan-6 PCILOGICSE descriptions are not
+  interchangeable Spartan-IIE behavioral authority.
+
+The three fabric driving functions are locally Verified:
+I1 = `X2,Y14 SLICE[0].XQ || !X5,Y15 SLICE[0].YQ`;
+I2 = `X3,Y13 SLICE[1].Y || X4,Y9 SLICE[1].XQ || X2,Y21 SLICE[1].XQ`;
+I3 = `X2,Y15 SLICE[1].XQ || !X5,Y5 SLICE[0].YQ`.
+These are not a PCI_CE equation. `pcilogic_contract` reports configuration and
+the exact missing behavior but **retains Unknown**. Symbolic tests exercise all
+eight fabric-input combinations and retain both CE-dependent output outcomes;
+no constant, arbitrary Boolean equation, hidden reset or delay is introduced.
+
+#### Joint Bounded Read Diagnostics And Wait-State Obstruction
+
+The eight-PCI-edge fixture is extended to all four BAR0 priority offsets and
+BAR1 MTTCTL. Assumptions remain: constructed initial FF state, memory decode
+enabled, disjoint BARs, command 6, all data bytes enabled, high RST#/GNT#, low
+IDSEL, driven-pad feedback, arbitrary runtime memories, and **no remote/fast
+clock edges**. They do not establish boot/configuration reachability. A diagnostic
+CE=1 assumption is explicitly not a recovered PCILOGIC model.
+
+For each BAR0 offset 0x48/0x4C/0x80/0x84, the base constraints are SAT and the
+joint mismatch query is UNSAT for: captured address and all four command bits,
+BAR0
+selection, unique AD0 status-TBUS ownership at step 4, active DEVSEL/TRDY/AD
+at step 5, AD0 loading the preceding-step local mux value, and pad release at
+step 7. **STOP# is actively low together with TRDY# at step 5**, while FRAME#
+is high and IRDY# low: the constructed fixture has a data/disconnect phase,
+not a proven ordinary target completion or burst-read contract. The proven mux
+equations above distinguish C/R from IRQ; this is still
+bit 0, not a certified 32-bit software read or read-side-effect contract.
+For BAR1 0x80, address capture/selection works but TRDY remains high through
+steps 5..8 and the response-selection pipeline does not pulse without remote
+edges (base SAT, mismatch UNSAT). No invented acquisition response is supplied.
+
+**Abstract counterexample to extrapolating the fixture:** delaying initiator
+IRDY until step 7, even with diagnostic CE=1, permits ready AD data at step 5
+while IRDY is high, followed by AD disable at step 6 before initiator readiness.
+The SAT witness demonstrates that the current constructed initial state and
+remaining unknown contracts do not establish a wait-state/stability invariant.
+It is **not** a boot-reachable trace, actual hardware defect or reason to modify
+the production driver. Together with the CE-low/CE-high witnesses, it keeps the
+accepted-read result **Inconclusive**, not conditionally certified by CE alone.
+All UNSAT results here are bounded diagnostics, not unbounded PCI compliance.
+
+#### Exact Link Muxes And Legacy Command Projection
+
+The retained read/write candidate `X12,Y17 SLICE[1].YQ` captures W on PCI clock
+under `BAR1_hit && !X16,Y14 SLICE[1].YQ && !X10,Y14 SLICE[1].YQ`.
+This differs from the address/payload gate; its eventual wire slot is Unknown.
+Within the eleven address-phase fields, driver offsets project as follows:
+
+| Legacy BAR1 access | High conditional staging fields; all other identified fields low |
+|---|---|
+| MTTCTL 0x080 | X25,Y2 SLICE[0].XQ (address bit 7) |
+| MTTRGO 0x084 | Previous plus X28,Y5 SLICE[0].XQ (bit 2) |
+| MAMRGO 0x064 | X28,Y5 SLICE[0].XQ, X28,Y3 SLICE[1].XQ, X28,Y3 SLICE[0].XQ (bits 2,5,6) |
+
+These identities agree with the legacy x86 accesses already recorded in
+`legacy-dma-abort-bus-idle-audit.md` (0x171DE launch, 0x163B2/0x137C4 MTTCTL).
+They are conditional local address projections, **not named wire opcodes** or
+proof that a PCI write reaches a remote register exactly once.
+
+Six fast transmit D-functions are exhaustively verified over 64 assignments
+each (384 total). They all have form `p == e ? A : select ? C : B`, with lane-
+specific control/source identities retained in tests and the JSON matrix.
+For lanes D1/D2/D3/D4, C is respectively the identified address/payload stage
+2/0, 4/2, 7/5, **10/8**. Thus these conditional fields now reach identified
+physical transmit lanes, not only staging FFs. The fast mux FF and complementary
+P/N pad FF are consecutive registers on the effective fast clock; simultaneous
+pre-edge sampling adds an output-register stage. The source-group labels A/B/C
+do not assert temporal slots or packet-valid semantics. Exact scheduling, all
+remaining address bits, CDC stability, retries/buffering and the acquisition
+decoder remain unknown. RX capture remains remote-clocked before the PCI
+response pipeline; no response is equated with drained FIFOs or retired DMA.
+
 #### Exact Blockers And Targeted Next Evidence
 
 1. **Exact missing hardblock input:** Supply the applicable Spartan-IIE
    `PCILOGIC` behavioral/timing model (e.g. its authoritative ISE primitive),
-   including I1/I2/I3 polarity, PCI_DELAY and PCI_CE edge behavior.
+   including I1/I2/I3, dedicated IRDY/TRDY PCIIOB.PCI tap behavior, PCI_CE
+   settling/edge behavior and reset/startup. A VE-applicable model is required;
+   this tile has no encoded PCI_DELAY setting.
    Pinned `public/virtex/src/defs.rs` declares only pins/attributes;
    `ise-hammer/virtex/misc.rs` collects delay/inversion bits, not its transfer
    function. No Boolean combination of I1/I2/I3 is invented here. This blocks
@@ -2788,12 +2911,17 @@ Low: **SAT, 219 explicit unknown abstractions**. This is an abstract
 counterexample to using conditional latch clear as an idle certificate, not
 a reachable-hardware counterexample or proof of a stop command's failure.
 
-Actual execution: **8 synthetic MMIO tests + 20 private MMIO tests passed**,
+Actual execution: **12 synthetic MMIO tests + 28 private MMIO tests passed**,
 including native enabled/disabled HEX ownership, three BAR equivalences, five
 conditional readback equivalences, 64 AD-output hold cases, BAR1 address/payload
-staging and response-clock checks, bounded TBUS ownership and two read/PCI_CE witnesses, plus the
-existing latch cases and Z3 query.
-The **41 routing** and **36 symbolic** tests, frame calibration, 47 native architecture
+staging and response-clock checks, all 32 payload producer identities, eleven
+conditional fields, six fast transmit muxes (384 assignments), read/write capture,
+four joint local-read diagnostics, BAR1 response absence, the late-IRDY abstract
+counterexample, bounded TBUS ownership and two read/PCI_CE witnesses, plus the
+existing latch cases and Z3 query. Synthetic tests cover configuration/polarity,
+unsupported primitive cases, pre-edge output load/hold/reset, remote-to-PCI
+response latency and retention of unknown CE behavior.
+The **42 routing** and **39 symbolic** tests, frame calibration, 50 native architecture
 checks, 19 PCI equations (2,234 assignments), and eight driver dry suites
 (311 assertions) also passed. No WDK build, hardware test, MMIO access,
 programming or reset experiment was performed. `UnknownActive` and quarantine

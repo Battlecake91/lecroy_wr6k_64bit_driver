@@ -8,17 +8,65 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "fpga"))
 from virtexe_mmio import (BOARD_PINS, LINK_PINS, address_projection, capture_candidates,
-                         cone_inventory, functional_expression, package_locations, signal)
+                         conditional_mux_field, cone_inventory, functional_expression,
+                         package_locations, pcilogic_contract, signal)
 from virtexe_routing import (COMMIT, classify_pip, data_support, evaluate_data,
                             register_contract, register_step, state_table)
 
 
 class SyntheticMmio(unittest.TestCase):
+    def test_pcilogic_ve_has_no_encoded_delay_not_a_zero_delay_model(self):
+        for tile in ("PCI_W_VE", "PCI_E_VE"):
+            node = {"architecture_class": tile, "configuration": {},
+                    "inputs": {"I1": {"source": "a", "inv": True},
+                               "I2": {"source": "b", "inv": False}}}
+            contract = pcilogic_contract(node)
+            self.assertEqual(contract["status"], "Unknown")
+            self.assertEqual(contract["delay"]["encoding"], "absent_in_pinned_tile")
+            self.assertTrue(contract["inputs"]["I1"]["inv"])
+            self.assertFalse(contract["inputs"]["I2"]["inv"])
+            self.assertNotIn("data", contract)
+
+    def test_pcilogic_other_family_delay_and_unsupported_cases_remain_unknown(self):
+        delay = {"value": 3, "bits": [{"frame": 0, "bit": 0}]}
+        c = pcilogic_contract({"architecture_class": "PCI_W_V",
+                              "configuration": {"PCI_DELAY": delay}})
+        self.assertEqual(c["delay"]["configuration"], delay)
+        self.assertEqual(c["delay"]["status"], "Unknown")
+        for node in ({}, {"architecture_class": "PCILOGICSE"},
+                     {"architecture_class": "PCI_W_VE", "configuration": {"PCI_DELAY": delay}}):
+            self.assertEqual(pcilogic_contract(node)["delay"]["status"], "Unknown")
+
+    def test_conditional_field_is_exhaustive_and_does_not_claim_other_branch(self):
+        logic = {n: {"kind": "register"} for n in ("address", "payload", "phase", "outer")}
+        logic["field"] = {"data": {"op": "mux", "select": {"source": "outer"},
+            "zero": {"op": "mux", "select": {"source": "phase"},
+                     "zero": {"source": "address"}, "one": {"source": "payload"}},
+            "one": {"unknown": "unrelated outer branch"}}}
+        r = {"logic": logic}
+        c = conditional_mux_field(r, "field", {"address": 4}, {"payload": 2})
+        self.assertEqual((c["status"], c["address_bit"], c["tbus_pci_ad_producer_bit"]),
+                         ("Verified", 4, 2))
+        self.assertEqual(c["condition"]["value"], False)
+        logic["field"]["data"]["zero"]["one"]["inv"] = True
+        self.assertEqual(conditional_mux_field(r, "field", {"address": 4}, {"payload": 2})["status"], "Unknown")
+
+    def test_conditional_field_rejects_missing_and_nonmux_data(self):
+        for data in ({"unknown": "missing route"}, {"source": "unknown"},
+                     {"op": "mux", "select": {"source": "outer"},
+                      "zero": {"unknown": "unrecovered branch"}, "one": {"constant": 0}}):
+            result = conditional_mux_field({"logic": {"f": {"data": data}}}, "f", {}, {})
+            self.assertEqual(result["status"], "Unknown")
+
     def test_public_matrix_keeps_unknown_safety_and_explicit_connections(self):
         matrix = json.loads((Path(__file__).resolve().parents[2] /
                             "docs/pci-mmio-register-evidence.json").read_text(encoding="utf-8"))
         self.assertEqual(matrix["schema_version"], 1)
         self.assertIn("UnknownActive", matrix["safety"])
+        self.assertEqual(len(matrix["release_obligations"]), 6)
+        self.assertEqual(set(matrix["release_obligations"].values()), {"Unknown"})
+        self.assertEqual(matrix["pcilogic"]["status"], "Unknown")
+        self.assertEqual(matrix["read_pipeline"]["status"], "Unknown")
         names = {r["name"] for r in matrix["registers"]}
         self.assertTrue({"IIMCL", "IIMST", "MTTCTL", "INTST", "INTEN", "START", "SGTA", "IIMTC"} <= names)
         for row in matrix["registers"]:
@@ -243,6 +291,72 @@ class PrivateMmio(unittest.TestCase):
         self.assertEqual(functional_expression(self.report["logic"][self.report["roots"]["DEVSEL#"]["T"]]["data"]),
                          functional_expression(self.report["logic"][self.report["roots"]["TRDY#"]["T"]]["data"]))
 
+    def test_pcilogic_hidden_ready_taps_and_no_ve_delay_encoding(self):
+        node = self.report["logic"]["X0,Y13 PCILOGIC.PCI_CE"]
+        self.assertEqual(node["architecture_class"], "PCI_W_VE")
+        self.assertNotIn("PCI_DELAY", node["configuration"])
+        for pin, net in (("IRDY", "IRDY#"), ("TRDY", "TRDY#")):
+            expected = self.locations[net]
+            self.assertEqual(node["dedicated"][pin], {"x": expected["x"], "y": expected["y"],
+                "bel": f"IOI[{expected['index']}]", "pin": "PCI"})
+        for pin, source in (("I1", "X2,Y14 SLICE[1].Y"), ("I2", "X2,Y12 SLICE[0].Y"),
+                            ("I3", "X2,Y3 SLICE[0].Y")):
+            self.assertEqual(functional_expression(node["inputs"][pin]), {"source": source, "inv": False})
+        contract = pcilogic_contract(node)
+        self.assertEqual(contract["status"], "Unknown")
+        self.assertEqual(contract["delay"]["encoding"], "absent_in_pinned_tile")
+
+    def test_pcilogic_fabric_input_equations_not_hardblock_function(self):
+        equations = {
+            "X2,Y14 SLICE[1].Y": lambda v: v["X2,Y14 SLICE[0].XQ"] or not v["X5,Y15 SLICE[0].YQ"],
+            "X2,Y12 SLICE[0].Y": lambda v: v["X3,Y13 SLICE[1].Y"] or
+                v["X4,Y9 SLICE[1].XQ"] or v["X2,Y21 SLICE[1].XQ"],
+            "X2,Y3 SLICE[0].Y": lambda v: v["X2,Y15 SLICE[1].XQ"] or not v["X5,Y5 SLICE[0].YQ"],
+        }
+        for name, expected in equations.items():
+            table = state_table(self.report, name, local=True)
+            self.assertEqual(table["status"], "verified_combinational_table")
+            for row in table["rows"]:
+                values = {n: bool(row["address"] & (1 << i)) for i,n in enumerate(table["inputs"])}
+                self.assertEqual(row["d"], expected(values))
+
+    def test_complete_bar1_payload_topology_and_eleven_conditional_fields(self):
+        logic = self.report["logic"]
+        address = {n: self.address[d["data"]["source"]] for n, d in logic.items()
+            if d.get("kind") == "register" and d.get("controls", {}).get("CE", {}).get("source") ==
+            "X16,Y11 SLICE[0].Y" and d.get("data", {}).get("source") in self.address}
+        iq = {signal(self.locations[f"AD[{i}]"], "IQ"): i for i in range(32)}
+        payload = {}
+        for n, node in logic.items():
+            if node.get("kind") != "register" or node.get("controls", {}).get("CE", {}).get("source") not in (
+                    "X11,Y12 SLICE[1].X", "X8,Y12 SLICE[0].X"):
+                continue
+            drivers = logic[node["data"]["source"]]["data"]["drivers"]
+            bits = [iq[logic[d["driver"]]["data"]["source"]] for d in drivers
+                    if logic[d["driver"]]["data"].get("source") in iq]
+            self.assertEqual(len(bits), 1)
+            payload[n] = bits[0]
+        self.assertEqual(len(payload), 32)
+        self.assertEqual(set(payload.values()), set(range(32)))
+        fields = [conditional_mux_field(self.report, n, address, payload) for n,d in logic.items()
+                  if d.get("kind") == "register"]
+        fields = [f for f in fields if f["status"] == "Verified"]
+        self.assertEqual({(f["address_bit"], f["tbus_pci_ad_producer_bit"]) for f in fields},
+                         {(bit + 2, bit) for bit in range(11)})
+        self.assertEqual(len(fields), 11)
+        matrix = json.loads((Path(__file__).resolve().parents[2] /
+                            "docs/pci-mmio-register-evidence.json").read_text(encoding="utf-8"))
+        self.assertEqual({(f["signal"], f["address_bit"], f["tbus_pci_ad_producer_bit"]) for f in fields},
+                         {(f["stage"], f["address_bit"], f["tbus_pci_ad_producer_bit"])
+                          for f in matrix["lvds_command_staging"]["fields"]})
+        projection = matrix["lvds_command_staging"]["legacy_address_projection"]
+        for key, offset in (("MTTCTL_080_stage_ones",0x80), ("MTTRGO_084_stage_ones",0x84),
+                            ("MAMRGO_064_stage_ones",0x64)):
+            self.assertEqual(set(projection[key]), {f["signal"] for f in fields
+                             if offset & (1 << f["address_bit"])})
+        for field in fields:
+            self.assertEqual(logic[field["signal"]]["controls"]["CLK"]["source"], "X24,Y0 BUFGCE[0].O")
+
     def test_bar1_address_and_payload_staging(self):
         logic = self.report["logic"]
         staged = {n: self.address[d["data"]["source"]] for n, d in logic.items()
@@ -277,6 +391,46 @@ class PrivateMmio(unittest.TestCase):
         t = state_table(self.report, "X13,Y16 SLICE[0].YQ", local=True)
         for row in t["rows"]:
             self.assertEqual(row["d"], bool(row["address"]))
+
+    def test_bar1_read_write_capture_has_its_own_gate(self):
+        logic = self.report["logic"]
+        node = logic["X12,Y17 SLICE[1].YQ"]
+        self.assertEqual(node["data"]["source"], "X6,Y16 SLICE[1].YQ")
+        self.assertEqual(node["controls"]["CE"]["source"], "X11,Y15 SLICE[1].X")
+        self.assertEqual(node["controls"]["CLK"]["source"], "X24,Y29 BUFGCE[1].O")
+        table = state_table(self.report, "X11,Y15 SLICE[1].X", local=True)
+        for row in table["rows"]:
+            v = {n: bool(row["address"] & (1 << i)) for i,n in enumerate(table["inputs"])}
+            self.assertEqual(row["d"], v["X6,Y14 SLICE[0].YQ"] and
+                not v["X16,Y14 SLICE[1].YQ"] and not v["X10,Y14 SLICE[1].YQ"])
+
+    def test_six_fast_transmit_muxes_are_exact_not_packet_validity(self):
+        # Source groups A/B/C, not opcodes or temporal packet slots.
+        groups = {
+            0: ("X32,Y5 SLICE[1].YQ", "X35,Y5 SLICE[0].YQ", "X26,Y6 SLICE[1].YQ"),
+            1: ("X36,Y5 SLICE[1].YQ", "X35,Y5 SLICE[0].XQ", "X28,Y5 SLICE[0].XQ"),
+            2: ("X32,Y3 SLICE[1].YQ", "X34,Y3 SLICE[1].YQ", "X27,Y3 SLICE[0].XQ"),
+            3: ("X32,Y3 SLICE[1].XQ", "X31,Y2 SLICE[0].YQ", "X25,Y2 SLICE[0].XQ"),
+            4: ("X34,Y4 SLICE[0].YQ", "X31,Y4 SLICE[0].YQ", "X26,Y5 SLICE[1].XQ"),
+            10: ("X31,Y6 SLICE[0].YQ", "X32,Y6 SLICE[1].YQ", "X26,Y10 SLICE[0].YQ"),
+        }
+        for bit,(a,b,c) in groups.items():
+            root = self.report["roots"][f"TX_D{bit}_P"]["O"]
+            pad = self.report["logic"][root]
+            fast = pad["data"]["source"]
+            self.assertEqual(functional_expression(pad["controls"]["OCE"]), {"constant": 1, "inv": False})
+            if bit < 4:
+                p,e,select = "X31,Y3 SLICE[1].YQ", "X36,Y2 SLICE[0].YQ", "X36,Y3 SLICE[1].XQ"
+            else:
+                p,e = "X31,Y3 SLICE[1].XQ", "X36,Y3 SLICE[1].YQ"
+                select = "X36,Y3 SLICE[1].XQ" if bit == 4 else "X36,Y2 SLICE[1].YQ"
+            table = state_table(self.report, fast)
+            self.assertEqual(table["status"], "verified_combinational_table")
+            self.assertEqual(set(table["inputs"]), {p,e,select,a,b,c})
+            self.assertEqual(len(table["rows"]), 64)
+            for row in table["rows"]:
+                v = {n: bool(row["address"] & (1 << i)) for i,n in enumerate(table["inputs"])}
+                self.assertEqual(row["d"], v[a] if v[p] == v[e] else v[c] if v[select] else v[b])
 
     @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
     def test_three_bar_comparators_are_exact_for_all_runtime_values(self):
@@ -369,8 +523,7 @@ class PrivateMmio(unittest.TestCase):
             self.assertTrue(n["data"]["inv"])
             self.assertEqual(p["controls"]["OCLK"]["source"], "X24,Y0 BUFGCE[1].O")
 
-    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
-    def test_target_read_handshake_still_needs_pci_ce_behavior(self):
+    def target_read_fixture(self, bar=0, offset=0x4C, wait_until=3):
         from virtexe_symbolic import System, clock_key, z3
         bound = 8
         pci = {"source": "X24,Y29 BUFGCE[1].O", "inv": False}
@@ -389,16 +542,25 @@ class PrivateMmio(unittest.TestCase):
             s.solver.add(q(roots["RST#"]["I"], t), q(roots["GNT#"]["I"], t),
                          z3.Not(q(roots["IDSEL"]["I"], t)))
             s.solver.add(q(roots["FRAME#"]["I"], t) == (t not in (1, 2)),
-                         q(roots["IRDY#"]["I"], t) == (t < 3 or t > 5))
+                         q(roots["IRDY#"]["I"], t) == (t < wait_until or t > max(5, wait_until)))
             for i in range(4):
                 s.solver.add(q(roots[f"CBE#[{i}]"]["I"], t) == bool((6 if t == 1 else 0) & (1 << i)))
             for i in range(32):
                 pad = roots[f"AD[{i}]"]
                 s.solver.add(q(pad["I"], t) == z3.If(q(pad["T"], t),
-                    z3.BoolVal(bool(0x4C & (1 << i))), q(pad["O"], t)))
+                    z3.BoolVal(bool(((0x10000000 if bar else 0) + offset) & (1 << i))), q(pad["O"], t)))
             for net in ("DEVSEL#", "TRDY#", "STOP#"):
                 pad = roots[net]
                 s.solver.add(q(pad["I"], t) == z3.If(q(pad["T"], t), z3.BoolVal(True), q(pad["O"], t)))
+        return s
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
+    def test_target_read_handshake_still_needs_pci_ce_behavior(self):
+        from virtexe_symbolic import z3
+        bound = 8
+        s = self.target_read_fixture()
+        q = lambda n, t: s.signal(n, t)
+        roots = self.report["roots"]
         logic = self.report["logic"]
         bus = logic["X8,Y1 TBUS.OUT"]["data"]
         ownership = z3.And(*[s.expr(logic[d["driver"]]["disable"], 4) ==
@@ -417,6 +579,71 @@ class PrivateMmio(unittest.TestCase):
             self.assertEqual(s.solver.check(), z3.sat)
             s.solver.pop()
         self.assertTrue(any("PCILOGIC.PCI_CE" in reason for reason in s.unknowns.values()))
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
+    def test_four_local_reads_joint_decode_handshake_and_conditional_load(self):
+        from virtexe_symbolic import z3
+        roots, logic = self.report["roots"], self.report["logic"]
+        commands = {m["signal"]: int(m["input_nets"][0][5:-1]) for g in self.groups
+            if g["controls"].get("CE", {}).get("source") == "X12,Y15 SLICE[1].X"
+            for m in g["members"] if len(m["input_nets"]) == 1 and m["input_nets"][0].startswith("CBE#[")}
+        self.assertEqual(set(commands.values()), set(range(4)))
+        for offset in (0x48, 0x4C, 0x80, 0x84):
+            s = self.target_read_fixture(offset=offset)
+            q = lambda n,t: s.signal(n,t)
+            # CE=1 is a diagnostic assumption, not a recovered hardblock model.
+            s.solver.add(*[q("X0,Y13 PCILOGIC.PCI_CE",t) for t in range(9)])
+            self.assertEqual(s.solver.check(), z3.sat, hex(offset))
+            expected = [q("X7,Y12 SLICE[0].YQ",3), z3.Not(q("X6,Y14 SLICE[0].YQ",3)),
+                        z3.Not(q("X6,Y16 SLICE[1].YQ",3))]
+            expected.extend(q(n,3) == bool(offset & (1 << bit)) for n,bit in self.address.items())
+            expected.extend(q(n,3) == bool(6 & (1 << bit)) for n,bit in commands.items())
+            expected.extend(z3.Not(q(roots[net][pin],5)) for net,pin in (
+                ("DEVSEL#","O"),("DEVSEL#","T"),("TRDY#","O"),("TRDY#","T"),("AD[0]","T")))
+            expected.extend((q(roots["FRAME#"]["I"],5), z3.Not(q(roots["IRDY#"]["I"],5)),
+                             z3.Not(q(roots["STOP#"]["T"],5)), z3.Not(q(roots["STOP#"]["O"],5))))
+            # STOP# is asserted with TRDY#: this fixture ends with data/disconnect,
+            # not a proved ordinary target completion or burst-read contract.
+            expected.extend(q(roots[net]["T"],7) for net in ("DEVSEL#","TRDY#","AD[0]"))
+            bus = logic["X8,Y1 TBUS.OUT"]["data"]
+            expected.extend(s.expr(logic[d["driver"]]["disable"],4) ==
+                            (d["driver"] != "X10,Y1 TBUF[0].O") for d in bus["drivers"])
+            expected.append(q(roots["AD[0]"]["O"],5) == q("X11,Y7 SLICE[0].Y",4))
+            s.solver.push()
+            s.solver.add(z3.Not(z3.And(*expected)))
+            self.assertEqual(s.solver.check(), z3.unsat, hex(offset))
+            s.solver.pop()
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
+    def test_stalled_read_has_abstract_early_release_counterexample(self):
+        from virtexe_symbolic import z3
+        s = self.target_read_fixture(wait_until=7)
+        q = lambda n,t: s.signal(n,t)
+        roots = self.report["roots"]
+        s.solver.add(*[q("X0,Y13 PCILOGIC.PCI_CE",t) for t in range(9)])
+        self.assertEqual(s.solver.check(), z3.sat)
+        # The fixture is not boot reachable and still contains unknown contracts.
+        # Do not turn CE=1 into a claim of a complete PCI wait-state contract.
+        s.solver.add(q(roots["IRDY#"]["I"],5), q(roots["IRDY#"]["I"],6),
+                     z3.Not(q(roots["TRDY#"]["O"],5)),
+                     z3.Not(q(roots["AD[0]"]["T"],5)), q(roots["AD[0]"]["T"],6))
+        self.assertEqual(s.solver.check(), z3.sat)
+        self.assertTrue(s.unknowns)
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
+    def test_bar1_read_has_no_completed_response_without_remote_edges(self):
+        from virtexe_symbolic import z3
+        s = self.target_read_fixture(bar=1, offset=0x80)
+        q = lambda n,t: s.signal(n,t)
+        roots = self.report["roots"]
+        self.assertEqual(s.solver.check(), z3.sat)
+        expected = [q("X6,Y14 SLICE[0].YQ",3), z3.Not(q("X7,Y12 SLICE[0].YQ",3))]
+        expected.extend(q(n,3) == bool(0x10000080 & (1 << bit)) for n,bit in self.address.items())
+        # No fast/receive edges in this fixture. A missing response is not an idle ack.
+        expected.extend(z3.Not(q("X13,Y14 SLICE[1].YQ",t)) for t in range(9))
+        expected.extend(q(roots["TRDY#"]["O"],t) for t in (5,6,7,8))
+        s.solver.add(z3.Not(z3.And(*expected)))
+        self.assertEqual(s.solver.check(), z3.unsat)
 
     @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC") == "1", "optional Z3 regression")
     def test_conditional_clear_is_not_an_abstract_bus_idle_certificate(self):

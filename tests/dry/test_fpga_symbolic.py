@@ -51,6 +51,46 @@ class SymbolicTests(unittest.TestCase):
         m = System(report({"q.XQ": reg(c(0), init=1)}), 0)
         self.assertImpossible(m, z3.Not(m.state("q.XQ", 0)))
 
+    def test_unknown_pcilogic_stays_independent_of_fabric_inputs(self):
+        for bits in range(8):
+            logic = {f"i{i}": {"kind": "pad_input"} for i in range(3)}
+            logic["PCI_CE"] = {"kind": "architecture_boundary", "inputs": {
+                f"I{i+1}": s(f"i{i}") for i in range(3)}, "configuration": {}}
+            logic["AD.XQ"] = reg(c(0), init=1, ce=s("PCI_CE"))
+            m = System(report(logic), 1, schedule=[{clock_key(s("clk"))}])
+            m.solver.add(*[m.signal(f"i{i}",0) == bool(bits & (1 << i)) for i in range(3)])
+            for old in (False, True):
+                m.solver.push()
+                m.solver.add(m.state("AD.XQ",1) == old)
+                self.assertEqual(m.solver.check(), z3.sat)
+                m.solver.pop()
+            self.assertTrue(any("PCI_CE" in reason for reason in m.unknowns.values()))
+
+    def test_read_output_load_hold_and_reset_obey_preedge_ce(self):
+        logic = {n: {"kind": "pad_input"} for n in ("data", "ce", "rst")}
+        logic["AD.XQ"] = reg(s("data"), init=0, ce=s("ce"), sr=s("rst"))
+        m = System(report(logic), 4, schedule=[{clock_key(s("clk"))}] * 4)
+        for t, (data, ce, reset) in enumerate(((1,1,0), (0,0,0), (0,0,0), (1,0,1), (1,0,1))):
+            m.solver.add(m.signal("data",t) == bool(data), m.signal("ce",t) == bool(ce),
+                         m.signal("rst",t) == bool(reset))
+        self.assertEqual(m.solver.check(), z3.sat)
+        self.assertImpossible(m, z3.Or(z3.Not(m.state("AD.XQ",1)),
+                                      z3.Not(m.state("AD.XQ",2)), m.state("AD.XQ",3), m.state("AD.XQ",4)))
+
+    def test_response_capture_needs_remote_edge_then_two_pci_edges(self):
+        logic = {n: {"kind": "pad_input"} for n in ("remote", "valid", "payload")}
+        logic.update({"R.XQ": reg(s("payload"), ce=s("valid"), clock=s("remote")),
+                      "B.XQ": reg(s("R.XQ")), "D.XQ": reg(s("B.XQ"))})
+        schedule = [{clock_key(s("clk"))}, {clock_key(s("remote"))},
+                    {clock_key(s("clk"))}, {clock_key(s("clk"))}]
+        m = System(report(logic), 4, schedule=schedule)
+        for t in range(5):
+            m.solver.add(m.signal("valid",t), m.signal("payload",t))
+        self.assertEqual(m.solver.check(), z3.sat)
+        self.assertImpossible(m, z3.Or(m.state("R.XQ",1), z3.Not(m.state("R.XQ",2)),
+                                      m.state("B.XQ",2), z3.Not(m.state("B.XQ",3)),
+                                      m.state("D.XQ",3), z3.Not(m.state("D.XQ",4))))
+
     def test_simultaneous_preedge_feedback(self):
         m = System(report({"a.XQ": reg(s("b.XQ")), "b.XQ": reg(s("a.XQ"), init=1)}), 1)
         m.solver.add(m.edge(s("clk"), 0))

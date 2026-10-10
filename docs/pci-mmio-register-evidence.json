@@ -4,6 +4,42 @@
   "project_combine_commit": "234343d23e737e57f2727630e19008b509d7d522",
   "labels": ["Verified", "Inferred", "Unknown"],
   "safety": "UnknownActive; no DMA release permission; PR 9 must remain unmerged",
+  "release_obligations": {
+    "producer_stopped": "Unknown",
+    "descriptor_engine_stopped": "Unknown",
+    "no_new_pci_master_transactions": "Unknown",
+    "existing_pci_transactions_terminated": "Unknown",
+    "internal_buffers_drained": "Unknown",
+    "host_dma_writes_completed": "Unknown"
+  },
+  "pcilogic": {
+    "status": "Unknown",
+    "signal": "X0,Y13 PCILOGIC.PCI_CE",
+    "configuration_status": "Verified",
+    "tile_class": "PCI_W_VE",
+    "fabric_inputs": {
+      "I1": {"source": "X2,Y14 SLICE[1].Y", "inverted": false},
+      "I2": {"source": "X2,Y12 SLICE[0].Y", "inverted": false},
+      "I3": {"source": "X2,Y3 SLICE[0].Y", "inverted": false}
+    },
+    "dedicated_ready_connectivity": {
+      "status": "Verified",
+      "IRDY": "X0,Y15 IOI[3].PCI (board IRDY# pin 24)",
+      "TRDY": "X0,Y14 IOI[1].PCI (board TRDY# pin 27)",
+      "tap_behavior": "Unknown: dedicated PCI tap is not proven equivalent to I or IQ"
+    },
+    "pci_delay": "No PCI_DELAY attribute encoded in PCI_W_VE/PCI_E_VE. Pinned collector finds all four PCIDELAY setting diffs empty for VE; this does not establish zero physical delay. PCI_W_V/PCI_E_V have a different encoded selector",
+    "source_classification": "Pinned reverse-engineering architecture/configuration evidence, not manufacturer behavioral authority",
+    "sources": [
+      "prjcombine@234343d23e737e57f2727630e19008b509d7d522:public/virtex/src/defs.rs::PCILOGIC",
+      "prjcombine@234343d23e737e57f2727630e19008b509d7d522:re/xilinx/ise-hammer/src/virtex/misc.rs::add_fuzzers,collect_fuzzers",
+      "prjcombine@234343d23e737e57f2727630e19008b509d7d522:re/xilinx/rdverify/virtex/src/lib.rs::verify_pcilogic,verify_iob",
+      "prjcombine@234343d23e737e57f2727630e19008b509d7d522:databases/virtex.txt::PCI_W_VE,PCI_E_VE"
+    ],
+    "offline_source_availability": "No applicable Xilinx ISE behavioral/timing library or manufacturer primitive definition found in the inspected local installation, project, download and private evidence paths. No network research performed",
+    "exact_missing_evidence": "Applicable Spartan-IIE PCILOGIC and PCIIOB.PCI behavioral/timing definitions covering I1/I2/I3, dedicated ready inputs, polarity, CE sampling/settling and startup/reset; alternatively an existing independently identified passive trace with these signals and PCI clock",
+    "model_policy": "Retain architecture boundary as time-varying unknown; do not invent an equation, fixed delay, reset value or constant CE"
+  },
   "read_side_effects": {"status": "Unknown", "reason": "No complete accepted-read, response-retirement or read-to-clear contract has been established for these MMIO paths"},
   "shared_conditions": {
     "address_capture": {
@@ -52,8 +88,17 @@
       "bar1_080": "B && !D ? R : P",
       "proof": "Verified conditional local mux equations; only the selected BAR hit asserted, captured address fixed, remaining state arbitrary"
     },
-    "exact_architecture_boundary": "X0,Y13 PCILOGIC.PCI_CE: pinned public/virtex/src/defs.rs declares I1/I2/I3, PCI_CE and PCI_DELAY but supplies no behavioral or timing function",
+    "exact_architecture_boundary": "X0,Y13 PCILOGIC.PCI_CE: fabric inputs and hidden IRDY/TRDY connectivity recovered; applicable transfer/timing and PCIIOB.PCI tap functions unavailable. PCI_DELAY is absent in this VE tile, not a decoded zero",
     "bounded_obstruction": "Two SAT constructed-runtime IIMST read witnesses have active DEVSEL/TRDY/AD at step 5: PCI_CE held low retains old AD0=1, held high captures current AD0=0. Ownership mismatch at step 4 is UNSAT: only X10,Y1 TBUF[0] drives the status TBUS. Eight explicit PCI edges, disjoint BARs and initial register assumptions; memories arbitrary. Not boot reachability or a hardware defect",
+    "conditional_runtime_fixture": {
+      "status": "Verified",
+      "scope": "Eight-edge bounded model diagnostics only, not boot-reachable hardware or PCI protocol certification",
+      "assumptions": ["PCI clock edges only; no receive or fast clock edges", "Decoded FF INIT values except memory enable, disjoint BAR1/BAR2 and old AD0=1", "BAR0=0, BAR1=0x10000000, BAR2=0x20000000", "RST# and GNT# high, IDSEL low", "Command 6 address phase; all data bytes enabled; driven-pad feedback", "Runtime memories arbitrary; unsupported contracts retained as unknown"],
+      "bar0_048_04c_080_084": "Under diagnostic CE=1, joint decode/captured address and all four command bits, bit-0 status TBUS ownership at step 4, DEVSEL/TRDY/AD enable at step 5, AD0 load from previous-step mux and pad release at step 7 have UNSAT mismatch queries; base fixtures SAT. STOP# actively low with TRDY# at step 5 (FRAME# high, IRDY# low): data/disconnect fixture, not ordinary completion or burst-read proof",
+      "bar1_080": "Selected and captured, but TRDY remains high through steps 5..8 and no response-selection pulse occurs without remote/fast edges; base SAT and mismatch UNSAT",
+      "wait_state_obstruction": "SAT abstract late-IRDY fixture even with CE=1: ready AD phase at step 5 while IRDY high; AD disabled at step 6 before initiator becomes ready at step 7. Missing reachable FSM/primitive invariants; not a hardware defect claim",
+      "acceptance": "Inconclusive: exact PCILOGIC/PCIIOB behavior plus reachable FSM, clock/CDC and remote response evidence required"
+    },
     "other_requirements": "Effective clock/CDC contract, DLL.LOCKED/reset assumptions, reverse-SR FF X32,Y7 SLICE[0].XQ, reachable target FSM invariants and unique TBUS ownership at the accepted data edge"
   },
   "lvds_command_staging": {
@@ -61,13 +106,38 @@
     "scope": "Configured local staging functions, not a fully decoded remote protocol or accepted MTTCTL command",
     "address": "16 PCI-clocked FFs retain captured AD[17:2] under X16,Y11 SLICE[0].Y",
     "address_gate": "BAR1_hit && (!X16,Y14 SLICE[1].YQ || X10,Y14 SLICE[1].YQ)",
-    "payload": "Two 16-FF TBUS banks use the same gate AND captured_CBE0",
+    "payload": "Two 16-FF TBUS banks use the same gate AND captured_CBE0; all 32 bits have one identified PCI AD producer each, not a unique enabled-driver proof",
+    "read_write_capture": "X12,Y17 SLICE[1].YQ captures command bit W under BAR1_hit && !X16,Y14 SLICE[1].YQ && !X10,Y14 SLICE[1].YQ on PCI clock; its exact transmitted slot is Unknown",
     "fields": [
       {"stage": "X28,Y5 SLICE[0].XQ", "address_bit": 2, "tbus_pci_ad_producer_bit": 0},
+      {"stage": "X24,Y2 SLICE[1].XQ", "address_bit": 3, "tbus_pci_ad_producer_bit": 1},
       {"stage": "X27,Y3 SLICE[0].XQ", "address_bit": 4, "tbus_pci_ad_producer_bit": 2},
+      {"stage": "X28,Y3 SLICE[1].XQ", "address_bit": 5, "tbus_pci_ad_producer_bit": 3},
+      {"stage": "X28,Y3 SLICE[0].XQ", "address_bit": 6, "tbus_pci_ad_producer_bit": 4},
       {"stage": "X25,Y2 SLICE[0].XQ", "address_bit": 7, "tbus_pci_ad_producer_bit": 5},
-      {"stage": "X26,Y5 SLICE[1].XQ", "address_bit": 8, "tbus_pci_ad_producer_bit": 8}
+      {"stage": "X27,Y2 SLICE[0].XQ", "address_bit": 8, "tbus_pci_ad_producer_bit": 6},
+      {"stage": "X26,Y1 SLICE[0].XQ", "address_bit": 9, "tbus_pci_ad_producer_bit": 7},
+      {"stage": "X26,Y5 SLICE[1].XQ", "address_bit": 10, "tbus_pci_ad_producer_bit": 8},
+      {"stage": "X24,Y5 SLICE[1].XQ", "address_bit": 11, "tbus_pci_ad_producer_bit": 9},
+      {"stage": "X26,Y4 SLICE[0].XQ", "address_bit": 12, "tbus_pci_ad_producer_bit": 10}
     ],
+    "legacy_address_projection": {
+      "status": "Verified",
+      "scope": "Address-phase staging cofactor for retained BAR-relative offset, not a packet opcode or completed command",
+      "MTTCTL_080_stage_ones": ["X25,Y2 SLICE[0].XQ"],
+      "MTTRGO_084_stage_ones": ["X28,Y5 SLICE[0].XQ", "X25,Y2 SLICE[0].XQ"],
+      "MAMRGO_064_stage_ones": ["X28,Y5 SLICE[0].XQ", "X28,Y3 SLICE[1].XQ", "X28,Y3 SLICE[0].XQ"]
+    },
+    "fast_mux": {
+      "status": "Verified",
+      "scope": "Six lane D-functions, 384 exhaustive assignments, not valid-slot/CDC sequencing",
+      "equation": "p == e ? A : select ? C : B",
+      "lanes_0_1_2_3_controls": "p=X31,Y3 SLICE[1].YQ; e=X36,Y2 SLICE[0].YQ; select=X36,Y3 SLICE[1].XQ",
+      "lane_4_controls": "p=X31,Y3 SLICE[1].XQ; e=X36,Y3 SLICE[1].YQ; select=X36,Y3 SLICE[1].XQ",
+      "lane_10_controls": "p=X31,Y3 SLICE[1].XQ; e=X36,Y3 SLICE[1].YQ; select=X36,Y2 SLICE[1].YQ",
+      "conditional_stage_to_lane": {"TX_D1": "address 2 / payload 0", "TX_D2": "address 4 / payload 2", "TX_D3": "address 7 / payload 5", "TX_D4": "address 10 / payload 8"},
+      "pad_timing": "Fast D register followed by complementary P/N output registers on the same effective fast clock; pre-edge sampling gives an additional register stage"
+    },
     "field_condition": "Outer staging mux selects zero branch; local phase selects retained address versus retained TBUS payload. PCI AD producer identity is topology only; unique write ownership and fast transmit slot/valid timing remain Unknown",
     "response": "R captures X32,Y19 SLICE[1].YQ under X32,Y20 SLICE[1].YQ on X24,Y0 BUFGCE[0].O; PCI response selection B and delayed D use X24,Y29 BUFGCE[1].O",
     "unknown": "MTTCTL opcode/slot identity, packet validity, acquisition-controller decode and response meaning, retry/drain/restart stability"

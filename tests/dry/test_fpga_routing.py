@@ -204,6 +204,21 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(decoded["attributes"]["MUX"]["selections"], ["A"])
         self.assertTrue(decoded["inputs"]["SR"]["inv"])
 
+    def test_pcilogic_pin_inversions_are_not_delay_or_output_semantics(self):
+        bel = {"inputs": {"I1": {"wire": [0,13,"I1"], "inv": False,
+                                  "inversion_bit": {"frame": 0, "bit": 0, "inv": True}},
+                           "I2": {"wire": [0,13,"I2"], "inv": False,
+                                  "inversion_bit": {"frame": 0, "bit": 1, "inv": True}},
+                           "I3": {"wire": [0,13,"I3"], "inv": False, "inversion_bit": None}},
+               "attributes": {}}
+        for a in (0,1):
+            for b in (0,1):
+                decoded = decode_bel(SimpleNamespace(frames=[[a,b]]), bel)
+                self.assertEqual(decoded["inputs"]["I1"]["inv"], not a)
+                self.assertEqual(decoded["inputs"]["I2"]["inv"], not b)
+                self.assertFalse(decoded["inputs"]["I3"]["inv"])
+                self.assertEqual(decoded["attributes"], {})
+
     def test_state_table_expands_combination_but_stops_at_registers(self):
         logic = {"q": {"kind": "register", "data": {"source": "c"}},
                  "p": {"kind": "pad_input"},
