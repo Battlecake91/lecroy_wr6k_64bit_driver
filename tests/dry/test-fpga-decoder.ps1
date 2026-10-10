@@ -38,6 +38,10 @@ Write-Host 'Synthetic target MMIO tests and opt-in private MMIO report regressio
 & $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_mmio.py') -v
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Write-Host 'Synthetic acquisition protocol tests and opt-in private receiver/SMT regressions'
+& $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_acquisition.py') -v
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 if ($env:WR6K_FPGA_SYMBOLIC -eq '1') {
     Write-Host 'Synthetic bounded SMT tests (requires requirements-symbolic.txt)'
     & $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_symbolic.py') -v

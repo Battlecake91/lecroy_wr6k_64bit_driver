@@ -140,7 +140,7 @@ only derived descriptions appear here.
   and JTAG-chain errors. These do not yet establish which physical
   storage is erased/programmed for PCI FPGA upgrades.
 - `s65devicepacksvr.dll` (1,854,040 bytes, SHA-256
-  `4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bdbe9d`)
+  `4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bddbe9d`)
   contains `PciFpgaResId`, `PciFpgaVerResId`, and messages
   `Could not load Pci Fpga resource data.` /
   `Pci Fpga resource data invalid.`. This is strong evidence of
@@ -171,7 +171,7 @@ or extracted bitstream does not establish an RTL-level PCI bus-idle proof.
 
 The owner provided a **private local copy** of the installed
 `s65devicepacksvr.dll` (PE32/i386, 1,854,040 bytes, SHA-256
-`4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bdbe9d`).
+`4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bddbe9d`).
 It was analyzed *offline* by a read-only PE resource parser without
 DLL execution, firmware writes, JTAG access or any scope interaction.
 The complete binary and extracted image data are **not** stored in
@@ -2980,7 +2980,8 @@ BAR1-only selection, offset 0x080, B=1,D=0 (SAT base, joint mismatch UNSAT).
 This closes **word selection**, not accepted PCI readback: unique TBUS ownership
 at the data edge, PCI_CE-enabled AD sampling, reachability and read effects
 remain separate. IIMST/IIMCL bit 0 still mixes local C and received R.
-No acquisition-side command correlation or completed-operation meaning is proved.
+The acquisition-side cuts below now correlate the three command addresses and
+payload loads. Completed-operation/acknowledgement meaning remains unproved.
 
 | Legacy operation | Captured / transmitted edge | Receive / PCI return | Safety interpretation |
 |---|---|---|---|
@@ -3051,7 +3052,7 @@ remain unchanged; PR #9 remains open and unmerged.
 
 | Obligation | Result | Exact obstruction after link reconstruction |
 |---|---|---|
-| Producer stopped | Unknown | Legacy MTTCTL=0 is a host command, not acquisition-side execution evidence; independent MAM work remains |
+| Producer stopped | Unknown | MTTCTL bit0 and physical START clearing are decoded below, but producer execution/idle and independent MAM work remain unresolved |
 | Descriptor engine stopped | Unknown | No stable descriptor-admission/consumption acknowledgement; conditional IIMCL clear still permits abstract REQ activity |
 | No new PCI master transaction | Unknown | No configured stable gate tied to command-specific stop response excludes all later initiator starts |
 | Existing PCI transactions terminal | Unknown | Target-side read/response and link framing do not prove initiator transaction retirement |
@@ -3068,3 +3069,159 @@ including both MTT and MAM, queue/descriptor admission and stable drain semantic
 Existing offline traces may instead establish command identity and timing, but
 cannot alone establish all six obligations under faults and restart. Identify the
 actually running PCI/acquisition firmware separately from BINARY.205.
+
+### Acquisition Controller Receiver And DMA Command Cuts
+
+**Current scope (2026-10-11):** offline configured BINARY.204 evidence, reusing
+the existing decoder/router and `virtexe_symbolic.System`. This is a bounded
+continuation, **not complete receiver/producer/response reconstruction**.
+No production driver or quarantine behavior changed. `UnknownActive` remains.
+
+#### Available Evidence
+
+Acquisition firmware is **available**, not a missing-artifact blocker.
+`s65devicepacksvr.dll` SHA-256:
+`4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bddbe9d`.
+Strict Intel HEX validation of BINARY.204 yields 360,520 contiguous bytes,
+SHA-256 `a31948066e4fe7d21ccf4612bcd6057da7b01cbb36e8b6b21269f59ce9254f06`.
+Two 180,260-byte streams have sync at relative offset 4:
+
+| Stream | SHA-256 | Configured role evidence |
+|---|---|---|
+| 0 | `227cba1ae543cf78b5b6d5700f719340e18df63850ec270eea47b5855c404337` | Twelve U21 RX P pads and SYNC enabled as DIFF; matching DMA offsets; controller role Inferred |
+| 1 | `e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b` | Those RX pads disabled; exact loader destination not independently proven |
+
+Both parse as XC2S200E geometry with 2,240 main frames. Do **not** use PCI-image
+`validate_knowns` on acquisition images. Serial-chain order, board option and
+executing revision remain Unknown. Extra stream trailer bytes have no assigned
+execution meaning. BINARY.203 contains 56,792 bytes in sparse Intel HEX,
+including an address range starting at 0x200000: preserve that map, not a
+concatenation of populated bytes. MCU execution was not reconstructed.
+Existing Ghidra exports concern x86 `LecS65AcqDrv.sys`, not FPGA/C161PI logic.
+Existing IOCTL JSONL captures contain no passive twelve-lane LVDS/clock samples.
+
+The local service manual includes the complete mainboard child sheets. U21 is
+**XC2S200E-FG456**, distinct from U8 ATC/MTT and PCI-card U3; U16 is C161PI.
+See [physical topology](pci-card-acquisition-board-topology.md#acquisition-controller-child-sheets).
+Pinned Project Combine `234343d23e737e57f2727630e19008b509d7d522` supplies
+**BOND85 FG456**, not the PCI PQ208 bond. Private all-pad exploratory reports
+contain 3,713/3,921 nodes and 161/99 explicit boundaries for streams 0/1;
+inventory counts are not complete semantic reconstruction. No raw network,
+firmware or schematic crop is published.
+
+#### Actual Receiver Compatibility
+
+All twelve stream-0 data P pads and C12/SYNC have registered IQ paths using
+RX-fast `X24,Y29 BUFGCE[0].O`. Each data lane has two more unconditional
+fast stages, then two gated banks at each history depth 0/1/2. Controller-clock
+mux/capture fields use `X24,Y0 BUFGCE[1].O`. Analog CDC correctness is unproved.
+`receiver_fields` recognizes **73 exact two-bank mux/capture fields**, including
+duplicates and all 32 payload positions, by checking the actual mux functions:
+
+| PCI transmitter | Controller receiver | Grade / limit |
+|---|---|---|
+| lane1 B/C = payload1/0 | lane1 history1/2 = payload1/0 | Verified conditional bank mux |
+| lanes2..11 A/B/C = bits 3n-2/3n-3/3n-4 | same lane history0/1/2 | Verified conditional bank mux |
+| lane0 control/parity; lane1 A parity | excluded from 32 payload positions | Position compatibility; parity rejection unresolved |
+| address bits2..10 in low payload positions | twelve address FFs, duplicates at bits5/6/7 | Verified data/load topology; duplicates require consistent state |
+| position31 marker | X31,Y21 SLICE[0].XQ from lane11 history0 | Verified field, not complete valid/write meaning |
+| periodic SYNC/control | separate bank enables and controller state | Not execution ACK or FIFO-empty |
+
+Address capture gate `X29,Y19 SLICE[1].X` equals `v && !q && flag`, where
+`v=X32,Y19 SLICE[1].YQ`, `q=X29,Y19 SLICE[1].YQ`,
+`flag=X31,Y21 SLICE[0].XQ`. v/q are **coordinate state cuts**, not assigned
+valid/write/ACK meanings. Phase recovery, parity/error rejection, partial/repeated
+command handling and complete CDC timing remain unresolved. Synthetic zero,
+all-one, alternating and walking-one words test both real bank mux branches;
+they do not simulate frame acceptance.
+
+#### Command Loads And Physical START
+
+Each predicate was exhaustively checked over 512 aligned address values and
+four v/q assignments, with duplicate address FFs constrained consistently.
+Mask **0x7FC** is the recovered local predicate, not authorization to access
+aliases or proof of the complete receiver's upper-address qualification.
+
+| Legacy DWORD access | Controller predicate | Destination |
+|---|---|---|
+| BAR1+0x080 MTTCTL | `v && q && (addr & 0x7FC)==0x080`, X26,Y16 SLICE[1].X | E=X24,Y16 SLICE[1].YQ captures payload0 from X35,Y20 SLICE[1].YQ |
+| BAR1+0x084 MTTRGO | same qualification, value0x084, X27,Y18 SLICE[0].Y | Separate 19-FF load bank, payload0..18 |
+| BAR1+0x064 MAMRGO | same qualification, value0x064, X26,Y16 SLICE[0].Y and X28,Y17 SLICE[0].Y | Separate 24-FF load bank, payload0..23 |
+
+These controller-clocked destinations are **load registers**, not automatically
+remaining-count, FIFO-occupancy or descriptor counters. Units and terminal
+consumption behavior remain Unknown. The concrete MTTCTL control equations are:
+
+```text
+D1 = X13,Y13 SLICE[1].YQ; D2 = X13,Y13 SLICE[1].XQ
+H = X13,Y13 SLICE[0].YQ; P = X13,Y12 SLICE[0].YQ
+D1' = E; D2' = D1
+H' = E && (D2 || H)
+P' = E && !D1
+START' = E && (D2 || H)
+```
+
+Physical **START is FG456 AA5 / X3,Y0 IOI[1].PAD_O**, schematic toward
+timebase sheet18. It is **not B8 / X13,Y29 IOI[2].PAD_O**, a separate negative
+pulse output. E/D1/D2/H/P/START reset asynchronously to zero through
+`X40,Y4 SLICE[1].YQ`. Full external reset/recovery causality is not established.
+Qualified MTTCTL=0 clears E at its load edge, START at the following controller
+edge. Held MTTCTL=1 from initialized state raises START after E/D1/D2 delay;
+repeated one does not regenerate P after D1 catches up. This is control-level
+evidence, **not completed producer stop**. MTTCTL=0 alone retains independent
+MAMRGO/MTTRGO load banks; their loads remain possible with E=0 in the abstract
+cut. Pending SDRAM/BRAM/link work and PCI transactions are not excluded.
+
+#### Formal Results And Remaining Work
+
+Seven new SMT tests reuse actual transitions through `symbolic_cut` and
+`System`, explicit controller-clock events, other sequential/architecture state
+symbolic, bounds 0..6. SAT bases precede mismatch UNSAT. Conditional local results:
+zero clears START; unqualified writes cannot restart initialized E/START;
+repeated one does not retrigger settled P; zero alone retains separate load
+bits; MAM/MTT loads may follow zero; local async reset returns controls to INIT.
+These are not full protocol reachability or unbounded proofs.
+
+An unidentified symbolic ACK may coexist with symbolic new samples, queued
+LVDS work, REQ/FRAME activity, outstanding transfer, restart or unretired host
+write (**abstract SAT**, not a hardware fault). This tests that the cut does
+not invent an ACK-to-quiescence constraint. No actual ACK, response-valid class
+or completed/drained response has been identified. All six obligations remain
+**Unknown**: producer stopped, descriptor engine stopped, new PCI starts blocked,
+outstanding PCI transactions terminal, internal buffers drained, host writes
+retired/ordered. PCI_CE remains unresolved; no invented primitive equation.
+
+Remaining work is **reconstruction in available evidence**, not a missing-binary
+request: resolve v/q/flag, parity/error and CDC acceptance; follow 19/24-bit load
+banks through consumers and SDRAM/BRAM occupancy; identify response producer
+muxes, class/valid/address/generation association and PCI RX/MMIO retirement.
+Follow physical START into available ATC firmware and C161PI only where the
+producer cone requires it. x86-only Ghidra exports cannot replace these steps.
+Exact additional evidence, where timing prevents closure, is a compatible
+hardblock/clock contract or an **existing** passive twelve-lane+SYNC+clock capture
+with command/response association. Installed revision and host-bridge retirement
+remain separate requirements. No new hardware observation is authorized.
+
+Private reproduction (output must be outside the repository):
+
+```powershell
+python -B tools/fpga/virtexe_acquisition.py $privateStream0 `
+  --project-combine $pinnedCheckout --adapter $routingAdapter `
+  --private-output $outsideRepositoryJson
+$env:WR6K_ACQUISITION_REPORT = $outsideRepositoryJson
+$env:WR6K_ACQUISITION_BINARY = $privateStream0
+$env:WR6K_FPGA_SYMBOLIC = '1'
+python -B tests/dry/test_fpga_acquisition.py -v
+```
+
+Actual final execution: **7 synthetic + 10 private configured-logic + 7 private
+SMT acquisition tests PASS**, against a newly reproduced private network from
+the committed tool. Matrix consistency and the 13 synthetic MMIO tests were
+rerun after final edits. Existing **42 routing + 49 MMIO + 39 symbolic tests**
+also PASS, as do private frame calibration, **50 native architecture checks**
+and **19 PCI state equations**. All eight driver dry suites PASS: source35,
+completion24, layout13, ownership17, SG-stage27, SG-sync149, IRP-lifetime8,
+PnP-publication38 (**311 total**). `git diff --check` passes. No WDK driver build,
+hardware test, MMIO access, programming, IRQ injection or reset experiment was
+performed. PR #9 stays draft/open/unmerged. This delivery records partial
+semantic closure and explicit remaining work, not a complete DMA-stop proof.

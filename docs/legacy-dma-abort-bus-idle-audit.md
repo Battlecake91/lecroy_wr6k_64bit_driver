@@ -267,7 +267,7 @@ a decoded hardware execution.
 
 | Obligation | Verified partial evidence | Missing assumption/dependency | Counterexample or limitation | Software observability |
 |---|---|---|---|---|
-| Producer stopped | MTTCTL=0 command; separate MAM/MTT and LVDS boundaries | Stop must block both relevant producers and already queued link data | No actual producer-stop trace; MTT command does not prove MAM stop | No correlated producer-empty/stopped status |
+| Producer stopped | MTTCTL bit0, physical START clearing and separate 19/24-bit MTT/MAM load banks decoded | START must be tied to actual producer execution and queued data | MTTCTL=0 alone retains independent MAM/MTT load state; no producer-stop trace | No correlated producer-empty/stopped status |
 | Descriptor engine stopped | SGTA and descriptor layout identify supplied work | Consumption disable must be latched until explicit restart | Descriptor fetch after the command remains unexcluded | No identified descriptor-idle acknowledgement |
 | New PCI transactions blocked | Local REQ/FRAME/IRDY equations are decoded | Stop/ack must dominate every start/retry path | Prior bound-16 SAT pin activity has **no stop antecedent**, so is not a post-stop counterexample | Inactive external pins are not a durable software predicate |
 | Existing transactions complete | Physical PCI interface and sampled handshake paths | Exact terminal/retry/disconnect/abort FSM, including DEVSEL, must close | Ready-pair sample can belong to another master; outstanding state unknown | IIMST/IRQ relationship unproved |
@@ -286,6 +286,16 @@ queries remain exactly the limited observations in
 No bounded UNSAT is promoted to an unbounded stop proof.
 
 ### Smallest next evidence set
+
+Acquisition firmware is available in BINARY.204 and sparse C161PI firmware in
+BINARY.203. The local service manual also contains the full mainboard child
+sheets. Do not request these artifacts again. See the current
+[acquisition receiver/control cuts](pci-fpga-firmware-analysis.md#acquisition-controller-receiver-and-dma-command-cuts).
+MTTCTL=0 is now tied to controller bit0 and delayed START clearing, but no
+command-specific ACK or producer/buffer completion is proved. The remaining
+acceptance, consumption and response cones are technical reconstruction work
+in available evidence, not a missing-binary blocker. All six obligations remain
+Unknown; independent MAM/MTT load state and queued work must not be dismissed.
 
 1. Identify a **single candidate stop command and durable readable ack** from
    original register/RTL documentation, or correlate a targeted target-address

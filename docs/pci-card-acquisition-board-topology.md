@@ -1,6 +1,7 @@
 # PCI interface card and acquisition-board hardware boundaries
 
-**Evidence reviewed:** the user's two **one-page, A2** uploads:
+**Evidence reviewed:** the user's two **one-page, A2** uploads, plus the
+locally available service-manual mainboard child sheets described below:
 `PCI Card.pdf` (PCI interface schematic, title area names Perigee LLC
 and dates it 12 March 2003), and `Overview.pdf` (LeCroy Corporation
 acquisition-board **top-level overview**, drawing/model area shows
@@ -15,6 +16,28 @@ the Overview itself carries a LeCroy proprietary-information notice.
 **Document scope:** the PCI card is not the same PCB as the LeCroy
 acquisition board or the ProBus probe/front-panel module.
 All three layers must be distinguished during driver reconstruction.
+
+## Acquisition Controller Child Sheets
+
+The local `LeCroy-WaveRunner-6000-SM.pdf` contains the full 45-sheet mainboard
+drawing, not just the overview. Drawing 901587 rev B / model 901586-XX appears
+at PDF pages 269-313 (one-based; sheet N is PDF page 268+N). This corrects the
+earlier inventory limited to `Overview.pdf`. No new schematic download is
+required. The source drawings and rendered crops remain private.
+
+| Evidence grade | Physical evidence | Interpretation limit |
+|---|---|---|
+| Verified | Sheets 36-39 / PDF 304-307: control FPGA **U21 XC2S200E-FG456**, RX connector J11 and TX connector J10 | Separate from PCI-card U3; schematic revision does not prove installed assembly |
+| Verified | U21 RX P/N pairs: B19/A19, B18/A18, B17/A17, E16/E17, D16/C16, B16/A16, D15/C15, B15/A15, D14/C14, B14/A14, D13/C13, B13/A13; SYNC C12/B12; RST_ERR D12/E12 | Direction is acquisition-controller RX, not another PCI interface |
+| Verified | RX_CLK_P A11/GCK2; BRD_CLK_125_CTRL AA12/GCK0; 125MHZ_MTT_P AB12/GCK1 | Dedicated clock pins are not fabric IQ; labels do not establish effective DLL timing |
+| Verified | U21 **START ball AA5**, on MTT bus toward timebase sheet 18 | Not B8, a different configured pulse output |
+| Verified | Sheet 36: U28 MT48LC8M8A2TG-75 SDRAM on DRAM_INTERFACE; sheet 39: U18 XC18V04 PROM marked DNI | Neither RAM occupancy nor fitted configuration source follows from labels |
+| Verified | Sheet 19 / PDF 287: separate ATC/MTT FPGA U8 XC2S200E-FG456; sheet 40 / PDF 308: MCU U16 **C161PI** | ADC/MAM pending work is separate from controller register-load banks |
+| Inferred | BINARY.204 stream 0 enables twelve U21 RX P pads plus SYNC and matching 0x080/0x084/0x064 predicates; stream 1 does not enable these RX pads | Strong role evidence, not proven loader order or live image identity |
+
+The configured receiver and START equations are documented in
+[Acquisition Controller Receiver And DMA Command Cuts](pci-fpga-firmware-analysis.md#acquisition-controller-receiver-and-dma-command-cuts).
+No acknowledged stop/drain or safe DMA release predicate has been established.
 
 ## Directly visible PCI interface card (PCI Card.pdf, sheet 1)
 

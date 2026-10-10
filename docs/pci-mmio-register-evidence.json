@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "BINARY.205 configured offline evidence, not executing hardware revision",
+  "scope": "BINARY.205 PCI and BINARY.204 acquisition configured offline evidence, not executing hardware revision",
   "project_combine_commit": "234343d23e737e57f2727630e19008b509d7d522",
   "labels": ["Verified", "Inferred", "Unknown"],
   "safety": "UnknownActive; no DMA release permission; PR 9 must remain unmerged",
@@ -13,12 +13,75 @@
     "host_dma_writes_completed": "Unknown"
   },
   "shutdown_evaluation": {
-    "producer_stopped": {"status": "Unknown", "obstruction": "No acquisition-side MTTCTL execution/acknowledgement contract; independent MAM work not excluded"},
+    "producer_stopped": {"status": "Unknown", "obstruction": "MTTCTL bit 0 and physical START level transition recovered; downstream producer execution/acknowledgement unresolved; independent MAM load state retained"},
     "descriptor_engine_stopped": {"status": "Unknown", "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT"},
     "no_new_pci_master_transactions": {"status": "Unknown", "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts"},
     "existing_pci_transactions_terminated": {"status": "Unknown", "obstruction": "Target read/response and link framing do not establish PCI initiator retirement"},
     "internal_buffers_drained": {"status": "Unknown", "obstruction": "TX snapshots, 72 RX frame-bank FFs and runtime RAM/BRAM retain state; response/SYNC/event are not occupancy predicates"},
     "host_dma_writes_completed": {"status": "Unknown", "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved"}
+  },
+  "acquisition_controller": {
+    "scope": "Conditional configured receiver/load/control cuts, not complete command acceptance, response or live revision",
+    "hardware": {
+      "status": "Verified",
+      "source": "Local LeCroy-WaveRunner-6000-SM.pdf, drawing 901587 rev B, sheets 36-40 (PDF pages 304-308)",
+      "receiver": "U21 XC2S200E-FG456",
+      "other_fpga": "U8 XC2S200E-FG456 ATC/MTT, distinct from U21 and PCI-card U3",
+      "mcu": "U16 C161PI",
+      "ram": "U28 MT48LC8M8A2TG-75 external SDRAM",
+      "start_ball": "AA5",
+      "clock_balls": {"RX_CLK_P": "A11/GCK2", "BRD_CLK_125_CTRL": "AA12/GCK0", "125MHZ_MTT_P": "AB12/GCK1"},
+      "clock_limit": "Board labels/connectivity; effective DLL clocks, phase and running frequency not inferred from labels"
+    },
+    "firmware": {
+      "status": "Verified",
+      "devicepack_sha256": "4eb12f74466d7e7cc6232651b346cc08d07901f58b558a293bc8f1a89bddbe9d",
+      "resource_204_sha256": "a31948066e4fe7d21ccf4612bcd6057da7b01cbb36e8b6b21269f59ce9254f06",
+      "stream_bytes": 180260,
+      "stream_0_sha256": "227cba1ae543cf78b5b6d5700f719340e18df63850ec270eea47b5855c404337",
+      "stream_1_sha256": "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b",
+      "role_status": "Inferred",
+      "role_evidence": "Stream 0 enables all twelve U21 RX differential P pads and SYNC, implements matching DMA offsets; stream 1 does not enable these RX pads. Serial loader destination/order and live revision are not established",
+      "mcu_resource": "BINARY.203: sparse Intel HEX, 56792 bytes; preserve addresses including 0x200000 range; no MCU execution/firmware export analyzed"
+    },
+    "receiver": {
+      "status": "Verified",
+      "data_p_balls": ["B19", "B18", "B17", "E16", "D16", "B16", "D15", "B15", "D14", "B14", "D13", "B13"],
+      "sync_p_ball": "C12",
+      "rx_fast_clock": "X24,Y29 BUFGCE[0].O",
+      "controller_clock": "X24,Y0 BUFGCE[1].O",
+      "field_mapping": "Registered pad plus two unconditional fast stages, two gated banks at each history depth 0/1/2; exact controller-clock bank muxes cover payload bits 0..31. lane1 depths1,2 map bits1,0; lanes2..11 depth d map bit 3*lane-2-d",
+      "acceptance_status": "Unknown",
+      "missing": "Parity rejection, phase recovery under errors, complete command valid/write qualification, repeated/partial frames, CDC timing, response association",
+      "address_capture": {"status": "Verified", "gate": "X29,Y19 SLICE[1].X", "predicate": "v && !q && flag", "flag": "X31,Y21 SLICE[0].XQ", "v": "X32,Y19 SLICE[1].YQ", "q": "X29,Y19 SLICE[1].YQ"}
+    },
+    "command_matrix": [
+      {"name": "MTTCTL", "mmio": "BAR1+0x080 DWORD", "address_mask": "0x7FC", "condition": "v && q && (captured_address & 0x7FC) == 0x080", "decode_status": "Verified", "gates": ["X26,Y16 SLICE[1].X"], "destination": "X24,Y16 SLICE[1].YQ", "payload_bits": "0", "effect": "E captures bit0; delayed physical START follows E&&(D2||H)", "response_status": "Unknown", "dma_safety_status": "Unknown"},
+      {"name": "MTTRGO", "mmio": "BAR1+0x084 DWORD", "address_mask": "0x7FC", "condition": "v && q && (captured_address & 0x7FC) == 0x084", "decode_status": "Verified", "gates": ["X27,Y18 SLICE[0].Y"], "destination": "19 separate controller-clock load FFs", "payload_bits": "0..18", "effect": "Independent load bank; count units, consumption and completed-operation meaning unresolved", "response_status": "Unknown", "dma_safety_status": "Unknown"},
+      {"name": "MAMRGO", "mmio": "BAR1+0x064 DWORD", "address_mask": "0x7FC", "condition": "v && q && (captured_address & 0x7FC) == 0x064", "decode_status": "Verified", "gates": ["X26,Y16 SLICE[0].Y", "X28,Y17 SLICE[0].Y"], "destination": "24 separate controller-clock load FFs", "payload_bits": "0..23", "effect": "Independent load bank, not cleared by MTTCTL=0 alone; downstream MAM stop/drain unresolved", "response_status": "Unknown", "dma_safety_status": "Unknown"}
+    ],
+    "control": {
+      "status": "Verified",
+      "definitions": {"E": "X24,Y16 SLICE[1].YQ", "D1": "X13,Y13 SLICE[1].YQ", "D2": "X13,Y13 SLICE[1].XQ", "H": "X13,Y13 SLICE[0].YQ", "P": "X13,Y12 SLICE[0].YQ", "START": "X3,Y0 IOI[1].PAD_O, FG456 AA5"},
+      "equations": "D1'=E; D2'=D1; H'=E&&(D2||H); START'=E&&(D2||H); P'=E&&!D1; E'=payload0 on MTTCTL gate else E",
+      "reset": "All six async reset to zero via X40,Y4 SLICE[1].YQ; external/global reset causality not fully established",
+      "pulse_warning": "B8 is X13,Y29 IOI[2].PAD_O, a different pulse output; do not confuse it with physical START/AA5",
+      "stop_conclusion": "MTTCTL=0 clears E on the qualified load edge, START by the following controller edge; this is not acquisition producer idle or queue drainage"
+    },
+    "formal": {
+      "status": "Verified",
+      "scope": "Existing System model, selected actual transitions, remaining state/ACK symbolic, bound 0..6 controller events; no full protocol reachability",
+      "bounded_unsat": ["zero leaves START high after its next controller edge", "held unqualified one restarts initialized E/START", "repeated one retriggers local rising-edge pulse after settling", "MTTCTL zero alone clears retained MAM/MTT load bit", "asserted local reset leaves selected control bit set"],
+      "abstract_sat": "Unidentified ACK can coexist with symbolic producer/queued payload/PCI activity/outstanding transfer/restart/unretired-host-write; not a hardware counterexample",
+      "safety": "All six release obligations remain Unknown; UnknownActive unchanged"
+    },
+    "remaining_work": [
+      "Resolve actual v/q/flag acceptance and parity/error/CDC behavior using available stream0, not presumed TX symmetry",
+      "Follow 19-bit MTTRGO and 24-bit MAMRGO banks through consumption, SDRAM/BRAM occupancy and return-word producer multiplexers",
+      "Correlate response class/valid/address/epoch with PCI RX and MMIO retirement; no stop ACK currently identified",
+      "Analyze available stream1 ATC/MTT and sparse C161PI firmware where physical START/producer cone requires it; no acquisition firmware request needed",
+      "Establish installed/live revision, effective clock assumptions, authoritative Spartan-IIE PCI_CE contract and platform DMA retirement independently"
+    ]
   },
   "pcilogic": {
     "status": "Unknown",
@@ -225,16 +288,16 @@
     {
       "name": "MAMRGO",
       "mmio": {"status": "Verified", "bar": 1, "offset": "0x064", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
-      "decoded_address": {"status": "Unknown", "reason": "Exact acquisition launch packet identity not decoded"},
-      "destination": {"status": "Inferred", "kind": "acquisition MAM trigger", "note": "Legacy command identity; remote configured state remains unknown"},
+      "decoded_address": {"status": "Verified", "scope": "Conditional acquisition gate v && q && (addr & 0x7FC)==0x064; complete acceptance Unknown", "condition_ref": "acquisition_controller.command_matrix"},
+      "destination": {"status": "Verified", "kind": "acquisition 24-FF load bank, payload0..23", "note": "Controller-clock load topology, not completed MAM execution"},
       "status_source": {"status": "Unknown", "reason": "No producer-stopped or pending-packet acknowledgement"},
       "dma_safety": {"status": "Unknown", "reason": "Separate producer from MTT; MTT disable cannot be assumed to stop this path"}
     },
     {
       "name": "MTTRGO",
       "mmio": {"status": "Verified", "bar": 1, "offset": "0x084", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
-      "decoded_address": {"status": "Unknown", "reason": "Exact acquisition launch packet identity not decoded"},
-      "destination": {"status": "Inferred", "kind": "acquisition MTT trigger", "note": "Legacy command identity; remote configured state remains unknown"},
+      "decoded_address": {"status": "Verified", "scope": "Conditional acquisition gate v && q && (addr & 0x7FC)==0x084; complete acceptance Unknown", "condition_ref": "acquisition_controller.command_matrix"},
+      "destination": {"status": "Verified", "kind": "acquisition 19-FF load bank, payload0..18", "note": "Controller-clock load topology, not completed MTT execution"},
       "status_source": {"status": "Unknown", "reason": "No producer-stopped or pending-packet acknowledgement"},
       "dma_safety": {"status": "Unknown", "reason": "Completion indication does not establish final PCI write retirement"}
     },
@@ -297,8 +360,8 @@
     {
       "name": "MTTCTL",
       "mmio": {"status": "Verified", "bar": 1, "offset": "0x080", "width_bits": 32, "operations": ["write"], "legacy_function": "0x163B2, 0x137C4"},
-      "decoded_address": {"status": "Verified", "scope": "BAR1 high-address comparison and AD[17:2] retention only", "reason": "Exact downstream MTTCTL opcode/slot identity remains Unknown"},
-      "destination": {"status": "Inferred", "kind": "acquisition command", "note": "Retained BAR1 address and TBUS payload feed decoded transmit staging fields; no exact accepted MTTCTL packet or remote state demonstrated"},
+      "decoded_address": {"status": "Verified", "scope": "BAR1 staging plus conditional acquisition gate v && q && (addr & 0x7FC)==0x080; complete acceptance Unknown", "condition_ref": "acquisition_controller.command_matrix"},
+      "destination": {"status": "Verified", "kind": "acquisition E bit0 and delayed START level", "note": "Actual configured load/control transition; producer stop and response association unproved"},
       "status_source": {"status": "Verified", "scope": "Conditional local bit-0 mux only", "classification": "Receive data with local previous-value hold", "condition_ref": "read_pipeline.bit0_conditional_sources.bar1_080", "note": "Remote MTTCTL meaning and producer-stopped acknowledgement remain Unknown"},
       "dma_safety": {"status": "Unknown", "reason": "Cannot show exclusion of MAM work, queued packets, descriptors or already started PCI transfers"}
     }
