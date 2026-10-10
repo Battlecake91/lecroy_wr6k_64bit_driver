@@ -162,6 +162,45 @@ The private original PDFs were not copied into the public repository.
   additional hardware architecture information by itself is
   **not a reason to modify working INTEN, ISR, PCI or DMA code**.
 
+## Host-side transfer width versus XStream I2C CVar width
+
+The legacy XStream internal ProBus control surface and the kernel transport have
+different length limits and must not be conflated.
+
+The recovered XStream automation/CVar path
+`AcqControl.PrbusDriver.I2CRegister` exposes
+`I2CRegNbOfBits` choices of 8, 16, 24 and 32 bits. Therefore that
+high-level register operation is limited to **four data bytes per invocation**.
+This is an XStream/PrbusDriver CVar constraint, not evidence of a four-byte
+limit in the Windows driver or PCI transport.
+
+Static recovery of the original x86 transport shows a wider path:
+
+- CFDC2110 type-3 board-forwarding commands call
+  `FUN_00016168`, which forwards the record signature plus payload to
+  `FUN_000176E6`.
+- `FUN_000176E6` requires an even byte count and streams 16-bit words through
+  the BAR1 TX window.
+- A single hardware burst contains at most `0x78` words, i.e. **240 bytes**.
+  Longer messages are split into continuation bursts and transmitted until all
+  words are consumed.
+- The native x64 replacement's `LecTransportSend` deliberately reproduces
+  the same `0x78`-word chunking.
+
+Therefore the known four-byte XStream `I2CRegister` limit does **not** by
+itself block larger transactions at the driver/PCI layer. An eight-byte target
+protocol frame is transportable in principle once the exact board-firmware
+command that performs the physical ProBus I2C transaction is identified.
+
+That final mapping is still missing. No recovered IOCTL is currently proven to
+be a direct raw-I2C API. The safest next discriminator is to capture otherwise
+identical XStream ProBus operations with 1-, 2-, 3- and 4-byte
+`I2CRegister` accesses (and, if useful, the PROM actions), identify the
+corresponding CFDC2110 family/opcode and payload fields, and only then reproduce
+the command directly through `DeviceIoControl`/diagnostic tooling. Do not
+guess the I2C firmware opcode or bypass the board protocol with arbitrary MMIO
+writes.
+
 ## Next targeted reverse-engineering questions
 
 1. Recover the ADC identification *source* and the value/class
