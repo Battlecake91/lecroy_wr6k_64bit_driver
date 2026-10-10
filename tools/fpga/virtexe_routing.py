@@ -171,6 +171,13 @@ class Router:
         node["disabled_terminals"] = []
         enabled = []
         for terminal in node["terminals"]:
+            if terminal["bel"] == "BRAM" and terminal["pin"].startswith(("DOA[", "DOB[")):
+                bram = self.bel(terminal["x"], terminal["y"], "BRAM")
+                port = terminal["pin"][2]
+                width = bram_width(bram["attributes"], port)
+                if width is not None and int(terminal["pin"][4:-1]) >= width:
+                    node["disabled_terminals"].append({"terminal": terminal, "reason": "outside configured BRAM port width"})
+                    continue
             if terminal["bel"].startswith("IOI[") and terminal["pin"] == "I":
                 pad = self.bel(terminal["x"], terminal["y"],
                                terminal["bel"].replace("IOI[", "IOB["))
@@ -437,13 +444,25 @@ class LogicAnalyzer:
                 return
             component = bus_component(self.router.bus_row(y), (x, lane))
             entry.update(kind="combinational", dedicated=component,
-                         data={"op": "bus", "drivers": [{"driver": self.output(d["terminal"])}
+                         data={"op": "bus", "resolution": "spartan2e_wired_and", "drivers": [{"driver": self.output(d["terminal"])}
                                for d in component["drivers"]]})
             if "unknown" in component:
                 entry["data"]["unknown"] = component["unknown"]
         elif name.startswith("TBUF[") and pin == "O":
             entry.update(kind="tristate_driver", data=self.input(inputs["I"]),
                          disable=self.input(inputs["T"]))
+        elif name == "BRAM" and pin.startswith(("DOA[", "DOB[")):
+            memory = f"X{x},Y{y} BRAM"
+            if memory not in self.memories:
+                # Port inputs enqueue feedback; expansion remains worklist-based.
+                self.memories[memory] = bram_contract(attrs, inputs, self.input)
+            port, index = pin[2], int(pin[4:-1])
+            width = bram_width(attrs, port)
+            if width is None or index >= width:
+                entry.update(kind="architecture_boundary", reason="invalid or unavailable BRAM output width")
+            else:
+                entry.update(kind="memory_output", memory=memory, port=port, bit=index,
+                             reason="clocked BRAM output latch; not an asynchronous INIT lookup")
         elif name.startswith("IOI["):
             try:
                 pad = self.router.bel(x, y, name.replace("IOI[", "IOB["))["attributes"]
@@ -672,7 +691,7 @@ def evaluate_data(expression, logic, values, stack=()):
         value = all(evaluate_data(arg, logic, values, stack) for arg in expression["args"])
     elif expression.get("op") == "bus":
         resolved = resolve_bus(expression, logic, values, stack)
-        if resolved["status"] not in ("driven", "multiple_drivers_agree"):
+        if "value" not in resolved:
             raise ValueError("bus " + resolved["status"] + ": " + resolved.get("reason", ""))
         value = bool(resolved["value"])
     else:
@@ -699,8 +718,12 @@ def resolve_bus(expression, logic, values, stack=()):
     except (ValueError, KeyError) as exc:
         return {"status": "unknown", "reason": str(exc), "active": active}
     if not active:
+        if expression.get("resolution") == "spartan2e_wired_and":
+            return {"status": "floating", "value": 1, "reason": "DS077 internal BUFT default High", "active": []}
         return {"status": "floating", "reason": "no enabled TBUF; no pull/keeper assumed", "active": []}
     if len({d["value"] for d in active}) > 1:
+        if expression.get("resolution") == "spartan2e_wired_and":
+            return {"status": "contention", "value": 0, "reason": "opposing logical drivers; DS077 internal wired-AND, not electrical contention", "active": active}
         return {"status": "contention", "reason": "opposing enabled TBUF data", "active": active}
     return {"status": "driven" if len(active) == 1 else "multiple_drivers_agree",
             "value": active[0]["value"], "active": active}
@@ -829,9 +852,35 @@ def register_step(report, signal, values, clock_edge=False):
 def state_model(report):
     registers = {n: register_contract(n, d) for n, d in report["logic"].items() if d["kind"] == "register"}
     return {"registers": registers,
+            "memory_outputs": {n: d for n, d in report["logic"].items() if d["kind"] == "memory_output"},
             "semantics": "Simultaneous pre-edge evaluation within each identified clock domain; SR overrides CE, synchronous SR requires clock edge. Not a reachability or quiescence proof.",
             "buses": {n: d["data"] for n, d in report["logic"].items() if d.get("data", {}).get("op") == "bus"},
             "memories": report.get("memories", {})}
+
+
+def bram_width(attributes, port):
+    selections = attributes.get("DATA_WIDTH_" + port, {}).get("selections", [])
+    return int(selections[0][1:]) if selections in (["_1"], ["_2"], ["_4"], ["_8"], ["_16"]) else None
+
+
+def bram_contract(attributes, inputs, decode_input):
+    """RAMB4 physical pins: low address pins are omitted for wider ports."""
+    result = {"kind": "ramb4", "bits": 4096, "ports": {},
+              "initial": attributes.get("INIT", {}).get("value"),
+              "initial_reason": attributes.get("INIT", {}).get("reason", "INIT decoding unavailable"),
+              "evidence": "DS077 pp15-16; XAPP173 pp2-8; pinned v2xdl-verify/src/ramb.rs::gen_ramb_v",
+              "semantics": "Independent clocked read/write-back ports; EN gates output/reset/write. RST clears only output. Cross-port timing collisions remain symbolic."}
+    for port in "AB":
+        width = bram_width(attributes, port)
+        if width is None:
+            result["ports"][port] = {"status": "unknown", "reason": "unavailable BRAM width"}
+            continue
+        shift = width.bit_length() - 1
+        result["ports"][port] = {"status": "modeled", "width": width, "address_shift": shift,
+            "address": {str(i - shift): decode_input(inputs[f"ADDR{port}[{i}]"]) for i in range(shift, 12)},
+            "data": {str(i): decode_input(inputs[f"DI{port}[{i}]"]) for i in range(width)},
+            **{n: decode_input(inputs[p + port]) for n, p in (("clock", "CLK"), ("enable", "EN"), ("reset", "RST"), ("write", "WE"))}}
+    return result
 
 
 def reconstruction_summary(report):
@@ -941,6 +990,10 @@ def cone_summary(report, roots):
         if node["kind"] == "architecture_boundary":
             boundaries[name] = [node["reason"]]
             continue
+        if node["kind"] == "memory_output":
+            pending.append(node["memory"])
+        if node["kind"] == "ramb4":
+            boundaries.setdefault(name, []).append("runtime BRAM contents/output latches are state, not an occupancy acknowledgement")
         if node["kind"] == "ram16x1d":
             boundaries.setdefault(name, []).append("runtime memory contents unavailable; INIT is not a drain acknowledgement")
         if node["kind"] == "register":
@@ -950,7 +1003,8 @@ def cone_summary(report, roots):
         controls = {k: v for k, v in node.get("controls", {}).items() if not k.endswith("CLK")}
         for part in expression_nodes({"data": node.get("data", {}), "disable": node.get("disable", {}),
                                       "controls": controls, "write_address": node.get("write_address", {}),
-                                      "enable": node.get("enable", {})}):
+                                      "enable": node.get("enable", {}), "ports": {
+                                          p: {k: v for k, v in c.items() if k != "clock"} for p, c in node.get("ports", {}).items()}}):
             if "unknown" in part:
                 boundaries.setdefault(name, []).append(part["unknown"])
             if "source" in part:

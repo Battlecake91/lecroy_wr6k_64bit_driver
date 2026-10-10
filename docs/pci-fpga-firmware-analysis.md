@@ -5,11 +5,13 @@
 observations only. **Do not publish firmware/bitstream image bytes,
 vendor binaries, schematics or license data.**
 
-**Current milestone:** The pinned native adapter models configured carry/XOR
-and dedicated TBUS lanes, conditional drivers and contention. Native firmware
-calibration passes 47 checks; 19 PCI local equation/alias checks pass. The
-expanded network has 3,359 logic nodes and 9,129 resolved routing paths, with
-261 routing paths still Unknown/ambiguous. The PCI-clocked Q/P
+**Current milestone:** The existing decoder now feeds a tested, bounded Z3
+transition model, including registers, distributed RAM, configured BRAM ports,
+and architecture-correct internal BUFT resolution. Native firmware calibration
+passes 47 checks; 19 PCI local equation/alias checks pass. The expanded network
+has 3,359 logic nodes and 9,129 resolved routing paths, with 21 routing paths
+still Unknown/ambiguous. See [Formal State Analysis](#formal-state-analysis).
+The PCI-clocked Q/P
 transition relations, FRAME output/OE shadow registers, delayed IRDY OE,
 REQ output and grant-qualified start logic are reconstructed below in
 [Verified PCI Control Register Network](#verified-pci-control-register-network).
@@ -2221,12 +2223,13 @@ a transaction/FIFO-empty acknowledgement.
 
 The full offline run at `--max-logic 10000` contains **3,359 logic nodes**:
 1,405 registers, 1,480 combinational outputs, 352 tristate drivers, 64 input
-pads and 58 architecture boundaries. There are **9,390 routing paths:
-9,129 resolved, 250 Unknown and 11 ambiguous**. None hit traversal limits
-or unknown PIP encodings. These larger counts reflect the newly reachable
-memory and BRAM paths, not regressions in the earlier control routes.
-There are also 143 conditional bus observations and 32 runtime RAM16X1D
-arrays. Counts describe the configured dependency network, not physically
+pads, 45 clocked BRAM output bits and 13 architecture boundaries. There are
+**9,150 routing paths: 9,129 resolved, 10 Unknown and 11 ambiguous**. None hit
+traversal limits or unknown PIP encodings. Width-aware BRAM contracts avoid
+traversing unused pins; the 240 omitted routes were unused input dependencies,
+not 240 newly established data routes. There are 41 distinct decoder boundary
+records, 143 conditional bus observations, 32 runtime RAM16X1D arrays and ten
+4096-bit BRAM arrays. Counts describe the configured dependency network, not physically
 reachable PCI protocol states or proof of one-hot bus ownership.
 
 The emitted `summary` distinguishes local regression PASS from incomplete
@@ -2267,9 +2270,13 @@ drivers: TBUF[0] at columns 2/4/6/8/10/12, and TBUF[1] at 3/5/7/11/13.
 Each retains its effective I and T expressions; a driver is active only
 when effective T=0. Multiple drivers are never arbitrarily collapsed.
 The evaluator distinguishes one driver, agreeing multiple drivers,
-opposing-driver contention, high impedance and Unknown controls/data.
-The configured set is verified; mutual exclusion of the runtime enables
-has not been proved. N also occurs in S and FRAME's enable path, so this
+opposing logical driver data, no enabled driver and Unknown controls/data.
+For these **internal** Spartan-IIE BUFT nets, DS077 p15 specifies default
+High and Low-dominant resolution of opposing data. Thus the retained diagnostic
+status `contention` means conflicting logical drivers, not electrical damage;
+the level is zero. Generic/external tristate nets retain unknown levels when
+floating or conflicting. The configured set is verified; mutual exclusion of
+the runtime enables has not been proved. N also occurs in S and FRAME's enable path, so this
 boundary is relevant to transaction initiation and retention.
 
 #### Local Transition Validation
@@ -2328,8 +2335,10 @@ Concrete remaining model limits include X1,Y21 BRAM_QUAD_DOUT[7]
 feeding runtime RAM writes, and unmodeled PCILOGIC.PCI_CE/DLL behavior.
 Some BRAM routes expose competing pad/CLB and BRAM terminals; they remain
 ambiguous until native BRAM width/port/quad connectivity is accounted for.
-The five prioritized data/non-clock-control cones each retain 53 boundary
-nodes, including 32 runtime arrays. Hard-clock boundaries are retained
+The five prioritized data/non-clock-control cones each retain 50 proof-boundary
+nodes, including 32 distributed RAM and ten BRAM arrays. Their 1,375-1,380
+register dependencies include the BRAM input-side closure. Runtime memory
+state is modeled but is not an occupancy-empty predicate. Hard-clock boundaries are retained
 separately in the register model. These are tool/model limitations that
 further offline work can reduce, not proof that the hardware is inherently
 ambiguous. Global reachability over the resulting memory-bearing machine
@@ -2348,3 +2357,160 @@ Offline verification additionally passes all eight driver dry suites:
 ownership 17, SG bridge 27, SG sync 149, PnP IRP lifetime 8 and PnP
 publication 38). These protect the existing quarantine behavior; they
 do not count as hardware tests or DMA-quiescence proof.
+
+### Formal State Analysis
+
+`tools/fpga/virtexe_symbolic.py` consumes the existing decoder's private JSON;
+it is not a second bitstream decoder. Its optional dependency is pinned in
+`tools/fpga/requirements-symbolic.txt` to `z3-solver==4.15.4.0`.
+Full generated networks, memory contents, SMT assignments and traces remain
+outside this public repository.
+
+#### Implemented Contracts
+
+- All **1,405 decoded FFs** have supported contracts: simultaneous pre-edge D
+  sampling, CE hold, INIT, synchronous SR on selected edges, asynchronous SR
+  between edges and SR priority over CE. Unsupported latch/reverse-SR contracts
+  leave state unconstrained and label the result Inconclusive.
+- The **three effective clock domains** have separate symbolic edge events.
+  Explicit schedules are supported. Constant clocks cannot edge; opposite
+  polarities cannot rise simultaneously. BUFGCE/DLL generation, phase and
+  startup relationships are **not** proved, so firmware witnesses are abstract.
+- **32 RAM16X1D arrays** retain configuration INIT separately from runtime state,
+  asynchronous read addresses and pre-edge writes. **Ten RAMB4 arrays** use
+  shared 4096-bit storage and **45 observed output-latch bits**. Widths 1/2/4/8/16
+  select the required address and data pins. The pinned `gen_ramb_v` mapping
+  omits the lowest `log2(width)` physical address pins; they are not extra
+  address bits. X1,Y21 uses 4-bit ports; X46,Y9 and X46,Y13 use 16-bit ports.
+- BRAM EN gates operations; reads update clocked output latches, writes mirror
+  input data, and synchronous RST clears the output, not the RAM. Other-port
+  writes do not asynchronously update an inactive output. Collision results,
+  setup-window overlap, same-port RST/WE priority, missing INIT and startup
+  latch values remain symbolic. No FIFO-empty claim follows from stored zeros.
+- Internal TBUS uses the DS077 Low-dominant/default-High contract. Ownership
+  predicates separately cover zero/one/multiple agreeing/conflicting drivers.
+  Unknown enables/topology are never assigned a convenient constant.
+- PCI sampled input, FPGA intended O, effective T and other-agent O/enable are
+  separate. External contention is not resolved using the internal BUFT rule.
+
+Memory references: [DS077 pp15-16](https://docs.amd.com/v/u/en-US/ds077),
+[XAPP173 pp2-8](https://docs.amd.com/v/u/en-US/xapp173), and pinned public
+`re/xilinx/v2xdl-verify/src/ramb.rs::gen_ramb_v`. INIT extraction still stops
+at the adapter's unsupported BRAM_DATA bit rectangle; main-frame data must
+not be reinterpreted as BRAM INIT.
+
+#### Solver Scope And Assumptions
+
+The API supports reachability, invariant-violation, explicit enabled-action
+deadlock and exact state/array lasso queries. A finite stalled prefix is not
+called livelock. Deadlock requires an independently justified enabled-action
+predicate. No actual transaction deadlock/livelock query was manufactured from
+an unknown terminal-state or acknowledgement signal.
+
+Results carry solver version, bound, timeout, base-constraint consistency,
+initialization mode, clock domains, assumptions, Unknown reasons and private
+state/input/bus-driver traces. SAT with incomplete semantics is
+`Inconclusive / abstract_candidate`, not a hardware counterexample. SAT for a
+complete synthetic transition model can establish bounded reachability or a
+valid invariant counterexample. Bounded UNSAT is always Inconclusive for the
+unbounded question. An inconsistent initial/environment model is also flagged;
+it cannot masquerade as successful exclusion of a bad state.
+
+Firmware runs start from decoded FF/distributed-RAM power-up INIT, not an
+arbitrary runtime register assignment. BRAM INIT/output startup is unknown.
+The effective clocks are independent events. PCI profiles are explicitly
+`electrical-only` or `target-response`; the latter additionally requires
+externally supplied STOP#/TRDY# assertions to be accompanied by DEVSEL# while
+the FPGA releases those target signals. Neither profile assumes a bounded grant,
+bounded target response, eventual progress, producer stop, descriptor stop or
+DMA acknowledgement. DEVSEL# is present as an **uncorrelated environmental
+Unknown**: board-to-IOB mapping and downstream timeout/abort logic have not been
+established. This is not a full PCI-specification environment model.
+
+Example offline invocation (all output paths must be private):
+
+```powershell
+python -m pip install -r tools/fpga/requirements-symbolic.txt
+$env:WR6K_FPGA_SYMBOLIC = '1'
+./tests/dry/test-fpga-decoder.ps1
+python -B tools/fpga/virtexe_symbolic.py C:/private/network.json --bound 8 --timeout-ms 15000 --environment target-response --output C:/private/smt.json
+```
+
+#### Actual Results
+
+The synthetic suites pass **39 routing tests + 36 SMT tests**, including
+register/reset/CE behavior, multiple clocks, mutable memories, BRAM collision
+unknowns, internal versus external bus semantics, SAT traces, deterministic
+mocked timeout handling and contradictory assumptions. Private frame calibration,
+native architecture **47/47**, and local equations/aliases **19/19** pass.
+All eight driver dry suites also pass: **35 source contracts + 276 native C
+cases**. These are offline tests, not hardware or Windows driver-load tests.
+
+The private model contains 1,405 supported registers, 32 distributed arrays,
+ten BRAM arrays, 45 BRAM output bits and three effective clock domains.
+It retains **232 distinct symbolic Unknown reasons**; these include guarded
+collision/priority cases as well as static architecture boundaries, not 232
+independent physically active faults.
+
+At bound 2, no multiple-driver TBUS witness exists in the power-up model;
+zero/one-driver cases are SAT. At bound 8, agreeing and conflicting multiple
+drivers and the mutual-exclusion violation are SAT. Every result remains
+Inconclusive. Arbitrary runtime-cut queries are emitted separately and must
+never be substituted for power-up reachability. The full traces include the
+selected clock events, environmental inputs and active driver indices.
+
+Final runs use bounds **2, 8 and 16**, a 15,000 ms per-check timeout and the
+`target-response` profile: **27 bounded queries, 18 SAT / 9 UNSAT / 0 unknown**,
+with satisfiable base constraints throughout. All twelve repeated arbitrary-cut
+queries are SAT. None of the 27 firmware results establishes an unbounded
+hardware property. At bound 16, REQ#/FRAME#/IRDY# driven-low observations become
+SAT too; they were UNSAT at bounds 2 and 8. This directly demonstrates why the
+shorter bounds cannot establish permanent inactivity.
+
+One bound-8 abstract trace has opposing logical values from X2,Y2 TBUF[0] and
+X4,Y2 TBUF[0] at step 4. Its assumptions are decoded power-up FF/LUT-RAM state,
+unconstrained BRAM INIT/output startup, independent effective clock events,
+symbolic unresolved paths/collisions/hard blocks, the stated external PCI
+profile, and no stop/acknowledgement or fairness constraint. Step 4 is where
+that particular witness conflicts, not a proved shortest hardware execution.
+The internal bus resolves Low; reachable physical one-hot ownership remains
+unproved.
+
+REQ#/FRAME#/IRDY# driven-low queries are bounded observations, not named PCI
+phases. In particular, seeing sampled IRDY#=TRDY#=0 can be supplied by another
+agent and is not proof that this FPGA completed a data phase. No new actual
+grant/start/retry/disconnect/timeout/abort/termination transition is established
+beyond the clocked local equations already documented above.
+
+#### Minimal Evidence And Driver Handoff
+
+All six quiescence requirements remain independently **Inconclusive/Unknown**;
+the obligation table above remains the controlling result. The strongest
+supported partial predicate is instantaneous FPGA output inactivity:
+REQ# not actively asserted and FRAME#/IRDY# released or driven deasserted.
+It says nothing about pending producers, descriptors, FIFO occupancy, later
+restarts or posted host writes. It is not a software-observable acknowledgement.
+
+The existing x86 evidence was checked against
+`docs/dma-lifetime-and-timeout.md`: IIMST bit 0, IIMCL=0, MTTCTL=0, an IRQ/event
+and INTEN masking still have no established idle/retirement contract. No new
+MMIO sequence is proposed. The smallest missing evidence set is:
+
+1. Correlate the **actual stop command and a readable acknowledgement bit** to
+   decoded producer/descriptor admission and PCI-start guards. Establish that
+   the acknowledgement remains true until software explicitly restarts.
+2. Close the **21 unresolved/ambiguous routes**, particularly X1,Y21 quad output
+   and X46,Y9/Y13 RAM-write dependencies, plus PCILOGIC.PCI_CE, DLL.LOCKED and
+   the three effective clock relationships. Supply BRAM INIT/startup and
+   collision timing only where those properties actually depend on them.
+3. Correlate **DEVSEL#/timeout/abort states and buffer pointers/occupancy** to the
+   same acknowledgement. Prove no new start, every outstanding transaction
+   terminal, and no pending internal data under an explicit legal environment.
+4. Independently establish the **Windows DMA/host-bridge completion contract**
+   and confirm the executing firmware revision. An update image cannot provide
+   either fact by itself.
+
+Until those conditions are established, the driver implementation workstream
+must preserve `UnknownActive`, pinned mappings and quarantine. This analysis
+changes no production driver, performs no hardware access/programming/reset,
+and does not authorize release, speculative register writes, or merging PR #9.

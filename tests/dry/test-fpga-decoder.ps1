@@ -34,6 +34,14 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+if ($env:WR6K_FPGA_SYMBOLIC -eq '1') {
+    Write-Host 'Synthetic bounded SMT tests (requires requirements-symbolic.txt)'
+    & $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_symbolic.py') -v
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    Write-Host 'SKIP optional SMT tests: set WR6K_FPGA_SYMBOLIC=1 after installing requirements-symbolic.txt'
+}
+
 if ($env:WR6K_FPGA_BINARY_205) {
     Write-Host 'Private firmware frame calibration'
     & $python @pythonArgs $decoder $env:WR6K_FPGA_BINARY_205 --validate-knowns
