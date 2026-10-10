@@ -292,9 +292,18 @@ BINARY.203. The local service manual also contains the full mainboard child
 sheets. Do not request these artifacts again. See the current
 [acquisition receiver/control cuts](pci-fpga-firmware-analysis.md#acquisition-controller-receiver-and-dma-command-cuts).
 MTTCTL=0 is now tied to controller bit0 and delayed START clearing, but no
-command-specific ACK or producer/buffer completion is proved. The remaining
-acceptance, consumption and response cones are technical reconstruction work
-in available evidence, not a missing-binary blocker. All six obligations remain
+command-specific ACK or producer/buffer completion is proved. Word-addressed
+command sequencing, parity/error signaling, TX serialization and full19/24-bit
+count comparisons are reconstructed. Return pointers and modular occupancy
+have independent admission; the status candidate is a sticky MAMPGO-related
+event with explicit CLRERR-bit2 clearing, not an MTTCTL-zero ACK.
+A TX word can retain state after MTTCTL=0; neither count equality nor the
+error pair proves drainage. The detailed manual
+identifies downstream **U38 START/M1**, while stream1 disables that input and
+configures an output. Resolve this board/loader/image conflict before assigning
+downstream producer semantics. Full U21 mode arbitration and command-specific
+response association remain unresolved, separately from external HAD639E producer,
+DLL/CDC, PCI_CE and host-retirement contracts. All six obligations remain
 Unknown; independent MAM/MTT load state and queued work must not be dismissed.
 
 1. Identify a **single candidate stop command and durable readable ack** from

@@ -578,11 +578,21 @@ class LogicAnalyzer:
                 return lut("G")
             if mode == "F5":
                 return {"op": "mux", "select": self.input(inputs["BX"]), "zero": lut("G"), "one": lut("F")}
+            if mode == "F6":
+                other = dedicated.get("F5IN")
+                if not other:
+                    return {"unknown": "dedicated F5IN unavailable"}
+                # Pinned gen_muxf678: I0=other F5, I1=own F5, S=BY.
+                return {"op": "mux", "select": self.input(inputs["BY"]),
+                        "zero": {"source": self.output(other), "inv": False}, "one": internal("F5")}
             if mode in ("FXOR", "GXOR"):
                 return {"op": "xor", "args": [lut(mode[0]), internal("CI" if axis == "X" else "FCY")]}
             return {"unknown": f"unmodeled {axis} data path {mode}"}
 
-        if pin in ("CI", "FCY", "GCY", "COUT", "XB", "YB"):
+        if pin == "F5":
+            entry.update(kind="combinational", data={"op": "mux", "select": self.input(inputs["BX"]),
+                                                    "zero": lut("G"), "one": lut("F")})
+        elif pin in ("CI", "FCY", "GCY", "COUT", "XB", "YB"):
             if pin == "CI":
                 data = carry_input()
             elif pin in ("FCY", "XB"):

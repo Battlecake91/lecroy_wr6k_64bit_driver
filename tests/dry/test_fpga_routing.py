@@ -49,6 +49,24 @@ class CarryRouter:
                 "dedicated": {"CIN": {"x": 0, "y": 1, "bel": "SLICE[0]", "pin": "COUT"}}}
 
 
+class F6Router(CarryRouter):
+    def __init__(self, missing=False):
+        super().__init__()
+        self.missing = missing
+
+    def bel(self, x, y, name):
+        result = super().bel(x, y, name)
+        if name == "INPUT":
+            return result
+        result["attributes"].update(FXMUX={"selections": ["F"]}, GYMUX={"selections": ["F6"]})
+        result["inputs"] = {p: {"wire": [x, y, name + "." + p], "inv": False}
+                            for p in ("F1", "G1", "BX", "BY")}
+        if not self.missing:
+            index = int(name[6])
+            result["dedicated"]["F5IN"] = {"x": x, "y": y, "bel": f"SLICE[{index ^ 1}]", "pin": "F5"}
+        return result
+
+
 def synthetic_bus_row():
     columns = []
     for x in (0, 2, 3, 5, 6):
@@ -68,6 +86,26 @@ def synthetic_bus_row():
 class RoutingTests(unittest.TestCase):
     def setUp(self):
         self.image = SimpleNamespace(frames=[[1, 0]])
+
+    def test_f6_other_slice_and_own_f5_selection_all_128_inputs(self):
+        analyzer = LogicAnalyzer(F6Router())
+        for index in range(2):
+            root = analyzer.output({"x": 3, "y": 2, "bel": f"SLICE[{index}]", "pin": "Y"})
+            analyzer.report([root])
+            other = index ^ 1
+            names = [f"X3,Y2 INPUT.SLICE[{s}].{p}" for s, p in
+                     ((index, "BY"), (index, "BX"), (other, "BX"),
+                      (index, "F1"), (index, "G1"), (other, "F1"), (other, "G1"))]
+            for values in itertools.product((False, True), repeat=7):
+                by, bx, obx, f, g, of, og = values
+                expected = (f if bx else g) if by else (of if obx else og)
+                self.assertEqual(evaluate_data(analyzer.logic[root]["data"], analyzer.logic, dict(zip(names, values))), expected)
+
+    def test_f6_missing_architecture_link_stays_unknown(self):
+        analyzer = LogicAnalyzer(F6Router(missing=True))
+        root = analyzer.output({"x": 3, "y": 2, "bel": "SLICE[1]", "pin": "Y"})
+        analyzer.report([root])
+        self.assertEqual(analyzer.logic[root]["data"], {"unknown": "dedicated F5IN unavailable"})
 
     def test_enabled_disabled_and_inverted_bits(self):
         self.assertEqual(classify_pip(self.image, pip("a"))["status"], "active")

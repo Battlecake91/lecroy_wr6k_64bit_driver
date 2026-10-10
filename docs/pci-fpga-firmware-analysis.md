@@ -3073,8 +3073,9 @@ actually running PCI/acquisition firmware separately from BINARY.205.
 ### Acquisition Controller Receiver And DMA Command Cuts
 
 **Current scope (2026-10-11):** offline configured BINARY.204 evidence, reusing
-the existing decoder/router and `virtexe_symbolic.System`. This is a bounded
-continuation, **not complete receiver/producer/response reconstruction**.
+the existing decoder/router and `virtexe_symbolic.System`. Receiver qualification,
+parity, command sequencing, return serialization and count comparisons are
+reconstructed below. **End-to-end producer/response retirement is not proved.**
 No production driver or quarantine behavior changed. `UnknownActive` remains.
 
 #### Available Evidence
@@ -3101,12 +3102,14 @@ Existing Ghidra exports concern x86 `LecS65AcqDrv.sys`, not FPGA/C161PI logic.
 Existing IOCTL JSONL captures contain no passive twelve-lane LVDS/clock samples.
 
 The local service manual includes the complete mainboard child sheets. U21 is
-**XC2S200E-FG456**, distinct from U8 ATC/MTT and PCI-card U3; U16 is C161PI.
+**XC2S200E-FG456**, distinct from **U38** ATC/MTT and PCI-card U3; U16 is C161PI.
 See [physical topology](pci-card-acquisition-board-topology.md#acquisition-controller-child-sheets).
 Pinned Project Combine `234343d23e737e57f2727630e19008b509d7d522` supplies
 **BOND85 FG456**, not the PCI PQ208 bond. Private all-pad exploratory reports
-contain 3,713/3,921 nodes and 161/99 explicit boundaries for streams 0/1;
-inventory counts are not complete semantic reconstruction. No raw network,
+initially contained 3,713/3,921 nodes and 161/99 explicit boundaries for streams
+0/1; F6 reconstruction expands stream0 to **3,881 nodes / 151 boundaries**.
+Inventory counts are not
+complete semantic reconstruction. No raw network,
 firmware or schematic crop is published.
 
 #### Actual Receiver Compatibility
@@ -3115,25 +3118,66 @@ All twelve stream-0 data P pads and C12/SYNC have registered IQ paths using
 RX-fast `X24,Y29 BUFGCE[0].O`. Each data lane has two more unconditional
 fast stages, then two gated banks at each history depth 0/1/2. Controller-clock
 mux/capture fields use `X24,Y0 BUFGCE[1].O`. Analog CDC correctness is unproved.
-`receiver_fields` recognizes **73 exact two-bank mux/capture fields**, including
+`receiver_fields` recognizes **79 exact two-bank mux/capture fields**, including
 duplicates and all 32 payload positions, by checking the actual mux functions:
 
 | PCI transmitter | Controller receiver | Grade / limit |
 |---|---|---|
 | lane1 B/C = payload1/0 | lane1 history1/2 = payload1/0 | Verified conditional bank mux |
 | lanes2..11 A/B/C = bits 3n-2/3n-3/3n-4 | same lane history0/1/2 | Verified conditional bank mux |
-| lane0 control/parity; lane1 A parity | excluded from 32 payload positions | Position compatibility; parity rejection unresolved |
-| address bits2..10 in low payload positions | twelve address FFs, duplicates at bits5/6/7 | Verified data/load topology; duplicates require consistent state |
-| position31 marker | X31,Y21 SLICE[0].XQ from lane11 history0 | Verified field, not complete valid/write meaning |
+| lane0 A/B/C = control A/B/even parity; lane1 A = odd parity | same selected history0/1/2 positions | Verified functions; parity error is separately registered, not a demonstrated immediate command veto |
+| byte-address bits2..10 | wire payload bits0..8 into twelve address FFs, duplicates at byte bits5/6/7 | Verified **word addressing**, not byte-offset payload; duplicates require consistent state |
+| position31 marker | X31,Y21 SLICE[0].XQ from lane11 history0 | Verified address marker in the qualified two-word sequence |
 | periodic SYNC/control | separate bank enables and controller state | Not execution ACK or FIFO-empty |
 
-Address capture gate `X29,Y19 SLICE[1].X` equals `v && !q && flag`, where
-`v=X32,Y19 SLICE[1].YQ`, `q=X29,Y19 SLICE[1].YQ`,
-`flag=X31,Y21 SLICE[0].XQ`. v/q are **coordinate state cuts**, not assigned
-valid/write/ACK meanings. Phase recovery, parity/error rejection, partial/repeated
-command handling and complete CDC timing remain unresolved. Synthetic zero,
-all-one, alternating and walking-one words test both real bank mux branches;
-they do not simulate frame acceptance.
+Actual command qualification and sequence (controller events, pre-edge values):
+
+```text
+CA = X37,Y22 SLICE[1].X       # selected lane0 history0
+CB = X38,Y19 SLICE[0].X      # selected lane0 history1
+L  = X42,Y26 SLICE[0].YQ     # link/framing state, not DMA idle
+J  = X44,Y26 SLICE[1].X
+v  = X32,Y19 SLICE[1].YQ; q = X29,Y19 SLICE[1].YQ
+flag = X31,Y21 SLICE[0].XQ
+v' = L && !CA && CB && J
+q' = v ? (!q && flag) : q
+address_capture = v && !q && flag
+command_load = v && q && aligned_address_match
+```
+
+`X44,Y25 SLICE[0].Y` and J are functionally identical. Qualified command
+control fields are A=0/B=1. A qualified marked word while q=0 captures the
+address and sets q; the next qualified word executes the selected load and
+clears q, regardless of its marker. With v=0, q holds: partial/delayed pairs
+are not automatically discarded here. Repeated marked words are **not**
+deduplicated by this state; the second can be interpreted as data. This is a
+conditional protocol result, not a claim about malformed frames reaching live
+hardware. No transaction generation/epoch is identified in q.
+
+For the controller-side framing predicate, define A=X44,Y26 SLICE[0].XQ,
+B=X44,Y26 SLICE[0].YQ, C=X44,Y24 SLICE[1].YQ,
+D=X44,Y24 SLICE[1].XQ, T=X44,Y25 SLICE[1].XQ:
+`K=T||!B; J=D||!K||(A&&!C); C'=A&&L; D'=A&&!C&&L&&!K; T'=B&&L`.
+The three selected-bank replicas have identical clock/CE/reset/INIT and next
+state; their equality is conditional on that initialization/reset contract.
+Their data is `L&&!S`, CE `!L||J`, S=X45,Y24 SLICE[1].YQ, another equivalent
+replica. RX-fast alternation h=X32,Y28 SLICE[0].YQ has D=`s&&!h`,
+CE=`!s||SYNC`; opposite bank strobes capture `s&&h&&SYNC` and
+`s&&!h&&SYNC`, s=X42,Y26 SLICE[1].YQ. These are actual sampled-state equations;
+DLL locking, analog CDC, pulse widths and recovery after malformed/partial
+physical frames remain assumptions, not a simulated wire timing proof.
+
+Receiver parity registers X41,Y21 SLICE[1].YQ / X40,Y23 SLICE[0].YQ capture
+`!XOR(payload even bits,CA,CB)` / `!XOR(payload odd bits)`. Both independent
+bank values remain symbolic in the SMT comparison, with only equivalent
+selector replicas constrained equal. In command mode CA=0 this agrees with
+the PCI TX even-parity equation including CB; no RX behavior was inferred by
+transmitter symmetry. Comparator X43,Y22 SLICE[0].X is the OR of the two
+parity mismatches. Its gated/delayed result enters X43,Y22 SLICE[0].YQ and
+sticky X44,Y16 SLICE[1].YQ, then registered **TX_RST_ERR AA20/AB20**.
+The sticky bit is not a command ACK. It does not occur in the direct v/q/load
+predicates. Peer-induced reset/error recovery may still affect the link;
+immediate parity rejection and all external error feedback are **not proved**.
 
 #### Command Loads And Physical START
 
@@ -3141,6 +3185,9 @@ Each predicate was exhaustively checked over 512 aligned address values and
 four v/q assignments, with duplicate address FFs constrained consistently.
 Mask **0x7FC** is the recovered local predicate, not authorization to access
 aliases or proof of the complete receiver's upper-address qualification.
+The transmitted low address is offset>>2: **0x020 for MTTCTL, 0x021 for
+MTTRGO, 0x019 for MAMRGO**. The marked address-word test uses 0x80000020
+followed by payload0 and checks actual q/address/E/START transitions.
 
 | Legacy DWORD access | Controller predicate | Destination |
 |---|---|---|
@@ -3149,8 +3196,16 @@ aliases or proof of the complete receiver's upper-address qualification.
 | BAR1+0x064 MAMRGO | same qualification, value0x064, X26,Y16 SLICE[0].Y and X28,Y17 SLICE[0].Y | Separate 24-FF load bank, payload0..23 |
 
 These controller-clocked destinations are **load registers**, not automatically
-remaining-count, FIFO-occupancy or descriptor counters. Units and terminal
-consumption behavior remain Unknown. The concrete MTTCTL control equations are:
+remaining-count, FIFO-occupancy or descriptor counters. The whole carry cones
+X10,Y18 SLICE[0].YB / X15,Y22 SLICE[1].YB are now proved equal to full-width
+equality between the programmed **19/24-bit** values and separate count banks.
+The 24-bit MAM bank increments on its advance CE, clears on
+`load&&!previous_load`, and is not directly gated by MTTCTL E. The MTT bank
+increments normally with its two launch-edge states clear; its distinct
+admission CE is `X7,Y12 SLICE[1].YQ || X11,Y19 SLICE[1].XQ`.
+These are counted events, not identified sample/byte/descriptor units.
+Terminal comparisons feed local state, not a proved drain acknowledgement.
+The concrete MTTCTL control equations are:
 
 ```text
 D1 = X13,Y13 SLICE[1].YQ; D2 = X13,Y13 SLICE[1].XQ
@@ -3172,15 +3227,76 @@ evidence, **not completed producer stop**. MTTCTL=0 alone retains independent
 MAMRGO/MTTRGO load banks; their loads remain possible with E=0 in the abstract
 cut. Pending SDRAM/BRAM/link work and PCI transactions are not excluded.
 
+#### Return Data And Exact Producer Boundary
+
+All twelve TX lanes, SYNC and the error pair have been correlated to FG456
+pads in the [topology](pci-card-acquisition-board-topology.md#acquisition-controller-child-sheets).
+Actual fast TX phases use p=X38,Y3 SLICE[0].XQ,
+e=X38,Y4 SLICE[1].XQ, kick=X43,Y2 SLICE[0].YQ:
+`p'=e||(!p&&kick); e'=p XOR e`, yielding idle00, C10, B01, A11.
+Equivalent phase replicas are checked from their transitions and reset
+contracts. `transmit_fields` exhaustively checks all mux cofactors, recovering
+all 32 controller-word positions plus the four control/parity positions.
+TX uses X24,Y0 BUFGCE[0].O; each PAD_O has its real additional registered
+stage. A/B snapshot registers and direct C sources are distinguished.
+Return parity is `!XOR(even payload,CA,CB)` and `!XOR(odd payload)`, checked
+against the **actual word-mux input expressions**, not assumed protocol data.
+
+The word mux includes runtime **X1,Y1 BRAM and X1,Y5 BRAM**: two 256x16
+buffers sharing write/read address and write admission, controller-clocked
+port A writes and port B reads. Reading/clearing a BRAM output latch is not
+clearing stored contents. Their eight-bit write/read pointers increment on
+W=X20,Y4 SLICE[1].Y / R=X29,Y4 SLICE[1].X respectively. Port B uses the
+read-pointer lookahead, gated by initialization-ready X23,Y5 SLICE[1].YQ.
+The nine-bit bookkeeping bank (X30,Y1 SLICE[0].YQ, then X30,Y2..5
+SLICE[0].XQ/YQ) has D=`ready ? old+W-R : 0`, modulo512, where
+ready=X30,Y2 SLICE[1].YQ. These are whole-cone SMT identities, not an assumed
+FIFO abstraction. The class boundary X29,Y4 SLICE[0].X is exactly
+`bookkeeping==0 || five_bit_block_counter==31`, **not** a greater-than count
+comparison or global buffer-empty indication. No direct MTTCTL E term occurs
+in this admission/bookkeeping logic; overflow avoidance and producer closure
+remain unproved. The selected TX word can retain a nonzero bit after
+MTTCTL=0 when its independent CE is low (bounded conditional UNSAT mismatch
+check). No empty/stop predicate was substituted for these memories.
+X19,Y24 SLICE[1].YQ is one candidate status source feeding TX payload0;
+its event is the registered **MAMPGO BAR1+0x044** command strobe
+X26,Y18 SLICE[0].YQ AND MAM comparison state X16,Y19 SLICE[0].YQ.
+Its D is that event and CE is `event || (qualified CLRERR+0x004 && payload2)`.
+Thus it holds until another event, explicit clear or reset. The 0x044 strobe
+was exhaustively checked, and the whole CE equation proved with consistent
+address replicas. This is a sticky MAM-related event, **not MTTCTL=0 ACK**.
+Its specific MMIO read/epoch association and drain meaning remain Unknown.
+
+One real return-source decoder gap was closed: GYMUX=F6 selects the other
+slice's F5 when BY=0 and own F5 when BY=1. The adapter exports dedicated
+F5IN from pinned `rdverify/virtex::verify_slice`; select polarity follows
+`v2xdl-verify/clb_lut4.rs::gen_muxf678`. F5 itself selects G/F by BX.
+Synthetic tests check both slices and all 128 independent input assignments,
+plus fail-closed missing architecture connectivity. This resolves the former
+`unmodeled Y data path F6` in X27,Y13 SLICE[1].YQ; it does **not** assign its
+readback a convenient stop semantic.
+
+The **physical downstream boundary is revision-sensitive**. Service-manual
+sheet18 shows START at **U38 M1**, connected through FPGA(0:35) bit18 to U21
+AA5. The earlier U8 transcription is corrected. Stream1, independently
+re-exported from the same pinned decoder, disables M1's input buffer and
+configures X0,Y14 IOI[1].PAD_O instead. Therefore stream1 cannot simply be
+called the revision-B MTT consumer image. Matching size, family or serial
+position is insufficient. Likewise the manual's ADC **U50 HAD639E** is an
+external producer, not implemented by the U21 register bank. No HAD639E
+execution/stop contract or matching passive producer trace is available here.
+
 #### Formal Results And Remaining Work
 
-Seven new SMT tests reuse actual transitions through `symbolic_cut` and
+The SMT tests reuse actual transitions through `symbolic_cut` and
 `System`, explicit controller-clock events, other sequential/architecture state
 symbolic, bounds 0..6. SAT bases precede mismatch UNSAT. Conditional local results:
 zero clears START; unqualified writes cannot restart initialized E/START;
 repeated one does not retrigger settled P; zero alone retains separate load
 bits; MAM/MTT loads may follow zero; local async reset returns controls to INIT.
-These are not full protocol reachability or unbounded proofs.
+Whole-cone parity/count comparisons are combinational UNSAT proofs under
+explicit replica constraints; sequence/retention checks remain bounded 0..6.
+These are not full protocol reachability or unbounded DMA-stop proofs.
 
 An unidentified symbolic ACK may coexist with symbolic new samples, queued
 LVDS work, REQ/FRAME activity, outstanding transfer, restart or unretired host
@@ -3191,16 +3307,27 @@ or completed/drained response has been identified. All six obligations remain
 outstanding PCI transactions terminal, internal buffers drained, host writes
 retired/ordered. PCI_CE remains unresolved; no invented primitive equation.
 
-Remaining work is **reconstruction in available evidence**, not a missing-binary
-request: resolve v/q/flag, parity/error and CDC acceptance; follow 19/24-bit load
-banks through consumers and SDRAM/BRAM occupancy; identify response producer
-muxes, class/valid/address/generation association and PCI RX/MMIO retirement.
-Follow physical START into available ATC firmware and C161PI only where the
-producer cone requires it. x86-only Ghidra exports cannot replace these steps.
-Exact additional evidence, where timing prevents closure, is a compatible
-hardblock/clock contract or an **existing** passive twelve-lane+SYNC+clock capture
-with command/response association. Installed revision and host-bridge retirement
-remain separate requirements. No new hardware observation is authorized.
+Targeted evidence/analysis request, rather than an invented ACK:
+
+1. Resolve the **U21-AA5 to U38-M1 mismatch** using the actual assembly revision
+   and static loader destination/serial order. Provide the matching U38 image
+   only if different from the two existing streams; raw bitstream or validated
+   Intel HEX with pin/package identity suffices. C161PI loader disassembly with
+   configuration destinations would also suffice; x86-only exports do not.
+2. Supply an existing HAD639E/MAM producer stop/end-of-data contract or existing
+   passive START/MAM/MTT-data observations tied to command generation. This
+   addresses producer stop and delayed data admission, not PCI retirement.
+3. U21 return pointers/bookkeeping, class boundary and sticky MAM event are
+   reconstructed. Full mode arbitration around X27,Y8 SLICE[0].XQ and
+   command-specific response/epoch association still need correlation to the
+   independently unresolved downstream producer/PCI retirement contracts.
+   A local zero count or sticky event cannot substitute for those contracts.
+4. For physical acceptance, use an authoritative effective DLL/clock contract
+   or an **existing** twelve-lane+SYNC+clock capture with command association.
+   No new probing, reset or other hardware observation is authorized.
+5. Keep PCI_CE semantics, installed firmware identity and host-bridge write
+   retirement as separate evidence requirements. None is replaced by a remote
+   producer result. All six obligations stay Unknown and UnknownActive stays.
 
 Private reproduction (output must be outside the repository):
 
@@ -3210,14 +3337,14 @@ python -B tools/fpga/virtexe_acquisition.py $privateStream0 `
   --private-output $outsideRepositoryJson
 $env:WR6K_ACQUISITION_REPORT = $outsideRepositoryJson
 $env:WR6K_ACQUISITION_BINARY = $privateStream0
+$env:WR6K_ACQUISITION_SECOND_REPORT = $outsideRepositoryStream1Json
 $env:WR6K_FPGA_SYMBOLIC = '1'
 python -B tests/dry/test_fpga_acquisition.py -v
 ```
 
-Actual final execution: **7 synthetic + 10 private configured-logic + 7 private
-SMT acquisition tests PASS**, against a newly reproduced private network from
-the committed tool. Matrix consistency and the 13 synthetic MMIO tests were
-rerun after final edits. Existing **42 routing + 49 MMIO + 39 symbolic tests**
+Actual final execution: **10 synthetic + 21 private configured-logic + 18 private
+SMT acquisition tests PASS**, against newly reproduced private networks from
+the committed tool. Existing **44 routing + 49 MMIO + 39 symbolic tests**
 also PASS, as do private frame calibration, **50 native architecture checks**
 and **19 PCI state equations**. All eight driver dry suites PASS: source35,
 completion24, layout13, ownership17, SG-stage27, SG-sync149, IRP-lifetime8,

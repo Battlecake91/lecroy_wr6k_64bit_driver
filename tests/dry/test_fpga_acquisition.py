@@ -73,6 +73,34 @@ class SyntheticAcquisition(unittest.TestCase):
         with self.assertRaises(ValueError):
             a.command_decode({"logic": {"gate": {"data": {"unknown": "no route"}}}}, "gate", 0x80)
 
+    def test_synthetic_frames_keep_control_parity_and_marker_distinct(self):
+        for word in [0, 0xFFFFFFFF, 0xA5A55A5A] + [1 << i for i in range(32)]:
+            frame = a.command_frame(word)
+            self.assertEqual(tuple(len(phase) for phase in frame), (12, 12, 12))
+            self.assertFalse(frame[0][0])
+            self.assertTrue(frame[1][0])
+            reconstructed = sum(int(frame[d][lane]) << bit for lane in range(12)
+                for d in range(3) for bit in [a.payload_bit(lane, d)] if bit is not None)
+            self.assertEqual(reconstructed, word)
+            self.assertEqual(frame[2][0], bool((word & 0x55555555).bit_count() % 2))
+            self.assertEqual(frame[0][1], not bool((word & 0xAAAAAAAA).bit_count() % 2))
+        for word in (-1, 1 << 32, "0"):
+            with self.assertRaises(ValueError):
+                a.command_frame(word)
+
+    def test_leaf_inventory_preserves_memory_and_unknown_boundaries(self):
+        logic = {"mux": {"kind": "combinational", "data": {"op": "xor", "args": [
+            {"source": "ram"}, {"source": "ff"}, {"source": "unknown"}]}},
+            "ram": {"kind": "memory_output"}, "ff": {"kind": "register"},
+            "unknown": {"kind": "architecture_boundary"}}
+        self.assertEqual(a.sequential_leaves({"source": "mux"}, logic), {"ram", "ff", "unknown"})
+
+    def test_unresolved_tx_or_compare_is_rejected(self):
+        with self.assertRaises((KeyError, ValueError)):
+            a.transmit_fields({"logic": {}, "roots": {}})
+        with self.assertRaises((KeyError, ValueError)):
+            a.comparison_pairs({"logic": {}}, "MAMRGO", {0: "unknown"})
+
 
 @unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_REPORT"), "private acquisition report not configured")
 class PrivateAcquisition(unittest.TestCase):
@@ -101,7 +129,7 @@ class PrivateAcquisition(unittest.TestCase):
 
     def test_all_32_payload_positions(self):
         self.assertEqual({f["payload_bit"] for f in self.fields.values()} - {None}, set(range(32)))
-        self.assertEqual(len(self.fields), 73)
+        self.assertEqual(len(self.fields), 79)
         self.assertEqual(self.fields["X35,Y20 SLICE[1].YQ"]["payload_bit"], 0)
 
     def test_synthetic_payloads_through_actual_rx_muxes(self):
@@ -122,6 +150,8 @@ class PrivateAcquisition(unittest.TestCase):
             for gate in gates:
                 with self.subTest(command=command, gate=gate):
                     self.assertTrue(a.command_decode(self.r, gate, value))
+        for command, gate in (("MTTRGO", "X27,Y18 SLICE[0].YQ"), ("MAMRGO", "X28,Y17 SLICE[0].YQ")):
+            self.assertTrue(a.command_decode(self.r, gate, a.GATES[command][0]))
 
     def test_separate_load_bank_widths(self):
         for command, width in (("MTTCTL", 1), ("MTTRGO", 19), ("MAMRGO", 24)):
@@ -155,6 +185,138 @@ class PrivateAcquisition(unittest.TestCase):
         for v, q, f in itertools.product((False, True), repeat=3):
             self.assertEqual(evaluate_data(self.l[gate]["data"], self.l,
                 {a.V: v, a.Q: q, flag: f}), v and not q and f)
+
+    def equation(self, name, inputs, expected, part="data"):
+        for values in itertools.product((False, True), repeat=len(inputs)):
+            self.assertEqual(evaluate_data(self.l[name][part], self.l, dict(zip(inputs, values))), expected(*values))
+
+    def test_control_fields_are_actual_lane_zero_banks(self):
+        fields = a.receiver_fields(self.r, True)
+        for name, depth in ((a.CA, 0), (a.CB, 1)):
+            self.assertEqual((fields[name]["lane"], fields[name]["delay"]), (0, depth))
+
+    def test_actual_valid_and_address_data_sequence_equations(self):
+        self.equation(a.V, (a.LINK, a.CA, a.CB, a.FRAME), lambda link, ca, cb, frame: link and not ca and cb and frame)
+        self.equation(a.Q, (a.V, a.Q, a.FLAG), lambda v, q, flag: (not q and flag) if v else q)
+        self.equation("X34,Y21 SLICE[1].X", (a.CA, a.CB, a.CAPTURE), lambda ca, cb, cap: not ca and cb and cap)
+
+    def test_controller_framing_and_bank_selector_equations(self):
+        aa, bb = "X44,Y26 SLICE[0].XQ", "X44,Y26 SLICE[0].YQ"
+        cc, dd, tt = "X44,Y24 SLICE[1].YQ", "X44,Y24 SLICE[1].XQ", "X44,Y25 SLICE[1].XQ"
+        kk = "X44,Y25 SLICE[0].X"
+        self.equation(kk, (tt, bb), lambda t, b: t or not b)
+        self.equation(a.FRAME, (cc, kk, aa, dd), lambda c, k, a0, d: d or not k or (a0 and not c))
+        self.equation(a.CAPTURE, (dd, kk, aa, cc), lambda d, k, a0, c: d or not k or (a0 and not c))
+        self.equation(cc, (aa, a.LINK), lambda a0, link: a0 and link)
+        self.equation(dd, (aa, cc, a.LINK, kk), lambda a0, c, link, k: a0 and not c and link and not k)
+        self.equation(tt, (bb, a.LINK), lambda b, link: b and link)
+        self.equation(a.RX_SELECTORS[0], (a.LINK, "X45,Y24 SLICE[1].YQ"), lambda link, s: link and not s)
+        self.equation("X43,Y26 SLICE[0].X", (a.LINK, a.CAPTURE), lambda link, cap: not link or cap)
+
+    def test_fast_sync_bank_enable_equations(self):
+        h, s, sync = "X32,Y28 SLICE[0].YQ", "X42,Y26 SLICE[1].YQ", self.r["roots"]["C12"]["IQ"]
+        self.equation(h, (s, h), lambda link, old: link and not old)
+        for sv, hv, fv in itertools.product((False, True), repeat=3):
+            inputs = {s: sv, h: hv, sync: fv}
+            ce = evaluate_data(functional_expression(self.l[h]["controls"]["CE"]), self.l, inputs)
+            self.assertEqual(ce, not sv or fv)
+            for n, value in (("X35,Y28 SLICE[0].XQ", sv and hv and fv),
+                             ("X36,Y27 SLICE[0].XQ", sv and not hv and fv)):
+                self.assertEqual(evaluate_data(self.l[n]["data"], self.l, inputs), value)
+
+    def test_parity_comparator_and_sticky_error_not_ack(self):
+        received_even, received_odd = "X44,Y20 SLICE[0].YQ", "X42,Y25 SLICE[0].YQ"
+        self.equation(a.PARITY_COMPARE, (a.EVEN, a.ODD, received_even, received_odd),
+                      lambda e, o, re, ro: e != re or o != ro)
+        self.equation(a.PARITY_ERROR, (a.LINK, "X44,Y23 SLICE[1].YQ", a.PARITY_COMPARE),
+                      lambda link, enabled, mismatch: link and enabled and mismatch)
+        self.equation(a.ERROR, (a.PARITY_ERROR, "X44,Y23 SLICE[0].YQ", a.ERROR),
+                      lambda parity, other, old: parity or other or old)
+        for ball, inverted in (("AA20", True), ("AB20", False)):
+            self.equation(self.r["roots"][ball]["O"], (a.ERROR,), lambda error: error != inverted)
+        for node in (a.V, a.Q, *[g for _, gates in a.GATES.values() for g in gates]):
+            self.assertFalse({a.ERROR, a.PARITY_ERROR, a.PARITY_COMPARE} & a.sequential_leaves(self.l[node]["data"], self.l))
+
+    def test_tx_phase_machine_all_states_and_replicas(self):
+        self.equation(a.TX_P, (a.TX_P, a.TX_E, a.TX_KICK), lambda p, e, kick: e or (not p and kick))
+        self.equation(a.TX_E, (a.TX_P, a.TX_E), lambda p, e: p != e)
+        for family in (a.TX_P_COPIES, a.TX_E_COPIES):
+            reference = register_contract(family[0], self.l[family[0]])
+            for name in family:
+                contract = register_contract(name, self.l[name])
+                for key in ("clock", "ce", "sr", "init", "status"):
+                    self.assertEqual(functional_expression(contract[key]), functional_expression(reference[key]))
+                for p, e, kick in itertools.product((False, True), repeat=3):
+                    inputs = {a.TX_P: p, a.TX_E: e, a.TX_KICK: kick}
+                    self.assertEqual(evaluate_data(self.l[name]["data"], self.l, inputs),
+                                     evaluate_data(self.l[family[0]]["data"], self.l, inputs))
+
+    def test_tx_all_32_word_fields_and_real_buffer_sources(self):
+        fields = a.transmit_fields(self.r)
+        payload = {v["payload_bit"]: v for v in fields.values() if v["payload_bit"] is not None}
+        self.assertEqual(set(payload), set(range(32)))
+        self.assertEqual(payload[0]["word_register"], "X27,Y6 SLICE[1].XQ")
+        self.assertEqual(fields[0, "A"]["word_register"], "X29,Y4 SLICE[0].YQ")
+        f6 = self.l["X27,Y13 SLICE[1].YQ"]["data"]
+        self.assertEqual(f6["op"], "mux")
+        self.assertEqual(f6["zero"]["source"], "X27,Y13 SLICE[0].F5")
+        self.assertEqual(f6["one"]["source"], "X27,Y13 SLICE[1].F5")
+        for field in fields.values():
+            for name in (field["output"], field["mux"]):
+                self.assertEqual(register_contract(name, self.l[name])["clock"]["source"], a.TX_FAST)
+        memories = set()
+        for field in payload.values():
+            node = self.l[field["word_register"]]
+            self.assertEqual(node["controls"]["CLK"]["source"], a.CLOCK)
+            memories.update(n for n in a.sequential_leaves(node["data"], self.l) if self.l[n]["kind"] == "memory_output")
+        self.assertEqual({self.l[n]["memory"] for n in memories}, {"X1,Y1 BRAM", "X1,Y5 BRAM"})
+        for name in ("X1,Y1 BRAM", "X1,Y5 BRAM"):
+            memory = self.r["memories"][name]
+            self.assertEqual(memory["kind"], "ramb4")
+            self.assertEqual(memory["ports"]["B"]["width"], 16)
+            self.assertEqual(memory["ports"]["B"]["clock"]["source"], a.CLOCK)
+        left, right = [self.r["memories"][name]["ports"] for name in ("X1,Y1 BRAM", "X1,Y5 BRAM")]
+        for port in ("A", "B"):
+            for key in ("address", "write", "clock"):
+                self.assertEqual(functional_expression(left[port][key]), functional_expression(right[port][key]))
+
+    def test_tx_control_fields_depend_on_transport_stable_not_mtt_e(self):
+        self.assertEqual(self.r["roots"]["E14"]["IQ"], "X32,Y29 IOI[1].IQ")
+        self.assertEqual(self.l["X32,Y21 SLICE[1].YQ"]["data"]["source"], "X32,Y29 IOI[1].IQ")
+        self.assertEqual(functional_expression(self.l["X37,Y3 SLICE[0].YQ"]["data"]),
+                         {"source": "X32,Y21 SLICE[1].YQ", "inv": True})
+        n, large, mode = "X31,Y3 SLICE[0].Y", "X29,Y4 SLICE[0].X", "X27,Y8 SLICE[0].XQ"
+        stable = "X32,Y4 SLICE[1].XQ"
+        self.equation("X29,Y4 SLICE[0].YQ", (n, stable, mode, large),
+                      lambda nz, s, md, lg: not s or not nz or (lg and not md))
+        self.equation("X27,Y5 SLICE[1].YQ", ("X28,Y5 SLICE[1].Y", large, mode, "X32,Y4 SLICE[0].YQ"),
+                      lambda nz, lg, md, s: not s or (nz and (lg or md)))
+        for node in ("X29,Y4 SLICE[0].YQ", "X27,Y5 SLICE[1].YQ"):
+            self.assertNotIn(a.E, a.sequential_leaves(self.l[node]["data"], self.l))
+
+    def test_independent_full_width_comparison_pairing(self):
+        for command, width in (("MTTRGO", 19), ("MAMRGO", 24)):
+            pairs = a.comparison_pairs(self.r, command, self.banks[command])
+            self.assertEqual(set(pairs), set(range(width)))
+            self.assertEqual(len(set(pairs.values())), width)
+            self.assertFalse(set(pairs.values()) & set(self.banks[command].values()))
+
+    def test_status_event_uses_mampgo_strobe_not_mtt_stop(self):
+        self.assertTrue(a.command_decode(self.r, "X26,Y18 SLICE[0].YQ", 0x044))
+        self.assertEqual(self.fields["X32,Y20 SLICE[1].YQ"]["payload_bit"], 2)
+        for name in ("X20,Y4 SLICE[1].Y", "X29,Y4 SLICE[1].X", "X19,Y24 SLICE[1].YQ"):
+            self.assertNotIn(a.E, a.sequential_leaves(self.l[name]["data"], self.l))
+
+    @unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_SECOND_REPORT"), "second private stream not configured")
+    def test_second_stream_is_not_assumed_to_consume_schematic_start(self):
+        report = json.loads(Path(os.environ["WR6K_ACQUISITION_SECOND_REPORT"]).read_text(encoding="utf-8"))
+        self.assertEqual(report["image_sha256"], "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b")
+        self.assertEqual(report["pads"]["M1"]["attributes"]["IBUF_MODE"]["selections"], ["NONE"])
+        self.assertNotIn("I", report["roots"]["M1"])
+        self.assertNotIn("IQ", report["roots"]["M1"])
+        self.assertEqual(report["roots"]["M1"]["O"], "X0,Y14 IOI[1].PAD_O")
+        self.assertEqual(self.r["pads"]["AA5"]["location"], [3, 0, 1])
+        # Revision-B U38 START/M1 cannot be assigned stream1 semantics from size/order alone.
 
 
 @unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_REPORT") and os.environ.get("WR6K_FPGA_SYMBOLIC") == "1",
@@ -248,6 +410,183 @@ class PrivateAcquisitionSmt(unittest.TestCase):
             m.solver.add(m.unknown(obligation, 3))
             self.assertEqual(m.solver.check(), self.z3.sat)  # Abstract cut witness, not a hardware fault.
             m.solver.pop()
+
+    def combinational_model(self):
+        return self.System(self.r, 0, powerup=False)
+
+    def equivalent(self, actual, expected, constraints=()):
+        s = self.z3.Solver()
+        s.set(timeout=20000)
+        s.add(*constraints)
+        self.assertEqual(s.check(), self.z3.sat)
+        s.add(actual != expected)
+        self.assertEqual(s.check(), self.z3.unsat)
+
+    def test_parity_matches_independent_selected_banks_all_payloads(self):
+        z3, m = self.z3, self.combinational_model()
+        fields = a.receiver_fields(self.r, True)
+        words = {}
+        for name, field in a.receiver_fields(self.r).items():
+            if field["payload_bit"] is not None:
+                words.setdefault(field["payload_bit"], m.expr(self.r["logic"][name]["data"], 0))
+        def xor(values):
+            result = z3.BoolVal(False)
+            for value in values:
+                result = z3.Xor(result, value)
+            return result
+        selectors = {field["selector"] for field in fields.values()}
+        constraints = [m.signal(name, 0) == m.signal(a.RX_SELECTORS[0], 0) for name in selectors]
+        even = z3.Not(xor([words[i] for i in range(0, 32, 2)] + [m.signal(a.CA, 0), m.signal(a.CB, 0)]))
+        odd = z3.Not(xor([words[i] for i in range(1, 32, 2)]))
+        # Both banks remain independent symbolic values; no identical-bank shortcut.
+        self.equivalent(m.expr(self.r["logic"][a.EVEN]["data"], 0), even, constraints)
+        self.equivalent(m.expr(self.r["logic"][a.ODD]["data"], 0), odd, constraints)
+
+    def test_rx_selector_replicas_have_identical_transition_contracts(self):
+        m = self.combinational_model()
+        reference = self.r["logic"][a.RX_SELECTORS[0]]
+        for name in (*a.RX_SELECTORS, "X45,Y24 SLICE[1].YQ"):
+            node = self.r["logic"][name]
+            rc, nc = register_contract(a.RX_SELECTORS[0], reference), register_contract(name, node)
+            for key in ("status", "clock", "ce", "sr", "init"):
+                self.assertEqual(functional_expression(rc[key]), functional_expression(nc[key]))
+            self.equivalent(m.expr(node["data"], 0), m.expr(reference["data"], 0))
+
+    def test_tx_parity_computes_actual_word_mux_data(self):
+        m, z3 = self.combinational_model(), self.z3
+        fields = a.transmit_fields(self.r)
+        payload = {f["payload_bit"]: m.expr(self.r["logic"][f["word_register"]]["data"], 0)
+                   for f in fields.values() if f["payload_bit"] is not None}
+        def xor(values):
+            result = z3.BoolVal(False)
+            for value in values:
+                result = z3.Xor(result, value)
+            return result
+        stable = ("X32,Y4 SLICE[1].XQ", "X32,Y4 SLICE[0].YQ", "X32,Y4 SLICE[1].YQ")
+        constraints = [m.signal(name, 0) == m.signal(stable[0], 0) for name in stable]
+        cb = m.expr(self.r["logic"][fields[0, "B"]["word_register"]]["data"], 0)
+        ca = m.expr(self.r["logic"][fields[0, "A"]["word_register"]]["data"], 0)
+        for field, expected in ((fields[0, "C"], z3.Not(xor([payload[i] for i in range(0, 32, 2)] + [ca, cb]))),
+                                (fields[1, "A"], z3.Not(xor([payload[i] for i in range(1, 32, 2)])))):
+            self.equivalent(m.expr(self.r["logic"][field["word_register"]]["data"], 0), expected, constraints)
+
+    def test_whole_carry_comparisons_equal_full_programmed_counts(self):
+        m, z3 = self.combinational_model(), self.z3
+        for command in a.COMPARE:
+            pairs = a.comparison_pairs(self.r, command, self.banks[command])
+            expected = z3.And(*[m.signal(self.banks[command][bit], 0) == m.signal(name, 0) for bit, name in pairs.items()])
+            self.equivalent(m.signal(a.COMPARE[command], 0), expected)
+
+    def test_mam_counter_increment_clear_and_enable_equations(self):
+        m, z3 = self.combinational_model(), self.z3
+        pairs = a.comparison_pairs(self.r, "MAMRGO", self.banks["MAMRGO"])
+        vector = lambda bits: z3.Concat(*[z3.If(bit, z3.BitVecVal(1, 1), z3.BitVecVal(0, 1)) for bit in reversed(bits)])
+        old = vector([m.signal(pairs[i], 0) for i in range(24)])
+        nxt = vector([m.expr(self.r["logic"][pairs[i]]["data"], 0) for i in range(24)])
+        load, previous, advance = [m.signal(n, 0) for n in
+            ("X28,Y17 SLICE[0].YQ", "X13,Y17 SLICE[0].YQ", "X17,Y16 SLICE[1].YQ")]
+        clear = z3.And(load, z3.Not(previous))
+        self.equivalent(nxt, z3.If(clear, z3.BitVecVal(0, 24), old + 1))
+        ce = m.expr(self.r["logic"][pairs[0]]["controls"]["CE"], 0)
+        self.equivalent(ce, z3.Or(clear, advance))
+        self.assertNotIn(a.E, a.sequential_leaves(self.r["logic"][pairs[0]]["controls"]["CE"], self.r["logic"]))
+
+    def test_mtt_counter_normal_increment_and_separate_admission(self):
+        m, z3 = self.combinational_model(), self.z3
+        pairs = a.comparison_pairs(self.r, "MTTRGO", self.banks["MTTRGO"])
+        vector = lambda bits: z3.Concat(*[z3.If(bit, z3.BitVecVal(1, 1), z3.BitVecVal(0, 1)) for bit in reversed(bits)])
+        old = vector([m.signal(pairs[i], 0) for i in range(19)])
+        nxt = vector([m.expr(self.r["logic"][pairs[i]]["data"], 0) for i in range(19)])
+        edge0, edge1, advance = [m.signal(n, 0) for n in
+            ("X11,Y19 SLICE[1].XQ", "X11,Y19 SLICE[1].YQ", "X7,Y12 SLICE[1].YQ")]
+        self.equivalent(nxt, old + 1, (z3.Not(edge0), z3.Not(edge1)))
+        self.equivalent(m.expr(self.r["logic"][pairs[0]]["controls"]["CE"], 0), z3.Or(edge0, advance))
+
+    def test_address_then_data_load_uses_actual_q_and_address_transitions(self):
+        names = {a.Q, a.E, a.D1, a.D2, a.H, a.P, a.START} | set(a.ADDRESS)
+        cut = a.symbolic_cut(self.r, names)
+        m = self.System(cut, 4, powerup=False,
+                        schedule=[{self.clock_key({"source": a.CLOCK, "inv": False})}] * 4)
+        m.solver.add(self.z3.Not(m.state(a.Q, 0)), m.state(a.E, 0))
+        fields = a.receiver_fields(self.r)
+        for t, word in enumerate((0x80000020, 0, 0, 0)):
+            m.solver.add(self.z3.Not(m.signal(a.RESET, t)), m.signal(a.V, t) == (t < 2))
+            for source in {self.r["logic"][n]["data"].get("source") for n in a.ADDRESS} | {"X35,Y20 SLICE[1].YQ", a.FLAG}:
+                bit = fields[source]["payload_bit"]
+                m.solver.add(m.signal(source, t) == bool(word & (1 << bit)))
+        m.solver.add(self.z3.Not(m.signal(a.RESET, 4)))
+        self.impossible(m, self.z3.Or(self.z3.Not(m.state(a.Q, 1)), m.state(a.Q, 2),
+                                     m.state(a.E, 2), m.state(a.START, 3)))
+        for n, bit in a.ADDRESS.items():
+            self.assertEqual(fields[self.r["logic"][n]["data"]["source"]]["payload_bit"], bit - 2)
+            self.impossible(m, m.state(n, 1) != bool(0x80 & (1 << bit)))
+
+    def test_tx_buffered_word_can_remain_after_mtt_zero(self):
+        payload = {f["payload_bit"]: f["word_register"] for f in a.transmit_fields(self.r).values() if f["payload_bit"] is not None}
+        retained = payload[0]
+        cut = a.symbolic_cut(self.r, {a.E, retained})
+        m = self.System(cut, 3, powerup=False,
+                        schedule=[{self.clock_key({"source": a.CLOCK, "inv": False})}] * 3)
+        for t in range(4):
+            m.solver.add(self.z3.Not(m.signal(a.RESET, t)))
+        m.solver.add(m.state(a.E, 0), m.state(retained, 0))
+        for t in range(3):
+            for name, bit in a.ADDRESS.items():
+                m.solver.add(m.signal(name, t) == bool(0x80 & (1 << bit)))
+            m.solver.add(m.signal(a.V, t), m.signal(a.Q, t), self.z3.Not(m.signal("X35,Y20 SLICE[1].YQ", t)),
+                         self.z3.Not(m.signal("X29,Y6 SLICE[1].YQ", t)))
+        self.impossible(m, self.z3.Or(m.state(a.E, 1), self.z3.Not(m.state(retained, 3))))
+        # Conditional retention, not proof that a remote FIFO is nonempty on hardware.
+
+    def test_return_bram_pointer_increments_follow_separate_admission(self):
+        m, z3 = self.combinational_model(), self.z3
+        vector = lambda bits: z3.Concat(*[z3.If(bit, z3.BitVecVal(1, 1), z3.BitVecVal(0, 1)) for bit in reversed(bits)])
+        ports = self.r["memories"]["X1,Y1 BRAM"]["ports"]
+        write = m.signal("X20,Y4 SLICE[1].Y", 0)
+        read = m.signal("X29,Y4 SLICE[1].X", 0)
+        write_names = [ports["A"]["address"][str(i)]["source"] for i in range(8)]
+        read_names = [f"X21,Y{y} SLICE[1].{axis}Q" for y in range(1, 5) for axis in ("X", "Y")]
+        for names, enable in ((write_names, write), (read_names, read)):
+            old = vector([m.signal(n, 0) for n in names])
+            nxt = vector([m.expr(self.r["logic"][n]["data"], 0) for n in names])
+            self.equivalent(nxt, old + z3.If(enable, z3.BitVecVal(1, 8), z3.BitVecVal(0, 8)))
+            for name in names:
+                self.assertNotIn(a.E, a.sequential_leaves(self.r["logic"][name]["controls"], self.r["logic"]))
+        ready = m.signal("X23,Y5 SLICE[1].YQ", 0)
+        address = vector([m.expr(ports["B"]["address"][str(i)], 0) for i in range(8)])
+        lookahead = vector([m.expr(self.r["logic"][n]["data"], 0) for n in read_names])
+        self.equivalent(address, z3.If(ready, lookahead, z3.BitVecVal(0, 8)))
+
+    def test_return_occupancy_and_class_boundary_are_not_global_idle(self):
+        m, z3 = self.combinational_model(), self.z3
+        vector = lambda bits: z3.Concat(*[z3.If(bit, z3.BitVecVal(1, 1), z3.BitVecVal(0, 1)) for bit in reversed(bits)])
+        names = ["X30,Y1 SLICE[0].YQ"] + [f"X30,Y{y} SLICE[0].{axis}Q" for y in range(2, 6) for axis in ("X", "Y")]
+        block = [f"X31,Y{y} SLICE[1].{axis}Q" for y in (4, 5) for axis in ("X", "Y")] + ["X31,Y6 SLICE[1].XQ"]
+        old = vector([m.signal(n, 0) for n in names])
+        nxt = vector([m.expr(self.r["logic"][n]["data"], 0) for n in names])
+        write = m.signal("X20,Y4 SLICE[1].Y", 0)
+        read = m.signal("X29,Y4 SLICE[1].X", 0)
+        ready = m.signal("X30,Y2 SLICE[1].YQ", 0)
+        delta = old + z3.If(write, z3.BitVecVal(1, 9), z3.BitVecVal(0, 9)) - z3.If(read, z3.BitVecVal(1, 9), z3.BitVecVal(0, 9))
+        self.equivalent(nxt, z3.If(ready, delta, z3.BitVecVal(0, 9)))
+        boundary = m.signal("X29,Y4 SLICE[0].X", 0)
+        self.equivalent(boundary, z3.Or(old == 0, vector([m.signal(n, 0) for n in block]) == 31))
+        self.assertNotIn(a.E, a.sequential_leaves(self.r["logic"][names[0]]["data"], self.r["logic"]))
+        # Modular bookkeeping alone does not prove no overflow, all producers stopped, or all queues drained.
+
+    def test_status_candidate_is_event_latch_with_explicit_clear(self):
+        m, z3 = self.combinational_model(), self.z3
+        constraints = []
+        for bit in set(a.ADDRESS.values()):
+            names = [n for n, b in a.ADDRESS.items() if b == bit]
+            constraints.extend(m.signal(n, 0) == m.signal(names[0], 0) for n in names[1:])
+        address = z3.And(*[m.signal(n, 0) == bool(0x004 & (1 << bit)) for n, bit in a.ADDRESS.items()])
+        clear = z3.And(address, m.signal(a.V, 0), m.signal(a.Q, 0), m.signal("X32,Y20 SLICE[1].YQ", 0))
+        event = z3.And(m.signal("X26,Y18 SLICE[0].YQ", 0), m.signal("X16,Y19 SLICE[0].YQ", 0))
+        node = self.r["logic"]["X19,Y24 SLICE[1].YQ"]
+        self.equivalent(m.expr(node["data"], 0), event)
+        self.equivalent(m.expr(node["controls"]["CE"], 0), z3.Or(event, clear), constraints)
+        self.assertEqual(register_contract("X19,Y24 SLICE[1].YQ", node)["clock"]["source"], a.CLOCK)
 
 
 if __name__ == "__main__":

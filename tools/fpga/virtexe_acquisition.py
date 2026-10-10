@@ -38,6 +38,21 @@ ADDRESS = dict(zip(("X26,Y17 SLICE[0].YQ", "X26,Y17 SLICE[0].XQ",
     "X26,Y19 SLICE[0].YQ"), range(2, 11)))
 ADDRESS.update({"X26,Y19 SLICE[1].XQ": 5, "X25,Y17 SLICE[1].YQ": 6,
                 "X25,Y17 SLICE[1].XQ": 7})
+CA, CB = "X37,Y22 SLICE[1].X", "X38,Y19 SLICE[0].X"
+LINK = "X42,Y26 SLICE[0].YQ"
+FRAME, CAPTURE = "X44,Y25 SLICE[0].Y", "X44,Y26 SLICE[1].X"
+FLAG = "X31,Y21 SLICE[0].XQ"
+EVEN, ODD = "X41,Y21 SLICE[1].YQ", "X40,Y23 SLICE[0].YQ"
+PARITY_COMPARE = "X43,Y22 SLICE[0].X"
+PARITY_ERROR, ERROR = "X43,Y22 SLICE[0].YQ", "X44,Y16 SLICE[1].YQ"
+RX_SELECTORS = ("X43,Y24 SLICE[0].XQ", "X43,Y24 SLICE[0].YQ", "X44,Y24 SLICE[0].YQ")
+TX_PINS = ("U12", "AA13", "AA14", "W14", "V14", "Y15", "V15", "Y16",
+           "V16", "Y17", "V17", "W18")
+TX_FAST = "X24,Y0 BUFGCE[0].O"
+TX_P, TX_E, TX_KICK = "X38,Y3 SLICE[0].XQ", "X38,Y4 SLICE[1].XQ", "X43,Y2 SLICE[0].YQ"
+TX_P_COPIES = (TX_P, "X38,Y3 SLICE[1].YQ", "X38,Y3 SLICE[0].YQ")
+TX_E_COPIES = (TX_E, "X38,Y3 SLICE[1].XQ", "X38,Y4 SLICE[1].YQ")
+COMPARE = {"MTTRGO": "X10,Y18 SLICE[0].YB", "MAMRGO": "X15,Y22 SLICE[1].YB"}
 
 
 def intel_hex(raw):
@@ -98,12 +113,24 @@ def payload_bit(lane, delay):
     return 2 - delay if lane == 1 else 3 * lane - 2 - delay
 
 
-def receiver_fields(report):
-    """Recognize actual noninverting sampling chains and exact two-bank muxes.
+def command_frame(word):
+    """Synthetic command-mode wire positions, not a hardware transmitter.
 
-    Delay is measured from the registered pad, not assumed from TX symmetry.
-    Acceptance/parity correctness is deliberately not implied by this mapping.
+    A=0/B=1 are the qualified receive control fields. An address marker is
+    payload bit31, not an extra 33rd payload bit. Parity follows PCI TX.
     """
+    if not isinstance(word, int) or not 0 <= word <= 0xFFFFFFFF:
+        raise ValueError("32-bit payload required")
+    even = sum(bool(word & (1 << bit)) for bit in range(0, 32, 2)) % 2
+    odd = 1 ^ (sum(bool(word & (1 << bit)) for bit in range(1, 32, 2)) % 2)
+    return tuple(tuple(bool(word & (1 << bit)) if bit is not None else
+                       bool((0, 1, even)[depth] if lane == 0 else odd)
+                       for lane in range(12) for bit in [payload_bit(lane, depth)])
+                 for depth in range(3))
+
+
+def sampling_origins(report):
+    """Track registered RX histories without presuming word acceptance."""
     logic = report["logic"]
     origin = {report["roots"][pin]["IQ"]: (lane, 0, ())
               for lane, pin in enumerate(RX_PINS)}
@@ -132,9 +159,21 @@ def receiver_fields(report):
             changed = True
         if not changed:
             break
+    return origin
+
+
+def receiver_fields(report, include_combinational=False):
+    """Recognize exact two-bank muxes; delays start at the registered pad.
+
+    Combinational control A/B fields are optional. Parity/framing acceptance
+    is a separate predicate, not implied by finding a payload mux.
+    """
+    logic, origin = report["logic"], sampling_origins(report)
     fields = {}
     for name, node in logic.items():
-        if node["kind"] != "register" or node["controls"].get("CLK", {}).get("source") == FAST:
+        if node["kind"] not in (("register", "combinational") if include_combinational else ("register",)):
+            continue
+        if node.get("controls", {}).get("CLK", {}).get("source") == FAST:
             continue
         try:
             used = data_support(node["data"], logic)
@@ -162,6 +201,95 @@ def receiver_fields(report):
         except (KeyError, ValueError):
             continue
     return fields
+
+
+def sequential_leaves(expression, logic):
+    """Stop at registers, memory outputs and explicit unknown boundaries."""
+    leaves, seen = set(), set()
+    def visit(expr):
+        for part in expression_nodes(expr):
+            name = part.get("source")
+            if name is None or name in seen:
+                continue
+            seen.add(name)
+            node = logic.get(name, {})
+            if node.get("kind") == "combinational":
+                visit(node["data"])
+            else:
+                leaves.add(name)
+    visit(expression)
+    return leaves
+
+
+def transmit_fields(report):
+    """Recover each actual TX mux cofactor, including registered snapshots.
+
+    Uses the configured phase replicas consistently; their sequential
+    equivalence must be checked separately. Does not identify a response ACK.
+    """
+    logic, fields = report["logic"], {}
+    phases = (("A", True, True), ("B", False, True), ("C", True, False))
+    copies = set(TX_P_COPIES + TX_E_COPIES)
+    for lane, ball in enumerate(TX_PINS):
+        output = report["roots"][ball]["O"]
+        mux = logic[output]["data"].get("source")
+        if mux is None or logic[mux]["kind"] != "register":
+            raise ValueError("unresolved TX output register")
+        expression = logic[mux]["data"]
+        leaves = sorted(data_support(expression, logic) - copies)
+        if len(leaves) != 3:
+            raise ValueError("unexpected TX mux leaves")
+        for phase, p, e in phases:
+            fixed = {**dict.fromkeys(TX_P_COPIES, p), **dict.fromkeys(TX_E_COPIES, e)}
+            candidates = [name for name in leaves if all(
+                evaluate_data(expression, logic, {**fixed, **dict(zip(leaves, values))}) == values[leaves.index(name)]
+                for values in itertools.product((False, True), repeat=3))]
+            if len(candidates) != 1:
+                raise ValueError("TX phase is not a single data source")
+            source = candidates[0]
+            word = source if phase == "C" else logic[source]["data"].get("source")
+            if word is None or logic[word]["kind"] != "register":
+                raise ValueError("unresolved controller TX word source")
+            fields[lane, phase] = {"ball": ball, "output": output, "mux": mux,
+                                   "phase_source": source, "word_register": word,
+                                   "payload_bit": payload_bit(lane, "ABC".index(phase))}
+    return fields
+
+
+def comparison_pairs(report, command, bank):
+    """Recognize equality LUT groups against a command's load bank.
+
+    The final carry/mux predicate still requires independent whole-cone
+    verification; finding local equalities alone is not a completion proof.
+    """
+    logic, pairs, seen = report["logic"], {}, set()
+    bank_bits = {name: bit for bit, name in bank.items()}
+    def visit(expr):
+        for part in expression_nodes(expr):
+            if part.get("op") == "lut4":
+                leaves = data_support(part, logic)
+                loads = sorted(leaves & bank_bits.keys())
+                other = sorted(leaves - bank_bits.keys())
+                if loads and len(loads) == len(other) and len(leaves) <= 4:
+                    for ordered in itertools.permutations(other):
+                        matching = list(zip(loads, ordered))
+                        if all(evaluate_data(part, logic, dict(zip(sorted(leaves), values))) == all(
+                            dict(zip(sorted(leaves), values))[left] == dict(zip(sorted(leaves), values))[right]
+                            for left, right in matching)
+                            for values in itertools.product((False, True), repeat=len(leaves))):
+                            for left, right in matching:
+                                bit = bank_bits[left]
+                                if bit in pairs and pairs[bit] != right:
+                                    raise ValueError("inconsistent comparison pairing")
+                                pairs[bit] = right
+            name = part.get("source")
+            if name and name not in seen and logic[name]["kind"] == "combinational":
+                seen.add(name)
+                visit(logic[name]["data"])
+    visit(logic[COMPARE[command]]["data"])
+    if set(pairs) != set(bank):
+        raise ValueError("incomplete comparison pairing")
+    return pairs
 
 
 def command_decode(report, gate, address):
@@ -211,6 +339,8 @@ def symbolic_cut(report, registers):
         node = logic.get(name, {"kind": "architecture_boundary", "reason": "missing source"})
         if node["kind"] == "register" and name not in registers:
             cut[name] = {"kind": "architecture_boundary", "reason": "unconstrained sequential cut"}
+        elif node["kind"] == "memory_output":
+            cut[name] = {"kind": "architecture_boundary", "reason": "unconstrained runtime-memory output cut"}
         else:
             cut[name] = node
             if node["kind"] in ("register", "combinational", "tristate_driver"):

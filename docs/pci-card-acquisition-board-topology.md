@@ -32,8 +32,11 @@ required. The source drawings and rendered crops remain private.
 | Verified | RX_CLK_P A11/GCK2; BRD_CLK_125_CTRL AA12/GCK0; 125MHZ_MTT_P AB12/GCK1 | Dedicated clock pins are not fabric IQ; labels do not establish effective DLL timing |
 | Verified | U21 **START ball AA5**, on MTT bus toward timebase sheet 18 | Not B8, a different configured pulse output |
 | Verified | Sheet 36: U28 MT48LC8M8A2TG-75 SDRAM on DRAM_INTERFACE; sheet 39: U18 XC18V04 PROM marked DNI | Neither RAM occupancy nor fitted configuration source follows from labels |
-| Verified | Sheet 19 / PDF 287: separate ATC/MTT FPGA U8 XC2S200E-FG456; sheet 40 / PDF 308: MCU U16 **C161PI** | ADC/MAM pending work is separate from controller register-load banks |
+| Verified | Sheets 18-19 / PDF 286-287: separate ATC/MTT FPGA **U38 XC2S200E-FG456**, START on **M1**; sheet 40 / PDF 308: MCU U16 **C161PI** | U38 corrects the earlier small-render transcription U8; ADC/MAM pending work is separate from controller register-load banks |
+| Verified | U21 TX P/N pairs: U12/V12, AA13/AB13, AA14/AB14, W14/Y14, V14/U14, Y15/AA15, V15/W15, Y16/AA16, V16/W16, Y17/AA17, V17/W17, W18/Y18; SYNC Y19/AA19; clock V13/W13; RST_ERR AA20/AB20 | Y19/AA19 is SYNC, not data lane11; physical map does not establish stop acknowledgement |
+| Verified | U21 E14 is RX_TXSTABLE; its sampled/inverted state participates in configured TX class selection | Link-stability feedback, not a producer-idle or command-generation tag |
 | Inferred | BINARY.204 stream 0 enables twelve U21 RX P pads plus SYNC and matching 0x080/0x084/0x064 predicates; stream 1 does not enable these RX pads | Strong role evidence, not proven loader order or live image identity |
+| Verified conflict | Stream1 disables the **M1 input buffer** and configures a PAD_O path at X0,Y14 IOI[1] | Cannot assign stream1 to revision-B U38 consuming START/M1 by serial order or matching device size alone. Need loader/assembly revision evidence or the correctly mapped configuration image |
 
 The configured receiver and START equations are documented in
 [Acquisition Controller Receiver And DMA Command Cuts](pci-fpga-firmware-analysis.md#acquisition-controller-receiver-and-dma-command-cuts).

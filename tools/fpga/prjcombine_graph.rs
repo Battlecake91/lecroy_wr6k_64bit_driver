@@ -98,6 +98,9 @@ fn bel(ed: &ExpandedDevice, t: TileCoord, bs: BelSlotId, b: &Bel) -> Value {
                    "bel":ed.db.bel_slots.key(prev.slot), "pin":"COUT"})
             })
             .unwrap_or(Value::Null);
+        let index = bslots::SLICE.index_of(bs).unwrap();
+        dedicated["F5IN"] = json!({"x":t.col.to_idx(), "y":t.row.to_idx(),
+            "bel":ed.db.bel_slots.key(bslots::SLICE[index ^ 1]), "pin":"F5"});
         dedicated["evidence"] = json!("re/xilinx/rdverify/virtex/src/lib.rs::verify_slice");
     } else if bs == bslots::PCILOGIC {
         // verify_pcilogic connects hidden ready inputs to PCIIOB.PCI taps.
