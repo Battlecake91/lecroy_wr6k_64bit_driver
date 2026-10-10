@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "scope": "BINARY.205 configured offline evidence, not executing hardware revision",
+  "project_combine_commit": "234343d23e737e57f2727630e19008b509d7d522",
+  "labels": ["Verified", "Inferred", "Unknown"],
+  "safety": "UnknownActive; no DMA release permission; PR 9 must remain unmerged",
+  "read_side_effects": {"status": "Unknown", "reason": "No complete accepted-read, response-retirement or read-to-clear contract has been established for these MMIO paths"},
+  "shared_conditions": {
+    "address_capture": {
+      "status": "Verified",
+      "condition": "!sampled_FRAME && previous_sampled_FRAME && !X5,Y5 SLICE[0].YQ",
+      "gate": "X7,Y11 SLICE[1].Y",
+      "data": "32 separate AD[31:0].IQ paths, plus six low-byte configuration predicates",
+      "reset": "PCI RST# asynchronously resets capture FFs"
+    },
+    "local_write": {
+      "status": "Verified",
+      "condition": "X6,Y16 SLICE[1].YQ && X7,Y12 SLICE[0].YQ && ((captured_address & 0x1CC) == register_value)",
+      "qualification_status": "Unknown",
+      "qualification_reason": "BAR0 candidate comparison includes unresolved AD20/BRAM quad mixed route; write-data ownership and acceptance timing remain separate",
+      "aliases": "Local predicates ignore address bits 0,1,4,5; this does not authorize aliased MMIO"
+    },
+    "write_data": {
+      "status": "Inferred",
+      "condition": "Internal TBUS write selection includes sampled PCI AD bits; other configuration/status/FIFO producers share the bus",
+      "byte_enables": "Configuration BAR storage gates use separate C/BE bytes; target DMA per-byte suppression is not fully established"
+    }
+  },
+  "registers": [
+    {
+      "name": "MAMRGO",
+      "mmio": {"status": "Verified", "bar": 1, "offset": "0x064", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
+      "decoded_address": {"status": "Unknown", "reason": "Exact acquisition launch packet identity not decoded"},
+      "destination": {"status": "Inferred", "kind": "acquisition MAM trigger", "note": "Legacy command identity; remote configured state remains unknown"},
+      "status_source": {"status": "Unknown", "reason": "No producer-stopped or pending-packet acknowledgement"},
+      "dma_safety": {"status": "Unknown", "reason": "Separate producer from MTT; MTT disable cannot be assumed to stop this path"}
+    },
+    {
+      "name": "MTTRGO",
+      "mmio": {"status": "Verified", "bar": 1, "offset": "0x084", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
+      "decoded_address": {"status": "Unknown", "reason": "Exact acquisition launch packet identity not decoded"},
+      "destination": {"status": "Inferred", "kind": "acquisition MTT trigger", "note": "Legacy command identity; remote configured state remains unknown"},
+      "status_source": {"status": "Unknown", "reason": "No producer-stopped or pending-packet acknowledgement"},
+      "dma_safety": {"status": "Unknown", "reason": "Completion indication does not establish final PCI write retirement"}
+    },
+    {
+      "name": "SGTA",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x040", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x040", "gates": ["X17,Y13 SLICE[0].Y", "X17,Y13 SLICE[1].X"]},
+      "destination": {"status": "Inferred", "kind": "local FF banks fed by internal TBUS", "note": "Partial descriptor-address storage candidate; full bit layout not certified"},
+      "status_source": {"status": "Unknown", "reason": "No complete readback word or descriptor-consumption acknowledgement"},
+      "dma_safety": {"status": "Unknown", "reason": "Address publication does not prove consumption stopped or descriptors retired"}
+    },
+    {
+      "name": "IIMTC",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x044", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x044", "gates": ["X15,Y12 SLICE[0].X", "X16,Y12 SLICE[0].Y"]},
+      "destination": {"status": "Inferred", "kind": "two local 16-FF banks fed by TBUS", "note": "Length/counter load candidate, not an idle predicate"},
+      "status_source": {"status": "Unknown", "reason": "No fully correlated counter readback or final-host-write retirement bit"},
+      "dma_safety": {"status": "Unknown", "reason": "Count exhaustion and PCI transaction retirement must be proven separately"}
+    },
+    {
+      "name": "IIMCL",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x048", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE, 0x108D6, 0x12D6A"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x048", "gates": ["X17,Y13 SLICE[1].Y"]},
+      "destination": {"status": "Inferred", "kind": "three local control replicas", "signals": ["X23,Y14 SLICE[1].YQ", "X23,Y20 SLICE[1].YQ", "X23,Y25 SLICE[1].YQ"], "data": "X21,Y1 TBUS.OUT", "verified_contract": "PCI-clocked CE latch; holds without CE; reset takes priority; no idle semantics assigned"},
+      "status_source": {"status": "Unknown", "reason": "Control storage is not a stop acknowledgement"},
+      "dma_safety": {"status": "Unknown", "reason": "Replicas reach counter/load and REQ D dependencies; abstract clear with REQ active remains SAT, with 221 unknowns"}
+    },
+    {
+      "name": "IIMST",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x04C", "width_bits": 32, "operations": ["read"], "legacy_function": "0x12D6A"},
+      "decoded_address": {"status": "Inferred", "condition": "BAR0 candidate, captured-address block 0x040..0x07F; full target read acceptance not closed"},
+      "destination": {"status": "Unknown", "kind": "read path, not a writable stop bit"},
+      "status_source": {"status": "Inferred", "bit": 0, "candidate": "X11,Y7 SLICE[0].Y -> X10,Y1 TBUF[0].O -> TBUS -> AD0 output", "sources": ["X22,Y11 SLICE[0].YQ", "X11,Y8 SLICE[0].YQ"], "note": "Local completion-like state and differently clocked receive-data latch selected through response pipeline; not a certified software read value"},
+      "dma_safety": {"status": "Unknown", "reason": "Neither FIFO-empty, durable stopped state nor transaction retirement established; read side effects unknown"}
+    },
+    {
+      "name": "INTST",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x080", "width_bits": 32, "operations": ["read", "write"], "legacy_function": "0x108D6, 0x1260E"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x080", "gates": ["X16,Y8 SLICE[0].X"]},
+      "destination": {"status": "Inferred", "kind": "local acknowledgement feedback", "candidate_bit0": "X22,Y11 SLICE[0].XQ", "note": "Write data participates in feedback; clear priority not a global drain contract"},
+      "status_source": {"status": "Inferred", "bit": 0, "candidate": "X22,Y11 SLICE[0].XQ through local status mux", "other_bits": "Unknown"},
+      "dma_safety": {"status": "Unknown", "reason": "Acknowledged interrupt status is not PCI bus idle"}
+    },
+    {
+      "name": "INTEN",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x084", "width_bits": 32, "operations": ["write"], "legacy_function": "0x11E46"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x084", "gates": ["X12,Y13 SLICE[0].X"]},
+      "destination": {"status": "Inferred", "kind": "six local enable FFs fed by TBUS", "candidate_bit0": "X16,Y7 SLICE[0].YQ"},
+      "status_source": {"status": "Unknown", "reason": "No certified complete enable readback"},
+      "dma_safety": {"status": "Unknown", "reason": "Interrupt masking supplies no producer/descriptor/host-transaction stop proof"}
+    },
+    {
+      "name": "START",
+      "mmio": {"status": "Verified", "bar": 0, "offset": "0x00C", "width_bits": 32, "operations": ["write", "read"], "legacy_function": "0x12FDE"},
+      "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x00C", "gates": ["X17,Y12 SLICE[0].X"]},
+      "destination": {"status": "Inferred", "kind": "local FF", "candidate": "X17,Y4 SLICE[1].YQ", "data": "X17,Y1 TBUS.OUT"},
+      "status_source": {"status": "Unknown", "reason": "Initialization read bit not fully correlated through response mux"},
+      "dma_safety": {"status": "Unknown", "reason": "No safe reset/abort or durable stopped-state semantics inferred"}
+    },
+    {
+      "name": "MTTCTL",
+      "mmio": {"status": "Verified", "bar": 1, "offset": "0x080", "width_bits": 32, "operations": ["write"], "legacy_function": "0x163B2, 0x137C4"},
+      "decoded_address": {"status": "Unknown", "reason": "BAR1 high-address comparison candidate reconstructed; exact downstream offset/packet-field selection not established"},
+      "destination": {"status": "Inferred", "kind": "acquisition command", "note": "LVDS transmit FFs and PCI-address dependencies exist; no exact MTTCTL packet identity or remote state demonstrated"},
+      "status_source": {"status": "Unknown", "reason": "No returned producer-stopped acknowledgement identified"},
+      "dma_safety": {"status": "Unknown", "reason": "Cannot show exclusion of MAM work, queued packets, descriptors or already started PCI transfers"}
+    }
+  ]
+}

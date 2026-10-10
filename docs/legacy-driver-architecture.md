@@ -241,6 +241,12 @@ descriptor construction
 
 `FUN_00014847` binds these known registers.
 
+These are recovered **driver access names**, not a declaration of physical
+register ownership. The [focused PCI target decode](pci-fpga-firmware-analysis.md#focused-pci-target-mmio-decode-2026-10-10)
+and [machine-readable evidence matrix](pci-mmio-register-evidence.json) separate
+local config/DMA-offset storage candidates from acquisition forwarding and
+unresolved readback. In particular, IIMCL=0 is not a certified idle acknowledgement.
+
 ### BAR0 / interrupt-DMA region
 
 Known descriptors include:

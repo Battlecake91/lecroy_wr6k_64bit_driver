@@ -207,6 +207,14 @@ are not redistributed. No new whole-program census was performed.
 
 ### Cross-layer evidence matrix
 
+**2026-10-10 target continuation:** The table below retains the end-to-end
+classification. The newer [focused target analysis](pci-fpga-firmware-analysis.md#focused-pci-target-mmio-decode-2026-10-10)
+and [JSON register matrix](pci-mmio-register-evidence.json) verify the address
+capture bank, six configuration predicates and local DMA-offset write gates.
+They identify three inferred IIMCL control replicas and status-mux candidates.
+BAR0's AD20 mixed route, byte-qualified write ownership, target read acceptance
+and remote packet/status identity still block Verified MMIO-to-idle semantics.
+
 Every entry labels the **connection**, not merely the existence of a register.
 V = Verified, I = Inferred, U = Unknown. Physical PCI termination at U3 is
 verified by package/card wiring; the implementation location of each register
@@ -226,11 +234,13 @@ functions, but BAR1 alone does not prove which FPGA implements a register.
 
 The configured model does verify REQ#/FRAME#/IRDY# pad O/T paths and local
 PCI-clocked equations, and separate AD[10:22]/CBE output-register mappings.
-It does **not** establish the target-side address-phase latch, BAR compare,
-C/BE write qualification, stop-register storage, or status read mux. Thus
-there is no defensible substitution of a local REQ state FF for IIMCL, or
-of an inactive pad for IIMST. No new stop logic was added to Z3: a free
-symbol named `stop_ack` would make the proposed safety checks vacuous.
+The target continuation establishes an address-phase latch and partial
+BAR/write/read structures, but not their complete transaction qualification or
+stop semantics. There is no defensible substitution of a local REQ state FF
+for IIMCL, or of an inactive pad for IIMST. The existing Z3 transitions also
+allow conditional IIMCL-candidate clear with REQ still active (abstract SAT,
+221 unknowns); this is not a hardware trace. No invented stop logic was added:
+a free symbol named `stop_ack` would make the proposed safety checks vacuous.
 
 ### Six independent release obligations
 

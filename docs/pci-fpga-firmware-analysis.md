@@ -2518,11 +2518,180 @@ changes no production driver, performs no hardware access/programming/reset,
 and does not authorize release, speculative register writes, or merging PR #9.
 
 The focused [legacy-to-FPGA evidence matrix](legacy-dma-abort-bus-idle-audit.md#cross-layer-evidence-matrix)
-records the current correlation boundary at the target address/BAR/write
-decode and status read mux. Existing private model roots identify PCI control
-pads, two datapath output pads and PCILOGIC inputs, **not** a decoded IIMCL,
-IIMST, MTTCTL or INTEN register. No stop/ack symbol was introduced or bound to
-an arbitrary FF. Consequently post-ack restart, outstanding-transfer,
-IRQ-before-idle and reset-hiding-status properties are not yet executable WR6k queries.
+and the target continuation below record the correlation boundary. The newer
+target analysis adds an address-phase bank, configuration predicates, local
+DMA-offset write gates and IIMCL storage candidates. Complete BAR qualification,
+target read acceptance and software-visible idle semantics remain unproved.
+No stop/ack symbol was introduced or bound to an arbitrary FF. Consequently
+post-ack restart, outstanding-transfer, IRQ-before-idle and reset-hiding-status
+properties are not yet executable as certified WR6k protocol queries.
 The [passive observation plan](dma-quiescence-read-only-plan.md) describes the
 smallest independent observations, without authorizing hardware execution.
+
+### Focused PCI Target MMIO Decode (2026-10-10)
+
+**Result: partial reconstruction, no DMA quiescence acknowledgement.** The
+machine-readable [register evidence matrix](pci-mmio-register-evidence.json)
+separates legacy access facts, verified local Boolean predicates, inferred BAR
+correlations and unknown safety implications. A Verified local predicate is
+not a Verified end-to-end MMIO transaction. The remaining blockers below prevent
+claiming completion of the full register/stop-status reconstruction.
+
+#### Reproducible Scope
+
+`tools/fpga/virtexe_mmio.py` reuses the existing configuration-aware Router and
+LogicAnalyzer, pinned Project Combine `234343d23e737e57f2727630e19008b509d7d522`,
+and its public `BOND87` package block. It does not add another bitstream decoder.
+All 32 PCI AD pins, four C/BE pins, IDSEL, DEVSEL#, FRAME#, IRDY#, TRDY#, STOP#,
+GNT#, REQ# and RST# are assigned from derived card connectivity. Six separately
+checked transmit pairs (D0..D4, D10), three receive pairs (D9..D11) and RX_SYNC
+are additional focused roots, not a claim of complete LVDS packet decoding.
+
+The resulting private report contains **3,955 logic nodes**, **21 input-fed
+capture groups**, and **74 explicitly retained boundaries**. These counts
+include intentionally disabled input views of output pins and clock/hard-block
+boundaries; they are not 74 missing MMIO registers. Full networks and reports
+stay in private TEMP paths. The CLI refuses output within this repository or
+overwriting its input image. Public output is limited to derived facts here.
+
+```powershell
+python -B tools/fpga/virtexe_mmio.py $env:WR6K_FPGA_BINARY_205 `
+  --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER `
+  --output "$env:TEMP/wr6k-target-private.json" --summary "$env:TEMP/wr6k-target-summary-private.json"
+$env:WR6K_MMIO_REPORT = "$env:TEMP/wr6k-target-private.json"
+python -B tests/dry/test_fpga_mmio.py -v
+```
+
+The report is checked against the supplied firmware SHA-256 and successful
+frame calibration before private regressions run. `WR6K_FPGA_SYMBOLIC=1` also
+enables the existing Z3 model's focused conditional-clear query. Effective
+clocks remain explicit; no new clock relationship or remote protocol is assumed.
+
+#### Address Phase, Configuration And BAR Storage
+
+**Verified:** A common PCI-clocked bank captures each sampled AD[31:0] bit
+separately. Its gate is `X7,Y11 SLICE[1].Y`, with exact D-path predicate
+`!FRAME_sampled && FRAME_previous && !X5,Y5 SLICE[0].YQ`.
+The previous-FRAME FF is `X12,Y12 SLICE[1].YQ`. The same Boolean condition
+drives `X12,Y15 SLICE[1].X` and `X7,Y12 SLICE[0].X`. Thus the C/BE bank under
+the former gate is address-phase **command capture**, not data-phase byte
+enables. The capture registers asynchronously reset from PCI RST#.
+
+Six same-gated predicates compare sampled AD[7:0] exactly to
+`0x004, 0x00C, 0x010, 0x014, 0x018, 0x03C`, verified over all 256 assignments
+each. These are **PCI configuration offsets**, not BAR-relative DMA register
+addresses. In particular, config `0x00C` is not the driver's BAR0 START.
+The command register `X7,Y25 SLICE[1].YQ` recognizes C/BE nibble `0xB` exactly.
+IDSEL and low address bits also enter the configuration-target recognition cone.
+
+**Verified structure / Inferred PCI interpretation:** Separate config-write
+storage banks at offsets `0x10`, `0x14`, `0x18` are consistent with BAR0, BAR1,
+BAR2. The first/third banks capture address bits 9..31; the second captures
+18..31. Common gates also require the captured `0xB` command and the relevant
+active-low C/BE byte. This suggests 512-byte, 256-KiB and 512-byte windows,
+respectively; full config sizing readback has not been certified.
+The `0x18` and `0x14` comparison cones terminate in
+`X6,Y26 SLICE[1].XB` and `X8,Y27 SLICE[1].YB`. The BAR0 candidate compare
+`X7,Y25 SLICE[1].XB` still contains the mixed bit-20 route described below.
+No bank address is promoted to the actually enumerated hardware BAR value.
+
+#### Local DMA-Offset Write Paths
+
+**Verified:** The following local predicates are exactly
+`W && H && ((A & 0x1CC) == value)`, exhaustively factored without tying off
+other inputs. `A` is the captured 32-bit bank, `W` is
+`X6,Y16 SLICE[1].YQ` (captured C/BE command bit 0), and `H` is
+`X7,Y12 SLICE[0].YQ` (BAR0-hit candidate state). Bits 0,1,4,5 are absent from
+these local predicates. This reveals possible decoder aliases, not permission
+to perform unaligned or undocumented accesses. The meaning/timing of H still
+depends on the unresolved BAR0 comparison.
+
+| Legacy BAR0 value | Verified local gate(s) | Inferred local destination |
+|---|---|---|
+| `0x040 SGTA` | X17,Y13 SLICE[0].Y / SLICE[1].X | Two TBUS-fed address/load banks; full descriptor-bit layout unknown |
+| `0x044 IIMTC` | X15,Y12 SLICE[0].X / X16,Y12 SLICE[0].Y | Two 16-FF TBUS-fed load banks |
+| `0x048 IIMCL` | X17,Y13 SLICE[1].Y | Three one-bit PCI-clocked replicas: X23,Y14/Y20/Y25 SLICE[1].YQ |
+| `0x080 INTST` | X16,Y8 SLICE[0].X | Feedback/ack candidate, including X22,Y11 SLICE[0].XQ |
+| `0x084 INTEN` | X12,Y13 SLICE[0].X | Six enable candidates, including bit-0 candidate X16,Y7 SLICE[0].YQ |
+| `0x00C START` | X17,Y12 SLICE[0].X | X17,Y4 SLICE[1].YQ |
+
+The three IIMCL candidates share `X21,Y1 TBUS.OUT` as D and the `0x048` gate
+as CE. Their complete decoded FF contracts verify reset priority, CE hold and
+clocked data capture. TBUS includes an AD0 producer but also configuration,
+status and mutable FIFO producers. Per-byte target write suppression, unique
+write-data ownership and target-handshake timing are **not** established by
+the CE predicate alone. Wider/partial writes are not certified.
+
+The control candidates have actual configured dependency paths into address/
+count-load logic and REQ D logic. One path starts at X23,Y14 SLICE[1].YQ,
+passes X26,Y18 SLICE[1].X/YQ, X19,Y10 SLICE[0].YQ and
+X19,Y7 SLICE[1].XQ, then reaches the previously recovered REQ D cone.
+This is a dependency, not a proof of monotone transfer inhibition or retirement.
+
+#### Readback And PCI/Acquisition Boundary
+
+**Verified topology:** AD0 read data includes
+`X11,Y7 SLICE[0].Y -> X10,Y1 TBUF[0].O -> TBUS`, before the pad's output FF.
+The TBUF disable is `X11,Y11 SLICE[1].X`, depending on registered read-selection
+states. Other TBUF producers include live AD0, configuration data and mutable
+RAM16X1D FIFO data. All 32 output cones retain runtime arrays; INIT must not be
+substituted for current readback contents.
+
+**Inferred correlation:** Under the captured BAR0 candidate/block selection,
+the `0x04C` bit-0 data candidate combines `C = X22,Y11 SLICE[0].YQ` with
+`R = X11,Y8 SLICE[0].YQ` through a response pipeline. R uses a different
+effective clock (`X24,Y0 BUFGCE[0].O`), and is captured from X32,Y19 SLICE[1].YQ
+under X32,Y20 SLICE[1].YQ. It is not a direct PCI-clocked busy flag.
+The local C equation is **Verified**:
+`C_next_D = (IIMCL_candidate && C) || (X26,Y18 SLICE[0].YQ && X22,Y21 SLICE[1].X)`.
+A separate verified post-clear equation is
+`X25,Y20 SLICE[1].Y = !IIMCL_candidate && (C || X25,Y20 SLICE[1].XQ)`.
+Neither equation assigns a completed-host-write or FIFO-empty meaning.
+
+The six checked TX pairs have complementary, registered P/N data driven from
+local transmit-mux FFs on `X24,Y0 BUFGCE[1].O`. Their upstream cones include
+the captured PCI address bank and control dependencies. This establishes
+configured PCI-to-link datapaths, **not** MTTCTL's exact packet address/opcode.
+BAR1 `0x080 MTTCTL` remains an inferred acquisition command; its downstream
+state and returned acknowledgement are **Unknown**. Local config storage and
+the DMA-offset CE/storage candidates demonstrate why treating every BAR access
+as either entirely local or entirely acquisition-controller-owned is invalid.
+
+#### Exact Blockers And Targeted Next Evidence
+
+1. **Mixed BAR0 bit-20 / DEVSEL route:** X7,Y23 SLICE[0].YQ receives
+   route `[7,23,IMUX_CLB_BY[0]]`. At `[0,24,HEX_H3_MUX[0]]`, the IO_W mux
+   selects AD20 IQ, while a separate BRAM_W mux view selects
+   `[1,21,BRAM_QUAD_DOUT[7]]` with no enabled producer. The BRAM_W hex buffer
+   is decoded disabled, but the expanded database aliases the upstream mux
+   views. The current router retains this mixed branch rather than discarding
+   it. The same dependency reaches BAR0 comparison and DEVSEL O/T. Needed:
+   independently validated **per-tile mux/buffer ownership qualification** for
+   this exact IO_W/BRAM_W overlap, with both enabled/disabled synthetic cases
+   and an independent native/ISE reference. The pinned fuzzer and rd2db source
+   were inspected; their pinning setup alone does not certify a runtime fix.
+2. **Read/packet identity:** Close the registered target-acceptance, read-TBUF
+   ownership and response-valid pipeline, including PCI_CE and the relevant
+   RAMB4/IO ambiguous routes. Then correlate BAR1 `0x080` address/data packet
+   fields and returned status with an independently identified acquisition
+   decoder or a passive, timestamped PCI+LVDS trace. Do not label a received
+   bit "producer stopped" without its remote state cone and restart contract.
+3. **Safety closure:** Even with the above, prove descriptor admission blocked,
+   no new PCI start, all outstanding transactions terminal, pending buffers
+   empty and acknowledgement stable until explicit restart. Actual card/FPGA
+   revision and Windows/host-bridge DMA completion remain independent evidence.
+
+The existing symbolic model was reused without an invented stop/ack variable.
+An arbitrary-runtime one-step query permits all three IIMCL candidates to
+change 1->0 on their actual CE/PCI-clock/data path while REQ remains actively
+Low: **SAT, 221 explicit unknown abstractions**. This is an abstract
+counterexample to using conditional latch clear as an idle certificate, not
+a reachable-hardware counterexample or proof of a stop command's failure.
+
+Actual execution: **8 synthetic MMIO tests + 10 private MMIO tests passed**,
+including 48 real-contract latch update cases and the Z3 query; the existing
+39 routing and 36 symbolic tests, frame calibration, 47 native architecture
+checks, 19 PCI equations (2,234 assignments), and eight driver dry suites
+(311 assertions) also passed. No WDK build, hardware test, MMIO access,
+programming or reset experiment was performed. `UnknownActive` and quarantine
+remain unchanged; PR #9 remains open and unmerged.
