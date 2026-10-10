@@ -27,12 +27,25 @@ BOARD_PINS = {**{f"AD[{i}]": pin for i, pin in enumerate(AD_PINS)},
               "TRDY#": 27, "STOP#": 23, "GNT#": 22, "REQ#": 18, "RST#": 198}
 LINK_PINS = {**{f"TX_D{i}_{pol}": pin for i, pair in
                 {0: (126, 125), 1: (123, 122), 2: (121, 120),
-                 3: (116, 115), 4: (112, 111), 10: (133, 132)}.items()
+                 3: (116, 115), 4: (112, 111), 5: (102, 101),
+                 6: (98, 97), 7: (94, 93), 8: (89, 88), 9: (87, 86),
+                 10: (133, 132), 11: (81, 75)}.items()
                 for pol, pin in zip(("P", "N"), pair)},
              **{f"RX_D{i}_{pol}": pin for i, pair in
-                {9: (152, 151), 10: (147, 146), 11: (141, 140)}.items()
+                {0: (193, 194), 1: (191, 192), 2: (188, 189),
+                 3: (178, 179), 4: (175, 176), 5: (173, 174),
+                 6: (168, 169), 7: (164, 165), 8: (160, 161),
+                 9: (152, 151), 10: (147, 146), 11: (141, 140)}.items()
                 for pol, pin in zip(("P", "N"), pair)},
-             "RX_SYNC_P": 139, "RX_SYNC_N": 138}
+             "RX_SYNC_P": 139, "RX_SYNC_N": 138,
+             "RX_CLOCK_N": 187,
+             "RX_RESET_ERR_P": 136, "RX_RESET_ERR_N": 135,
+             "RX_TXSTABLE": 134, "RX_RXSTABLE": 129,
+             "TX_SYNC_P": 73, "TX_SYNC_N": 71,
+             "TX_CLOCK_P": 84, "TX_CLOCK_N": 83,
+             "TX_RESET_ERR_P": 69, "TX_RESET_ERR_N": 68,
+             "TX_TXSTABLE": 70, "TX_RXSTABLE": 74}
+# RX_CLOCK_P is dedicated CLK0/P185, not a fabric IOI; do not invent an IQ alias.
 
 
 def address_projection(report, name, address_signals, max_other_inputs=6):

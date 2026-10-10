@@ -11,10 +11,23 @@ from virtexe_mmio import (BOARD_PINS, LINK_PINS, address_projection, capture_can
                          conditional_mux_field, cone_inventory, functional_expression,
                          package_locations, pcilogic_contract, signal)
 from virtexe_routing import (COMMIT, classify_pip, data_support, evaluate_data,
-                            register_contract, register_step, state_table)
+                            register_contract, register_equivalence, register_step, state_table)
 
 
 class SyntheticMmio(unittest.TestCase):
+    def test_complete_lvds_pin_inventory_and_payload_bijection(self):
+        for direction in ("TX", "RX"):
+            self.assertEqual({n for n in LINK_PINS if n.startswith(direction + "_D")},
+                {f"{direction}_D{i}_{p}" for i in range(12) for p in ("P", "N")})
+        self.assertEqual(len(set(LINK_PINS.values())), len(LINK_PINS))
+        matrix = json.loads((Path(__file__).resolve().parents[2] /
+            "docs/pci-mmio-register-evidence.json").read_text(encoding="utf-8"))["lvds_protocol"]
+        self.assertEqual([x["lane"] for x in matrix["tx_lanes"]], list(range(12)))
+        self.assertEqual(sorted(b for x in matrix["tx_lanes"] for b in x["payload_bits_ABC"]
+                                if b is not None), list(range(32)))
+        self.assertEqual(len(matrix["rx"]["active_inputs"]), 12)
+        self.assertEqual(len({matrix["clocks"][c] for c in ("pci", "remote", "tx_fast", "rx_fast")}), 4)
+
     def test_pcilogic_ve_has_no_encoded_delay_not_a_zero_delay_model(self):
         for tile in ("PCI_W_VE", "PCI_E_VE"):
             node = {"architecture_class": tile, "configuration": {},
@@ -320,7 +333,7 @@ class PrivateMmio(unittest.TestCase):
                 values = {n: bool(row["address"] & (1 << i)) for i,n in enumerate(table["inputs"])}
                 self.assertEqual(row["d"], expected(values))
 
-    def test_complete_bar1_payload_topology_and_eleven_conditional_fields(self):
+    def test_complete_bar1_payload_topology_and_sixteen_conditional_fields(self):
         logic = self.report["logic"]
         address = {n: self.address[d["data"]["source"]] for n, d in logic.items()
             if d.get("kind") == "register" and d.get("controls", {}).get("CE", {}).get("source") ==
@@ -342,8 +355,8 @@ class PrivateMmio(unittest.TestCase):
                   if d.get("kind") == "register"]
         fields = [f for f in fields if f["status"] == "Verified"]
         self.assertEqual({(f["address_bit"], f["tbus_pci_ad_producer_bit"]) for f in fields},
-                         {(bit + 2, bit) for bit in range(11)})
-        self.assertEqual(len(fields), 11)
+                         {(bit + 2, bit) for bit in range(16)})
+        self.assertEqual(len(fields), 16)
         matrix = json.loads((Path(__file__).resolve().parents[2] /
                             "docs/pci-mmio-register-evidence.json").read_text(encoding="utf-8"))
         self.assertEqual({(f["signal"], f["address_bit"], f["tbus_pci_ad_producer_bit"]) for f in fields},
@@ -356,6 +369,298 @@ class PrivateMmio(unittest.TestCase):
                              if offset & (1 << f["address_bit"])})
         for field in fields:
             self.assertEqual(logic[field["signal"]]["controls"]["CLK"]["source"], "X24,Y0 BUFGCE[0].O")
+
+    def _lvds(self):
+        return json.loads((Path(__file__).resolve().parents[2] /
+            "docs/pci-mmio-register-evidence.json").read_text(encoding="utf-8"))["lvds_protocol"]
+
+    def test_twelve_tx_lanes_and_checked_phase_shadows(self):
+        protocol, logic = self._lvds(), self.report["logic"]
+        controller = protocol["tx_controller"]
+        for group in (controller["p"], controller["e"], protocol["command_phase"]):
+            for n in group[1:]:
+                register_equivalence(self.report, group[0], n)
+        for lane in protocol["tx_lanes"]:
+            ppad = logic[self.report["roots"][f'TX_D{lane["lane"]}_P']["O"]]
+            npad = logic[self.report["roots"][f'TX_D{lane["lane"]}_N']["O"]]
+            self.assertEqual(ppad["data"]["source"], npad["data"]["source"])
+            self.assertNotEqual(ppad["data"]["inv"], npad["data"]["inv"])
+            fast = logic[ppad["data"]["source"]]
+            for node, pin in ((ppad, "OCLK"), (npad, "OCLK"), (fast, "CLK")):
+                self.assertEqual(node["controls"][pin]["source"], protocol["clocks"]["tx_fast"])
+            for bits in range(32):
+                p, e = bool(bits & 1), bool(bits & 2)
+                values = {**dict.fromkeys(controller["p"], p), **dict.fromkeys(controller["e"], e),
+                    lane["A"]: bool(bits & 4), lane["B"]: bool(bits & 8), lane["C"]: bool(bits & 16)}
+                expected = values[lane["A"]] if p == e else values[lane["C"]] if e else values[lane["B"]]
+                self.assertEqual(evaluate_data(fast["data"], logic, values), expected)
+            for slot, stage in zip("AB", lane["stages"]):
+                node = logic[lane[slot]]
+                self.assertEqual(node["data"]["source"], stage)
+                gate = node["controls"]["CE"]
+                for p in (False, True):
+                    for e in (False, True):
+                        values = {**dict.fromkeys(controller["p"], p), **dict.fromkeys(controller["e"], e)}
+                        self.assertEqual(evaluate_data(gate, logic, values), not p and e)
+
+    def test_tx_controller_equations_reset_and_sync_contract(self):
+        protocol, logic = self._lvds(), self.report["logic"]
+        c = protocol["tx_controller"]
+        for p in (False, True):
+            for e in (False, True):
+                for kick in (False, True):
+                    values = {**dict.fromkeys(c["p"], p), **dict.fromkeys(c["e"], e),
+                              c["kick"]: kick, c["reset"]: False}
+                    for name in c["p"] + c["e"]:
+                        expected = (p != e) if name in c["p"] else p or (not e and kick)
+                        self.assertEqual(register_step(self.report, name, values, clock_edge=True)["next"], expected)
+                        self.assertEqual(register_step(self.report, name, dict(values, **{c["reset"]: True}),
+                                                       clock_edge=False)["next"], 0)
+        name = c["sync_register"]
+        self.assertEqual(register_contract(name, logic[name])["status"], "modeled_sync_ff")
+        self.assertEqual(logic[name]["controls"]["SR"]["source"], c["p"][0])
+        self.assertEqual(logic[name]["data"]["source"], c["e"][0])
+
+    def test_tx_control_fields_and_nine_word_counter_not_opcodes(self):
+        logic = self.report["logic"]
+        names = ["X27,Y4 SLICE[0].XQ", "X27,Y4 SLICE[0].YQ", "X27,Y5 SLICE[0].XQ",
+                 "X27,Y5 SLICE[0].YQ", "X27,Y6 SLICE[0].XQ"]
+        for n in names:
+            c = register_contract(n, logic[n])
+            self.assertEqual(c["init"], 0)
+            self.assertEqual(c["ce"]["source"], "X27,Y6 SLICE[1].X")
+            self.assertEqual(c["clock"]["source"], self._lvds()["clocks"]["remote"])
+        for value in range(32):
+            values = {n: bool(value & (1 << i)) for i,n in enumerate(names)}
+            actual = sum(int(evaluate_data(logic[n]["data"],logic,values)) << i for i,n in enumerate(names))
+            self.assertEqual(actual, 0 if value in (8,31) else value+1)
+            self.assertEqual(evaluate_data(logic["X27,Y4 SLICE[1].X"]["data"],logic,values), value != 8)
+        q, v, z = "X27,Y4 SLICE[1].X", "X39,Y3 SLICE[1].YQ", "X28,Y5 SLICE[1].X"
+        for bits in range(8):
+            values = {q: bool(bits&1), v: bool(bits&2), z: bool(bits&4)}
+            self.assertEqual(evaluate_data(logic["X28,Y5 SLICE[1].YQ"]["data"],logic,values),
+                             not (values[q] and values[v] and not values[z]))
+            self.assertEqual(evaluate_data(logic["X27,Y4 SLICE[1].YQ"]["data"],logic,values),
+                             values[q] or not values[v])
+        # Position 31 in address mode is a control flag; do not call it W.
+        data = logic["X28,Y7 SLICE[1].XQ"]["data"]["zero"]
+        phase, payload, edge, flag = ("X25,Y1 SLICE[1].XQ", "X18,Y13 SLICE[1].XQ",
+                                    "X25,Y5 SLICE[0].X", "X28,Y2 SLICE[1].XQ")
+        for bits in range(16):
+            values = {phase: bool(bits&1), payload: bool(bits&2), edge: bool(bits&4), flag: bool(bits&8)}
+            self.assertEqual(evaluate_data(data,logic,values), values[payload] if values[phase]
+                             else values[edge] or values[flag])
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC"), "SMT suite not enabled")
+    def test_actual_tx_controller_bounded_three_slot_cycle_and_sync_alignment(self):
+        import z3
+        from virtexe_symbolic import System, clock_key
+        protocol, logic = self._lvds(), self.report["logic"]
+        c = protocol["tx_controller"]
+        keep = set(c["p"] + c["e"] + [c["sync_register"]])
+        for net in [f"TX_D{i}_{p}" for i in range(12) for p in ("P", "N")] + ["TX_SYNC_P", "TX_SYNC_N"]:
+            pad = self.report["roots"][net]["O"]
+            keep.add(pad)
+            keep.add(logic[pad]["data"]["source"])
+        for lane in protocol["tx_lanes"]:
+            keep.update((lane["A"], lane["B"]))
+        # Only the actual TX-clock registers transition. Remote snapshots/reset/kick
+        # remain explicit external cuts; no assumed DLL ratio or command-valid bit.
+        reduced = dict(self.report, logic={n: ({"kind": "pad_input"} if d["kind"] == "register"
+            and n not in keep else d) for n,d in logic.items()})
+        domain = clock_key({"source": protocol["clocks"]["tx_fast"], "inv": False})
+        s = System(reduced, bound=8, powerup=False, schedule=[{domain}] * 8)
+        for n in c["p"] + c["e"]:
+            s.solver.add(z3.Not(s.state(n, 0)))
+        for t in range(9):
+            s.solver.add(z3.Not(s.signal(c["reset"], t)))
+            s.solver.add(s.signal(c["kick"], t) == (t == 0))
+        self.assertEqual(s.solver.check(), z3.sat)
+        mismatches = []
+        for t, (p,e) in enumerate([(0,0), (0,1), (1,0), (1,1), (0,1), (1,0), (1,1), (0,1), (1,0)]):
+            mismatches.extend(s.state(n,t) != bool(p) for n in c["p"])
+            mismatches.extend(s.state(n,t) != bool(e) for n in c["e"])
+        sync_pad = self.report["roots"]["TX_SYNC_P"]["O"]
+        for t in range(2,9):
+            mismatches.append(s.state(sync_pad,t) != (t in (3,6)))
+        s.solver.add(z3.Or(*mismatches))
+        self.assertEqual(s.solver.check(), z3.unsat)
+        print("Private actual TX controller: 8-edge cycle/shadows/SYNC mismatch UNSAT; external remote snapshots")
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC"), "SMT suite not enabled")
+    def test_all_32_tx_fields_and_two_conditional_parity_functions(self):
+        import z3
+        from virtexe_symbolic import System
+        protocol, logic = self._lvds(), self.report["logic"]
+        iq = {signal(self.locations[f"AD[{i}]"], "IQ"): i for i in range(32)}
+        payload = {}
+        for name,node in logic.items():
+            if node.get("controls", {}).get("CE", {}).get("source") not in (
+                    "X11,Y12 SLICE[1].X", "X8,Y12 SLICE[0].X"):
+                continue
+            drivers = logic[node["data"]["source"]]["data"]["drivers"]
+            bits = [iq[logic[d["driver"]]["data"]["source"]] for d in drivers
+                    if logic[d["driver"]]["data"].get("source") in iq]
+            self.assertEqual(len(bits), 1)
+            payload[bits[0]] = name
+        fields = {bit: stage for lane in protocol["tx_lanes"]
+                  for bit,stage in zip(lane["payload_bits_ABC"], lane["stages"]) if bit is not None}
+        self.assertEqual(set(fields), set(range(32)))
+        # Cut only the named combinational mode selectors. The assertion is a
+        # cofactor identity, not reachability or ownership of the TBUS snapshot.
+        projected = dict(self.report, logic=dict(logic))
+        cuts = protocol["pci_mode_condition"]["cuts_zero"]
+        for name in cuts:
+            projected["logic"][name] = {"kind": "pad_input"}
+        s = System(projected, bound=0, powerup=False, timeout_ms=30000)
+        s.solver.add(*[z3.Not(s.signal(n,0)) for n in cuts])
+        by_address = {n: self.address[d["data"]["source"]] for n,d in logic.items()
+            if d.get("controls", {}).get("CE", {}).get("source") == "X16,Y11 SLICE[0].Y"
+            and d.get("data", {}).get("source") in self.address}
+        address = {bit: n for n,bit in by_address.items()}
+        for phase in (False, True):
+            s.solver.push()
+            s.solver.add(*[s.signal(n,0) == phase for n in protocol["command_phase"]])
+            self.assertEqual(s.solver.check(), z3.sat)
+            mismatches = []
+            for bit,stage in fields.items():
+                actual = s.expr(logic[stage]["data"],0)
+                if phase:
+                    expected = s.signal(payload[bit],0)
+                elif bit < 16:
+                    expected = s.signal(address[bit+2],0)
+                elif bit < 31:
+                    expected = z3.BoolVal(False)
+                else:
+                    continue  # Distinct control expression, not address bit 33.
+                mismatches.append(actual != expected)
+            s.solver.add(z3.Or(*mismatches))
+            self.assertEqual(s.solver.check(), z3.unsat)
+            s.solver.pop()
+        for parity, bits, extra in (("X26,Y6 SLICE[0].YQ", range(1,32,2), None),
+                                    ("X26,Y6 SLICE[1].YQ", range(0,32,2), "X27,Y4 SLICE[1].YQ")):
+            expected = z3.BoolVal(True)
+            for bit in bits:
+                expected = z3.Xor(expected, s.expr(logic[fields[bit]]["data"],0))
+            if extra:
+                expected = z3.Xor(expected, s.expr(logic[extra]["data"],0))
+            s.solver.push()
+            s.solver.add(s.expr(logic[parity]["data"],0) != expected)
+            self.assertEqual(s.solver.check(), z3.unsat)
+            s.solver.pop()
+        print("Private LVDS cofactors: 32 payload/31 address-mode positions and two parity mismatch queries UNSAT")
+
+    def test_all_rx_lanes_three_positions_and_two_bank_structure(self):
+        protocol, logic = self._lvds(), self.report["logic"]
+        for net in protocol["rx"]["active_inputs"]:
+            iq = self.report["roots"][net]["IQ"]
+            self.assertEqual(logic[iq]["kind"], "register")
+            self.assertEqual(logic[iq]["controls"]["ICLK"]["source"], protocol["clocks"]["rx_fast"])
+            pipeline, pending, banks = {iq: 0}, [iq], []
+            while pending:
+                source = pending.pop()
+                for name,node in logic.items():
+                    if node.get("data", {}).get("source") != source or node.get("controls", {}).get(
+                            "CLK", {}).get("source") != protocol["clocks"]["rx_fast"]:
+                        continue
+                    ce = node["controls"]["CE"]
+                    if ce.get("constant") == 1 and not ce.get("inv", False):
+                        if name not in pipeline:
+                            pipeline[name] = pipeline[source]+1
+                            pending.append(name)
+                    else:
+                        banks.append((name, pipeline[source]))
+            self.assertEqual(sorted(pipeline.values()), [0,1,2], net)
+            self.assertEqual(sorted(depth for _,depth in banks), [0,0,1,1,2,2], net)
+        for n in ("X32,Y20 SLICE[0].XQ", "X32,Y20 SLICE[0].YQ"):
+            register_equivalence(self.report, "X32,Y20 SLICE[1].YQ", n)
+        for n in ("X36,Y15 SLICE[0].YQ", "X36,Y15 SLICE[1].YQ"):
+            register_equivalence(self.report, "X36,Y15 SLICE[1].XQ", n)
+
+    def test_rx_R_input_banks_mux_and_enable_not_dma_ack(self):
+        logic = self.report["logic"]
+        for name,source in (("X34,Y22 SLICE[0].XQ", self.report["roots"]["RX_D1_P"]["IQ"]),
+                ("X36,Y21 SLICE[0].XQ", "X34,Y22 SLICE[0].XQ"),
+                ("X36,Y21 SLICE[1].XQ", "X36,Y21 SLICE[0].XQ"),
+                ("X38,Y20 SLICE[1].XQ", "X36,Y21 SLICE[0].XQ")):
+            self.assertEqual(logic[name]["data"]["source"], source)
+            self.assertEqual(logic[name]["controls"]["CLK"]["source"], self._lvds()["clocks"]["rx_fast"])
+        selector, a, b = "X36,Y15 SLICE[1].XQ", "X36,Y21 SLICE[1].XQ", "X38,Y20 SLICE[1].XQ"
+        for bits in range(8):
+            values = {selector: bool(bits&1), a: bool(bits&2), b: bool(bits&4)}
+            self.assertEqual(evaluate_data(logic["X36,Y20 SLICE[1].Y"]["data"], logic, values),
+                             values[a] if values[selector] else values[b])
+        gate, a, b = "X35,Y16 SLICE[0].Y", "X35,Y21 SLICE[1].X", "X35,Y22 SLICE[1].X"
+        for bits in range(8):
+            # Explicit local cuts; no response semantics assigned to these fields.
+            values = {gate: bool(bits&1), a: bool(bits&2), b: bool(bits&4)}
+            self.assertEqual(evaluate_data(logic["X32,Y20 SLICE[0].X"]["data"], logic, values),
+                             values[gate] and not values[a] and values[b])
+        self.assertEqual(logic["X27,Y27 SLICE[0].YQ"]["data"]["inputs"]["2"]["source"], "X46,Y29 DLL.LOCKED")
+        self.assertIn("Unknown", self._lvds()["rx"]["acknowledgement_meaning"])
+        g, h, sync = "X36,Y14 SLICE[0].YQ", "X40,Y16 SLICE[0].YQ", "X47,Y18 IOI[1].IQ"
+        for bits in range(8):
+            values = {g: bool(bits&1), h: bool(bits&2), sync: bool(bits&4)}
+            self.assertEqual(evaluate_data(logic[h]["data"],logic,values), values[g] and not values[h])
+            self.assertEqual(evaluate_data(logic[h]["controls"]["CE"],logic,values), not values[g] or values[sync])
+            self.assertEqual(evaluate_data(logic["X40,Y16 SLICE[1].XQ"]["data"],logic,values),
+                             values[g] and values[h] and values[sync])
+            self.assertEqual(evaluate_data(logic["X40,Y17 SLICE[1].XQ"]["data"],logic,values),
+                             values[g] and not values[h] and values[sync])
+
+    @unittest.skipUnless(os.environ.get("WR6K_FPGA_SYMBOLIC"), "SMT suite not enabled")
+    def test_complete_rx_word_to_conditional_bar1_read_mux(self):
+        import z3
+        from virtexe_symbolic import System
+        protocol, logic = self._lvds(), self.report["logic"]
+        received = {n for n,d in logic.items() if d.get("controls", {}).get("CE", {}).get("source")
+            in ("X32,Y20 SLICE[0].XQ", "X32,Y20 SLICE[0].YQ", "X32,Y20 SLICE[1].YQ")
+            and d.get("data", {}).get("source")}
+        self.assertEqual(len(received), 32)
+        iq = {self.report["roots"][net]["IQ"]: int(net.split("_")[1][1:])
+              for net in protocol["rx"]["active_inputs"]}
+        positions = {bit: (lane["lane"], depth) for lane in protocol["tx_lanes"]
+                     for bit,depth in zip(lane["payload_bits_ABC"], (0,1,2)) if bit is not None}
+        s = System(self.report, bound=0, powerup=False, timeout_ms=30000)
+        q = lambda n: s.signal(n,0)
+        s.solver.add(*[q(n) == bool(0x80 & (1 << bit)) for n,bit in self.address.items()])
+        s.solver.add(z3.Not(q("X7,Y12 SLICE[0].YQ")), q("X6,Y14 SLICE[0].YQ"),
+            z3.Not(q("X6,Y12 SLICE[1].YQ")), q("X13,Y14 SLICE[1].YQ"), z3.Not(q("X9,Y19 SLICE[0].YQ")))
+        self.assertEqual(s.solver.check(), z3.sat)
+        used_received, mismatches = set(), []
+        for bit in range(32):
+            pad = logic[self.report["roots"][f"AD[{bit}]"]["O"]]
+            candidates = []
+            for n in cone_inventory(self.report, pad["data"])["signals"]:
+                if logic[n].get("kind") != "tristate_driver":
+                    continue
+                sources = set(cone_inventory(self.report, logic[n]["data"])["signals"]) & received
+                if sources:
+                    self.assertEqual(len(sources), 1)
+                    candidates.append((logic[n]["data"], next(iter(sources))))
+            self.assertEqual(len(candidates), 1, bit)
+            expression, capture = candidates[0]
+            used_received.add(capture)
+            mismatches.append(s.expr(expression,0) != q(capture))
+            stage = logic[capture]["data"]["source"]
+            self.assertEqual(logic[stage]["controls"]["CLK"]["source"], protocol["clocks"]["remote"])
+            banks = data_support(logic[stage]["data"], logic) - {
+                "X36,Y15 SLICE[0].YQ", "X36,Y15 SLICE[1].XQ", "X36,Y15 SLICE[1].YQ"}
+            self.assertEqual(len(banks), 2)
+            for bank in banks:
+                current, depth = logic[bank]["data"]["source"], 0
+                self.assertEqual(logic[bank]["controls"]["CLK"]["source"], protocol["clocks"]["rx_fast"])
+                while current not in iq:
+                    node = logic[current]
+                    self.assertEqual(node["controls"]["CLK"]["source"], protocol["clocks"]["rx_fast"])
+                    self.assertEqual(functional_expression(node["controls"]["CE"]), {"constant": 1, "inv": False})
+                    current, depth = node["data"]["source"], depth+1
+                    self.assertLessEqual(depth, 2)
+                self.assertEqual((iq[current], depth), positions[bit])
+        self.assertEqual(used_received, received)
+        s.solver.add(z3.Or(*mismatches))
+        self.assertEqual(s.solver.check(), z3.unsat)
+        print("Private all 32 RX bits: lane/time-position mapping checked; BAR1 local read-mux mismatch UNSAT, not accepted PCI read")
 
     def test_bar1_address_and_payload_staging(self):
         logic = self.report["logic"]

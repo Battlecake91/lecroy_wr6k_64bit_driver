@@ -2775,9 +2775,35 @@ Xilinx installation paths, project/download/private evidence paths, applicable
 Verilog/VHDL/library filenames and installed Altium HDL/library text, as well as
 the pinned Project Combine source/database/docs. No ISE installation or matching
 UNISIM/SIMPRIM primitive was found there. This is a bounded inventory, not a claim
-that no such model exists elsewhere. No network lookup or hardware access was
-performed. Manufacturer behavior must not be attributed to reverse-engineering
-configuration metadata.
+that no such model exists elsewhere. The subsequent bounded online audit below
+also did not obtain an applicable contract. No hardware access was performed.
+Manufacturer behavior must not be attributed to reverse-engineering metadata.
+
+Online source-family audit (2026-10-10):
+
+- [AMD DS077](https://docs.amd.com/v/u/en-US/ds077) identifies applicable device
+  documentation; the retrieved material supplies no PCI_W_VE transfer equation.
+- [AMD legacy ISE 10.1](https://www.amd.com/en/support/downloads/adaptive-socs-and-fpgas/legacy-ise/v10_1.html)
+  and [SP3](https://www.amd.com/en/support/downloads/adaptive-socs-and-fpgas/legacy-ise/v10_1-sp3.html)
+  are manufacturer provenance. SP3 lists Modelsim XE 10.1 libraries dated
+  2008-10-02 (125 MB). Its account.amd.com target was unavailable in the
+  research tool; archive contents/applicability were not inspected. No ISE
+  installation was downloaded or vendor library republished.
+- The original [XilinxUnisimLibrary](https://github.com/Xilinx/XilinxUnisimLibrary)
+  is Apache-2.0; no applicable PCILOGIC was found in inspected current sources
+  or search results. This is not a claim about all repository history.
+- Historical ISE 12.2 copies in openofdm and EMAN-P3D-VPU/Project were discovery
+  candidates. PCI_CE hits were delay primitives, not applicable PCILOGIC.
+  Third-party-copy provenance/redistribution rights were not established;
+  none was imported. Historical implementation references point to
+  [OpenCores](https://opencores.org/forums/pci/2001/09/00003), which was unavailable.
+  Such discussions are not manufacturer behavioral authority.
+- Other-family PCILOGICSE resource inventories were rejected as substitutes.
+
+Result: **Unknown**, not a guessed NAND/LUT equation. Missing are the five-input
+effective transfer/timing contract, I1/I2/I3 roles, dedicated ready-tap polarity,
+CE edge/settling, and startup/reset for **PCI_W_VE**. Source provenance and
+availability are separately recorded in the machine-readable matrix.
 
 Exact available sources at `234343d23e737e57f2727630e19008b509d7d522`:
 
@@ -2850,7 +2876,7 @@ All UNSAT results here are bounded diagnostics, not unbounded PCI compliance.
 The retained read/write candidate `X12,Y17 SLICE[1].YQ` captures W on PCI clock
 under `BAR1_hit && !X16,Y14 SLICE[1].YQ && !X10,Y14 SLICE[1].YQ`.
 This differs from the address/payload gate; its eventual wire slot is Unknown.
-Within the eleven address-phase fields, driver offsets project as follows:
+Within all sixteen address-phase fields, driver offsets project as follows:
 
 | Legacy BAR1 access | High conditional staging fields; all other identified fields low |
 |---|---|
@@ -2863,18 +2889,105 @@ These identities agree with the legacy x86 accesses already recorded in
 They are conditional local address projections, **not named wire opcodes** or
 proof that a PCI write reaches a remote register exactly once.
 
-Six fast transmit D-functions are exhaustively verified over 64 assignments
-each (384 total). They all have form `p == e ? A : select ? C : B`, with lane-
-specific control/source identities retained in tests and the JSON matrix.
-For lanes D1/D2/D3/D4, C is respectively the identified address/payload stage
-2/0, 4/2, 7/5, **10/8**. Thus these conditional fields now reach identified
-physical transmit lanes, not only staging FFs. The fast mux FF and complementary
-P/N pad FF are consecutive registers on the effective fast clock; simultaneous
-pre-edge sampling adds an output-register stage. The source-group labels A/B/C
-do not assert temporal slots or packet-valid semantics. Exact scheduling, all
-remaining address bits, CDC stability, retries/buffering and the acquisition
-decoder remain unknown. RX capture remains remote-clocked before the PCI
-response pipeline; no response is equated with drained FIFOs or retired DMA.
+The complete twelve-lane mapping is in `lvds_protocol.tx_lanes` in the JSON
+matrix. All 24 TX P/N data pads are complementary registered outputs. All twelve
+fast muxes are exhaustively checked after proving shadow contracts; the earlier
+six independent-control checks remain. No full network or schematic is published.
+
+**Verified temporal structure:** p is either X31,Y3 SLICE[1].XQ/YQ; e is any of
+X36,Y2 SLICE[0].YQ, X36,Y2 SLICE[1].YQ, X36,Y3 SLICE[1].XQ/YQ. Replicas have
+identical D, clock, CE, SR, mode and INIT contracts. After common reset or
+explicitly equal initial state:
+
+```text
+p_next = p XOR e
+e_next = p OR (!e AND kick)       kick = X41,Y4 SLICE[1].YQ
+reset: p=e=0                    reset = X42,Y3 SLICE[1].YQ
+00 --kick--> 01 -> 10 -> 11 -> 01 ...
+selected bank: C     B     A
+```
+
+00 holds without kick; after entry the cycle repeats even with kick low.
+X24,Y1 SLICE[0].YQ has D=e and synchronous reset p, hence `sync_next=e&&!p`.
+Its pad adds a register stage, as do the fast data FFs. SYNC aligns with C data,
+not a newly accepted command. An eight-edge query over the **actual configured
+registers** checks cycle, shadows and SYNC (SAT base, UNSAT mismatch); unrelated
+remote snapshots are explicit external cuts, not assumed clock-ratio guarantees.
+
+All A/B fast snapshots load together under `!p&&e`, while C is selected. C comes
+directly from remote-clock staging. Staging enables are remote-clock registers
+sampling fast-domain state. Serialization is recovered, but coherent CDC still
+requires the actual DLL/handshake contract. PCI, remote, TX-fast and RX-fast
+effective roots are distinct; frequency, phase and metastability are not inferred.
+TX_CLOCK is DLL.CLK270. RX_CLOCK_P is dedicated P185/CLK0, not normal fabric IQ.
+TX_RESET_ERR is PCI-clocked, not another fast payload lane.
+
+**Verified conditional fields:** with the three named outer selectors low,
+equal-contract command-phase replicas select AD[17:2] versus retained TBUS data.
+The complete payload-phase layout is:
+
+| Lane | A | B | C |
+|---|---|---|---|
+| 0 | Control A | Control B | Even parity |
+| 1 | Odd parity | data 1 | data 0 |
+| 2..11 (n) | data 3n-2 | data 3n-3 | data 3n-4 |
+
+Lane 2 gives 4/3/2; lane 11 gives 31/30/29. In address phase, positions 0..15
+instead carry address bits 2..17; positions 16..30 are zero. Position 31 is
+`edge||flag`, **not W**. edge is a rising-edge detector on delayed PCI staging
+qualification; flag is X28,Y2 SLICE[1].XQ. These are explicit cofactor identities,
+not end-to-end delivery claims. Odd parity is inverse XOR of odd positions;
+even parity is inverse XOR of even positions plus Control B. Both have UNSAT
+mismatch queries with other inputs arbitrary. Acquisition-side checking is Unknown.
+
+The other controls are exact too. With q=X27,Y4 SLICE[1].X,
+v=X39,Y3 SLICE[1].YQ and z=X28,Y5 SLICE[1].X:
+Control A D=`!(q&&v&&!z)`; Control B D=`q||!v`;
+z=`!(phase||edge||flag||previous_flag)`. The five q-counter bits have a common
+remote-clock enable and reset-reachable cycle 0..8; q is low only at 8. All 32
+local states are checked, including 31->0. These are framing/control equations,
+**not named read/write opcodes or command-valid semantics**. The captured W
+candidate affects X10,Y14 SLICE[1].YQ, whose D cone includes runtime RAM16X1D
+X30,Y14 SLICE[1].RAM16X1D. Command correspondence cannot be recovered by fixing
+that runtime lookup or handshake state to convenient values.
+
+#### Complete Receive Word And Conditional PCI Return
+
+All twelve active RX IQ paths are resolved: D0..8 and D11 use physical P pads;
+D9 and D10 use the N pad's active DIFFIQ path. Disabled complementary IQs remain
+boundaries, not extra payload inputs or unproved electrical aliases. Data IQs
+use RX-fast X24,Y29 BUFGCE[0].O, **not PCI clock** BUFGCE[1].O.
+
+Each lane has two additional unconditional fast FF stages and six bank FFs:
+two banks for each of three time positions, 72 bank FFs total. With
+g=X36,Y14 SLICE[0].YQ and h=X40,Y16 SLICE[0].YQ, h D=`g&&!h`,
+CE=`!g||RX_SYNC_IQ`; bank-pulse seeds are `g&&h&&RX_SYNC_IQ` and
+`g&&!h&&RX_SYNC_IQ`. Selection uses three equal-contract remote-clock FFs.
+All 32 returned bits occupy the TX table's same lane/time positions; A/B/C
+correspond to IQ history depths 0/1/2 at bank capture.
+
+R=X11,Y8 SLICE[0].YQ is returned bit 0, not an unexplained isolated status:
+RX_D1_P.IQ -> X34,Y22 SLICE[0].XQ -> X36,Y21 SLICE[0].XQ ->
+X36,Y21 SLICE[1].XQ / X38,Y20 SLICE[1].XQ -> X36,Y20 SLICE[1].Y mux ->
+X32,Y19 SLICE[1].YQ -> R. Early stages are RX-fast; the last two are remote.
+The 32 captures share three equal-contract enables. X13,Y17 SLICE[0].YQ
+separately latches event=1, not FIFO-empty. Enable D=`link&&f&&!a&&b`, with
+exact field identities in the matrix. X12,Y7 SLICE[0].YQ, previously unnamed,
+is delayed link/DLL-qualified state, **not a demonstrated PCI read request**.
+
+All 32 local read-mux D functions equal the respective received bits with
+BAR1-only selection, offset 0x080, B=1,D=0 (SAT base, joint mismatch UNSAT).
+This closes **word selection**, not accepted PCI readback: unique TBUS ownership
+at the data edge, PCI_CE-enabled AD sampling, reachability and read effects
+remain separate. IIMST/IIMCL bit 0 still mixes local C and received R.
+No acquisition-side command correlation or completed-operation meaning is proved.
+
+| Legacy operation | Captured / transmitted edge | Receive / PCI return | Safety interpretation |
+|---|---|---|---|
+| MTTCTL BAR1 0x080, 0/1 | Verified conditional: address bit 7 on lane 3 C, payload bit 0 on lane 1 C | Verified local 32-bit return selection; command-specific response Unknown | Legacy disable/enable Inferred; producer stopped Unknown |
+| MTTRGO BAR1 0x084, count | Verified conditional: address bits 7,2 on lanes 3 C,1 C | Matched launch/complete response Unknown | MTT launch Inferred; drain Unknown |
+| MAMRGO BAR1 0x064, count | Verified conditional: bits 6,5,2 on lanes 2 A/B,1 C | Matched response Unknown | MAM launch Inferred; MTT disable is not MAM stop |
+| IIMCL / IIMST BAR0 0x048/0x04C | Verified local decoder/latches; forwarded stop Unknown | Verified mixed C/R bit-0 mux; accepted read Unknown | No durable idle acknowledgement |
 
 #### Exact Blockers And Targeted Next Evidence
 
@@ -2895,9 +3008,14 @@ response pipeline; no response is equated with drained FIFOs or retired DMA.
    SMT). With these, verify target acceptance, TBUS ownership, output enable,
    TRDY/DEVSEL and completion jointly. Correlate BAR1 `0x080` staging, command
    slot/valid/read-write fields and returned response with the acquisition-side
-   decoder or an existing passive timestamped PCI+LVDS capture. Specifically
-   identify which remote register bit, if any, controls producer stop and how
-   its response survives queued work/restart. No new hardware capture is
+   decoder or an existing passive timestamped PCI+LVDS capture. Supply both
+   address and data words for BAR1 0x080=0/1, 0x084=count and 0x064=count,
+   with all twelve lanes, SYNC, effective clocks, request/response association,
+   and the initial/runtime control-table and FIFO state. This must distinguish
+   the periodic framing/control fields from actual read/write and command-valid
+   fields. Specifically identify which acquisition register bit, if any, stops
+   both producers and how acknowledgement survives queued work/restart.
+   No new hardware capture is
    authorized by this analysis request; an existing offline artifact suffices.
 3. **Safety closure:** Even with the above, prove descriptor admission blocked,
    no new PCI start, all outstanding transactions terminal, pending buffers
@@ -2911,11 +3029,13 @@ Low: **SAT, 219 explicit unknown abstractions**. This is an abstract
 counterexample to using conditional latch clear as an idle certificate, not
 a reachable-hardware counterexample or proof of a stop command's failure.
 
-Actual execution: **12 synthetic MMIO tests + 28 private MMIO tests passed**,
+Actual execution: **13 synthetic MMIO tests + 36 private MMIO tests passed**,
 including native enabled/disabled HEX ownership, three BAR equivalences, five
 conditional readback equivalences, 64 AD-output hold cases, BAR1 address/payload
-staging and response-clock checks, all 32 payload producer identities, eleven
-conditional fields, six fast transmit muxes (384 assignments), read/write capture,
+staging and response-clock checks, all 32 payload producer identities, sixteen
+conditional fields, six independent-control muxes plus all twelve checked-shadow
+transmit muxes, three-phase sequencing/SYNC, two parity identities, the nine-word
+counter, 72 RX bank captures and all 32 conditional BAR1 return bits, read/write capture,
 four joint local-read diagnostics, BAR1 response absence, the late-IRDY abstract
 counterexample, bounded TBUS ownership and two read/PCI_CE witnesses, plus the
 existing latch cases and Z3 query. Synthetic tests cover configuration/polarity,
@@ -2926,3 +3046,25 @@ checks, 19 PCI equations (2,234 assignments), and eight driver dry suites
 (311 assertions) also passed. No WDK build, hardware test, MMIO access,
 programming or reset experiment was performed. `UnknownActive` and quarantine
 remain unchanged; PR #9 remains open and unmerged.
+
+#### Independent DMA-Quiescence Evaluation
+
+| Obligation | Result | Exact obstruction after link reconstruction |
+|---|---|---|
+| Producer stopped | Unknown | Legacy MTTCTL=0 is a host command, not acquisition-side execution evidence; independent MAM work remains |
+| Descriptor engine stopped | Unknown | No stable descriptor-admission/consumption acknowledgement; conditional IIMCL clear still permits abstract REQ activity |
+| No new PCI master transaction | Unknown | No configured stable gate tied to command-specific stop response excludes all later initiator starts |
+| Existing PCI transactions terminal | Unknown | Target-side read/response and link framing do not prove initiator transaction retirement |
+| Internal buffers drained | Unknown | TX snapshots, two RX frame banks and runtime RAM/BRAM retain state; neither SYNC nor response/event is occupancy-zero |
+| Host DMA writes completed | Unknown | No WR6k-specific final-write/interrupt ordering or host-bridge drain contract |
+
+Cross-layer consequence: original MTTCTL zero writes, optional unchecked waits,
+ISR IIMCL clear and a response event cannot be combined into an invented safe
+release predicate. The configured link transitions are exercised in the existing
+Z3 model; no speculative acknowledgement variable or production release path
+was added. The precise next evidence is the applicable PCI primitive model and
+the acquisition-controller LVDS receive/dispatch/status-return implementation,
+including both MTT and MAM, queue/descriptor admission and stable drain semantics.
+Existing offline traces may instead establish command identity and timing, but
+cannot alone establish all six obligations under faults and restart. Identify the
+actually running PCI/acquisition firmware separately from BINARY.205.

@@ -547,6 +547,17 @@ fault. No presently identified register (`IIMCL`, `IIMST`, `MTTCTL`,
 `START`, `INTST`) provides that documented predicate. No live register or
 reset tests are authorized by this research.
 
+The focused offline [FPGA analysis](pci-fpga-firmware-analysis.md#complete-receive-word-and-conditional-pci-return)
+now resolves all twelve TX/RX lanes, three temporal TX slots, sixteen address
+fields, the complete 32-bit payload/conditional return word, parity and two RX
+frame banks. MTTCTL/MTTRGO/MAMRGO offsets project to concrete address-phase
+lane positions, but their acquisition-side dispatch and command-specific
+acknowledgement remain Unknown. A repeating SYNC, a link-qualified returned word,
+or X13,Y17 SLICE[0].YQ response event is not a completed-operation/drain flag.
+The original MTTCTL=0 write and unchecked optional wait therefore still cannot
+authorize DMA release. All six independent shutdown obligations remain Unknown;
+see `pci-mmio-register-evidence.json::shutdown_evaluation` for exact obstructions.
+
 Sources (schematic descriptions only; private drawings are not redistributed):
 
 - [LeCroy WaveRunner 6000 Series Service Manual, section 4.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=25)

@@ -12,6 +12,14 @@
     "internal_buffers_drained": "Unknown",
     "host_dma_writes_completed": "Unknown"
   },
+  "shutdown_evaluation": {
+    "producer_stopped": {"status": "Unknown", "obstruction": "No acquisition-side MTTCTL execution/acknowledgement contract; independent MAM work not excluded"},
+    "descriptor_engine_stopped": {"status": "Unknown", "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT"},
+    "no_new_pci_master_transactions": {"status": "Unknown", "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts"},
+    "existing_pci_transactions_terminated": {"status": "Unknown", "obstruction": "Target read/response and link framing do not establish PCI initiator retirement"},
+    "internal_buffers_drained": {"status": "Unknown", "obstruction": "TX snapshots, 72 RX frame-bank FFs and runtime RAM/BRAM retain state; response/SYNC/event are not occupancy predicates"},
+    "host_dma_writes_completed": {"status": "Unknown", "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved"}
+  },
   "pcilogic": {
     "status": "Unknown",
     "signal": "X0,Y13 PCILOGIC.PCI_CE",
@@ -36,7 +44,14 @@
       "prjcombine@234343d23e737e57f2727630e19008b509d7d522:re/xilinx/rdverify/virtex/src/lib.rs::verify_pcilogic,verify_iob",
       "prjcombine@234343d23e737e57f2727630e19008b509d7d522:databases/virtex.txt::PCI_W_VE,PCI_E_VE"
     ],
-    "offline_source_availability": "No applicable Xilinx ISE behavioral/timing library or manufacturer primitive definition found in the inspected local installation, project, download and private evidence paths. No network research performed",
+    "offline_source_availability": "No applicable behavioral model locally available. Bounded online source-family audit: AMD DS077 and legacy ISE 10.1/SP3 pages, original XilinxUnisimLibrary, historical ISE library copies and OpenCores references. No family-applicable transfer/timing contract obtained; no vendor package downloaded or proprietary library republished",
+    "research_sources": [
+      {"url": "https://docs.amd.com/v/u/en-US/ds077", "provenance": "manufacturer", "result": "Device documentation entry point; no PCI_W_VE transfer equation returned"},
+      {"url": "https://www.amd.com/en/support/downloads/adaptive-socs-and-fpgas/legacy-ise/v10_1-sp3.html", "provenance": "manufacturer", "result": "Lists Modelsim XE 10.1 libraries (2008-10-02, 125 MB); account.amd.com download target unavailable in research tool; archive contents not inspected"},
+      {"url": "https://github.com/Xilinx/XilinxUnisimLibrary", "provenance": "original vendor repository, Apache-2.0", "result": "No applicable PCILOGIC source found in inspected/searchable current library; not a claim about all history"},
+      {"url": "https://github.com/jhshi/openofdm/tree/ea638eb2d3abd6c6d9c0c87a430f393fc3ffc859/verilog/Xilinx/12.2", "provenance": "third-party historical ISE copy, redistribution rights not established", "result": "PCI_CE hits were delay primitives, not applicable PCILOGIC; no code imported"},
+      {"url": "https://opencores.org/forums/pci/2001/09/00003", "provenance": "historical implementation reference, not manufacturer authority", "result": "Reference unavailable; no equation recovered"}
+    ],
     "exact_missing_evidence": "Applicable Spartan-IIE PCILOGIC and PCIIOB.PCI behavioral/timing definitions covering I1/I2/I3, dedicated ready inputs, polarity, CE sampling/settling and startup/reset; alternatively an existing independently identified passive trace with these signals and PCI clock",
     "model_policy": "Retain architecture boundary as time-varying unknown; do not invent an equation, fixed delay, reset value or constant CE"
   },
@@ -119,7 +134,12 @@
       {"stage": "X26,Y1 SLICE[0].XQ", "address_bit": 9, "tbus_pci_ad_producer_bit": 7},
       {"stage": "X26,Y5 SLICE[1].XQ", "address_bit": 10, "tbus_pci_ad_producer_bit": 8},
       {"stage": "X24,Y5 SLICE[1].XQ", "address_bit": 11, "tbus_pci_ad_producer_bit": 9},
-      {"stage": "X26,Y4 SLICE[0].XQ", "address_bit": 12, "tbus_pci_ad_producer_bit": 10}
+      {"stage": "X26,Y4 SLICE[0].XQ", "address_bit": 12, "tbus_pci_ad_producer_bit": 10},
+      {"stage": "X25,Y3 SLICE[0].XQ", "address_bit": 13, "tbus_pci_ad_producer_bit": 11},
+      {"stage": "X28,Y4 SLICE[0].XQ", "address_bit": 14, "tbus_pci_ad_producer_bit": 12},
+      {"stage": "X24,Y4 SLICE[0].XQ", "address_bit": 15, "tbus_pci_ad_producer_bit": 13},
+      {"stage": "X24,Y5 SLICE[0].XQ", "address_bit": 16, "tbus_pci_ad_producer_bit": 14},
+      {"stage": "X24,Y6 SLICE[0].XQ", "address_bit": 17, "tbus_pci_ad_producer_bit": 15}
     ],
     "legacy_address_projection": {
       "status": "Verified",
@@ -130,7 +150,7 @@
     },
     "fast_mux": {
       "status": "Verified",
-      "scope": "Six lane D-functions, 384 exhaustive assignments, not valid-slot/CDC sequencing",
+      "scope": "Six independent-control D-functions (384 assignments), extended to all twelve lanes (384 assignments) after checked shadow-register equivalence",
       "equation": "p == e ? A : select ? C : B",
       "lanes_0_1_2_3_controls": "p=X31,Y3 SLICE[1].YQ; e=X36,Y2 SLICE[0].YQ; select=X36,Y3 SLICE[1].XQ",
       "lane_4_controls": "p=X31,Y3 SLICE[1].XQ; e=X36,Y3 SLICE[1].YQ; select=X36,Y3 SLICE[1].XQ",
@@ -138,9 +158,68 @@
       "conditional_stage_to_lane": {"TX_D1": "address 2 / payload 0", "TX_D2": "address 4 / payload 2", "TX_D3": "address 7 / payload 5", "TX_D4": "address 10 / payload 8"},
       "pad_timing": "Fast D register followed by complementary P/N output registers on the same effective fast clock; pre-edge sampling gives an additional register stage"
     },
-    "field_condition": "Outer staging mux selects zero branch; local phase selects retained address versus retained TBUS payload. PCI AD producer identity is topology only; unique write ownership and fast transmit slot/valid timing remain Unknown",
+    "field_condition": "Outer staging mux selects zero branch; local phase selects retained address versus retained TBUS payload. PCI AD producer identity is topology only; unique write ownership and command-acceptance/CDC timing remain Unknown. All twelve fast slots are resolved separately in lvds_protocol",
     "response": "R captures X32,Y19 SLICE[1].YQ under X32,Y20 SLICE[1].YQ on X24,Y0 BUFGCE[0].O; PCI response selection B and delayed D use X24,Y29 BUFGCE[1].O",
     "unknown": "MTTCTL opcode/slot identity, packet validity, acquisition-controller decode and response meaning, retry/drain/restart stability"
+  },
+  "lvds_protocol": {
+    "status": "Verified",
+    "scope": "Configured digital structure and explicitly conditioned D functions; not end-to-end accepted command delivery, electrical timing or acquisition-controller semantics",
+    "clocks": {"pci": "X24,Y29 BUFGCE[1].O", "remote": "X24,Y0 BUFGCE[0].O", "tx_fast": "X24,Y0 BUFGCE[1].O", "rx_fast": "X24,Y29 BUFGCE[0].O", "tx_clock_pad": "X46,Y0 DLL.CLK270", "rx_clock_positive": "P185/CLK0 dedicated input, not a normal fabric IQ alias", "contract": "Effective domains only; DLL phase/frequency, CDC setup/hold, differential-input polarity and running revision remain Unknown"},
+    "tx_controller": {
+      "p": ["X31,Y3 SLICE[1].YQ", "X31,Y3 SLICE[1].XQ"],
+      "e": ["X36,Y2 SLICE[0].YQ", "X36,Y2 SLICE[1].YQ", "X36,Y3 SLICE[1].XQ", "X36,Y3 SLICE[1].YQ"],
+      "kick": "X41,Y4 SLICE[1].YQ",
+      "reset": "X42,Y3 SLICE[1].YQ",
+      "equations": ["p_next = p XOR e", "e_next = p OR (!e AND kick)"],
+      "states": "After reset p=e=0: 00 holds while kick=0; kick=1 enters 01, then 01 -> 10 -> 11 -> 01 irrespective of kick",
+      "slots": {"01": "C", "10": "B", "11": "A", "00": "A (startup, not a valid command)"},
+      "sync_register": "X24,Y1 SLICE[0].YQ",
+      "sync": "sync_next = e AND !p (synchronous reset p); pad stage follows, aligned with C-slot output",
+      "buffering": "A/B snapshots load together only at !p && e, i.e. while C is selected; C comes directly from the remote-clock stage. Fast lane FF and pad FF both sample pre-edge state. Cross-domain coherence needs an independent clock/handshake contract",
+      "safety": "Continuously repeating frame marker, not command-valid, command completion, FIFO-empty or DMA-idle"
+    },
+    "command_phase": ["X25,Y1 SLICE[0].YQ", "X25,Y1 SLICE[1].XQ", "X25,Y1 SLICE[1].YQ"],
+    "pci_mode_condition": {"status": "Verified", "cuts_zero": ["X28,Y6 SLICE[1].Y", "X28,Y5 SLICE[1].Y", "X27,Y6 SLICE[0].Y"], "meaning": "Explicit cofactor, not a proof that every BAR1 operation reaches this state"},
+    "tx_lanes": [
+      {"lane": 0, "A": "X32,Y5 SLICE[1].YQ", "B": "X35,Y5 SLICE[0].YQ", "C": "X26,Y6 SLICE[1].YQ", "stages": ["X28,Y5 SLICE[1].YQ", "X27,Y4 SLICE[1].YQ", "X26,Y6 SLICE[1].YQ"], "payload_bits_ABC": [null, null, null]},
+      {"lane": 1, "A": "X36,Y5 SLICE[1].YQ", "B": "X35,Y5 SLICE[0].XQ", "C": "X28,Y5 SLICE[0].XQ", "stages": ["X26,Y6 SLICE[0].YQ", "X24,Y2 SLICE[1].XQ", "X28,Y5 SLICE[0].XQ"], "payload_bits_ABC": [null, 1, 0]},
+      {"lane": 2, "A": "X32,Y3 SLICE[1].YQ", "B": "X34,Y3 SLICE[1].YQ", "C": "X27,Y3 SLICE[0].XQ", "stages": ["X28,Y3 SLICE[0].XQ", "X28,Y3 SLICE[1].XQ", "X27,Y3 SLICE[0].XQ"], "payload_bits_ABC": [4, 3, 2]},
+      {"lane": 3, "A": "X32,Y3 SLICE[1].XQ", "B": "X31,Y2 SLICE[0].YQ", "C": "X25,Y2 SLICE[0].XQ", "stages": ["X26,Y1 SLICE[0].XQ", "X27,Y2 SLICE[0].XQ", "X25,Y2 SLICE[0].XQ"], "payload_bits_ABC": [7, 6, 5]},
+      {"lane": 4, "A": "X34,Y4 SLICE[0].YQ", "B": "X31,Y4 SLICE[0].YQ", "C": "X26,Y5 SLICE[1].XQ", "stages": ["X26,Y4 SLICE[0].XQ", "X24,Y5 SLICE[1].XQ", "X26,Y5 SLICE[1].XQ"], "payload_bits_ABC": [10, 9, 8]},
+      {"lane": 5, "A": "X34,Y4 SLICE[0].XQ", "B": "X34,Y4 SLICE[1].YQ", "C": "X25,Y3 SLICE[0].XQ", "stages": ["X24,Y4 SLICE[0].XQ", "X28,Y4 SLICE[0].XQ", "X25,Y3 SLICE[0].XQ"], "payload_bits_ABC": [13, 12, 11]},
+      {"lane": 6, "A": "X31,Y4 SLICE[1].YQ", "B": "X32,Y6 SLICE[0].YQ", "C": "X24,Y5 SLICE[0].XQ", "stages": ["X25,Y5 SLICE[1].YQ", "X24,Y6 SLICE[0].XQ", "X24,Y5 SLICE[0].XQ"], "payload_bits_ABC": [16, 15, 14]},
+      {"lane": 7, "A": "X31,Y4 SLICE[1].XQ", "B": "X32,Y6 SLICE[0].XQ", "C": "X26,Y7 SLICE[0].XQ", "stages": ["X24,Y7 SLICE[1].XQ", "X25,Y6 SLICE[1].YQ", "X26,Y7 SLICE[0].XQ"], "payload_bits_ABC": [19, 18, 17]},
+      {"lane": 8, "A": "X31,Y6 SLICE[1].YQ", "B": "X31,Y5 SLICE[1].YQ", "C": "X27,Y6 SLICE[1].YQ", "stages": ["X25,Y6 SLICE[0].XQ", "X26,Y8 SLICE[1].XQ", "X27,Y6 SLICE[1].YQ"], "payload_bits_ABC": [22, 21, 20]},
+      {"lane": 9, "A": "X31,Y6 SLICE[1].XQ", "B": "X31,Y5 SLICE[1].XQ", "C": "X24,Y8 SLICE[0].XQ", "stages": ["X27,Y10 SLICE[0].XQ", "X27,Y10 SLICE[1].XQ", "X24,Y8 SLICE[0].XQ"], "payload_bits_ABC": [25, 24, 23]},
+      {"lane": 10, "A": "X31,Y6 SLICE[0].YQ", "B": "X32,Y6 SLICE[1].YQ", "C": "X26,Y10 SLICE[0].YQ", "stages": ["X26,Y10 SLICE[1].YQ", "X28,Y8 SLICE[1].XQ", "X26,Y10 SLICE[0].YQ"], "payload_bits_ABC": [28, 27, 26]},
+      {"lane": 11, "A": "X31,Y6 SLICE[0].XQ", "B": "X32,Y6 SLICE[1].XQ", "C": "X26,Y8 SLICE[0].XQ", "stages": ["X28,Y7 SLICE[1].XQ", "X27,Y8 SLICE[0].XQ", "X26,Y8 SLICE[0].XQ"], "payload_bits_ABC": [31, 30, 29]}
+    ],
+    "field_projection": "Under pci_mode_condition and command_phase=1, all 32 payload bits occupy the indicated lane/slot. For phase=0, bits 0..15 carry address bits 2..17; positions 16..30 are zero; position 31 is a control expression, not an address bit",
+    "control_fields": {"status": "Verified", "q": "X27,Y4 SLICE[1].X = counter != 8", "v": "X39,Y3 SLICE[1].YQ", "z": "X28,Y5 SLICE[1].X = !(phase || edge || flag || previous_flag)", "edge": "X25,Y5 SLICE[0].X = X22,Y5 SLICE[1].YQ && !X25,Y2 SLICE[1].YQ; delayed PCI staging qualifier", "flag": "X28,Y2 SLICE[1].XQ", "previous_flag": "X28,Y1 SLICE[0].YQ", "TX_D0_A_D": "!(q && v && !z)", "TX_D0_B_D": "q || !v", "position_31_address_mode_D": "edge || flag", "counter": "Bits low-to-high X27,Y4 SLICE[0].XQ/YQ, X27,Y5 SLICE[0].XQ/YQ, X27,Y6 SLICE[0].XQ; INIT=0, same CE X27,Y6 SLICE[1].X and remote clock. Enabled next increments, except 8 and 31 return to 0; reset-reachable cycle 0..8", "meaning": "Unknown command-kind/read-write/valid semantics without acquisition decoder and runtime handshake/FIFO evidence; these are not named opcodes or stop acknowledgements"},
+    "parity": {"status": "Verified", "odd": "TX_D1 A = NOT XOR(odd-numbered projected data fields, including control in position 31)", "even": "TX_D0 C = NOT XOR(even-numbered projected data fields plus TX_D0 B control field X27,Y4 SLICE[1].YQ)", "scope": "D-path cofactor, not proof of acquisition-side checking or delivery"},
+    "rx": {
+      "status": "Verified",
+      "active_inputs": ["RX_D0_P", "RX_D1_P", "RX_D2_P", "RX_D3_P", "RX_D4_P", "RX_D5_P", "RX_D6_P", "RX_D7_P", "RX_D8_P", "RX_D9_N", "RX_D10_N", "RX_D11_P"],
+      "structure": "Each active IQ has two additional unconditional rx_fast FF stages and six bank captures: two banks for each of three time positions (72 bank FFs total). Disabled complementary-pad IQs are boundaries, not independent payload inputs",
+      "sync": "RX_SYNC_P IQ = X47,Y18 IOI[1].IQ on rx_fast",
+      "bank_controller": "g=X36,Y14 SLICE[0].YQ; h=X40,Y16 SLICE[0].YQ. h D=g&&!h, CE=!g||RX_SYNC_IQ; bank pulse seeds are g&&h&&RX_SYNC_IQ and g&&!h&&RX_SYNC_IQ",
+      "selection": "X36,Y15 SLICE[1].XQ, X36,Y15 SLICE[1].YQ and X36,Y15 SLICE[0].YQ are equal-contract replicas on remote clock; update D=link&&!self under X36,Y16 SLICE[1].X",
+      "R_path": ["RX_D1_P.IQ", "X34,Y22 SLICE[0].XQ", "X36,Y21 SLICE[0].XQ", "X36,Y21 SLICE[1].XQ / X38,Y20 SLICE[1].XQ", "X36,Y20 SLICE[1].Y mux", "X32,Y19 SLICE[1].YQ", "X11,Y8 SLICE[0].YQ"],
+      "R_bank_enables": ["X40,Y18 SLICE[1].YQ", "X39,Y17 SLICE[0].YQ"],
+      "R_capture_enable": "X32,Y20 SLICE[1].YQ; equal-contract replicas X32,Y20 SLICE[0].XQ and X32,Y20 SLICE[0].YQ",
+      "returned_word": {"status": "Verified", "width_bits": 32, "lane_time_mapping": "Same lane/time positions as tx_lanes.payload_bits_ABC: A/B/C correspond to IQ history depths 0/1/2 at the RX bank captures", "source": "32 remote-clock capture FFs share the three equal-contract enables; separate X13,Y17 SLICE[0].YQ latches event=1", "pci_mux_condition": "BAR1 selected, BAR0/BAR2 not selected, captured offset 0x080, B=1 and D=0", "proof": "All 32 local read-mux D outputs equal their corresponding received FF (joint mismatch UNSAT). This does not establish unique TBUS ownership, AD loading through PCI_CE or an accepted software-visible read"},
+      "enable_equation": "enable_next = link && f && !a && b, where link=X12,Y7 SLICE[0].YQ, f=X35,Y16 SLICE[0].Y, a=X35,Y21 SLICE[1].X, b=X35,Y22 SLICE[1].X",
+      "link_boundary": "link is delayed X40,Y27 SLICE[0].YQ AND DLL.LOCKED through remote-clock FFs; it is not a demonstrated PCI read request or acquisition-stop acknowledgement",
+      "acknowledgement_meaning": "Unknown: local bank selection/qualification and response event only; no acquisition-side command matching, producer-stop, drain or host-write completion contract"
+    },
+    "evidence_table": [
+      {"operation": "BAR1 MTTCTL 0x080 write 0/1", "capture": "Verified: AD[17:2] and 32 TBUS payload producers", "transmit": "Verified conditional: address bit 7 on lane 3 C; payload bit 0 on lane 1 C; separate command phase", "receive": "Unknown: no matched command-specific response", "pci_status": "Verified conditional BAR1 bit-0 mux R/previous; accepted read Unknown", "semantics": "Inferred legacy MTT enable/disable, not proven acquisition implementation"},
+      {"operation": "BAR1 MTTRGO 0x084 write count", "capture": "Verified: same staging, offset bits 7 and 2", "transmit": "Verified conditional: address lane 3 C and lane 1 C; payload per tx_lanes", "receive": "Unknown: completion event cannot be assigned to command acceptance", "pci_status": "Unknown command-specific completion/idle", "semantics": "Inferred legacy MTT launch"},
+      {"operation": "BAR1 MAMRGO 0x064 write count", "capture": "Verified: same staging, offset bits 6,5,2", "transmit": "Verified conditional: address lane 2 A/B and lane 1 C; payload per tx_lanes", "receive": "Unknown: independent MAM stop/drain contract absent", "pci_status": "Unknown command-specific completion/idle", "semantics": "Inferred legacy MAM launch"},
+      {"operation": "BAR0 IIMCL 0x048 / IIMST 0x04C", "capture": "Verified local decoder/latches; unique write ownership separate", "transmit": "Unknown direct acquisition-stop command", "receive": "Verified R receives RX_D1 time-position bank selection", "pci_status": "Verified conditional mixed local/receive bit 0; accepted read Unknown", "semantics": "Unknown idle acknowledgement"}
+    ],
+    "external_boundary": "Applicable PCI_W_VE/PCIIOB primitive model; effective DLL/CDC and byte-enable/write ownership contract; acquisition-side LVDS decoder/firmware for command-kind, valid, response correlation and producer/drain behavior; running-image identification and final-host-write ordering evidence"
   },
   "registers": [
     {
