@@ -211,9 +211,14 @@ are not redistributed. No new whole-program census was performed.
 classification. The newer [focused target analysis](pci-fpga-firmware-analysis.md#focused-pci-target-mmio-decode-2026-10-10)
 and [JSON register matrix](pci-mmio-register-evidence.json) verify the address
 capture bank, six configuration predicates and local DMA-offset write gates.
-They identify three inferred IIMCL control replicas and status-mux candidates.
-BAR0's AD20 mixed route, byte-qualified write ownership, target read acceptance
-and remote packet/status identity still block Verified MMIO-to-idle semantics.
+They identify three inferred IIMCL control replicas. Tile-owned HEX buffer
+qualification resolves AD20 and the BAR0/DEVSEL route without choosing a
+preferred driver. All three BAR comparator functions and conditional bit-0
+status muxes are now verified. IIMCL/IIMST combine local and receive state;
+BAR1 retains its previous value until a receive-selection pulse. None is an
+accepted-read or idle proof. The exact PCILOGIC.PCI_CE behavioral/timing model,
+effective-clock/CDC contract, byte-qualified write/TBUS ownership, target read
+acceptance and remote packet/status identity still block MMIO-to-idle semantics.
 
 Every entry labels the **connection**, not merely the existence of a register.
 V = Verified, I = Inferred, U = Unknown. Physical PCI termination at U3 is

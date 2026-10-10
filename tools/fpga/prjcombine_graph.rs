@@ -2,7 +2,7 @@
 use prjcombine_entity::{EntityBundleItemIndex, EntityId};
 use prjcombine_interconnect::{db::*, grid::*};
 use prjcombine_types::bsdata::{PolTileBit, TileBit};
-use prjcombine_virtex::{db::Database, defs::bslots, expanded::ExpandedDevice};
+use prjcombine_virtex::{db::Database, defs::{bslots, wire_from_mux}, expanded::ExpandedDevice};
 use prjcombine_xilinx_bitstream::BitRect;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
@@ -117,7 +117,23 @@ fn pip_config(ed: &ExpandedDevice, p: &TilePip) -> Value {
             };
             let v = match item {
                 SwitchBoxItem::Mux(m) if m.dst == dst && m.src.contains_key(&src) => {
-                    json!({"kind":"mux", "bits":m.bits.iter().map(|&b| bit(ed,t,b,false)).collect::<Vec<_>>(), "expected":m.src[&src].iter().collect::<Vec<_>>(), "off":m.bits_off.as_ref().map(|v| v.iter().collect::<Vec<_>>())})
+                    let mut value = json!({"kind":"mux", "bits":m.bits.iter().map(|&b| bit(ed,t,b,false)).collect::<Vec<_>>(), "expected":m.src[&src].iter().collect::<Vec<_>>(), "off":m.bits_off.as_ref().map(|v| v.iter().collect::<Vec<_>>())});
+                    // HEX *_MUX is a tile-owned pre-buffer helper, not the shared
+                    // multi-root conductor. Overlapping IO/BRAM tile cells can
+                    // share its abstract coordinate without sharing its driver.
+                    let name = ed.db.wires.key(dst.wire);
+                    if name.starts_with("HEX_") && name.contains("_MUX[") {
+                        let conductor = wire_from_mux(dst.wire).expect("HEX mux conductor");
+                        let buffers = sb.items.iter().filter_map(|item| match item {
+                            SwitchBoxItem::ProgBuf(b) if b.src.tw == dst
+                                && b.dst.cell == dst.cell && b.dst.wire == conductor =>
+                                Some(json!({"kind":"buffer", "bits":[pbit(ed,t,b.bit)],
+                                            "expected":[true]})),
+                            _ => None,
+                        }).collect::<Vec<_>>();
+                        value["owner_buffers"] = json!(buffers);
+                    }
+                    value
                 }
                 SwitchBoxItem::PermaBuf(b) if b.dst == dst && b.src == src => {
                     json!({"kind":"permanent", "bits":[], "expected":[]})

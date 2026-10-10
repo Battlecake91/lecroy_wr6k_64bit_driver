@@ -81,6 +81,36 @@ class RoutingTests(unittest.TestCase):
         p["config"] = []
         self.assertEqual(classify_pip(self.image, p)["status"], "unknown")
 
+    def test_hex_mux_ownership_enabled_disabled_and_unknown(self):
+        p = pip("selected", "mux")
+        guard = pip("owner", "buffer")["config"][0]
+        p["config"][0]["owner_buffers"] = [guard]
+        self.assertEqual(classify_pip(self.image, p)["status"], "active")
+        guard["bits"][0]["bit"] = 1
+        self.assertEqual(classify_pip(self.image, p)["status"], "disabled")
+        guard["bits"][0]["frame"] = 9999
+        self.assertEqual(classify_pip(self.image, p)["status"], "unknown")
+        for guards in ([], [guard, guard]):
+            p["config"][0]["owner_buffers"] = guards
+            self.assertEqual(classify_pip(self.image, p)["status"], "unknown")
+
+    def test_overlapping_hex_muxes_do_not_select_convenient_driver(self):
+        io, bram = pip("io", "mux"), pip("bram", "mux")
+        for p, index in ((io, 0), (bram, 1)):
+            p["config"][0].update(bits=[], expected=[])
+            guard = pip("owner", "buffer")["config"][0]
+            guard["bits"][0]["bit"] = index
+            p["config"][0]["owner_buffers"] = [guard]
+        terminal = lambda name: {"x": 0, "y": 0, "bel": name, "pin": "Q"}
+        arch = FakeArchitecture({"shared_mux": [io, bram]},
+                                {"io": [terminal("IO")], "bram": [terminal("BRAM")]})
+        for bits, expected in (([1, 0], "IO"), ([0, 1], "BRAM")):
+            result = Router(SimpleNamespace(frames=[bits]), arch).trace([0, 0, "shared_mux"])
+            self.assertEqual(result["driver_status"], "resolved")
+            self.assertEqual(result["terminals"][0]["bel"], expected)
+        result = Router(SimpleNamespace(frames=[[1, 1]]), arch).trace([0, 0, "shared_mux"])
+        self.assertEqual(result["driver_status"], "ambiguous")
+
     def test_unavailable_frame_is_unknown(self):
         p = pip("a")
         p["config"][0]["bits"][0]["frame"] = 2241

@@ -2530,7 +2530,8 @@ smallest independent observations, without authorizing hardware execution.
 
 ### Focused PCI Target MMIO Decode (2026-10-10)
 
-**Result: partial reconstruction, no DMA quiescence acknowledgement.** The
+**Result: BAR routing resolved; conditional readback reconstructed; no DMA
+quiescence acknowledgement.** The
 machine-readable [register evidence matrix](pci-mmio-register-evidence.json)
 separates legacy access facts, verified local Boolean predicates, inferred BAR
 correlations and unknown safety implications. A Verified local predicate is
@@ -2547,14 +2548,16 @@ GNT#, REQ# and RST# are assigned from derived card connectivity. Six separately
 checked transmit pairs (D0..D4, D10), three receive pairs (D9..D11) and RX_SYNC
 are additional focused roots, not a claim of complete LVDS packet decoding.
 
-The resulting private report contains **3,955 logic nodes**, **21 input-fed
-capture groups**, and **74 explicitly retained boundaries**. These counts
+The resulting private report contains **3,958 logic nodes**, **21 input-fed
+capture groups**, and **64 explicitly retained boundaries**. These counts
 include intentionally disabled input views of output pins and clock/hard-block
-boundaries; they are not 74 missing MMIO registers. Full networks and reports
+boundaries; they are not 64 missing MMIO registers. Full networks and reports
 stay in private TEMP paths. The CLI refuses output within this repository or
 overwriting its input image. Public output is limited to derived facts here.
 
 ```powershell
+$env:WR6K_ROUTING_ADAPTER = python -B tools/fpga/virtexe_xc2s200e_decode.py `
+  --build-adapter --project-combine $env:WR6K_PRJCOMBINE
 python -B tools/fpga/virtexe_mmio.py $env:WR6K_FPGA_BINARY_205 `
   --project-combine $env:WR6K_PRJCOMBINE --adapter $env:WR6K_ROUTING_ADAPTER `
   --output "$env:TEMP/wr6k-target-private.json" --summary "$env:TEMP/wr6k-target-summary-private.json"
@@ -2591,9 +2594,41 @@ BAR2. The first/third banks capture address bits 9..31; the second captures
 active-low C/BE byte. This suggests 512-byte, 256-KiB and 512-byte windows,
 respectively; full config sizing readback has not been certified.
 The `0x18` and `0x14` comparison cones terminate in
-`X6,Y26 SLICE[1].XB` and `X8,Y27 SLICE[1].YB`. The BAR0 candidate compare
-`X7,Y25 SLICE[1].XB` still contains the mixed bit-20 route described below.
+`X6,Y26 SLICE[1].XB` and `X8,Y27 SLICE[1].YB`. The BAR0 compare is
+`X7,Y25 SLICE[1].XB`. All three functions are now **Verified** by Z3
+equivalence (three UNSAT mismatch queries): sampled AD equals the respective
+runtime storage bank over bits 9..31 / 18..31 / 9..31, and sampled C/BE command
+is exactly one of `0x6, 0x7, 0xC, 0xE, 0xF`. Storage and sampled inputs remain
+independent arbitrary variables, not fixed BAR values or reset assumptions.
 No bank address is promoted to the actually enumerated hardware BAR value.
+
+#### Tile-Owned HEX Mux Correction
+
+The AD20 ambiguity is **resolved**, including its BAR0 and DEVSEL dependencies.
+Pinned `public/virtex/src/defs.rs::wire_from_mux` distinguishes the tile-local
+`HEX_*_MUX` helper from the shared conductor. The same tile switchbox has a
+`ProgBuf` from that helper to the corresponding conductor; `grid.rs::wire_pips_bwd`
+enumerates overlapping tile owners at a shared cell. Without owner qualification,
+following one active buffer accidentally combines both pre-buffer mux views.
+`rdverify/virtex/src/lib.rs::verify_device` aliases the helper for raw-database
+verification; that alias is not evidence that two output buffers are enabled.
+
+The adapter now attaches the **same-switchbox, same-cell matching ProgBuf** to
+HEX mux arcs. The router requires that owner buffer to be active. It does not
+filter arbitrary BRAM sources, pick a convenient terminal or alter Project
+Combine. Missing/duplicate buffer encodings remain Unknown; two active owners
+remain ambiguous. Synthetic tests cover each owner alone, both active and
+unknown guards. Native feature tests also flip the two guard bits **in memory**
+and verify that the formerly disabled BRAM mux becomes active, not suppressed.
+
+For this route, IO_W `(X0,Y24)` selects AD20 IQ with mux bits at
+`(2226,434), (2227,434), (2228,432), (2228,434)` equal `1,1,0,0`.
+Its output buffer `(2226,436)` is active. BRAM_W `(X1,Y21)` selects quad DOUT[7]
+with `(2120,442), (2119,442)` equal `0,0`, but its inverted buffer bit
+`(2119,443)` decodes inactive. Thus `X7,Y23 SLICE[0].YQ.D` is exactly
+`X0,Y24 IOI[1].IQ`. BAR0 compare and DEVSEL D/disable cones now have no routing
+boundary. This is database/configuration-backed evidence, not a second ISE
+hardware experiment or confirmation of the instrument's running image.
 
 #### Local DMA-Offset Write Paths
 
@@ -2603,8 +2638,8 @@ other inputs. `A` is the captured 32-bit bank, `W` is
 `X6,Y16 SLICE[1].YQ` (captured C/BE command bit 0), and `H` is
 `X7,Y12 SLICE[0].YQ` (BAR0-hit candidate state). Bits 0,1,4,5 are absent from
 these local predicates. This reveals possible decoder aliases, not permission
-to perform unaligned or undocumented accesses. The meaning/timing of H still
-depends on the unresolved BAR0 comparison.
+to perform unaligned or undocumented accesses. H's comparison is resolved;
+its accepted-transaction timing remains a separate obligation.
 
 | Legacy BAR0 value | Verified local gate(s) | Inferred local destination |
 |---|---|---|
@@ -2637,11 +2672,54 @@ states. Other TBUF producers include live AD0, configuration data and mutable
 RAM16X1D FIFO data. All 32 output cones retain runtime arrays; INIT must not be
 substituted for current readback contents.
 
-**Inferred correlation:** Under the captured BAR0 candidate/block selection,
-the `0x04C` bit-0 data candidate combines `C = X22,Y11 SLICE[0].YQ` with
-`R = X11,Y8 SLICE[0].YQ` through a response pipeline. R uses a different
-effective clock (`X24,Y0 BUFGCE[0].O`), and is captured from X32,Y19 SLICE[1].YQ
-under X32,Y20 SLICE[1].YQ. It is not a direct PCI-clocked busy flag.
+**Verified conditional readback, not a complete software read:** Let
+`C = X22,Y11 SLICE[0].YQ`, `R = X11,Y8 SLICE[0].YQ`,
+`B = X13,Y14 SLICE[1].YQ`, `D = X9,Y19 SLICE[0].YQ`,
+`P = X11,Y7 SLICE[0].YQ`, and `IRQ = X22,Y11 SLICE[0].XQ`.
+With only the named BAR hit asserted and the captured address fixed, five Z3
+mismatch queries are UNSAT for the data at `X11,Y7 SLICE[0].Y`:
+
+| Selected access | Exact conditional bit-0 source | Boundary classification |
+|---|---|---|
+| BAR0 `0x048 IIMCL` | `B ? (D ? C : R) : C` | Mixed local/receive, not control-latch readback |
+| BAR0 `0x04C IIMST` | Same | Mixed local/receive, no certified busy/idle meaning |
+| BAR0 `0x080 INTST` | `IRQ` | Local bit 0 |
+| BAR0 `0x084 INTEN` | `IRQ` | Local INTST bit-0 alias, not enable storage |
+| BAR1 `0x080 MTTCTL` | `B && !D ? R : P` | Receive data with local previous-value hold |
+
+Other word bits, accepted-read meaning and read side effects are not implied.
+In the BAR0 0x48/0x4C case, `B == D` selects C; only B's rising selection
+interval selects R. R captures X32,Y19 SLICE[1].YQ under
+X32,Y20 SLICE[1].YQ on `X24,Y0 BUFGCE[0].O`. The PCI-clocked pipeline is
+`X13,Y16 SLICE[0].YQ.D = RX_capture_enable || X13,Y17 SLICE[0].YQ`,
+then B, then D. Its receiving clocks are distinct; this is not a proven CDC
+or remote acknowledgement contract.
+
+The three registered BAR read selectors have D=`hit && !W` and
+CE=`!X5,Y15 SLICE[0].XQ || hit`. The status TBUF drives only when that timing
+state is true and any registered BAR read selector is true. Other TBUS producers
+remain modeled. All **32** AD output FFs use PCI-clock OCLK and
+`PCILOGIC.PCI_CE` as OCE. Their actual contracts hold the previous pad data if
+PCI_CE is low, regardless of a changed internal read value. DEVSEL#/TRDY# O/T
+are PCI-clocked resettable FFs; both T paths capture `X4,Y15 SLICE[0].X`.
+This closes their configured routes but not the missing PCI_CE function or
+unique ownership at a completed target data edge. Do not treat these mux proofs
+as PCI protocol validation or permission to poll a register.
+
+A bounded **constructed-runtime** IIMST read fixture now follows the actual
+configured transitions for eight PCI-clock edges: disjoint BARs, memory decode
+enabled, DMA/target registers initialized to their decoded idle values, a
+command-6 address phase, active byte enables, IRDY wait and feedback from driven
+AD/DEVSEL/TRDY/STOP pads. No receive/fast-clock edge or RAM/BRAM INIT is assumed.
+At step 5 DEVSEL and TRDY are actively low and AD is enabled. Both queries are
+**SAT**: unconstrained hardblock PCI_CE held low returns old AD0=1; PCI_CE held
+high returns current AD0=0. Under this fixture, the ownership-mismatch query
+at the preceding output-load step 4 is **UNSAT**: X10,Y1 TBUF[0] is the only
+enabled producer on AD0's status TBUS. This does not assume runtime FIFO bits.
+This is an abstract demonstration of the exact
+missing hardblock contract, not a hardware stale-data defect, a boot-reachable
+trace or complete PCI compliance proof. The fixture's initial register values
+are explicit assumptions, not a substitute for configuration/restart invariants.
 The local C equation is **Verified**:
 `C_next_D = (IIMCL_candidate && C) || (X26,Y18 SLICE[0].YQ && X22,Y21 SLICE[1].X)`.
 A separate verified post-clear equation is
@@ -2649,9 +2727,29 @@ A separate verified post-clear equation is
 Neither equation assigns a completed-host-write or FIFO-empty meaning.
 
 The six checked TX pairs have complementary, registered P/N data driven from
-local transmit-mux FFs on `X24,Y0 BUFGCE[1].O`. Their upstream cones include
-the captured PCI address bank and control dependencies. This establishes
-configured PCI-to-link datapaths, **not** MTTCTL's exact packet address/opcode.
+local transmit-mux FFs on `X24,Y0 BUFGCE[1].O`. A newly verified 16-FF bank
+retains captured AD[17:2] under
+`S = BAR1_hit && (!X16,Y14 SLICE[1].YQ || X10,Y14 SLICE[1].YQ)`.
+Two 16-FF TBUS payload banks use S&&W. The staging registers are PCI-clocked;
+their transmit consumers use `X24,Y0 BUFGCE[0].O` before fast-clock output muxing.
+
+Four exact staging D-functions select retained address versus retained TBUS
+data when their outer mux selects its zero branch:
+
+| Transmit staging FF | Retained address bit | TBUS snapshot FF | PCI AD producer on that bus |
+|---|---|---|---|
+| X28,Y5 SLICE[0].XQ | 2 | X20,Y3 SLICE[0].YQ | 0 |
+| X27,Y3 SLICE[0].XQ | 4 | X23,Y3 SLICE[1].YQ | 2 |
+| X25,Y2 SLICE[0].XQ | 7 | X24,Y2 SLICE[0].YQ | 5 |
+| X26,Y5 SLICE[1].XQ | 8 | X26,Y5 SLICE[0].YQ | 8 |
+
+The first three use outer selector X28,Y6 SLICE[1].Y and local phase
+X25,Y1 SLICE[0].YQ; the fourth uses X28,Y5 SLICE[1].Y and phase
+X25,Y1 SLICE[1].YQ. Phase zero selects address, one selects retained TBUS data,
+verified for all eight local assignments per field. The AD producer identity
+does not prove it is the only enabled TBUS driver during an accepted write.
+These are conditional field identities, **not** MTTCTL's exact packet slot/opcode,
+command-valid, retry or remote response semantics.
 BAR1 `0x080 MTTCTL` remains an inferred acquisition command; its downstream
 state and returned acknowledgement are **Unknown**. Local config storage and
 the DMA-offset CE/storage candidates demonstrate why treating every BAR access
@@ -2659,23 +2757,25 @@ as either entirely local or entirely acquisition-controller-owned is invalid.
 
 #### Exact Blockers And Targeted Next Evidence
 
-1. **Mixed BAR0 bit-20 / DEVSEL route:** X7,Y23 SLICE[0].YQ receives
-   route `[7,23,IMUX_CLB_BY[0]]`. At `[0,24,HEX_H3_MUX[0]]`, the IO_W mux
-   selects AD20 IQ, while a separate BRAM_W mux view selects
-   `[1,21,BRAM_QUAD_DOUT[7]]` with no enabled producer. The BRAM_W hex buffer
-   is decoded disabled, but the expanded database aliases the upstream mux
-   views. The current router retains this mixed branch rather than discarding
-   it. The same dependency reaches BAR0 comparison and DEVSEL O/T. Needed:
-   independently validated **per-tile mux/buffer ownership qualification** for
-   this exact IO_W/BRAM_W overlap, with both enabled/disabled synthetic cases
-   and an independent native/ISE reference. The pinned fuzzer and rd2db source
-   were inspected; their pinning setup alone does not certify a runtime fix.
-2. **Read/packet identity:** Close the registered target-acceptance, read-TBUF
-   ownership and response-valid pipeline, including PCI_CE and the relevant
-   RAMB4/IO ambiguous routes. Then correlate BAR1 `0x080` address/data packet
-   fields and returned status with an independently identified acquisition
-   decoder or a passive, timestamped PCI+LVDS trace. Do not label a received
-   bit "producer stopped" without its remote state cone and restart contract.
+1. **Exact missing hardblock input:** Supply the applicable Spartan-IIE
+   `PCILOGIC` behavioral/timing model (e.g. its authoritative ISE primitive),
+   including I1/I2/I3 polarity, PCI_DELAY and PCI_CE edge behavior.
+   Pinned `public/virtex/src/defs.rs` declares only pins/attributes;
+   `ise-hammer/virtex/misc.rs` collects delay/inversion bits, not its transfer
+   function. No Boolean combination of I1/I2/I3 is invented here. This blocks
+   proving that an accepted target read loads current AD data. The fully expanded
+   AD0 output cone now has **no mixed-route boundary**: remaining hardblock
+   boundaries are PCI_CE, three effective BUFGCE clocks and DLL.LOCKED.
+2. **Read/packet timing and identity:** Supply the effective clock/CDC contract,
+   DLL/reset assumptions and the exact reverse-SR primitive contract for
+   X32,Y7 SLICE[0].XQ (FF_REV_ENABLE=1, synchronous SR; retained as Unknown by
+   SMT). With these, verify target acceptance, TBUS ownership, output enable,
+   TRDY/DEVSEL and completion jointly. Correlate BAR1 `0x080` staging, command
+   slot/valid/read-write fields and returned response with the acquisition-side
+   decoder or an existing passive timestamped PCI+LVDS capture. Specifically
+   identify which remote register bit, if any, controls producer stop and how
+   its response survives queued work/restart. No new hardware capture is
+   authorized by this analysis request; an existing offline artifact suffices.
 3. **Safety closure:** Even with the above, prove descriptor admission blocked,
    no new PCI start, all outstanding transactions terminal, pending buffers
    empty and acknowledgement stable until explicit restart. Actual card/FPGA
@@ -2684,13 +2784,16 @@ as either entirely local or entirely acquisition-controller-owned is invalid.
 The existing symbolic model was reused without an invented stop/ack variable.
 An arbitrary-runtime one-step query permits all three IIMCL candidates to
 change 1->0 on their actual CE/PCI-clock/data path while REQ remains actively
-Low: **SAT, 221 explicit unknown abstractions**. This is an abstract
+Low: **SAT, 219 explicit unknown abstractions**. This is an abstract
 counterexample to using conditional latch clear as an idle certificate, not
 a reachable-hardware counterexample or proof of a stop command's failure.
 
-Actual execution: **8 synthetic MMIO tests + 10 private MMIO tests passed**,
-including 48 real-contract latch update cases and the Z3 query; the existing
-39 routing and 36 symbolic tests, frame calibration, 47 native architecture
+Actual execution: **8 synthetic MMIO tests + 20 private MMIO tests passed**,
+including native enabled/disabled HEX ownership, three BAR equivalences, five
+conditional readback equivalences, 64 AD-output hold cases, BAR1 address/payload
+staging and response-clock checks, bounded TBUS ownership and two read/PCI_CE witnesses, plus the
+existing latch cases and Z3 query.
+The **41 routing** and **36 symbolic** tests, frame calibration, 47 native architecture
 checks, 19 PCI equations (2,234 assignments), and eight driver dry suites
 (311 assertions) also passed. No WDK build, hardware test, MMIO access,
 programming or reset experiment was performed. `UnknownActive` and quarantine
