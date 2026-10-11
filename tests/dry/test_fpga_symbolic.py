@@ -113,10 +113,64 @@ class SymbolicTests(unittest.TestCase):
         self.assertImpossible(m, m.memory("delay", 2) != m.memory("delay", 1))
 
     def assertImpossible(self, system, predicate):
+        self.assertEqual(system.solver.check(), z3.sat,
+                         'An inconsistent or unknown base cannot establish exclusion')
         system.solver.push()
-        system.solver.add(predicate)
-        self.assertEqual(system.solver.check(), z3.unsat)
-        system.solver.pop()
+        try:
+            system.solver.add(predicate)
+            self.assertEqual(system.solver.check(), z3.unsat)
+        finally:
+            system.solver.pop()
+
+    def test_exclusion_helper_rejects_vacuous_unsat(self):
+        m = System(report(), 0)
+        m.solver.add(z3.BoolVal(False))
+        with self.assertRaises(AssertionError):
+            self.assertImpossible(m, z3.BoolVal(True))
+        m = System(report(), 0)
+        with patch.object(type(m.solver), 'check', return_value=z3.unknown):
+            with self.assertRaises(AssertionError):
+                self.assertImpossible(m, z3.BoolVal(True))
+
+    def test_runtime_sat_does_not_supply_missing_powerup_history(self):
+        r = report({'q.XQ': reg(c(0))})
+        runtime = System(r, 0, powerup=False)
+        result = runtime.check(runtime.state('q.XQ', 0))
+        self.assertEqual(result['solver'], 'sat')
+        self.assertEqual(result['witness'], 'abstract_candidate')
+        self.assertEqual(result['initial_state'], 'arbitrary runtime')
+        initialized = System(r, 0)
+        self.assertImpossible(initialized, initialized.state('q.XQ', 0))
+
+    def test_missing_memory_init_is_not_silently_zero_filled(self):
+        memory = {'kind': 'ram16x1d', 'initial': None, 'clock': s('clk'),
+                  'enable': c(0), 'write_address': {'0': c(0)}, 'data': c(0)}
+        m = System(report(memories={'ram': memory}), 0)
+        bit = z3.Select(m.memory('ram', 0), z3.BitVecVal(0, 12))
+        for predicate in (bit, z3.Not(bit)):
+            result = m.check(predicate)
+            self.assertEqual(result['solver'], 'sat')
+            self.assertEqual(result['witness'], 'abstract_candidate')
+            self.assertTrue(any('memory INIT unavailable' in u for u in result['unknowns']))
+
+    def test_unknown_register_contract_does_not_invent_init(self):
+        node = reg(c(0))
+        node['mode'] = {}
+        m = System(report({'q.XQ': node}), 0)
+        for predicate in (m.state('q.XQ', 0), z3.Not(m.state('q.XQ', 0))):
+            result = m.check(predicate)
+            self.assertEqual(result['solver'], 'sat')
+            self.assertEqual(result['status'], 'Inconclusive')
+            self.assertTrue(any('register contract' in u for u in result['unknowns']))
+
+    def test_short_bound_exclusion_does_not_imply_future_exclusion(self):
+        r = report({'q.XQ': reg(c(1))})
+        short = System(r, 0)
+        result = short.check(short.state('q.XQ', 0))
+        self.assertEqual(result['solver'], 'unsat')
+        self.assertFalse(result['unbounded_proof'])
+        extended = System(r, 1, schedule=[{clock_key(s('clk'))}])
+        self.assertEqual(extended.check(extended.state('q.XQ', 1))['solver'], 'sat')
 
     def test_initial_register_state(self):
         m = System(report({"q.XQ": reg(c(0), init=1)}), 0)

@@ -273,6 +273,40 @@ Implementation-owner review, before broadening live DMA support:
 The new source/native tests freeze the audit's current behavior and limitations;
 they neither endorse the compatibility exception nor prove hardware safety.
 
+### Defensive review and implementation-owner decisions
+
+This review is limited to source inspection, existing offline regressions and
+software-only tests. It adds no PCI initiator, transaction stimulus, hardware
+access or production behavior. No new production lifetime defect was established.
+The following source-level limitations are confirmed; a possible hardware failure
+is not presented as an observed defect or a proven reachable FPGA execution.
+
+| Concern / confirmed source fact | Unproved premise and potential scenario | Required owner action / regression | Legacy behavior impact |
+|---|---|---|---|
+| IRQ-mask failure: both cleanup blocks in `Ioctl.c` call `LecDmaCompletionFinishWait` before `LecCommitLegacyInterruptMask`; a later failure changes status without poisoning the observed transfer | A stale interrupt source might remain deliverable; failure alone does not demonstrate pending DMA. The mask helper reports register-resolution failures, not a read-back-verified hardware mask acknowledgement | Specify whether mask cleanup failure closes admission and retains the transfer. Add an injectable software cleanup test for success followed by mask failure in both MTT and MAM; test status, retention and next-launch rejection | Fail-closed retention would change the current compatibility path; owner decision required |
+| Untagged IRQ: `Acquisition.c:LecInterruptService` supplies the current software generation, not a hardware transaction tag | An old physical source delivered after a later active publication could be attributed to the new generation. Generation checks cannot distinguish it | Require source provenance/restart exclusion independently of software generation. Existing native test demonstrates the API limitation only, without hardware IRQ injection | Rejecting/restricting later acquisitions would change current behavior |
+| Generation reuse: `LecDmaCompletionPrepare` allows observed -> never-launched; `LecSelectDmaTransfer` increments a 64-bit generation and skips zero | Fresh software identity is not retirement of old descriptors, writes or buffered work | Keep stale-marker/consumer tests; require a release/restart contract before connecting any hardware-active mapping to this reuse path. Audit wrap policy separately from ordinary distinct-generation tests | A no-reuse-until-idle policy would change legacy success behavior |
+| MDL/descriptor lifetime: `LecFreeTransfer` frees unpoisoned descriptor pool/MDL and unlocks source pages; it does not require `IdleProved` | If completion precedes the last device access, later unregister/process/PnP cleanup could release still-accessible memory. That ordering is not proved either way | Explicitly accept or remove the legacy success exception. Apply the decision to every free path, not just explicit unregister. Existing source tests freeze the current boundary; native tests deny mapping release from observed state | Retaining every launched legacy allocation would change normal cleanup and resource consumption |
+| Transfer ownership: register/find/unregister are process/token-owned and serialized with `TransferMutex`; DPC event access and deselect share `DmaCompletionLock` | Locks protect CPU object lifetime, not physical DMA ownership or completion ordering | Preserve list ownership, completion-lock handoff and admission rundown. Add integrated mocked acquisition/unregister/process-exit scheduling tests before refactoring these paths; current source-pattern tests are not a race proof | Preserving these invariants need not change the ABI |
+| PFN success cleanup: `LecBuildDescriptorTable` uses PFN-derived addresses; the active path owns no WDM map registers to release | CPU PFNs below 4 GiB do not establish device-visible addresses, IOMMU suitability or host visibility at IRQ | Do not insert adapter cleanup into the PFN path as an apparent fix. Migrate data and descriptor addresses together only after completion/coherency and ownership contracts exist | Actual adapter migration changes address/resource handling and requires separate qualification |
+| STOP/REMOVE/UnknownActive: `Device.c` closes admission and drains IOCTLs before deferred-work/list cleanup; poisoned transfers move to independent publication ownership and survive FDO removal | Software rundown, IRQ disconnect and a PnP notification do not stop hardware. Late quarantine cannot undo an already committed no-launch free | Preserve poison-before-notification, permanent retention and late-quarantine reporting. Existing fake-DDI tests cover blocked allocation/free, retained MDLs/table/PDO, notification failure and REMOVE races; START rejects the latched unknown state | No quarantine relaxation; restart-only containment is intentionally not production recovery |
+| Future WDM release: sync/PnP release APIs are explicitly no-launch; async SG release always quarantines. Completion/idle hooks have no production caller that authorizes hardware-active mapping release | `LecDmaCompletionProveIdle` and `LecMapOwnerIdleProved` accept a caller assertion, not a hardware certificate; wiring an IRQ to either would invalidate the safety boundary | Keep activation absent. Require independently established device retirement, platform completion/coherency and full caller/callback/adapter rundown before adding a live release path. New source tests detect idle-hook call sites and IRQ-to-stage dependencies | Activation is a future behavior change, not part of this research branch |
+
+The completion-state regression now checks all seven phases, wrong/zero
+generations and null ownership. `CompletionObserved`, `DeviceActive`, arming,
+unknown and quarantined ownership cannot authorize mapping release. A later
+success or idle assertion cannot recover unknown/quarantined ownership. These
+are tests of the actual C predicates, not proofs of hardware inactivity. The
+no-launch stage's release rationale is absence of a launch capability, not
+treating an observed IRQ as idle. Source-pattern guards are regression tripwires, not a
+whole-program call-graph or concurrency proof.
+
+All six hardware obligations remain independently **Unknown**: stopped
+producer; stopped descriptor engine; no new master transactions; outstanding
+transactions terminal; internal buffers drained; host writes completed/ordered.
+Stability until explicit restart is also **Unknown**. Keep
+`CompletionObserved != IdleProved` and retain `UnknownActive` resources.
+
 ## Windows DMA-adapter migration design (not activated)
 
 Current descriptor builder: `driver/Acquisition.c:LecBuildDescriptorTable`.

@@ -430,10 +430,11 @@ required physical transaction history. SAT is not hardware failure; bounded
 UNSAT is not unbounded retirement or safe shutdown. Repeated retry and final
 word stalls still need the missing effective-output/ownership invariant.
 
-Validation on2026-10-11:112 DMA tests (24 synthetic,49 private configured-logic,
-39 private SMT), all PASS. The complete FPGA/MCU run has337 Python tests,
+Validation on2026-10-11:112 DMA tests (24 synthetic,48 private configured-logic,
+40 private SMT), all PASS. The complete FPGA/MCU run has342 Python tests
+(156 synthetic,186 private-firmware),
 zero failures/skips, decoder self-test/frame calibration,50 native architecture
-and19 native PCI local-equation checks PASS. All318 driver dry cases pass.
+and19 native PCI local-equation checks PASS. All332 driver dry cases pass.
 The new initialized bound40/52 prefixes add12 diagnostics (9 SAT,3 UNSAT,
 zero solver-unknown results), separately from the earlier ten bound1 runtime
 and twelve bound2/4 projected diagnostics. No hardware execution or WDK build
@@ -512,6 +513,34 @@ alone cannot supply missing owned transaction identity or the family hardblock
 contract; bounded equations cannot prove eventual progress. Internal
 retirement and host visibility are separate obligations. No candidate idle
 predicate is promoted to `IdleProved`.
+
+## Defensive evidence review
+
+The software-safety review changes tests/documentation only. No new initiator,
+payload execution, bus stimulus or physical experiment is added. Existing
+offline regressions validate their existing equations; passing them does not
+authorize DMA-resource release.
+
+| Evidence/test boundary | Reviewed interpretation / safeguard |
+|---|---|
+| Local truth tables and D equations | Verified Boolean/configured-contract identities at named cuts, not proof that a protocol execution reaches those cuts |
+| Runtime projections (`powerup=False`) | Arbitrary initial FFs and omitted state remain explicit; SAT is an abstract candidate. Independently satisfiable cuts cannot be concatenated into one execution |
+| Initialized bound40/52 cases | Configured FF INIT/reset and transitive dependencies are retained. PCI-only edges, fixed host schedule, mapped responder and bounded response are environmental restrictions; no LVDS producer completion or host visibility follows |
+| PCI_CE, dedicated taps and effective clocks | Named symbolic architecture boundaries, not recovered physical contracts. SAT may choose arbitrary per-edge unknown values; model-completed trace values are observations, not newly verified semantics |
+| Missing memory INIT / BRAM output startup / collisions | Remain symbolic, not zero-filled. New synthetic checks require both possible missing-INIT values and reject invented initialization of unknown FF contracts |
+| UNSAT / base consistency | Exclusion applies only within the stated bound and assumptions. The synthetic `assertImpossible` helper now requires a SAT base before checking exclusion; a negative fixture verifies rejection of vacuous UNSAT |
+| Solver UNKNOWN | Remains inconclusive. Existing deterministic timeout regression is an injected solver-result test, not a real hardware or solver-timeout witness |
+| No-IRQ/no-payload prefix | Absence within a bounded PCI-only experiment is not IRQ-after-final-write safety, unbounded liveness or a producer/buffer drain certificate |
+
+New synthetic tests also distinguish runtime SAT from configured initialization
+and demonstrate a bounded exclusion followed by reachability at the next edge.
+No previously reported SAT/UNSAT result was found to have been promoted to a
+physical idle guarantee. The helper's missing explicit base check was a
+regression gap, not evidence that a previous private exclusion was false; their
+reported bases are independently checked. The source-referenced
+[implementation-owner decisions](dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions)
+remain separate from FPGA reconstruction and preserve the legacy-success versus
+future-WDM-release distinction.
 
 ## Initialized PCI launch prefix and the remaining sequence boundary
 

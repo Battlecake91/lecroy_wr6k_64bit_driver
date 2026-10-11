@@ -553,6 +553,14 @@ access to a freed descriptor or unlocked page if the IRQ premise is wrong.
 Mask failure after a successful wait and late untagged physical IRQ attribution
 are explicit implementation-owner review items. No production code was changed.
 
+The defensive [owner-decision matrix](dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions)
+separates confirmed source facts, unproved hardware premises, potential failure
+scenarios, containment/tests and compatibility impact. The current WDM stages
+cannot launch acquisition and do not consume IRQ completion as release evidence.
+New all-phase completion tests and source call-site guards protect that boundary.
+No new production lifetime defect or physical abort/idle certificate was
+established; normal PFN success release remains an explicit unproved exception.
+
 The initialized [PCI launch-prefix diagnostic](pci-dma-retirement-analysis.md#initialized-pci-launch-prefix-and-the-remaining-sequence-boundary)
 does not reuse arbitrary-runtime issue/IRQ witnesses as a transaction history.
 It retains transitive configured state and leaves PCI_CE symbolic. A bounded

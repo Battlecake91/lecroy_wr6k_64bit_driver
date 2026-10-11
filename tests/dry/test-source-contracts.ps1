@@ -574,6 +574,49 @@ Test-Contract "live PnP publication is remove-lock ordered and fail-closed" {
     $ioctlText -match 'LecMarkDmaUnknownActive'
 }
 
+Test-Contract "no production caller promotes observed completion to proved hardware idle" {
+    $sources = Get-ChildItem -LiteralPath (Join-Path $repo 'driver') -Filter '*.c'
+    $calls = 0
+    foreach ($source in $sources) {
+        $text = Get-Content -LiteralPath $source.FullName -Raw
+        $calls += [regex]::Matches($text, '\bLecDmaCompletionProveIdle\s*\(').Count
+    }
+    # Exactly the function definition, with no call site in any driver C file.
+    $calls -eq 1 -and $completionText -match 'LecDmaCompletionProveIdle\('
+}
+
+Test-Contract "staged mapping cleanup has no IRQ-completion evidence dependency" {
+    ($syncText + $pnpDmaText + $scatterText + $adapterText) -notmatch
+        'LecDmaCompletionObservePhysicalIrq|LecDmaCompletionFinishWait|LecDmaCompletionProveIdle|LecDmaCompletionObserved' -and
+    $syncText -match '(?s)LecSgSyncReleaseNoLaunch\(.*?LecSgSyncCommitReleaseLocked.*?LecSgSyncFreeStage' -and
+    $pnpDmaText -match '(?s)LecDmaPnpFinishTeardownNoLaunch\(.*?Stage->UnknownActive.*?Stage->ActiveCalls != 0.*?LecSgSyncOwnerDrainNoLaunch'
+}
+
+Test-Contract "all live teardown paths close admission and drain before freeing transfer lists" {
+    foreach ($minor in @('STOP_DEVICE', 'SURPRISE_REMOVAL', 'REMOVE_DEVICE')) {
+        $pattern = '(?s)case IRP_MN_' + $minor + ':\s*(.*?)(?=\r?\n\s*case |\r?\n\s*default:)'
+        $match = [regex]::Match($deviceText, $pattern)
+        if (-not $match.Success -or $match.Groups[1].Value -notmatch
+            '(?s)LecSetIoctlAdmission\(devExt, FALSE\).*?LecDrainIoctls.*?LecQuiesceDeferredWork.*?LecReleaseAllTransfers') {
+            return $false
+        }
+    }
+    return $true
+}
+
+Test-Contract "mapping launch and idle hooks have no production callers" {
+    $sources = Get-ChildItem -LiteralPath (Join-Path $repo 'driver') -Filter '*.c'
+    foreach ($name in @('LecSgStageMarkLaunched', 'LecSgStageMarkIdleProved')) {
+        $calls = 0
+        foreach ($source in $sources) {
+            $text = Get-Content -LiteralPath $source.FullName -Raw
+            $calls += [regex]::Matches($text, ('\b' + $name + '\s*\(')).Count
+        }
+        if ($calls -ne 1) { return $false }
+    }
+    return $true
+}
+
 Test-Contract "public packed register ABI size guards are still present" {
     $required = @(
         'sizeof\(LECS65_REG_READ_LEGACY\) == 4',

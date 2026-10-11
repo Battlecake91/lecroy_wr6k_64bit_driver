@@ -5,11 +5,33 @@
   "labels": ["Verified", "Conditional", "Inferred", "Unknown"],
   "safety": "UnknownActive; no DMA release permission; PR 9 must remain unmerged",
   "stable_until_explicit_restart": "Unknown",
+  "software_safety_review": {
+    "document": "dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions",
+    "scope": "Defensive source review, existing offline test validation and software-only regression; no new initiator, transaction stimulus or production behavior",
+    "confirmed_properties": [
+      "CompletionObserved alone does not authorize mapping release",
+      "No production caller invokes LecDmaCompletionProveIdle or the async SG launch/idle hooks",
+      "Sync/PnP mapping release is no-launch only and has no IRQ-completion dependency",
+      "UnknownActive/quarantine cannot be cleared by later success, idle assertion or generation preparation",
+      "Live STOP/SURPRISE/REMOVE close admission and drain IOCTLs before deferred-work/list cleanup"
+    ],
+    "remaining_owner_decisions": [
+      "Legacy PFN normal-success cleanup and generation reuse still depend on unproved hardware retirement/visibility",
+      "Post-success interrupt-mask cleanup failure does not itself poison the observed transfer",
+      "A delayed untagged physical source can be attributed to the current software generation",
+      "Future hardware-active WDM release requires independent device/platform and complete software-rundown evidence"
+    ],
+    "new_production_lifetime_defect_established": false,
+    "regression_gap_fixed": "Synthetic exclusion helper now requires SAT base before UNSAT predicate check; negative fixture rejects vacuous exclusion",
+    "test_limits": "Source-pattern guards are tripwires, not whole-program race proofs. Fixture phase assignments test C predicates, not FPGA reachability. Symbolic model completion is not recovered hardware semantics.",
+    "production_driver_changed": false,
+    "hardware_idle_proved": false
+  },
   "verification": {
     "date": "2026-10-11",
-    "python_tests": {"c166": 18, "routing": 45, "mmio": 52, "pci_dma": 112, "acquisition": 65, "symbolic": 45, "total": 337, "status": "PASS", "failed": 0, "skipped": 0},
+    "python_tests": {"c166": 18, "routing": 45, "mmio": 52, "pci_dma": 112, "acquisition": 65, "symbolic": 50, "total": 342, "synthetic": 156, "private_firmware": 186, "pci_dma_split": {"synthetic": 24, "private_configured": 48, "private_smt": 40}, "status": "PASS", "failed": 0, "skipped": 0},
     "private_checks": {"frame_calibration": "PASS", "native_architecture": 50, "pci_local_equations": 19, "status": "PASS"},
-    "driver_dry_tests": {"source": 39, "completion": 27, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 318, "status": "PASS"},
+    "driver_dry_tests": {"source": 43, "completion": 37, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 332, "status": "PASS", "failed": 0, "skipped": 0},
     "not_run": ["WDK build", "hardware/MMIO/DMA/reset/programming experiments"],
     "scope": "Offline analysis and software regression, not hardware qualification or a six-obligation quiescence proof"
   },

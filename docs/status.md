@@ -10,15 +10,16 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 39/39, layout 13/13, ownership 17/17,
+- Current result: source/ABI 43/43, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 27/27;
-  overall 318/318 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 37/37;
+  overall 332/332 PASS, zero failures/skips.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
   45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
   24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 112 PCI DMA (24 synthetic,
-  49 private configured-logic, 39 private SMT), and 45 synthetic SMT tests:
-  **337/337 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
+  48 private configured-logic, 40 private SMT), and 50 synthetic SMT tests:
+  **342/342 PASS** (156 synthetic, 186 private-firmware), zero failures/skips,
+  plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
   sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
@@ -112,6 +113,12 @@
   PFN cleanup allocates/releases no adapter map registers. IRQ-mask failure
   after an observed wait and untagged late-source attribution are explicit
   implementation-owner review items; production behavior is unchanged.
+  The defensive [review matrix](dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions)
+  records source facts, unproved premises, proposed containment, tests and
+  compatibility impact. New source guards reject production idle-hook callers
+  or IRQ-to-stage release dependencies; native tests cover all seven release
+  phases and irreversible quarantine. No new production lifetime defect was
+  established. This does not resolve the legacy success exception.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

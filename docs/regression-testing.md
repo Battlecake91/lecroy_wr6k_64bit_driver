@@ -307,7 +307,7 @@ A source contract ensures the live PCI code cannot invoke this stage.
 Current software-only Dry regression on 2026-10-11 (no WDK rebuild or hardware
 execution for this analysis; the previously established Debug|x64 driver and
 `lecdiag` build result is unchanged):
-- Source/ABI contracts **39/39 PASS**.
+- Source/ABI contracts **43/43 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +315,8 @@ execution for this analysis; the previously established Debug|x64 driver and
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **27/27 PASS**.
-- All eight Dry child suites **318/318 PASS**. This run invokes the child suites
+- Live DMA completion-state suite **37/37 PASS**.
+- All eight Dry child suites **332/332 PASS**, zero failures/skips. This run invokes the child suites
   directly without claiming a new driver build/front-end runner execution.
 
 The added normal-success source contracts record the existing poison-only free
@@ -326,6 +326,24 @@ mapping ownership, subsequent software-generation reuse, and an untagged old
 physical source attributed to a newly active generation. They are software
 limitation checks, not hardware IRQ injection or proof that the success-policy
 exception is safe. See the canonical normal-success lifetime audit.
+
+The defensive review adds four source guards for idle-hook call sites,
+IRQ-independent staged release, ordered STOP/SURPRISE/REMOVE cleanup and absent
+SG launch/idle callers. Ten native predicate checks cover all seven completion
+phases, invalid ownership, and failed attempts to recover quarantine. These
+guards do not replace integrated race testing or a hardware retirement contract.
+Five new synthetic SMT tests protect initialization, missing memory/FF contracts,
+vacuous exclusion and bounded-result interpretation. The synthetic exclusion
+helper requires a SAT base and restores its solver stack even on assertion
+failure; inconsistent and UNKNOWN bases are rejected. No production driver or
+FPGA model behavior is changed.
+
+The complete existing FPGA/MCU suite passes **342/342** Python tests: **156
+synthetic / 186 private-firmware**, zero failures/skips. Its 112 DMA tests split
+as 24 synthetic, 48 private configured-logic and 40 private SMT, counted from
+the executed unittest classes. Decoder self-test, private frame calibration,
+50 native architecture checks and 19 PCI local equations also pass. These are
+offline validations of the existing model, not new physical PCI transactions.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication
