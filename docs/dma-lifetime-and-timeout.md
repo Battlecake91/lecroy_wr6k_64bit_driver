@@ -53,12 +53,22 @@ are kept in the focused audit.
 ### Applicable release decision
 
 The [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) now recovers
-complete SGTA/IIMTC capture alternatives, two32-bit read-word banks, counter
-D-word equations and the done/sticky-IRQ pipeline. None establishes the
+complete SGTA/IIMTC capture alternatives, two32-bit read-word banks, full
+descriptor-pointer/master-address equations, conditional C/BE/AD selection,
+the16x32 staging store and its increment/rewind transitions, counter D-word
+equations and the done/sticky-IRQ pipeline. The named longline route is
+resolved to auxiliary BRAM, not PCI input. None establishes the
 final accepted PCI phase or bridge write retirement. PCI-SIG specifies no
 ordering relationship between sideband INTx and PCI transactions; therefore
 IRQ completion needs a hardware/platform-specific ordering premise even if
 the FPGA's terminal-descriptor event is correctly attributed.
+
+Disabling staging admission retains memory; advancing its issue pointer is
+not unique accepted-write retirement because it has an actual rewind term.
+Consequently `NeverLaunched` software cleanup remains separate from
+`DeviceActive -> CompletionObserved`. Neither completion nor timeout permits
+`IdleProved` or release. Retain `UnknownActive -> Quarantined` ownership;
+the inactive WDM stage must not gain a launch/release path from these proofs.
 
 The current offline [FPGA/MCU partial proof](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown)
 does not change this decision. Source-backed reverse-SR and a two-FPGA

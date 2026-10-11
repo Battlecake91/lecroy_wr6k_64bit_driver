@@ -284,6 +284,34 @@ class PrivateMmio(unittest.TestCase):
         self.assertEqual(classify_pip(image, io)["status"], "disabled")
         self.assertEqual(classify_pip(image, bram)["status"], "active")
 
+    def test_longline_payload_candidate_is_bram_not_disabled_io_owner(self):
+        node = self.report["logic"]["X27,Y17 SLICE[0].Y"]
+        self.assertEqual(node["data"]["inputs"]["2"]["source"], "X1,Y17 BRAM.DOB[1]")
+        self.assertFalse(node["data"]["inputs"]["2"]["inv"])
+        route = self.report["routes"]['[27, 17, "IMUX_CLB_G3[0]"]']
+        self.assertEqual(route["driver_status"], "resolved")
+        self.assertFalse(route["inversion"])
+        self.assertEqual(route["terminals"], [{"x": 1, "y": 17, "bel": "BRAM", "pin": "DOB[1]"}])
+
+    def test_native_longline_guards_do_not_hide_either_owner(self):
+        from virtexe_xc2s200e_decode import Xc2s200eBitstream
+        image = Xc2s200eBitstream(Path(os.environ["WR6K_FPGA_BINARY_205"]))
+        route = self.report["routes"]['[27, 17, "IMUX_CLB_G3[0]"]']
+        mux = route["nodes"]['[0, 19, "LH_MUX[0]"]']
+        io = next(p for p in mux["pips"] if p["source_raw"][2] == "OUT_IO_IQ[3]")
+        bram = next(p for p in mux["pips"] if p["source_raw"][2] == "BRAM_QUAD_DOUT[6]")
+        for p, expected in ((io, (2212, 354, False)), (bram, (2110, 355, True))):
+            bit = p["config"][0]["owner_buffers"][0]["bits"][0]
+            self.assertEqual((bit["frame"], bit["bit"], bit["inv"]), expected)
+        self.assertEqual(classify_pip(image, io)["status"], "disabled")
+        self.assertEqual(classify_pip(image, bram)["status"], "active")
+        image.frames[2212][354] ^= 1
+        self.assertEqual(classify_pip(image, io)["status"], "active")
+        self.assertEqual(classify_pip(image, bram)["status"], "active")
+        image.frames[2110][355] ^= 1
+        self.assertEqual(classify_pip(image, io)["status"], "active")
+        self.assertEqual(classify_pip(image, bram)["status"], "disabled")
+
     def test_read_selection_and_tbus_gate_equations(self):
         equations = {
             "X11,Y10 SLICE[0].YQ": lambda v: v["X7,Y12 SLICE[0].YQ"] and not v["X6,Y16 SLICE[1].YQ"],

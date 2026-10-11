@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from virtexe_mmio import cone_inventory, functional_expression
-from virtexe_routing import COMMIT, evaluate_data
+from virtexe_routing import COMMIT, data_support, evaluate_data, register_contract
 
 
 def sl(x, y, n, pin):
@@ -31,6 +31,8 @@ NAMES = {
     "word_b_lo_ce": sl(23, 21, 0, "Y"), "word_b_hi_ce": sl(23, 22, 1, "X"),
     "incoming_phase": sl(23, 22, 1, "YQ"),
     "reload": sl(25, 20, 1, "XQ"), "pending": sl(26, 18, 1, "YQ"),
+    "chain": sl(22,21,1,'Y'), "initial": sl(26,18,1,'X'),
+    "aux": sl(26,18,0,'XQ'),
     "load_replica": sl(22, 20, 0, "YQ"), "next_phase": sl(24, 21, 1, "YQ"),
     "r": sl(2, 12, 1, "YQ"), "rd": sl(2, 16, 1, "YQ"),
     "b": sl(2, 13, 0, "XQ"), "k": sl(3, 4, 0, "X"),
@@ -38,6 +40,114 @@ NAMES = {
 }
 SGTA_GATES = (sl(17, 13, 0, "Y"), sl(17, 13, 1, "X"))
 IIMTC_GATES = (sl(15, 12, 0, "X"), sl(16, 12, 0, "Y"))
+POINTER_REPLICAS = ((NAMES['cl'],NAMES['cl2']),
+                    (NAMES['cl'],sl(23,25,1,'YQ')),
+                    (NAMES['reload'],sl(25,21,1,'YQ')),
+                    (NAMES['reload'],sl(25,22,1,'YQ')))
+LOAD_REPLICAS = tuple(sl(x,y,n,pin) for x,y,n,pin in
+                      ((22,19,1,'XQ'),(22,20,0,'YQ'),(22,20,1,'YQ'),(23,20,0,'YQ')))
+
+
+def pointer_map(report):
+    """Recover each address FF from its unique SGTA-bit D-cone dependency."""
+    captured = {d["signal"]: bit for bit, d in capture_map(report, SGTA_GATES).items()}
+    result = {}
+    for name, node in report["logic"].items():
+        if node.get("kind") != "register":
+            continue
+        try:
+            hits = data_support(node["data"], report["logic"]) & captured.keys()
+        except ValueError:
+            continue
+        if not hits:
+            continue
+        if len(hits) != 1:
+            raise ValueError("pointer candidate has multiple SGTA-bit dependencies")
+        bit = captured[next(iter(hits))]
+        if bit in result:
+            raise ValueError("duplicate pointer bit candidate")
+        result[bit] = name
+    if set(result) != set(range(2, 32)):
+        raise ValueError("incomplete pointer candidate bank")
+    return result
+
+
+def pointer_next(old, sgta, word_a, initial, chain, step):
+    """Local equation with matched control replicas; not an ownership proof."""
+    if (initial or chain) and not step:
+        return (sgta if initial else word_a) & 0xFFFFFFFC
+    return (old + (8 if step else 0)) & 0xFFFFFFFC
+
+
+def same_sampling_contract(report, left, right):
+    """Exact shared-D replicas, including conditional buses, without aliasing states.
+
+    Equality follows only from common initialization/reset and clock history.
+    Unlike register_equivalence, no unconditional combinational bus alias is made.
+    """
+    keys = ('data', 'init', 'flags', 'clock', 'ce', 'sr', 'rev', 'reset', 'set', 'status')
+    contracts = [register_contract(n, report['logic'][n]) for n in (left, right)]
+    if any(c['status'] == 'unknown' for c in contracts):
+        raise ValueError('unknown replica contract')
+    normalized = [functional_expression({k:c[k] for k in keys if k in c}) for c in contracts]
+    if normalized[0] != normalized[1]:
+        raise ValueError('replicas have different sampling contracts')
+    return normalized[0]
+
+
+def ad_bus_drivers(report, bit):
+    root = report["roots"][f"AD[{bit}]"]["O"]
+    cone = cone_inventory(report, report["logic"][root]["data"])
+    return {n: report["logic"][n] for n in cone["signals"]
+            if report["logic"].get(n, {}).get("kind") == "tristate_driver"}
+
+
+def master_address_map(report):
+    """Identify the address producer alternative, not unconditional bus ownership."""
+    result = {}
+    for bit in range(32):
+        candidates = []
+        for name, node in ad_bus_drivers(report, bit).items():
+            try:
+                support = data_support(node["disable"], report["logic"])
+            except ValueError:
+                continue
+            if support == {sl(4, 9, 0, "YQ")}:
+                data = functional_expression(node["data"])
+                if not data.get("inv", False) and "source" in data:
+                    candidates.append({"signal": data["source"], "driver": name,
+                                       "disable": functional_expression(node["disable"])})
+        if len(candidates) != 1:
+            raise ValueError(f"AD{bit}: expected one address producer")
+        result[bit] = candidates[0]
+    return result
+
+
+def payload_map(report):
+    """Recover BRAM-to-staging-to-AD alternatives, retaining every enable/address."""
+    result = {}
+    for bit in range(32):
+        candidates = []
+        for driver,node in ad_bus_drivers(report,bit).items():
+            for signal in cone_inventory(report,node['data'])['signals']:
+                read = report['logic'].get(signal,{}).get('data',{})
+                if read.get('op') != 'ram_read':
+                    continue
+                memory = report['memories'][read['memory']]
+                if memory.get('kind') != 'ram16x1d':
+                    raise ValueError('unexpected payload staging primitive')
+                candidates.append(dict(signal=signal,driver=driver,memory=read['memory'],
+                    source=functional_expression(memory['data']),
+                    disable=functional_expression(node['disable']),
+                    write_enable=functional_expression(memory['enable']),
+                    write_address=functional_expression(memory['write_address']),
+                    read_address=functional_expression(read['address'])))
+        if len(candidates) != 1:
+            raise ValueError(f'AD{bit}: expected one staging-memory alternative')
+        result[bit] = candidates[0]
+    if len({d['memory'] for d in result.values()}) != 32:
+        raise ValueError('payload staging bits alias')
+    return result
 
 
 def bank(report, gates):
@@ -115,6 +225,10 @@ RELATIONS = (
     ("word_a_hi_ce", ("accept", "phase"), lambda v: v["accept"] and v["phase"]),
     ("word_b_lo_ce", ("accept", "incoming_phase"), lambda v: v["accept"] and v["incoming_phase"]),
     ("word_b_hi_ce", ("accept", "incoming_phase"), lambda v: v["accept"] and v["incoming_phase"]),
+    ("incoming_phase", ("pending", "incoming_phase", "accept"),
+     lambda v: v['pending'] or v['incoming_phase'] and not v['accept']),
+    ("pending", ("initial", "chain", "aux", "segment_event"),
+     lambda v: v['initial'] or v['chain'] or v['aux'] and v['segment_event']),
     ("reload", ("done", "reload", "cl"),
      lambda v: not v["cl"] and (v["done"] or v["reload"])),
     ("r", ("v", "k", "stop", "b"),
@@ -136,6 +250,8 @@ def focused_evidence(report):
             raise ValueError(name + " capture coverage differs")
     return {"project_combine_commit": COMMIT, "image_sha256": report.get("image_sha256"),
             "checks": checks, "capture_maps": maps,
+            "pointer_map": pointer_map(report), "master_address_map": master_address_map(report),
+            "payload_map": payload_map(report),
             "safety": "UnknownActive unchanged; no DMA retirement or host completion certificate"}
 
 

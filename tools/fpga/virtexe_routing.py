@@ -117,12 +117,12 @@ def classify_pip(image, pip):
     if "owner_buffers" in config:
         guards = config["owner_buffers"]
         if len(guards) != 1:
-            result.update(status="unknown", reason="missing or ambiguous HEX mux owner buffer")
+            result.update(status="unknown", reason="missing or ambiguous mux owner buffer")
             return result
         guard = classify_pip(image, {"config": guards})
         result["owner_buffer"] = guard
         if guard["status"] != "active":
-            result.update(status=guard["status"], reason="tile-owned HEX output buffer is not active")
+            result.update(status=guard["status"], reason="tile-owned output buffer is not active")
             return result
     try:
         actual = [read_bit(image, b) for b in config["bits"]]

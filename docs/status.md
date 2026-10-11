@@ -15,10 +15,10 @@
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 24/24;
   overall 311/311 PASS.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
-  45 routing, 50 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
-  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 31 PCI DMA (8 synthetic,
-  20 private configured-logic, 3 private SMT), and 45 synthetic SMT tests:
-  **254/254 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
+  45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 50 PCI DMA (11 synthetic,
+  27 private configured-logic, 12 private SMT), and 45 synthetic SMT tests:
+  **275/275 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
   sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
@@ -26,10 +26,16 @@
   [FPGA analysis](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown).
   Stream1-to-U38 assignment is strongly inferred, not a live-image assertion.
   [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) adds exact
-  SGTA/IIMTC/two-word capture maps, 13 local equations and two 32-bit counter
-  D-word proofs. Ten additional bound1 runtime diagnostics yield nine SAT and
+  SGTA/IIMTC/two-word capture maps, 15 local equations, full pointer/master-address
+  equations, conditional read/write C/BE and all32 AD alternatives, and staging
+  pointer increment/rewind/retention proofs. HEX/LH/LV owner qualification resolves
+  all9,150 routes in the control-root report, including the named payload mux.
+  Ten additional bound1 runtime diagnostics yield nine SAT and
   one UNSAT with ten consistent bases and zero solver-unknown results; all
   are Inconclusive for physical shutdown, with 218 symbolic boundaries.
+  A full-network bound2 IRQ query timed out; its actual-register cone is SAT
+  only as a retained-state candidate with unknown external cuts. Final-phase
+  ordering and host visibility remain separate unproved obligations.
   All six DMA-quiescence obligations and stable restart exclusion remain
   Unknown. No new driver build or hardware test was performed for this offline
   analysis. PR #9 remains unmerged.

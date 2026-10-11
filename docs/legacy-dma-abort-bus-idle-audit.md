@@ -256,7 +256,11 @@ for IIMCL, or of an inactive pad for IIMST. The existing Z3 transitions also
 allow actual qualified IIMCL clear with all replicas cleared and REQ still
 active (bound1 runtime SAT, 218 unknowns); this is not a hardware trace.
 [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) supplies the
-SGTA/IIMTC capture, two-word banks, counter D equations and IRQ-source pipeline.
+SGTA/IIMTC capture, two-word banks, full pointer/master-address equations,
+conditional C/BE/AD selection, the16x32 staging store with increment/rewind,
+counter D equations and IRQ-source pipeline. The payload LH route is resolved
+by the same native owner-buffer rule as HEX, without selecting a preferred
+source. Physical owned transaction history and retirement remain unresolved.
 No invented stop logic was added:
 a free symbol named `stop_ack` would make the proposed safety checks vacuous.
 
@@ -271,10 +275,10 @@ a decoded hardware execution.
 | Obligation | Verified partial evidence | Missing assumption/dependency | Counterexample or limitation | Software observability |
 |---|---|---|---|---|
 | Producer stopped | MTTCTL bit0, physical START clearing and separate 19/24-bit MTT/MAM load banks decoded | START must be tied to actual producer execution and queued data | MTTCTL=0 alone retains independent MAM/MTT load state; no producer-stop trace | No correlated producer-empty/stopped status |
-| Descriptor engine stopped | Exact SGTA30/IIMTC32 and two32-bit capture banks; count/address roles inferred; counter D equations verified | Full fetch/advance/chain lifecycle and durable consumption disable | Pointer candidate can change at clear in a local cut; actual fetch after stop unproved | No identified descriptor-idle acknowledgement |
+| Descriptor engine stopped | SGTA30/IIMTC32, two32-bit banks, pointer load/chain/step8 and B-then-A conditional capture verified | Owned fetch/advance/chain lifecycle and durable consumption disable | Pointer can change at clear; pending has chain/retained-state terms not dominated by cl; reachable post-stop fetch unproved | No identified descriptor-idle acknowledgement |
 | New PCI transactions blocked | Local REQ/FRAME/IRDY equations are decoded | Stop/ack must dominate every start/retry path | Prior bound-16 SAT pin activity has **no stop antecedent**, so is not a post-stop counterexample | Inactive external pins are not a durable software predicate |
 | Existing transactions complete | Physical PCI interface, sampled handshake and actual done/sticky-IRQ pipeline | Owned terminal/retry/disconnect/abort history and IRQ-to-final-phase invariant must close | IRQ latch rise can coexist with activity in a local cut; another master's pins are not evidence | IIMST/IRQ relationship to retirement unproved |
-| Internal buffers drained | Two PCI receive256x16 BRAM halves have remote-write/PCI-read ports | Occupancy/pointer/valid state and link queues must be tied to ack | Write disabled or producer clock stopped does not empty retained data; payload mux has explicit alias boundary | No correlated FIFO-empty/readback contract |
+| Internal buffers drained | Two receive256x16 BRAM halves and complete32-bit staging-to-AD path; staging pointer increment/rewind verified | Wrap/valid/CDC conservation and link queues must be tied to ack | W=0 retains all32 staging memories; issue minus rewind is not unique accepted retirement; named mux alias resolved | No correlated FIFO-empty/readback contract |
 | Host-side completion | Windows adapter flush/release contracts are documented | Board completion ordering plus applicable platform/adapter contract | CPU barriers and adapter cache flush are not board-stop operations | DDI result is visible, but not a WR6k stop/bridge-drain certificate |
 
 **Formal question disposition:** ten actual-register diagnostics now cover
@@ -341,8 +345,8 @@ That plan is not permission to run experiments or change quarantine.
 
 ### Offline review validation
 
-Re-run on 2026-10-11: **254 Python tests** (18 C166, 45 routing, 50 MMIO,
-31 PCI DMA, 65 acquisition, 45 synthetic SMT), zero failures/skips; decoder
+Re-run on 2026-10-11: **275 Python tests** (18 C166, 45 routing, 52 MMIO,
+50 PCI DMA, 65 acquisition, 45 synthetic SMT), zero failures/skips; decoder
 self-test, private frame calibration, **50 native architecture + 19 PCI local
 equation checks**, and all eight driver dry suites (**311 cases**) pass.
 Private firmware is used for configured-logic, firmware calibration and private
@@ -350,6 +354,9 @@ SMT checks; synthetic tests require no proprietary image. Ten separate bound1
 diagnostics have consistent bases, nine SAT/one UNSAT/zero solver-unknown;
 their scoped interpretation is in the PCI DMA document. No new WDK build or
 hardware execution occurred and no stop acknowledgement was invented.
+The exploratory full-network bound2 IRQ query timed out; the actual-register
+cone result is SAT with explicitly unknown external cuts, not a reachable
+hardware counterexample. See the canonical DMA proof-assumption table.
 
 The existing target-response profiles are separate from these ten initiator
 diagnostics and were not rerun for this focused update. Their limitations

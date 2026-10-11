@@ -132,12 +132,13 @@ fn pip_config(ed: &ExpandedDevice, p: &TilePip) -> Value {
             let v = match item {
                 SwitchBoxItem::Mux(m) if m.dst == dst && m.src.contains_key(&src) => {
                     let mut value = json!({"kind":"mux", "bits":m.bits.iter().map(|&b| bit(ed,t,b,false)).collect::<Vec<_>>(), "expected":m.src[&src].iter().collect::<Vec<_>>(), "off":m.bits_off.as_ref().map(|v| v.iter().collect::<Vec<_>>())});
-                    // HEX *_MUX is a tile-owned pre-buffer helper, not the shared
+                    // HEX/LH/LV *_MUX is a tile-owned pre-buffer helper, not the shared
                     // multi-root conductor. Overlapping IO/BRAM tile cells can
                     // share its abstract coordinate without sharing its driver.
                     let name = ed.db.wires.key(dst.wire);
-                    if name.starts_with("HEX_") && name.contains("_MUX[") {
-                        let conductor = wire_from_mux(dst.wire).expect("HEX mux conductor");
+                    if name.contains("_MUX[") && (name.starts_with("HEX_")
+                        || name.starts_with("LH_") || name.starts_with("LV_")) {
+                        let conductor = wire_from_mux(dst.wire).expect("buffered mux conductor");
                         let buffers = sb.items.iter().filter_map(|item| match item {
                             SwitchBoxItem::ProgBuf(b) if b.src.tw == dst
                                 && b.dst.cell == dst.cell && b.dst.wire == conductor =>

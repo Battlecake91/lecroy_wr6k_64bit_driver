@@ -9,12 +9,41 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "fpga"))
 from virtexe_dma import (IIMTC_GATES, NAMES, RELATIONS, SGTA_GATES, ad_origin,
-                        capture_map, check_local, focused_evidence, phase_observation, sl)
+                        capture_map, check_local, focused_evidence, phase_observation, sl,
+                        master_address_map, pointer_map, pointer_next, same_sampling_contract,
+                        ad_bus_drivers, payload_map, POINTER_REPLICAS, LOAD_REPLICAS)
 from virtexe_mmio import functional_expression
 from virtexe_routing import COMMIT, evaluate_data, register_contract, register_equivalence
 
 
 class SyntheticDma(unittest.TestCase):
+    def test_sampling_replicas_reject_unknown_modes_and_different_initialization(self):
+        mode={k:{'value':v} for k,v in dict(FF_LATCH=0,FF_SR_ENABLE=1,FF_SR_SYNC=0,FF_REV_ENABLE=0,FFY_INIT=0).items()}
+        def node(initial):
+            return {'kind':'register','data':{'source':'conditional_bus'},
+                    'controls':{'CE':{'constant':1},'CLK':{'source':'clock'},'SR':{'source':'reset'}},
+                    'mode':dict(mode,FFY_INIT={'value':initial})}
+        p={'logic':{'left.YQ':node(0),'right.YQ':node(0)}}
+        same_sampling_contract(p,'left.YQ','right.YQ')
+        p['logic']['right.YQ']=node(1)
+        with self.assertRaises(ValueError):
+            same_sampling_contract(p,'left.YQ','right.YQ')
+        p['logic']['right.YQ']['mode']={}
+        with self.assertRaises(ValueError):
+            same_sampling_contract(p,'left.YQ','right.YQ')
+
+    def test_payload_mapping_rejects_missing_producer(self):
+        p={'roots':{'AD[0]':{'O':'out'}},'logic':{'out':{'kind':'register','data':{'constant':0}}}}
+        with self.assertRaises(ValueError):
+            payload_map(p)
+
+    def test_pointer_load_step_priority_alignment_and_wrap(self):
+        self.assertEqual(pointer_next(0xFFFFFFFC, 0, 0, False, False, True), 4)
+        self.assertEqual(pointer_next(12, 0x103, 0x207, True, True, False), 0x100)
+        self.assertEqual(pointer_next(12, 0x103, 0x207, False, True, False), 0x204)
+        self.assertEqual(pointer_next(12, 0x103, 0x207, True, True, True), 20)
+        self.assertEqual(pointer_next(12, 0, 0, False, False, False), 12)
+
     def test_public_matrix_preserves_safety_and_query_scope(self):
         path = Path(__file__).resolve().parents[2] / "docs" / "pci-mmio-register-evidence.json"
         matrix = json.loads(path.read_text(encoding="utf-8"))
@@ -104,6 +133,20 @@ class PrivateDma(unittest.TestCase):
         self.assertEqual(set(m), set(range(2, 32)))
         self.assertEqual(m[2]["signal"], sl(25, 20, 0, "YQ"))
 
+    def test_complete_pointer_map_has_unique_30_bit_dependencies(self):
+        m = pointer_map(self.p)
+        self.assertEqual(set(m), set(range(2, 32)))
+        self.assertEqual(len(set(m.values())), 30)
+        self.assertEqual(m[2], sl(25, 21, 0, "YQ"))
+        self.assertEqual(m[31], sl(25, 27, 0, "XQ"))
+
+    def test_master_address_has_30_registers_and_two_zero_bits(self):
+        m = master_address_map(self.p)
+        for bit in (0, 1):
+            self.assertEqual(functional_expression(self.p['logic'][m[bit]['signal']]['data']), {'constant': 0})
+        self.assertEqual(len({m[b]['signal'] for b in range(2, 32)}), 30)
+        self.assertTrue(all(self.p['logic'][m[b]['signal']]['kind'] == 'register' for b in range(2, 32)))
+
     def test_iimtc_has_all_32_bits(self):
         self.assertEqual(set(capture_map(self.p, IIMTC_GATES)), set(range(32)))
 
@@ -138,8 +181,21 @@ class PrivateDma(unittest.TestCase):
             self.assertEqual(functional_expression(ports["B"]["write"]), {"constant": 1, "inv": True})
 
     def test_descriptor_load_flag_replicas_have_matched_register_contracts(self):
-        for n in (sl(22, 19, 1, "XQ"), sl(22, 20, 0, "YQ"), sl(23, 20, 0, "YQ")):
+        for n in LOAD_REPLICAS:
             register_equivalence(self.p, sl(22, 19, 1, "YQ"), n)
+
+    def test_pointer_control_replicas_have_exact_shared_sampling_contracts(self):
+        for left,right in POINTER_REPLICAS:
+            same_sampling_contract(self.p,left,right)
+
+    def test_all_payload_bits_map_through_distinct_staging_ram_to_receive_bram(self):
+        m=payload_map(self.p)
+        for bit,d in m.items():
+            expected=f'X46,Y{13 if bit<16 else 9} BRAM.DOB[{bit%16}]'
+            self.assertEqual(d['source'],{'source':expected,'inv':False})
+            self.assertEqual(set(d['write_address']),{'0','1','2','3'})
+            self.assertEqual(set(d['read_address']),{'0','1','2','3'})
+            self.assertEqual(self.p['memories'][d['memory']]['clock']['source'],'X24,Y29 BUFGCE[1].O')
 
 
 def add_relation(name, variables, predicate):
@@ -160,6 +216,123 @@ class PrivateDmaSmt(unittest.TestCase):
         PrivateDma.setUpClass()
         cls.p = PrivateDma.p
 
+    def test_staging_write_pointers_advance_on_admission_and_read_pointer_can_rewind(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+        q=lambda n:s.signal(n,0)
+        def word(values):
+            return sum((z3.If(v,z3.BitVecVal(1<<i,4),z3.BitVecVal(0,4)) for i,v in enumerate(values)),z3.BitVecVal(0,4))
+        m=payload_map(self.p)
+        canonical=[m[0]['write_address'][str(i)]['source'] for i in range(4)]
+        for d in m.values():
+            for i,n in enumerate(canonical):
+                other=d['write_address'][str(i)]['source']
+                if n!=other:
+                    register_equivalence(self.p,n,other)
+                    s.solver.add(q(n)==q(other))
+        write=word([q(n) for n in canonical])
+        write_d=word([s.expr(self.p['logic'][n]['data'],0) for n in canonical])
+        admitted=s.expr(m[0]['write_enable'],0)
+        read_names=[m[0]['read_address'][str(i)]['source'] for i in range(4)]
+        for d in m.values():
+            for i,n in enumerate(read_names):
+                other=d['read_address'][str(i)]['source']
+                if n!=other:
+                    register_equivalence(self.p,n,other)
+                    s.solver.add(q(n)==q(other))
+        same_sampling_contract(self.p,read_names[0],sl(29,8,0,'YQ'))
+        s.solver.add(q(read_names[0])==q(sl(29,8,0,'YQ')))
+        read=word([q(n) for n in read_names])
+        read_d=word([s.expr(self.p['logic'][n]['data'],0) for n in read_names])
+        issue=q(sl(19,8,1,'X')); rewind=q(sl(20,7,0,'X'))
+        expected_read=read+z3.If(issue,z3.BitVecVal(1,4),z3.BitVecVal(0,4))-z3.If(rewind,z3.BitVecVal(1,4),z3.BitVecVal(0,4))
+        mismatches=[write_d!=write+z3.If(admitted,z3.BitVecVal(1,4),z3.BitVecVal(0,4)),read_d!=expected_read]
+        mismatches.extend(s.expr(d['write_enable'],0)!=admitted for d in m.values())
+        s.solver.add(q(self.p['roots']['RST#']['I']))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(*mismatches))
+        answer=s.solver.check()
+        detail=''
+        if answer==z3.sat:
+            model=s.solver.model()
+            detail=str({k:str(model.eval(v)) for k,v in dict(write=write,write_d=write_d,admitted=admitted,read=read,read_d=read_d,expected_read=expected_read,issue=issue,rewind=rewind).items()})
+        self.assertEqual(answer,z3.unsat,detail)
+
+    def test_master_data_phase_all_byte_enables_asserted_under_explicit_selection(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+        q=lambda n:s.signal(n,0)
+        s.solver.add(q(self.p['roots']['RST#']['I']),z3.Not(q(sl(2,21,1,'XQ'))),
+                     z3.Not(q(sl(3,14,1,'XQ'))),q(sl(4,9,0,'YQ')),
+                     z3.Not(q(sl(6,9,1,'YQ'))))
+        bits=[s.expr(self.p['logic'][self.p['roots'][f'CBE#[{i}]']['O']]['data'],0) for i in range(4)]
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(*bits))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_all_ad_pre_output_data_equal_selected_address_or_payload_alternative(self):
+        from virtexe_symbolic import System,z3
+        for selection in (master_address_map(self.p),payload_map(self.p)):
+            s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+            q=lambda n:s.signal(n,0)
+            s.solver.add(q(self.p['roots']['RST#']['I']),z3.Not(q(sl(2,21,1,'XQ'))),
+                         z3.Not(q(sl(3,14,1,'XQ'))))
+            mismatches=[]
+            for bit,d in selection.items():
+                for driver,node in ad_bus_drivers(self.p,bit).items():
+                    s.solver.add(s.expr(node['disable'],0)==(driver!=d['driver']))
+                actual=s.expr(self.p['logic'][self.p['roots'][f'AD[{bit}]']['O']]['data'],0)
+                mismatches.append(actual!=q(d['signal']))
+            self.assertEqual(s.solver.check(),z3.sat)
+            s.solver.add(z3.Or(*mismatches))
+            self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_staging_memory_is_retained_when_write_admission_is_disabled(self):
+        from virtexe_symbolic import System,clock_key,z3
+        pci={'source':'X24,Y29 BUFGCE[1].O','inv':False}
+        s=System(self.p,bound=1,powerup=False,timeout_ms=30000,schedule=[{clock_key(pci)}])
+        s.solver.add(*[s.signal(self.p['roots']['RST#']['I'],t) for t in (0,1)])
+        memories=payload_map(self.p)
+        for d in memories.values():
+            s.solver.add(z3.Not(s.expr(d['write_enable'],0)))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(*[s.memory(d['memory'],0)!=s.memory(d['memory'],1) for d in memories.values()]))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_runtime_irq_can_rise_without_a_new_accepted_phase(self):
+        from virtexe_symbolic import System,clock_key,z3
+        pci={'source':'X24,Y29 BUFGCE[1].O','inv':False}
+        # Keep actual FF contracts; external named cuts stay explicitly unknown.
+        # The complete machine query can time out and gives no reachable trace.
+        names=[NAMES[n] for n in ('done','irq','pci_accept')]+[self.p['roots']['RST#']['I']]
+        local=dict(self.p,logic={n:self.p['logic'][n] for n in names},memories={})
+        s=System(local,bound=2,powerup=False,timeout_ms=30000,schedule=[{clock_key(pci)}]*2)
+        q=lambda n,t:s.signal(n,t)
+        for t in range(3):
+            s.solver.add(q(self.p['roots']['RST#']['I'],t),z3.Not(q(NAMES['pci_accept'],t)))
+        s.solver.add(z3.Not(q(NAMES['done'],0)),z3.Not(q(NAMES['irq'],0)),
+                     q(NAMES['terminal'],0),q(NAMES['zero'],0))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(q(NAMES['irq'],2))
+        # Retained terminal/descriptor state, not an initialized legal launch.
+        # No transaction identity is assigned to this IRQ or to prior phases.
+        self.assertEqual(s.solver.check(),z3.sat)
+
+    def test_conditional_two_word_fetch_captures_count_b_then_address_a(self):
+        from virtexe_symbolic import System,clock_key,z3
+        pci={'source':'X24,Y29 BUFGCE[1].O','inv':False}
+        s=System(self.p,bound=3,powerup=False,timeout_ms=30000,schedule=[{clock_key(pci)}]*3)
+        q=lambda n,t:s.signal(NAMES[n],t)
+        for t in range(4):
+            s.solver.add(s.signal(self.p['roots']['RST#']['I'],t))
+        s.solver.add(z3.Not(q('phase',0)),z3.Not(q('incoming_phase',0)))
+        for t in range(3):
+            s.solver.add(q('pending',t)==(t==0),q('accept',t)==(t>0))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(q('word_a_lo_ce',1),z3.Not(q('word_b_lo_ce',1)),
+                           z3.Not(q('word_a_lo_ce',2)),q('word_b_lo_ce',2)))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
     def test_word_a_zero_detector_exact_boolean_equivalence(self):
         from virtexe_symbolic import System, z3
         s = System(self.p, bound=0, powerup=False, timeout_ms=30000)
@@ -169,6 +342,91 @@ class PrivateDmaSmt(unittest.TestCase):
         self.assertEqual(s.solver.check(), z3.sat)
         s.solver.add(s.signal(NAMES["zero"], 0) != zero)
         self.assertEqual(s.solver.check(), z3.unsat)
+
+    def test_complete_pointer_next_load_chain_or_eight_byte_step(self):
+        from virtexe_symbolic import System, z3
+        s = System(self.p, bound=0, powerup=False, timeout_ms=30000)
+        q = lambda n: s.signal(n, 0)
+        m = pointer_map(self.p)
+        def word(values):
+            return sum((z3.If(v, z3.BitVecVal(1 << i, 32), z3.BitVecVal(0, 32)) for i, v in values.items()), z3.BitVecVal(0, 32))
+        old = word({i:q(n) for i,n in m.items()})
+        data = word({i:z3.If(s.expr(self.p['logic'][n]['controls']['CE'],0), s.expr(self.p['logic'][n]['data'],0), q(n)) for i,n in m.items()})
+        sgta = word({i:q(d['signal']) for i,d in capture_map(self.p,SGTA_GATES).items()})
+        wa = word({i:q(d['signal']) for i,d in capture_map(self.p,[NAMES['word_a_lo_ce'],NAMES['word_a_hi_ce']],stages=1).items()})
+        initial=z3.And(q(NAMES['cl']),q(NAMES['reload']))
+        chain=q(sl(22,21,1,'Y'))
+        step=z3.And(q(NAMES['segment_event']),q(NAMES['next_phase']))
+        for left,right in POINTER_REPLICAS:
+            same_sampling_contract(self.p,left,right)
+            s.solver.add(q(left)==q(right))
+        expected=z3.If(z3.And(z3.Or(initial,chain),z3.Not(step)),z3.If(initial,sgta,wa)&0xFFFFFFFC,
+                       old+z3.If(step,z3.BitVecVal(8,32),z3.BitVecVal(0,32)))
+        s.solver.add(q(self.p['roots']['RST#']['I']))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(data!=expected)
+        answer=s.solver.check()
+        detail=''
+        if answer==z3.sat:
+            model=s.solver.model()
+            detail=str({k:str(model.eval(v)) for k,v in dict(old=old,data=data,expected=expected,initial=initial,chain=chain,step=step,sgta=sgta,wa=wa).items()})
+        self.assertEqual(answer,z3.unsat,detail)
+
+    def test_master_address_load_pointer_or_word_a_else_accepted_dword_step(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+        q=lambda n:s.signal(n,0)
+        def word(values):
+            return sum((z3.If(v,z3.BitVecVal(1<<i,32),z3.BitVecVal(0,32)) for i,v in values.items()),z3.BitVecVal(0,32))
+        m=master_address_map(self.p)
+        old=word({i:q(d['signal']) for i,d in m.items()})
+        data=word({i:z3.If(s.expr(self.p['logic'][d['signal']].get('controls',{}).get('CE',{'constant':1}),0),s.expr(self.p['logic'][d['signal']]['data'],0),q(d['signal'])) for i,d in m.items()})
+        ptr=word({i:q(n) for i,n in pointer_map(self.p).items()})
+        wa=word({i:q(d['signal']) for i,d in capture_map(self.p,[NAMES['word_a_lo_ce'],NAMES['word_a_hi_ce']],stages=1).items()})
+        load=q(sl(22,19,1,'YQ')); pending=q(NAMES['pending']); accept=q(NAMES['pci_accept'])
+        for n in LOAD_REPLICAS:
+            register_equivalence(self.p,sl(22,19,1,'YQ'),n)
+            s.solver.add(q(n)==load)
+        expected=z3.If(z3.Or(load,pending),z3.If(load,wa,ptr)&0xFFFFFFFC,
+                       old+z3.If(accept,z3.BitVecVal(4,32),z3.BitVecVal(0,32)))
+        s.solver.add(q(self.p['roots']['RST#']['I']))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(data!=expected)
+        answer=s.solver.check()
+        detail=''
+        if answer==z3.sat:
+            model=s.solver.model()
+            detail=str({k:str(model.eval(v)) for k,v in dict(old=old,data=data,expected=expected,load=load,pending=pending,accept=accept).items()})
+        self.assertEqual(answer,z3.unsat,detail)
+
+    def test_master_cbe_command_is_read_six_or_write_seven_under_explicit_selection(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+        q=lambda n:s.signal(n,0)
+        mode=q(sl(18,10,0,'YQ'))
+        s.solver.add(q(self.p['roots']['RST#']['I']),
+                     z3.Not(q(sl(2,21,1,'XQ'))),
+                     z3.Not(q(sl(3,14,1,'XQ'))),
+                     z3.Not(q(sl(4,9,0,'YQ'))),
+                     z3.Not(q(sl(6,9,1,'YQ'))))
+        bits=[s.expr(self.p['logic'][self.p['roots'][f'CBE#[{i}]']['O']]['data'],0) for i in range(4)]
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(bits[0]!=mode,z3.Not(bits[1]),z3.Not(bits[2]),bits[3]))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_chain_and_payload_load_use_whole_word_b_zero(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False,timeout_ms=30000)
+        q=lambda n:s.signal(n,0)
+        wb=capture_map(self.p,[NAMES['word_b_lo_ce'],NAMES['word_b_hi_ce']],stages=1)
+        zero=z3.And(*[z3.Not(q(d['signal'])) for d in wb.values()])
+        terminal=q(NAMES['terminal']); za=q(NAMES['zero'])
+        chain=z3.And(terminal,zero,z3.Not(za))
+        load=z3.And(terminal,z3.Not(zero),z3.Not(za))
+        s.solver.add(q(self.p['roots']['RST#']['I']))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(q(sl(22,21,1,'Y'))!=chain,s.expr(self.p['logic'][sl(22,19,1,'YQ')]['data'],0)!=load))
+        self.assertEqual(s.solver.check(),z3.unsat)
 
     def test_iimtc_counter_d_is_reload_or_decrement_modulo_32_bits(self):
         from virtexe_symbolic import System, z3

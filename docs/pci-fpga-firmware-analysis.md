@@ -2221,13 +2221,13 @@ a transaction/FIFO-empty acknowledgement.
 
 #### Actual Verification Boundary
 
-The full offline run at `--max-logic 10000` contains **3,359 logic nodes**:
+The control-root offline run at `--max-logic 10000` contains **3,378 logic nodes**:
 1,405 registers, 1,480 combinational outputs, 352 tristate drivers, 64 input
-pads, 45 clocked BRAM output bits and 13 architecture boundaries. There are
-**9,150 routing paths: 9,129 resolved, 10 Unknown and 11 ambiguous**. None hit
+pads, 64 clocked BRAM output bits and 13 architecture boundaries. There are
+**9,150 routing paths, all resolved** after HEX/LH/LV owner qualification. None hit
 traversal limits or unknown PIP encodings. Width-aware BRAM contracts avoid
 traversing unused pins; the 240 omitted routes were unused input dependencies,
-not 240 newly established data routes. There are 41 distinct decoder boundary
+not 240 newly established data routes. There are 13 distinct decoder boundary
 records, 143 conditional bus observations, 32 runtime RAM16X1D arrays and ten
 4096-bit BRAM arrays. Counts describe the configured dependency network, not physically
 reachable PCI protocol states or proof of one-hot bus ownership.
@@ -2330,19 +2330,15 @@ All six **DMA-quiescence obligations remain Unknown**, individually:
 | Internal buffers drained | 32 RAM16X1D runtime arrays and BRAM outputs occur in the expanded cones; no proved occupancy-empty/flush acknowledgement. INIT=0 is not runtime empty. |
 | Host-side completion | The FPGA update bitstream contains no contract proving host-bridge posted-write retirement or the necessary Windows DMA ordering/completion. |
 
-Concrete remaining model limits include X1,Y21 BRAM_QUAD_DOUT[7]
-(upstream of X7,Y22 FCY and X7,Y23 YQ), X46,Y9/X46,Y13 BRAM output paths
-feeding runtime RAM writes, and unmodeled PCILOGIC.PCI_CE/DLL behavior.
-Some BRAM routes expose competing pad/CLB and BRAM terminals; they remain
-ambiguous until native BRAM width/port/quad connectivity is accounted for.
-The five prioritized data/non-clock-control cones each retain 50 proof-boundary
-nodes, including 32 distributed RAM and ten BRAM arrays. Their 1,375-1,380
-register dependencies include the BRAM input-side closure. Runtime memory
-state is modeled but is not an occupancy-empty predicate. Hard-clock boundaries are retained
-separately in the register model. These are tool/model limitations that
-further offline work can reduce, not proof that the hardware is inherently
-ambiguous. Global reachability over the resulting memory-bearing machine
-has not been established.
+The configured routing gaps in this control-root run are closed, including
+the former X1,Y21 quad and X46,Y9/Y13 RAM-write alternatives. Remaining
+model limits are PCILOGIC.PCI_CE/PCIIOB.PCI transfer behavior, effective
+DLL/clock/reset timing, conditional bus ownership and lifecycle invariants.
+The expanded target-root report has4,140 nodes/109 boundary records, including
+disabled complementary pads; it is a different root set, not a regression
+against the3,378-node control report. Runtime memory is modeled but is not an
+occupancy-empty predicate. Global legal-PCI reachability and CDC conservation
+over the resulting memory-bearing machine have not been established.
 
 **Conclusion:** Carry/XOR and conditional TBUS reconstruction are implemented
 and regression-tested. The full busmaster FSM and a software-observable
@@ -2500,9 +2496,8 @@ MMIO sequence is proposed. The smallest missing evidence set is:
 1. Correlate the **actual stop command and a readable acknowledgement bit** to
    decoded producer/descriptor admission and PCI-start guards. Establish that
    the acknowledgement remains true until software explicitly restarts.
-2. Close the relevant **unresolved/ambiguous routes** (21 currently retained),
-   particularly X1,Y21 quad output and X46,Y9/Y13 RAM-write dependencies,
-   plus PCILOGIC.PCI_CE, DLL.LOCKED and
+2. Supply the remaining **architecture/timing contracts**: routing alternatives
+   in the control-root report are resolved, but PCILOGIC.PCI_CE, DLL.LOCKED and
    the three effective clock relationships. Supply BRAM INIT/startup and
    collision timing only where those properties actually depend on them;
    do not expand unrelated cones merely to increase coverage.
@@ -2603,7 +2598,7 @@ is exactly one of `0x6, 0x7, 0xC, 0xE, 0xF`. Storage and sampled inputs remain
 independent arbitrary variables, not fixed BAR values or reset assumptions.
 No bank address is promoted to the actually enumerated hardware BAR value.
 
-#### Tile-Owned HEX Mux Correction
+#### Tile-Owned HEX/LH/LV Mux Correction
 
 The AD20 ambiguity is **resolved**, including its BAR0 and DEVSEL dependencies.
 Pinned `public/virtex/src/defs.rs::wire_from_mux` distinguishes the tile-local
@@ -2615,12 +2610,20 @@ following one active buffer accidentally combines both pre-buffer mux views.
 verification; that alias is not evidence that two output buffers are enabled.
 
 The adapter now attaches the **same-switchbox, same-cell matching ProgBuf** to
-HEX mux arcs. The router requires that owner buffer to be active. It does not
+HEX/LH/LV mux arcs. The router requires that owner buffer to be active. It does not
 filter arbitrary BRAM sources, pick a convenient terminal or alter Project
 Combine. Missing/duplicate buffer encodings remain Unknown; two active owners
 remain ambiguous. Synthetic tests cover each owner alone, both active and
 unknown guards. Native feature tests also flip the two guard bits **in memory**
 and verify that the formerly disabled BRAM mux becomes active, not suppressed.
+
+The same missing guard caused the payload-cone ambiguity at
+`X27,Y17 SLICE[0].Y` zero-based input2 (G3). The actual source is noninverted
+`X1,Y17 BRAM.DOB[1]`: IO_W's LH owner buffer is disabled and BRAM_W's is
+enabled. Exact guard/mux bits, auxiliary-memory provenance and in-memory owner-flip
+tests are in [PCI DMA retirement](pci-dma-retirement-analysis.md#resolved-longline-route-and-payload-staging).
+This is source-backed ownership filtering, not an IBUF heuristic or deletion
+of an inconvenient candidate. Both active owners still remain ambiguous.
 
 For this route, IO_W `(X0,Y24)` selects AD20 IQ with mux bits at
 `(2226,434), (2227,434), (2228,432), (2228,434)` equal `1,1,0,0`.
@@ -3347,7 +3350,7 @@ python -B tests/dry/test_fpga_acquisition.py -v
 Actual final execution: **10 synthetic + 21 private configured-logic + 24 private
 U21 SMT + 9 private timebase SMT + 1 private cross-FPGA SMT acquisition tests PASS**,
 against private networks from the current tool. **18 C166 tests** (14 synthetic,
-4 private), **45 routing + 50 MMIO + 45 symbolic tests**
+4 private), **45 routing + 52 MMIO + 50 PCI DMA + 45 symbolic tests**
 also PASS, as do private frame calibration, **50 native architecture checks**
 and **19 PCI state equations**. All eight driver dry suites PASS: source35,
 completion24, layout13, ownership17, SG-stage27, SG-sync149, IRP-lifetime8,
@@ -3600,8 +3603,10 @@ Dependency/impact backlog (no new hardware observation authorized):
    is the canonical configured transition/lifecycle table, counter equations,
    completion pipeline, receive-BRAM boundary, ten bounded diagnostics and
    Windows/PCI ordering assessment. Capture topology and local equations are
-   closed; own-master command/address, pointer advancement, retry conservation
-   and IRQ-to-final-transaction reachability are not. Do not repeat the already
+   closed, as are full local pointer/master-address equations, conditional
+   C/BE and AD data selection and the16x32 staging-pointer arithmetic.
+   Physical own-master command/address history, retry conservation and
+   IRQ-to-final-transaction reachability are not. Do not repeat the already
    recovered MCU startup, loader or U21/U38 framing work.
 2. **External producer contract:** HAD639E and HTB645 definitions for accepted
    startstop/EndACQ, maximum pending samples, final memory write, clock-domain
