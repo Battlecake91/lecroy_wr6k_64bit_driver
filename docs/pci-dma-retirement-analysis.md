@@ -430,12 +430,13 @@ required physical transaction history. SAT is not hardware failure; bounded
 UNSAT is not unbounded retirement or safe shutdown. Repeated retry and final
 word stalls still need the missing effective-output/ownership invariant.
 
-Validation on2026-10-11:97 DMA tests (19 synthetic,48 private configured-logic,
-30 private SMT), all PASS. The complete FPGA/MCU run has322 Python tests,
+Validation on2026-10-11:112 DMA tests (24 synthetic,49 private configured-logic,
+39 private SMT), all PASS. The complete FPGA/MCU run has337 Python tests,
 zero failures/skips, decoder self-test/frame calibration,50 native architecture
-and19 native PCI local-equation checks PASS. All311 driver dry cases pass.
-The ten earlier full-network bound1 diagnostics were also rerun through the
-CLI, separately from the unit-test count. No hardware execution or WDK build
+and19 native PCI local-equation checks PASS. All318 driver dry cases pass.
+The new initialized bound40/52 prefixes add12 diagnostics (9 SAT,3 UNSAT,
+zero solver-unknown results), separately from the earlier ten bound1 runtime
+and twelve bound2/4 projected diagnostics. No hardware execution or WDK build
 was performed; the production driver and quarantine policy are unchanged.
 
 ## Stop/failure matrix and bounded diagnostics
@@ -511,6 +512,101 @@ alone cannot supply missing owned transaction identity or the family hardblock
 contract; bounded equations cannot prove eventual progress. Internal
 retirement and host visibility are separate obligations. No candidate idle
 predicate is promoted to `IdleProved`.
+
+## Initialized PCI launch prefix and the remaining sequence boundary
+
+`virtexe_dma_reachability.py` adds a **single initialized constraint system**,
+not another arbitrary-state cut. Its dependency closure follows configured
+FF data, controls, clocks, TBUS producers, RAM and both BRAM ports. The private
+PCI-root closure contains 1,513 FFs and 42 memories. No internal runtime FF is
+assigned and PCI_CE is never replaced with a guessed function or constant.
+Configured FF INIT and one PCI-reset boundary are used; effective PCI edges
+are explicit. Missing BRAM INIT/output startup, collision behavior, DLL and
+clock-generation contracts remain named symbolic boundaries, not zero-filled
+evidence. The firmware/report pin and frame calibration are checked.
+
+The external host performs four single-final-data-phase writes: PCI command
+offset4=6 (memory/bus-master enable), SGTA=0x100000, IIMTC=1, IIMCL=1.
+BAR0 uses its configured zero initial storage; this is a synthetic bus address,
+not the installed BAR address. The host withdraws IRDY after the FPGA's observed
+TRDY acceptance and each write must finish within the stated candidate schedule.
+This bounded-response restriction admits a candidate prefix, not all target
+latencies. After that host sequence, no other initiator drives the bus and grant
+is offered while idle. Driven-pad feedback remains tied to actual O/T logic.
+
+In the stalled-target bound40 experiment, base/configuration/launch/master-start
+and descriptor-address candidates are SAT. In one **same-execution** address
+witness, host acceptances are edges5/14/22/30, and the FPGA drives the aligned
+SGTA address with command6 at edge35, after idle/grant. There is no post-launch
+internal A acceptance. IRQ assertion through edge40 is UNSAT in this environment
+with a satisfiable launch base. This excludes an early IRQ for this bounded,
+never-responding descriptor fetch. It does not establish successful transfer
+ordering, liveness, legal retry handling or unbounded absence of an IRQ.
+
+A second, independent **whole-prefix** experiment uses bound52 and a mapped
+external memory target, one read-turnaround wait, explicit address/data drive
+direction, full-DWORD byte enables, idle/grant at a new transaction, and no
+overlapping address phases. It serves count1/address0x200000 at 0x100000/4 and
+the zero/zero terminator at 0x100008/C; only the single payload DWORD at 0x200000
+is mapped for writes. These are external PCI environment/observer states, not
+FPGA FFs. Every compared register still uses its original configured contract.
+The same execution has the four host accepts, descriptor address at35, external
+read accepts at37/38, delayed internal A at38/39, and captured count1/address
+0x200000. Thus descriptor acceptance/capture now extends this initialized
+**conditional** prefix, rather than a separately seeded capture state.
+
+With no receive/remote edges, no payload write is accepted in that witness.
+IRQ by52 and the joint captured-descriptor-plus-IRQ query are UNSAT with a SAT
+base. Across the two environments all12 queries terminate:9 SAT,3 UNSAT.
+No actual completed acquisition, final payload, retry or host-visible completion
+has been reconstructed. This bounded exclusion must not be turned into a
+universal IRQ safety statement or an assumption of producer/link quiescence.
+Choosing arbitrary RX words or seeding staging/pending state would not supply
+the missing same-acquisition producer, CDC, output-sampling and ownership history.
+
+| Sequence boundary | Current evidence classification | Exact unresolved condition |
+|---|---|---|
+| Initialization -> configuration -> IIMCL launch | Conditional initialized prefix, not joined cuts | Effective clocks/reset and applicable architecture behavior |
+| Launch -> descriptor address/command | Conditional same-execution pin observation | PCI_CE can choose a value allowed by the symbolic model but not by the missing primitive |
+| Descriptor acceptance -> count/address capture | Conditional configured pipeline under a memory responder; separate from the stalled case | Dedicated ready sampling, actual output timing and owned accepted-data equivalence |
+| Descriptor load -> LVDS payload admission | Verified local receive/staging equations, end-to-end Unknown | Matched producer/link history, coherent CDC pointer snapshot and payload identity |
+| Payload issue -> accepted write -> counter progress | Verified local equations; physical correlation Unknown | Issue is not A; A is delayed; pad ownership and final-word timing must agree in the same execution |
+| Terminal descriptor -> completion IRQ | Verified local retained-state equations, global ordering Unknown | All prior reads/writes/retries/staged words terminal before IRQ, not merely word_A=0 |
+| IRQ -> host-visible data -> release/restart | Unknown hardware/platform contract | Posted bridge writes, adapter coherency and exclusion of later accesses |
+
+No trace from the older bound2/4 runtime-cut scenarios is appended to this
+initialized prefix. In particular, their IRQ-with-Q witness cannot be used as
+its completion suffix. The protocol/host/memory bookkeeping is an observer or
+external environment, never a substituted FPGA state register.
+
+The prioritized retry/final-word/disconnect/counter-zero/stop cases therefore
+retain the classifications in the handshake matrix: local issue, rewind and
+counter transitions Verified; semantic acceptance/retirement Conditional or
+Unknown; no legal initialized retry/stop-to-late-write counterexample is proved.
+The stalled-fetch experiment closes one narrower independent offline avenue.
+No new credible applicable PCI_W_VE source was supplied; the previously audited
+missing primitive remains the boundary. Repeating another-family searches
+would not resolve it.
+
+### Minimal next evidence request
+
+Firmware-recoverable work and separately authorized observation must stay distinct:
+
+| Evidence class | Minimum artifact / fields | What it can establish |
+|---|---|---|
+| Existing architecture/library material | Applicable XC2S/Spartan-IIE PCI_W_VE PCILOGIC behavioral **and timing** model, with I1/I2/I3 and dedicated IRDY/TRDY tap polarity, PCI_CE edge/reset and AD/CBE enable behavior; version/device applicability required | Close the first concrete output-sampling gap; no new firmware dump is needed for this |
+| Existing firmware/configuration records | Hash/identity linking installed PCI U3 and acquisition U21/U38 images and assembly revision to these decoded images; applicable DLL/BUFGCE/BRAM startup/collision contracts | Apply configured-image behavior and clock/memory assumptions to a real device |
+| Core simulation after architecture closure | One reset/enumeration/SGTA/IIMTC/IIMCL-to-IRQ execution with table addresses/counts/chains, LVDS word identities, receive/staging pointers, W/issue/rewind/A, Q/V, segment counters and IRQ; retain retry and disconnect history | Correlate descriptors, staged words and owned transactions without joining SAT cuts; invariants still require proof beyond one successful trace |
+| Separately authorized passive PCI observation | Clock/reset, REQ/GNT, FRAME/IRDY/TRDY/STOP/DEVSEL, AD/CBE/byte enables and INTA, plus bus ownership/turnaround and allocation/table identity for the same acquisition; capture pre-launch pending IRQ and final-word waits/retry/disconnect | Falsify or corroborate actual ownership/acceptance timing. A finite quiet interval is not a proof of no future write |
+| Separately authorized passive link/internal evidence | Same-epoch LVDS producer/end-of-data, queued words and CDC/pointer state, or a validated internal trace correlated with PCI accepts and IRQ | Resolve retained/reissued payload and pending retry after apparent completion; external PCI pins alone cannot prove internal FIFO empty |
+| Platform contract | Actual bridge/chipset identity, applicable posted-write/INTx ordering and Windows adapter completion/coherency contract | Accepted PCI write -> host visibility; logically independent from endpoint IRQ ordering |
+
+For each captured phase record the owning initiator, address/command, descriptor
+or payload token, accepted byte mask, whether STOP terminates with/without data,
+and replay/retirement identity. An observation request must include stalled
+descriptor and final-word cases, initial retry, partial disconnect and stop with
+delayed activity. These are **specifications only**, not permission for MMIO,
+DMA launch, reset, probing the licensed scope or releasing quarantined memory.
 
 ## Windows and PCI ordering implications
 

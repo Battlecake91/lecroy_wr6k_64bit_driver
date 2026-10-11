@@ -304,10 +304,10 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows Dry regression on 2026-10-06:
-- Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
-  x64 `lecdiag` **PASS**.
-- Source/ABI contracts **35/35 PASS**.
+Current software-only Dry regression on 2026-10-11 (no WDK rebuild or hardware
+execution for this analysis; the previously established Debug|x64 driver and
+`lecdiag` build result is unchanged):
+- Source/ABI contracts **39/39 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +315,17 @@ Current Windows Dry regression on 2026-10-06:
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **24/24 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**311/311** checks).
+- Live DMA completion-state suite **27/27 PASS**.
+- All eight Dry child suites **318/318 PASS**. This run invokes the child suites
+  directly without claiming a new driver build/front-end runner execution.
+
+The added normal-success source contracts record the existing poison-only free
+gate, unregister exclusions, PFN/MDL resources and completion-lock DPC handoff.
+Native tests retain the distinction between observed completion and releasable
+mapping ownership, subsequent software-generation reuse, and an untagged old
+physical source attributed to a newly active generation. They are software
+limitation checks, not hardware IRQ injection or proof that the success-policy
+exception is safe. See the canonical normal-success lifetime audit.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

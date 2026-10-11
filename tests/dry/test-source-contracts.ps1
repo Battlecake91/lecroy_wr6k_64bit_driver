@@ -370,6 +370,43 @@ Test-Contract "completion IRQ never directly proves idle or releases mappings" {
     $acquisitionText -match 'LecDeselectDmaTransfer'
 }
 
+Test-Contract "normal legacy free gate is poison ownership, not an independent idle proof" {
+    $free = [regex]::Match($acquisitionText, '(?s)LecFreeTransfer\s*\(.*?\n\}')
+    $free.Success -and
+    $free.Value -match 'if \(Transfer->DmaUnsafeToFree\)' -and
+    $free.Value -match 'IoFreeMdl\(Transfer->DescriptorMdl\)' -and
+    $free.Value -match 'ExFreePoolWithTag\(Transfer->DescriptorBuffer' -and
+    $free.Value -match 'LecFreeMdlChain\(Transfer->SourceMdlChain\)' -and
+    $free.Value -notmatch 'LecDmaCompletionMayReleaseMapping|LecDmaCompletionProveIdle'
+}
+
+Test-Contract "normal unregister excludes selected or poisoned transfer before free" {
+    $unregister = [regex]::Match($acquisitionText, '(?s)LecUnregisterTransfer\s*\(.*?\n\}')
+    $unregister.Success -and
+    $unregister.Value -match 'CurrentTransfer == transfer' -and
+    $unregister.Value -match 'transfer->DmaUnsafeToFree' -and
+    $unregister.Value.IndexOf('RemoveEntryList') -gt $unregister.Value.IndexOf('STATUS_DEVICE_BUSY') -and
+    $unregister.Value.IndexOf('LecFreeTransfer') -gt $unregister.Value.IndexOf('RemoveEntryList')
+}
+
+Test-Contract "source pin and descriptor allocations remain legacy PFN resources" {
+    $acquisitionText -match 'MmProbeAndLockPages\(mdl, AccessMode, IoWriteAccess\)' -and
+    $acquisitionText -match 'MmUnlockPages\(Mdl\)' -and
+    $acquisitionText -match 'MmBuildMdlForNonPagedPool\(Transfer->DescriptorMdl\)' -and
+    $acquisitionText -notmatch 'PutScatterGatherList|FreeAdapterObject|FlushAdapterBuffers|FreeMapRegisters'
+}
+
+Test-Contract "per-transfer DPC handoff stays under completion lock, global rundown is PnP-only" {
+    $dpc = [regex]::Match($acquisitionText, '(?s)VOID\s+LecInterruptDpc\s*\(.*?\n\}')
+    $deselect = [regex]::Match($acquisitionText, '(?s)LecDeselectDmaTransfer\s*\(.*?\n\}')
+    $dpc.Success -and $deselect.Success -and
+    $dpc.Value -match 'KeAcquireSpinLockAtDpcLevel\(&devExt->DmaCompletionLock\)' -and
+    $dpc.Value -match 'transfer->DmaGeneration == generation' -and
+    $deselect.Value -match 'KeAcquireSpinLock\(&DevExt->DmaCompletionLock' -and
+    $deselect.Value -match 'CurrentTransfer = NULL' -and
+    ([regex]::Matches($acquisitionText, 'KeFlushQueuedDpcs\(').Count -eq 1)
+}
+
 Test-Contract "serialized MAM launch rechecks terminal DMA admission" {
     $mam = [regex]::Match(
         $ioctlText,

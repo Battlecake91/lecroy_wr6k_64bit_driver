@@ -541,6 +541,27 @@ External WDM contracts:
 [CancelMappedTransfer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pcancel_mapped_transfer),
 [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex).
 
+## Normal-success versus abort proof boundary
+
+The source-backed x64 [normal-success lifetime audit](dma-lifetime-and-timeout.md#normal-success-lifetime-audit-and-implementation-owner-handoff)
+now follows physical INTST bit0 through IIMCL clear, DPC event, synchronous
+wait, INTEN cleanup, deselect, unregister and page/descriptor release. Active
+PFN cleanup uses `DmaUnsafeToFree`, not `IdleProved`; this is a documented legacy
+compatibility exception, not a successful abort/retirement proof. DPC/deselect
+locking protects the software transfer pointer, but does not prevent hardware
+access to a freed descriptor or unlocked page if the IRQ premise is wrong.
+Mask failure after a successful wait and late untagged physical IRQ attribution
+are explicit implementation-owner review items. No production code was changed.
+
+The initialized [PCI launch-prefix diagnostic](pci-dma-retirement-analysis.md#initialized-pci-launch-prefix-and-the-remaining-sequence-boundary)
+does not reuse arbitrary-runtime issue/IRQ witnesses as a transaction history.
+It retains transitive configured state and leaves PCI_CE symbolic. A bounded
+stalled-fetch exclusion is not an IRQ-after-final-write proof: no payload
+transaction completes in that environment. The six quiescence obligations and
+restart exclusion remain Unknown; no timeout/reset/acknowledge is promoted to
+a release certificate. The exact remaining artifact/observation request is in
+the retirement analysis, including the separate bridge-visibility contract.
+
 ## PCI-card FPGA and acquisition-link physical boundary (2026-10-06)
 **PCI firmware evidence:** [PCI FPGA firmware analysis](pci-fpga-firmware-analysis.md) records the installed XC2S200E update image, checked pin-to-pad mapping and the partial INTA# routing trace. No decoded signal has yet demonstrated physical DMA bus-idle or posted-write drain.
 

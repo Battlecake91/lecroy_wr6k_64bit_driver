@@ -288,6 +288,26 @@ int main(void)
         !LecDmaCompletionObservePhysicalIrq(&tracker, 13) &&
         !LecDmaCompletionPrepare(&tracker, 14));
 
+    reset(&tracker, 20);
+    check("normal success consumes IRQ without proving releasable ownership",
+        activate(&tracker, 20) &&
+        LecDmaCompletionObservePhysicalIrq(&tracker, 20) &&
+        LecDmaCompletionConsumeSignal(&tracker, 20) &&
+        !LecDmaCompletionFinishWait(&tracker, 20, TRUE) &&
+        LecDmaCompletionReadPhase(&tracker) == LecDmaCompletionObserved &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 20));
+    check("legacy next-generation preparation discards observed evidence, not hardware activity",
+        LecDmaCompletionPrepare(&tracker, 21) &&
+        LecDmaCompletionReadPhase(&tracker) == LecDmaCompletionNeverLaunched &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 20) &&
+        !LecDmaCompletionConsumeSignal(&tracker, 20));
+    check("untagged delayed old physical source can be attributed to the newly active generation",
+        activate(&tracker, 21) &&
+        LecDmaCompletionObservePhysicalIrq(&tracker, 21) &&
+        LecDmaCompletionConsumeSignal(&tracker, 21) &&
+        !LecDmaCompletionFinishWait(&tracker, 21, TRUE) &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 21));
+
     printf("DMA COMPLETION: %u/%u passed; %u failed.\n",
         passed, passed + failed, failed);
     return failed == 0 ? 0 : 1;

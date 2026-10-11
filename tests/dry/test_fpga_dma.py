@@ -17,6 +17,51 @@ from virtexe_routing import COMMIT, evaluate_data, register_contract, register_e
 from virtexe_dma_handshake import (H, HANDSHAKE_RELATIONS, SCENARIOS, local_checks,
                                   owned_phase, pending_next, projection,
                                   handshake_queries, word_observer, receive_availability_checks)
+from virtexe_dma_reachability import closed_cone, initialized_prefix, launch_stimulus
+
+
+class SyntheticReachability(unittest.TestCase):
+    def test_closed_cone_follows_state_controls_not_just_combinational_data(self):
+        p = {'logic': {'q': {'kind': 'register', 'data': {'source': 'd'},
+                            'controls': {'CE': {'source': 'ce'}}},
+                       'd': {'kind': 'register', 'data': {'source': 'q'}},
+                       'ce': {'kind': 'pad_input'}, 'irrelevant': {'kind': 'register'}},
+             'memories': {}}
+        r = closed_cone(p, ['q'])
+        self.assertEqual(set(r['logic']), {'q', 'd', 'ce'})
+        self.assertIs(r['logic']['q'], p['logic']['q'])
+
+    def test_closed_cone_follows_tbus_producers_and_memory_controls(self):
+        p = {'logic': {'bus': {'kind': 'combinational', 'data':
+                             {'op': 'bus', 'drivers': [{'driver': 'driver'}]}},
+                       'driver': {'kind': 'tristate_driver', 'disable': {'source': 'enable'},
+                                  'data': {'op': 'ram_read', 'memory': 'ram', 'address': {}}},
+                       'enable': {'kind': 'register'}, 'write': {'kind': 'register'}},
+             'memories': {'ram': {'kind': 'ram16x1d', 'enable': {'source': 'write'}}}}
+        r = closed_cone(p, ['bus'])
+        self.assertEqual(set(r['logic']), {'bus', 'driver', 'enable', 'write'})
+        self.assertEqual(set(r['memories']), {'ram'})
+
+    def test_closed_cone_keeps_bram_port_dependencies(self):
+        p = {'logic': {'out': {'kind': 'memory_output', 'memory': 'ram'},
+                       'remote': {'kind': 'register'}, 'pci': {'kind': 'register'}},
+             'memories': {'ram': {'kind': 'ramb4', 'ports': {
+                 'A': {'clock': {'source': 'remote'}}, 'B': {'clock': {'source': 'pci'}}}}}}
+        self.assertEqual(set(closed_cone(p, ['out'])['logic']), {'out', 'remote', 'pci'})
+
+    def test_host_prefix_has_configuration_then_three_distinct_mmio_writes(self):
+        phases = [launch_stimulus(t) for t in (2, 10, 18, 26)]
+        self.assertEqual([p['ad'] for p in phases], [4, 0x40, 0x44, 0x48])
+        self.assertEqual([p['cbe'] for p in phases], [0xB, 7, 7, 7])
+        self.assertEqual([p['idsel'] for p in phases], [True, False, False, False])
+        self.assertFalse(launch_stimulus(33)['host'])
+
+    def test_public_reachability_boundary_does_not_claim_completion_safety(self):
+        p = Path(__file__).resolve().parents[2] / 'docs' / 'pci-mmio-register-evidence.json'
+        r = json.loads(p.read_text(encoding='utf-8'))['pci_dma']['initialized_reachability']
+        self.assertFalse(r['hardblock_assigned'])
+        self.assertFalse(r['runtime_state_assigned'])
+        self.assertEqual(r['irq_after_all_owned_writes'], 'Unknown')
 
 
 class SyntheticHandshake(unittest.TestCase):
@@ -291,6 +336,17 @@ class PrivateHandshake(unittest.TestCase):
         self.assertEqual(r['status'],'Verified')
         self.assertEqual(len({n for pair in r['pairs'] for n in pair}),16)
 
+    def test_initialized_cone_retains_every_referenced_ff_and_tbus_producer(self):
+        from virtexe_routing import expression_nodes
+        r = closed_cone(self.p, [H[n] for n in ('irq', 'issue', 'rewind', 'cl')])
+        self.assertGreater(len(r['logic']), 1000)
+        self.assertGreaterEqual(len(r['memories']), 32)
+        for node in r['logic'].values():
+            for item in expression_nodes({k: node[k] for k in ('data', 'controls', 'disable') if k in node}):
+                for key in ('source', 'driver'):
+                    if key in item and item[key] in self.p['logic']:
+                        self.assertIn(item[key], r['logic'])
+
     def test_prefetch_and_available_registers_reset_to_zero_on_pci_clock(self):
         for name in ('q0','q1','rollback',*[f'available{i}' for i in range(4)]):
             c=register_contract(H[name],self.p['logic'][H[name]])
@@ -308,6 +364,58 @@ def add_handshake_relation(name):
 
 for name,_,_ in HANDSHAKE_RELATIONS:
     add_handshake_relation(name)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC') == '1',
+                     'private initialized PCI SMT not configured')
+class PrivateInitializedSmt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.stalled = initialized_prefix(PrivateDma.p, bound=40)
+        cls.responding = initialized_prefix(PrivateDma.p, bound=52, descriptor_response=True)
+
+    def test_stalled_prefix_base_is_consistent(self):
+        self.assertEqual(self.stalled['queries']['base_consistency']['solver'], 'sat')
+
+    def test_initialized_launch_has_four_observed_host_acceptances(self):
+        r = self.stalled['queries']['configuration_and_launch']
+        self.assertEqual(r['solver'], 'sat')
+        self.assertEqual(r['host_acceptance_edges'], [5, 14, 22, 30])
+
+    def test_same_execution_drives_descriptor_address_after_grant(self):
+        r = self.stalled['queries']['owned_descriptor_address_candidate']
+        self.assertEqual(r['solver'], 'sat')
+        self.assertEqual(r['descriptor_address_edges'], [35])
+        self.assertEqual(r['post_launch_acceptance_edges'], [])
+
+    def test_stalled_fetch_does_not_raise_irq_in_this_bound(self):
+        self.assertEqual(self.stalled['queries']['irq_during_stalled_fetch']['solver'], 'unsat')
+
+    def test_architecture_boundaries_are_not_replaced_by_runtime_state_cuts(self):
+        for r in (self.stalled, self.responding):
+            self.assertFalse(r['hardblock_assigned'])
+            self.assertFalse(r['runtime_state_assigned'])
+            self.assertEqual(r['all_release_obligations'], 'Unknown')
+            self.assertTrue(any('PCILOGIC.PCI_CE' in u for u in r['unknowns']))
+            self.assertFalse(any('SLICE[' in u and 'unmodeled source' in u for u in r['unknowns']))
+
+    def test_memory_responder_base_is_consistent(self):
+        self.assertEqual(self.responding['queries']['base_consistency']['solver'], 'sat')
+
+    def test_two_owned_read_beats_capture_count_and_address_in_same_execution(self):
+        r = self.responding['queries']['owned_two_read_beats_and_descriptor_capture']
+        self.assertEqual(r['solver'], 'sat')
+        self.assertEqual(r['target_read_acceptance_edges'], [37, 38])
+        self.assertEqual(r['post_launch_acceptance_edges'], [38, 39])
+        self.assertEqual(r['target_write_acceptance_edges'], [])
+        self.assertEqual(r['host_acceptance_edges'], [5, 14, 22, 30])
+
+    def test_responding_prefix_without_remote_edges_does_not_raise_irq_in_bound(self):
+        self.assertEqual(self.responding['queries']['irq_by_end']['solver'], 'unsat')
+
+    def test_capture_prefix_cannot_be_joined_to_an_unrelated_irq_witness(self):
+        self.assertEqual(self.responding['queries']['same_execution_descriptor_capture_and_irq']['solver'], 'unsat')
 
 
 @unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC')=='1',

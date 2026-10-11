@@ -212,6 +212,67 @@ second launch from the queued request. STOP/SURPRISE/REMOVE still close the
 outer admission gate and wait for already-admitted synchronous IOCTLs before
 resource teardown.
 
+### Normal-success lifetime audit and implementation-owner handoff
+
+Source audit scope: `Acquisition.c`, `Ioctl.c`, and `DmaCompletion.c`; no
+production changes or hardware execution. The two active MTT/MAM launch paths
+share the following compatibility policy. Software exclusion is Verified;
+hardware retirement and host visibility are Unknown.
+
+| Boundary / source symbol | Actual ownership transition | Remaining premise |
+|---|---|---|
+| `LecRegisterTransfer` / `LecBuildSourceMdlChain` | User destination pages are pinned with `MmProbeAndLockPages(..., IoWriteAccess)`; transfer stays in the process-owned list | Pinned pages must remain valid for every later device write |
+| `LecBuildDescriptorTable` | Nonpaged pool plus a nonpaged-pool MDL; direct PFN-derived 32-bit table/data/chain addresses; zero/zero terminator | CPU physical addresses must be device-visible; allocation is not a DMA common buffer |
+| `LecSelectDmaTransfer` / `LecLaunchSelectedDma` | Select generation under completion lock; arm; synchronized IIMCL=1 then GO then `DeviceActive` | Synchronization excludes the ISR, not pre-existing physical IRQ sources or old DMA |
+| `LecInterruptService` bit0 | Record current-generation physical IRQ; IIMCL=0; accumulate pending status, acknowledge INTST and queue DPC | IRQ provenance is untagged; neither acknowledge nor IIMCL=0 proves retirement |
+| `LecInterruptDpc` bit0 | Under completion lock, compare selected transfer generation, consume IRQ marker, signal its event | It does not inspect PCI transactions, buffer occupancy or host visibility |
+| `LecDmaCompletionFinishWait(..., TRUE)` | `CompletionObserved` makes the normal wait successful; phase remains observed, not idle | Assumes IRQ belongs to this transfer and follows its final device memory access |
+| MTT/MAM cleanup in `Ioctl.c` | Disable INTEN bit0, deselect under completion lock; MAM also reads IIMST, conditionally clears IIMCL and reads ERRS | These operations are not a verified drain or platform ordering fence |
+| `LecUnregisterTransfer` | Under TransferMutex reject `CurrentTransfer` or `DmaUnsafeToFree`, unlink, then free outside mutex | Ordinary completed transfer has no poison flag, so no independent idle predicate is required |
+| `LecFreeTransfer` / `LecFreeMdlChain` | Free descriptor MDL, descriptor pool, unlock pinned source pages, free source MDLs and transfer | Both descriptor reads and payload writes must already be impossible; not proved |
+| Process/all-transfer cleanup | Same free/retain gate; poisoned allocations remain retained through publication ownership | Process exit or software list removal is not device retirement |
+| Later serialized acquisition | `Prepare` permits observed -> never-launched for a fresh generation; current selection can be replaced after deselect | No proof old buffered/retried activity or late physical IRQ is excluded |
+
+There are **no adapter mappings/map-register allocations to release in this
+active PFN path**. `PutScatterGatherList`, `FreeAdapterObject`, adapter flush,
+and map-register release belong to the inactive stage, not this cleanup.
+Normal unregister does not disconnect IRQs or globally flush DPCs. That is
+not by itself a transfer-pointer use-after-free: DPC event access and deselect
+use the same completion lock, the DPC does not keep that pointer after the
+critical section, and acquisition holds TransferMutex across selection/wait/
+deselect. PnP-only `LecQuiesceDeferredWork` separately disconnects ISR sources,
+removes/flushes DPCs and cancels the timer after admission closure/rundown;
+that establishes software teardown, not a hardware bus-idle certificate.
+
+Two review points must not be hidden behind a successful wait:
+
+- `FinishWait` runs before INTEN-disable cleanup. A later mask failure changes
+  the returned status but does not itself poison an already observed transfer.
+  Whether interrupt-mask failure should latch device uncertainty is an owner
+  policy decision, not evidence of a demonstrated late DMA write.
+- Generation numbers tag software observations, not FPGA transactions. A
+  delayed old physical source delivered after a later `DeviceActive` is passed
+  the new active generation by the ISR and is accepted by the tracker. The
+  native regression reproduces this API limitation without injecting an IRQ.
+
+Implementation-owner review, before broadening live DMA support:
+
+1. Decide explicitly whether to retain the legacy success exception while
+   the hardware premise is unproved, or fail closed for every launched transfer.
+   Do not silently rename `CompletionObserved` to idle.
+2. Require a per-generation release/restart certificate covering descriptor
+   stop, accepted/retried writes, staged payload and platform visibility. Keep
+   this separate from the event/DPC handoff and from merely disabling INTEN.
+3. Apply the chosen policy consistently to explicit unregister, process cleanup,
+   PnP/all-transfer cleanup, same-transfer reuse and later acquisitions; cover
+   completion followed by mask failure and delayed physical sources in review.
+4. Only after hardware/bridge obligations are established, connect WDM mappings
+   and descriptor common buffers to the same ownership gate and matching adapter
+   completion/coherency operations. Preserve all UnknownActive retention paths.
+
+The new source/native tests freeze the audit's current behavior and limitations;
+they neither endorse the compatibility exception nor prove hardware safety.
+
 ## Windows DMA-adapter migration design (not activated)
 
 Current descriptor builder: `driver/Acquisition.c:LecBuildDescriptorTable`.
