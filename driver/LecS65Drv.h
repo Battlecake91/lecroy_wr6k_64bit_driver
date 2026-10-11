@@ -278,6 +278,12 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     BOOLEAN InterruptConnected;
     USHORT ReservedInterrupt;
     volatile ULONG InterruptEnableShadow;
+    /* Ordinary callers only: never take this lock from ISR/sync callbacks.
+     * It precedes the interrupt lock (or IoAdmissionLock), never a wait.
+     */
+    KSPIN_LOCK InterruptControlLock;
+    BOOLEAN InterruptWriteAdmission;
+    BOOLEAN InterruptHardwareUnavailable;
     volatile ULONG InterruptPendingShadow;
     /* Original FUN_000108D6 accumulates ERRS at main+0x134A. */
     volatile LONG LegacyErrorStatusLatch;
@@ -343,6 +349,15 @@ VOID LecUnmapBars(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 BOOLEAN LecEnterIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecLeaveIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecSetIoctlAdmission(_Inout_ PLECS65_DEVICE_EXTENSION DevExt, _In_ BOOLEAN Enable);
+NTSTATUS LecWriteInterruptMask(PLECS65_DEVICE_EXTENSION DevExt, ULONG Value);
+NTSTATUS LecUpdateInterruptMask(PLECS65_DEVICE_EXTENSION DevExt,
+    ULONG ClearBits, ULONG SetBits, BOOLEAN Acquisition);
+NTSTATUS LecReadInterruptMask(PLECS65_DEVICE_EXTENSION DevExt, PULONG Value);
+NTSTATUS LecEnsureReceiveInterrupt(PLECS65_DEVICE_EXTENSION DevExt);
+NTSTATUS LecMaskInterruptsForPnp(PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecSetInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt, BOOLEAN Enable);
+VOID LecQuarantineInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt);
+VOID LecInvalidateInterruptHardware(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 
 NTSTATUS LecForwardLockedIrp(

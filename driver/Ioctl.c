@@ -1091,7 +1091,8 @@ LecFillLegacyRegisterEntry(
 
     if (source->Bar == 0 &&
         source->Offset == 0x084) {
-        data = DevExt->InterruptEnableShadow;
+        data = (ULONG)InterlockedCompareExchange(
+            (volatile LONG*)&DevExt->InterruptEnableShadow, 0, 0);
     }
 
     LecWriteU32(Target + 0x106, data);
@@ -1134,25 +1135,7 @@ LecCommitLegacyInterruptMask(
     _In_ ULONG NewMask
     )
 {
-    volatile ULONG* inten;
-    NTSTATUS status;
-
-    status = LecResolveRegister(DevExt, 0, 0x084, &inten);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    InterlockedExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        (LONG)NewMask);
-
-    WRITE_REGISTER_ULONG(inten, NewMask);
-
-    LecTrace(
-        "CFDC2110 legacy INTEN shadow <- 0x%08lX\n",
-        NewMask);
-
-    return STATUS_SUCCESS;
+    return LecWriteInterruptMask(DevExt, NewMask);
 }
 
 static
@@ -1879,8 +1862,6 @@ LecExecuteLegacyMttTransferLocked(
     volatile ULONG* iimtc;
     volatile ULONG* iimcl;
     volatile ULONG* mttrgo;
-    ULONG currentMask;
-    ULONG cleanupMask;
     ULONGLONG dmaGeneration = 0;
     LARGE_INTEGER timeout;
     NTSTATUS status;
@@ -1944,14 +1925,7 @@ LecExecuteLegacyMttTransferLocked(
     }
     transferArmed = TRUE;
 
-    currentMask = (ULONG)InterlockedCompareExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        0,
-        0);
-
-    status = LecCommitLegacyInterruptMask(
-        DevExt,
-        currentMask | 0x01UL);
+    status = LecUpdateInterruptMask(DevExt, 0, 0x01UL, TRUE);
     if (!NT_SUCCESS(status)) {
         goto Cleanup;
     }
@@ -1995,14 +1969,7 @@ Cleanup:
         LecMarkDmaUnknownActive(DevExt, Transfer);
     }
     if (transferInterruptEnabled) {
-        cleanupMask = (ULONG)InterlockedCompareExchange(
-            (volatile LONG*)&DevExt->InterruptEnableShadow,
-            0,
-            0);
-
-        disableStatus = LecCommitLegacyInterruptMask(
-            DevExt,
-            cleanupMask & ~0x01UL);
+        disableStatus = LecUpdateInterruptMask(DevExt, 0x01UL, 0, TRUE);
 
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
@@ -3033,7 +3000,7 @@ LecIoctlCfDc2110(
                      * helpers do, then commit the resulting value to BAR0
                      * INTEN before forwarding the command to board firmware.
                      */
-                    newMask = DevExt->InterruptEnableShadow;
+                    newMask = 0;
 
                     if ((controlWord & 0x0080U) != 0) {
                         newMask |= 0x04UL;
@@ -3057,9 +3024,8 @@ LecIoctlCfDc2110(
                     }
 
                     hwStatus =
-                        LecCommitLegacyInterruptMask(
-                            DevExt,
-                            newMask);
+                        LecUpdateInterruptMask(
+                            DevExt, 0x34UL, newMask, FALSE);
                 }
 
                 if (NT_SUCCESS(hwStatus)) {
@@ -3340,7 +3306,6 @@ LecIoctlCfDc2110(
                         0xFB, 0x85, 0x40, 0x00
                     };
                     ULONG received = 0;
-                    ULONG rxInterruptMask;
 
                     /*
                      * Legacy FUN_0001619A calls FUN_000160A8(this, 1)
@@ -3354,17 +3319,9 @@ LecIoctlCfDc2110(
                      * masked out of the ISR. Preserve every other INTEN bit
                      * and commit only on the first fetch after startup.
                      */
-                    rxInterruptMask = (ULONG)InterlockedCompareExchange(
-                        (volatile LONG*)&DevExt->InterruptEnableShadow,
-                        0,
-                        0);
-                    if ((rxInterruptMask & 0x08UL) == 0) {
-                        status = LecCommitLegacyInterruptMask(
-                            DevExt,
-                            rxInterruptMask | 0x08UL);
-                        if (!NT_SUCCESS(status)) {
-                            break;
-                        }
+                    status = LecEnsureReceiveInterrupt(DevExt);
+                    if (!NT_SUCCESS(status)) {
+                        break;
                     }
 
                     status = LecTransportSend(
@@ -3551,8 +3508,6 @@ LecIoctlAcquireBufferedOneChannel(
     ULONG requestedBytes;
     ULONG blockBytes;
     ULONG launchCount;
-    ULONG currentMask;
-    ULONG cleanupMask;
     ULONGLONG dmaGeneration = 0;
     ULONG gpioValue;
     ULONG iimStatus;
@@ -3790,14 +3745,7 @@ LecIoctlAcquireBufferedOneChannel(
     }
     transferArmed = TRUE;
 
-    currentMask = (ULONG)InterlockedCompareExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        0,
-        0);
-
-    status = LecCommitLegacyInterruptMask(
-        DevExt,
-        currentMask | 0x01UL);
+    status = LecUpdateInterruptMask(DevExt, 0, 0x01UL, TRUE);
     if (!NT_SUCCESS(status)) {
         goto CleanupTransfer;
     }
@@ -3836,14 +3784,7 @@ CleanupTransfer:
         LecMarkDmaUnknownActive(DevExt, transfer);
     }
     if (transferInterruptEnabled) {
-        cleanupMask = (ULONG)InterlockedCompareExchange(
-            (volatile LONG*)&DevExt->InterruptEnableShadow,
-            0,
-            0);
-
-        disableStatus = LecCommitLegacyInterruptMask(
-            DevExt,
-            cleanupMask & ~0x01UL);
+        disableStatus = LecUpdateInterruptMask(DevExt, 0x01UL, 0, TRUE);
 
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
@@ -3942,7 +3883,15 @@ LecIoctlRegisterRead(
         return status;
     }
 
-    value = READ_REGISTER_ULONG(reg);
+    if (bar == 0 && offset == 0x084) {
+        status = LecReadInterruptMask(DevExt, &value);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+    }
+    else {
+        value = READ_REGISTER_ULONG(reg);
+    }
     *(PULONG)SystemBuffer = value;
     *Information = sizeof(ULONG);
 
@@ -3998,6 +3947,9 @@ LecIoctlRegisterWrite(
     LecTrace("REG-WR: BAR%u + 0x%08lX <- 0x%08lX\n",
         bar, offset, value);
 
+    if (bar == 0 && offset == 0x084) {
+        return LecWriteInterruptMask(DevExt, value);
+    }
     WRITE_REGISTER_ULONG(reg, value);
     return STATUS_SUCCESS;
 }
@@ -4434,7 +4386,6 @@ LecS65DeviceControl(
             ULONG control;
             ULONG errorMaskRequest;
             ULONG programmedErrm;
-            ULONG newInterruptMask;
             volatile ULONG* errm;
 
             RtlCopyMemory(
@@ -4472,22 +4423,8 @@ LecS65DeviceControl(
                     (LONG)programmedErrm);
                 WRITE_REGISTER_ULONG(errm, programmedErrm);
 
-                newInterruptMask =
-                    (ULONG)InterlockedCompareExchange(
-                        (volatile LONG*)&devExt->InterruptEnableShadow,
-                        0,
-                        0);
-
-                if (errorMaskRequest != 0) {
-                    newInterruptMask |= 0x02UL;
-                }
-                else {
-                    newInterruptMask &= ~0x02UL;
-                }
-
-                status = LecCommitLegacyInterruptMask(
-                    devExt,
-                    newInterruptMask);
+                status = LecUpdateInterruptMask(devExt, 0x02UL,
+                    errorMaskRequest != 0 ? 0x02UL : 0, FALSE);
             }
 
             information = 0;

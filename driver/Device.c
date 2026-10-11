@@ -520,6 +520,7 @@ LecS65Pnp(
         return LecForwardLockedIrp(devExt, Irp, FALSE);
 
     case IRP_MN_SURPRISE_REMOVAL:
+        LecInvalidateInterruptHardware(devExt);
         LecSetIoctlAdmission(devExt, FALSE);
         LecDisableInterfaces(devExt);
         LecDrainIoctls(devExt);

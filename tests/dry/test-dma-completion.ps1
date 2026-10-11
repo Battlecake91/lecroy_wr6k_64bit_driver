@@ -66,3 +66,23 @@ else {
 }
 & $raceExe $StressIterations
 if ($LASTEXITCODE -ne 0) { throw "DMA race test execution failed." }
+
+$intenSources = @((Join-Path $PSScriptRoot "test-interrupt-control.c"),
+    (Join-Path $repo "driver\InterruptControl.c"))
+$intenExe = Join-Path $outDir "test-interrupt-control.exe"
+if ($cl) {
+    Push-Location $outDir
+    try {
+        & $cl.Source /nologo /W4 /WX /O2 /DLECS65_INTEN_HOST_TEST /TC "/Fe:$intenExe" $intenSources
+        if ($LASTEXITCODE -ne 0) { throw "INTEN test build failed." }
+    }
+    finally { Pop-Location }
+}
+else {
+    $quotedSources = ($intenSources | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /O2 /DLECS65_INTEN_HOST_TEST /TC /Fe:`"$intenExe`" $quotedSources"
+    & $env:ComSpec /d /s /c $cmd
+    if ($LASTEXITCODE -ne 0) { throw "INTEN test build failed." }
+}
+& $intenExe $StressIterations
+if ($LASTEXITCODE -ne 0) { throw "INTEN test execution failed." }

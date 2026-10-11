@@ -12,12 +12,13 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 42/42, layout 13/13, ownership 17/17,
+- Current result: source/ABI 45/45, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
-  plus deterministic interleavings 2/2; overall 335/335 PASS with
-  `-Mode Dry -SkipBuild`, and 5,000/5,000 default stress races PASS.
-  Separate expanded stress: 50,000/50,000 PASS, zero failures. Native C tests
+  plus deterministic interleavings 2/2 and native INTEN checks 44/44;
+  overall 382/382 PASS with `-Mode Dry -SkipBuild`, and 6,000/6,000 default
+  DMA/INTEN stress races PASS. Separate expanded stress: 60,000/60,000 PASS,
+  zero failures. Native C tests
   use `/W4 /WX`; no full kernel acquisition/rundown execution is claimed.
 
 ## DMA/PnP staging
@@ -80,8 +81,15 @@
   in its changes. Deterministic native tests demonstrate that an already
   in-flight marker publisher/consumer can return TRUE after uncertainty wins;
   that result is not release authority. Serialized owner and event lifetime
-  locking remain prerequisites. Integrated kernel scheduling and device-wide
-  INTEN register-control serialization remain unqualified.
+  locking remain prerequisites. Integrated kernel scheduling remains
+  unqualified. Device-wide INTEN control now serializes full writes, RMW,
+  physical reads and admission closure, including already admitted writers.
+  Generic controls must preserve acquisition bit 0; only acquisition may
+  enable/clear it. Quarantine permits only the existing owner clear-bit-0
+  and PnP zero-mask exceptions. Surprise-unavailable blocks even those and
+  physical reads. Native helper tests use MMIO/lock doubles; hardware mask
+  acceptance and initial/reset shadow agreement remain unverified. See the
+  [INTEN access inventory](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

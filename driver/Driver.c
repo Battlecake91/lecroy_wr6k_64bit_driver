@@ -151,6 +151,7 @@ LecS65AddDevice(
     devExt->NextTransferToken = 0;
     devExt->CurrentTransfer = NULL;
     KeInitializeSpinLock(&devExt->DmaCompletionLock);
+    KeInitializeSpinLock(&devExt->InterruptControlLock);
     LecDmaCompletionInitialize(&devExt->DmaCompletion);
     KeInitializeDpc(&devExt->InterruptDpc, LecInterruptDpc, devExt);
     KeInitializeSpinLock(&devExt->LegacyEventLock);
@@ -272,10 +273,7 @@ LecSetIoctlAdmission(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ BOOLEAN Enable)
 {
-    KIRQL irql;
-    KeAcquireSpinLock(&DevExt->IoAdmissionLock, &irql);
-    DevExt->AcceptIoctls = Enable;
-    KeReleaseSpinLock(&DevExt->IoAdmissionLock, irql);
+    LecSetInterruptAdmission(DevExt, Enable);
 }
 
 VOID

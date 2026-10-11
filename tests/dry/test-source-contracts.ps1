@@ -53,6 +53,7 @@ $ioctlText = Get-Content -LiteralPath $ioctlSource -Raw
 $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $completionText = Get-Content -LiteralPath $completionSource -Raw
+$interruptText = Get-Content -LiteralPath (Join-Path $repo "driver\InterruptControl.c") -Raw
 $completionHeaderText = Get-Content -LiteralPath $completionHeader -Raw
 $layoutText = Get-Content -LiteralPath $layoutSource -Raw
 $layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
@@ -291,7 +292,8 @@ Test-Contract "uncertain DMA is latched after both launch paths" {
     $driverText -match 'volatile LONG DmaUnknownActive' -and
     $driverText -match 'BOOLEAN DmaUnsafeToFree' -and
     $acquisitionText -match 'Transfer->DmaUnsafeToFree = TRUE' -and
-    $acquisitionText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
+    $acquisitionText -match 'LecQuarantineInterruptAdmission\(DevExt\)' -and
+    $interruptText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
     ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 4) -and
     ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishWait\(').Count -eq 2) -and
     ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishCleanup\(').Count -eq 2) -and
@@ -362,7 +364,7 @@ Test-Contract "both launched cleanup paths finalize after masking and before des
     foreach ($name in @('LecExecuteLegacyMttTransferLocked', 'LecIoctlAcquireBufferedOneChannel')) {
         $body = [regex]::Match($ioctlText, "(?s)$name\s*\(.*?\n\}")
         if (-not $body.Success) { return $false }
-        $cleanup = $body.Value.LastIndexOf('disableStatus = LecCommitLegacyInterruptMask')
+        $cleanup = $body.Value.LastIndexOf('disableStatus = LecUpdateInterruptMask')
         $finish = $body.Value.IndexOf('LecDmaCompletionFinishCleanup')
         $poison = $body.Value.IndexOf('LecMarkDmaUnknownActive', $finish)
         $deselect = $body.Value.IndexOf('LecDeselectDmaTransfer')
@@ -411,7 +413,7 @@ Test-Contract "unregister unlinks once under transfer ownership before freeing" 
 Test-Contract "quarantine poisons ownership and closes admission before fallible notification" {
     $poison = [regex]::Match($acquisitionText, '(?s)LecMarkDmaUnknownActive\s*\(.*?\n\}')
     $poison.Success -and
-    $poison.Value -match '(?s)DmaUnsafeToFree = TRUE.*?InterlockedExchange\(&DevExt->DmaUnknownActive, 1\).*?LecSetIoctlAdmission\(DevExt, FALSE\).*?LecDmaPnpPublicationQuarantine'
+    $poison.Value -match '(?s)DmaUnsafeToFree = TRUE.*?LecQuarantineInterruptAdmission\(DevExt\).*?LecSetIoctlAdmission\(DevExt, FALSE\).*?LecDmaPnpPublicationQuarantine'
 }
 
 Test-Contract "every PnP teardown drains IOCTL and deferred work before transfer release" {
@@ -601,8 +603,34 @@ Test-Contract "live PnP publication is remove-lock ordered and fail-closed" {
     $deviceText -match '(?s)IoReleaseRemoveLockAndWait.*?LecReleaseAllTransfers.*?DmaPnpPublication = NULL.*?LecDmaPnpPublicationRemove.*?LecUnmapBars' -and
     $pnpPublicationText -match 'LECS65_TRANSFER_QUARANTINE_TRANSFERRING' -and
     $pnpPublicationText -match '(?s)InsertTailList.*?LECS65_TRANSFER_QUARANTINE_PUBLICATION.*?LecDmaPnpPublicationQuarantineParent' -and
-    $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?DmaUnknownActive.*?LecSetIoctlAdmission.*?LecDmaPnpPublicationQuarantine' -and
+    $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?LecQuarantineInterruptAdmission.*?LecSetIoctlAdmission.*?LecDmaPnpPublicationQuarantine' -and
     $ioctlText -match 'LecMarkDmaUnknownActive'
+}
+
+Test-Contract "generic INTEN accesses route through shared ownership helper" {
+    $ioctlText -match '(?s)LecIoctlRegisterWrite\(.*?bar == 0 && offset == 0x084.*?return LecWriteInterruptMask' -and
+    $ioctlText -match '(?s)LecIoctlRegisterRead\(.*?bar == 0 && offset == 0x084.*?LecReadInterruptMask' -and
+    $ioctlText -match '(?s)LecCommitLegacyInterruptMask\(.*?return LecWriteInterruptMask' -and
+    ([regex]::Matches($ioctlText, 'InterruptEnableShadow').Count -eq 1)
+}
+
+Test-Contract "INTEN RMW and terminal closure share a resident synchronization domain" {
+    $driverProjectText -match 'InterruptControl.c' -and
+    $driverSourceText -match 'KeInitializeSpinLock\(&devExt->InterruptControlLock\)' -and
+    $driverSourceText -match 'LecSetInterruptAdmission\(DevExt, Enable\)' -and
+    $interruptText -match '(?s)KeAcquireSpinLock\(&devExt->InterruptControlLock.*?KeSynchronizeExecution.*?KeReleaseSpinLock' -and
+    $interruptText -match '(?s)LecQuarantineInterruptAdmission.*?KeAcquireSpinLock.*?DmaUnknownActive, 1.*?InterruptWriteAdmission = FALSE.*?KeReleaseSpinLock' -and
+    $interruptText -notmatch 'KeWaitFor|KeDelay|AllocatePool'
+}
+
+Test-Contract "INTEN acquisition bit and narrow teardown exceptions remain explicit" {
+    $interruptText -match '\(\(newMask \^ oldMask\) & 1\)' -and
+    $interruptText -match 'STATUS_DEVICE_BUSY' -and
+    $interruptText -match '(?s)WRITE_REGISTER_ULONG\(reg, newMask\).*?InterlockedExchange' -and
+    $interruptText -match 'op->ClearBits == 1 && op->SetBits == 0' -and
+    $interruptText -match 'devExt->InterruptHardwareUnavailable' -and
+    $deviceText -match '(?s)case IRP_MN_SURPRISE_REMOVAL:.*?LecInvalidateInterruptHardware.*?LecSetIoctlAdmission.*?LecDrainIoctls' -and
+    $acquisitionText -match 'LecMaskInterruptsForPnp\(DevExt\)'
 }
 
 Test-Contract "public packed register ABI size guards are still present" {

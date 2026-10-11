@@ -121,6 +121,7 @@
     <ClCompile Include="Pci.c" />
     <ClCompile Include="Acquisition.c" />
     <ClCompile Include="DmaCompletion.c" />
+    <ClCompile Include="InterruptControl.c" />
     <ClCompile Include="DmaLayout.c" />
     <ClCompile Include="DmaAdapterStage.c" />
     <ClCompile Include="DmaMappingOwner.c" />

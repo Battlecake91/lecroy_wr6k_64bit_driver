@@ -380,7 +380,18 @@ struct {
 
 The driver checks DWORD alignment and writes through `WRITE_REGISTER_ULONG`.
 
-BAR0 offset `0x84` is the `INTEN` register and is special-cased so the written value is cached.
+BAR0 offset `0x84` is `INTEN`. The native generic register read/write forms
+and SetOneRegister index 13 route through the device-wide INTEN owner.
+Reads remain physical; legacy register-list queries remain cached. Full-value
+writes may replace non-DMA bits but must preserve current acquisition bit 0,
+otherwise STATUS_DEVICE_BUSY is returned. This intentionally prevents unrelated
+controls from disabling an active acquisition or restoring a stale bit after
+cleanup. IOCTL numbers, packed layouts and successful Information=0 are unchanged.
+The gate is rechecked under the same lock as writes, so already admitted calls
+cannot change INTEN after STOP/quarantine closure. Surprise-unavailable blocks
+all INTEN MMIO. Other BAR/offset semantics are unchanged; BAR1+0x84 is MTTRGO,
+not INTEN. Successful WRITE_REGISTER_ULONG means issued, not hardware accepted
+or DMA idle. See [ownership and compatibility](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 
 ## Driver build query: 0xCFDC21C8
 

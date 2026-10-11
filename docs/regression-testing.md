@@ -312,7 +312,7 @@ Current Windows offline regression on 2026-10-12:
   kernel compilation did not start. This is not a C compilation result.
 - Separate x64 `lecdiag` and `lecwatch` builds: **PASS**, no reported warnings
   or errors (not run on hardware).
-- Source/ABI contracts **42/42 PASS**.
+- Source/ABI contracts **45/45 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -322,11 +322,14 @@ Current Windows offline regression on 2026-10-12:
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
 - Live DMA completion-state suite **39/39 PASS**.
 - Deterministic native instruction-interleaving suite **2/2 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**335/335** functional checks across
+- Native production INTEN helper checks **44/44 PASS** (within the DMA
+  completion suite, MMIO and kernel synchronization test doubles only).
+- Overall **REGRESSION SUITE PASS: Dry** (**382/382** functional checks across
   eight suites, 0 FAIL / 0 SKIP; driver build skipped).
 - Default stress: five scenarios x 1,000 iterations, **5,000/5,000 PASS**.
   Separate expanded stress: five scenarios x 10,000 iterations,
-  **50,000/50,000 PASS**, zero failed races.
+  **50,000/50,000 PASS**, zero failed races. INTEN RMW stress adds
+  **1,000/1,000 PASS** by default and **10,000/10,000 PASS** expanded.
 
 Completion tests compile the production tracker and cleanup decision with
 MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
@@ -349,6 +352,23 @@ or release certificate. Stress covers simultaneous observations, observation
 versus mask failure/timeout, consumption versus mask failure, and an old
 recorded generation versus a fresh generation. Finite repeated schedules are
 not exhaustive or a substitute for kernel synchronization/IRQL qualification.
+
+`test-interrupt-control.c` compiles the production InterruptControl.c with
+MSVC `/O2 /W4 /WX`. Array-backed MMIO and critical-section-backed kernel locks
+are test doubles, not device accesses. Tests cover acquisition enable/cleanup,
+generic full writes preserving or conflicting with bit 0, physical versus
+cached reads, receive-enable idempotence, mapping/length and synchronization
+failure, repeated acquisition, terminal quarantine, STOP closure, surprise
+unavailability and absent BAR rejection. Five gated two-thread schedules pause
+a writer inside the production critical section while another caller attempts
+an absolute update, RMW, STOP or quarantine. Expanded stress runs 10,000
+two-writer RMW schedules and checks both shadow and issued register value.
+No recoverable bus-error return is fabricated for WRITE_REGISTER_ULONG, whose
+production DDI is void. Failed mask issue feeds the separately tested actual
+completion tracker; no full acquisition/ISR/DPC or kernel IRQL execution is
+claimed. Late-IRQ filtering is checked against the shared shadow and production
+source contract, not by injecting a real IRQ. See the complete inventory and
+compatibility exception in [DMA lifetime](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 
 Reproduce offline validation from the repository root:
 
