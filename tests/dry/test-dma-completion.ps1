@@ -3,7 +3,10 @@
   Build and run hardware-independent live DMA completion-state tests.
 #>
 [CmdletBinding()]
-param()
+param(
+    [ValidateRange(1, 100000)]
+    [int]$StressIterations = 1000
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -41,3 +44,25 @@ else {
 
 & $exe
 if ($LASTEXITCODE -ne 0) { throw "DMA completion test execution failed." }
+
+$raceTest = Join-Path $PSScriptRoot "test-dma-completion-races.c"
+$raceExe = Join-Path $outDir "test-dma-completion-races.exe"
+$raceSources = @($raceTest, $source)
+if ($cl) {
+    Push-Location $outDir
+    try {
+        & $cl.Source /nologo /W4 /WX /O2 /DLECS65_DMA_COMPLETION_HOST_TEST /DLECS65_DMA_COMPLETION_INTERLEAVING_TEST /TC "/Fe:$raceExe" $raceSources
+        if ($LASTEXITCODE -ne 0) { throw "DMA race test build failed." }
+    }
+    finally {
+        Pop-Location
+    }
+}
+else {
+    $quotedSources = ($raceSources | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /O2 /DLECS65_DMA_COMPLETION_HOST_TEST /DLECS65_DMA_COMPLETION_INTERLEAVING_TEST /TC /Fe:`"$raceExe`" $quotedSources"
+    & $env:ComSpec /d /s /c $cmd
+    if ($LASTEXITCODE -ne 0) { throw "DMA race test build failed." }
+}
+& $raceExe $StressIterations
+if ($LASTEXITCODE -ne 0) { throw "DMA race test execution failed." }

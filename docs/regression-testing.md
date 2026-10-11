@@ -304,13 +304,14 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows offline regression on 2026-10-11:
+Current Windows offline regression on 2026-10-12:
 - `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **PASS**.
 - Debug|x64 driver build: **BLOCKED**, MSB8036, required SDK/WDK
   10.0.28000.0 unavailable. Installed SDK 10.0.26100.0 has no kernel headers
-  or libraries. The first sandboxed attempt also hit SDK discovery access
-  denial; retry with local SDK access established the missing-toolchain blocker.
-- Separate x64 `lecdiag` and `lecwatch` builds: **PASS** (not run on hardware).
+  or libraries. The current build attempt reports 0 warnings / 1 setup error;
+  kernel compilation did not start. This is not a C compilation result.
+- Separate x64 `lecdiag` and `lecwatch` builds: **PASS**, no reported warnings
+  or errors (not run on hardware).
 - Source/ABI contracts **42/42 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
@@ -320,7 +321,12 @@ Current Windows offline regression on 2026-10-11:
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
 - Live DMA completion-state suite **39/39 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**333/333** checks, build skipped).
+- Deterministic native instruction-interleaving suite **2/2 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**335/335** functional checks across
+  eight suites, 0 FAIL / 0 SKIP; driver build skipped).
+- Default stress: five scenarios x 1,000 iterations, **5,000/5,000 PASS**.
+  Separate expanded stress: five scenarios x 10,000 iterations,
+  **50,000/50,000 PASS**, zero failed races.
 
 Completion tests compile the production tracker and cleanup decision with
 MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
@@ -332,6 +338,43 @@ status propagation, poison-before-notification, DPC/event lifetime locking,
 unregister list ownership and ordered PnP rundown. These guards do not execute
 the full acquisition/unregister path or prove kernel race freedom. No hardware
 access, driver loading, Verifier or live DMA mapping was performed.
+
+`test-dma-completion-races.c` compiles the actual `DmaCompletion.c` with native
+Windows interlocked instructions and MSVC `/O2 /W4 /WX`. A test-only wrapper pauses one chosen thread
+after an instruction completes; it does not replace the atomic operation with
+a model. It forces delayed marker publication after UnknownActive and an
+already-validated consumer returning TRUE after failed finalization. Both cases
+retain terminal ownership: neither the marker nor the return value is an idle
+or release certificate. Stress covers simultaneous observations, observation
+versus mask failure/timeout, consumption versus mask failure, and an old
+recorded generation versus a fresh generation. Finite repeated schedules are
+not exhaustive or a substitute for kernel synchronization/IRQL qualification.
+
+Reproduce offline validation from the repository root:
+
+```powershell
+.\scripts\test-driver.ps1 -Mode Dry -SkipBuild
+.\tests\dry\test-dma-completion.ps1 -StressIterations 10000
+.\scripts\build-lecdiag.ps1
+.\scripts\build-lecwatch.ps1
+```
+
+For a genuine driver build, install the project's SDK **and** WDK
+10.0.28000.0 with the VS 2022 C++ toolchain. Missing components include SDK
+platform metadata/user-mode headers and WDK `Include\10.0.28000.0\km\ntddk.h`,
+matching shared headers, and `Lib\10.0.28000.0\km\x64\ntoskrnl.lib`, `hal.lib`
+and `wmilib.lib` under `C:\Program Files (x86)\Windows Kits\10`.
+The available SDK 10.0.26100.0 contains only user-mode/shared/UCRT support;
+no kernel-header/library retarget or native-test substitution was used.
+On the properly provisioned owner machine, run without installing/loading:
+
+```powershell
+.\scripts\build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch
+.\scripts\test-driver.ps1 -Mode Dry
+```
+
+PR #10 is a software-reviewed candidate with an outstanding kernel-build
+gate, not a build-qualified or hardware-qualified release.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

@@ -2,7 +2,7 @@
 
 ## Build and software regression
 
-- Current offline check (2026-10-11): x64 `lecdiag` and `lecwatch` build
+- Current offline check (2026-10-12): x64 `lecdiag` and `lecwatch` build
   successfully. The Debug driver build is blocked by missing SDK/WDK
   10.0.28000.0 (MSB8036); this environment has SDK 10.0.26100.0 without kernel
   headers/libraries. No current driver build or hardware qualification is claimed.
@@ -15,7 +15,10 @@
 - Current result: source/ABI 42/42, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
-  overall 333/333 PASS with `-Mode Dry -SkipBuild`.
+  plus deterministic interleavings 2/2; overall 335/335 PASS with
+  `-Mode Dry -SkipBuild`, and 5,000/5,000 default stress races PASS.
+  Separate expanded stress: 50,000/50,000 PASS, zero failures. Native C tests
+  use `/W4 /WX`; no full kernel acquisition/rundown execution is claimed.
 
 ## DMA/PnP staging
 
@@ -73,6 +76,12 @@
   Busy transfer selection cannot reset the current tracker. See the
   [normal-success audit](dma-lifetime-and-timeout.md#normal-success-cleanup-audit-and-implementation-boundary)
   for compatibility limits and future live-WDM prerequisites.
+- The second-pass PR #10 review found no newly demonstrated production defect
+  in its changes. Deterministic native tests demonstrate that an already
+  in-flight marker publisher/consumer can return TRUE after uncertainty wins;
+  that result is not release authority. Serialized owner and event lifetime
+  locking remain prerequisites. Integrated kernel scheduling and device-wide
+  INTEN register-control serialization remain unqualified.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

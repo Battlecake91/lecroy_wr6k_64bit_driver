@@ -1,6 +1,6 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **software-only legacy completion/cleanup hardening**, 2026-10-11.
+Status: **software-only legacy completion/cleanup second-pass review**, 2026-10-12.
 Implementation base: `fix/p0-irq-start-dma-gating` at `82b4c4e`.
 Research reference only: PR #9 at `6d0fbfa`; no research merge.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
@@ -187,6 +187,57 @@ The normal-success compatibility exception is deliberately unchanged:
 unpoisoned resources on that evidence. Its IRQ-to-final-device-access and host
 visibility ordering remains unverified. This patch does not solve that hardware
 lifetime problem or authorize live WDM DMA acquisition.
+
+### Concurrent execution review
+
+The exact PR #10 diff at `3787baa` against development base `82b4c4e`
+was reviewed independently of its previous test pass. No additional production
+defect in those changes was demonstrated; no production behavior is changed by
+the second-pass test/documentation update. Normal success remains the explicit
+legacy compatibility exception, not a newly established release guarantee.
+
+| Race | Result / required synchronization | Evidence boundary |
+| --- | --- | --- |
+| Two IRQ observations / duplicate after consumption | Only the first active-to-observed CAS publishes a marker. | Actual C native thread tests and repeated simultaneous observations. Real ISRs additionally share the interrupt synchronization domain. |
+| IRQ publication versus failed cleanup | An ISR paused after the phase CAS can publish its marker after cleanup sets UnknownActive. That marker cannot restore the phase or permit subsequent consumption/release. | Deterministically paused native interlocked instruction; timeout and mask-failure stress. |
+| DPC consumption versus failed cleanup | A consumer paused after checking Observed can still return TRUE after UnknownActive is set. This is a possible CPU wake, not release authority. The owner retains resources and later consumption/reuse fails. | Deterministically paused actual C consumer and consumption/mask-failure stress. |
+| Selection while a transfer is selected | Busy check and preparation share DmaCompletionLock; rejection leaves the current tracker untouched. | Source/lock audit and integration guard; full selection function is not host-executed. |
+| Timeout versus completion | Failed finalization wins regardless of prior/late observation; no late success can recover unknown ownership. | Native ordered cases and repeated concurrent calls. |
+| STOP/REMOVE versus completion | Admission closes and synchronous owners drain before IRQ/DPC/list teardown. The current transfer owner, not a second PnP finalizer, resolves the wait. | Production call-path audit plus fake publication/IRP tests; no real kernel PnP execution. |
+| IRQ after deselection | ISR reads active generation zero and does not hold a transfer pointer; DPC finds no selected transfer. | Source audit. A delayed physical source after a later GO remains untagged and unresolved. |
+| Quarantine versus unregister/process close | Both live cleanup classification and unregister/process list access are serialized by TransferMutex. Poison precedes deselection and mutex release; unregister rejects poisoned ownership. | Call-path/lock audit plus independent retention tests; integrated legacy unregister scheduling is not executed. |
+| Reuse after success / failure then next acquisition | Success can prepare a fresh legacy generation; stale recorded generations fail. Mask failure leaves a terminal tracker and device latch before releasing the owner mutex. | Native success/reuse and failure tests; stale/new observation stress. |
+
+The tracker contains naturally aligned 64-bit generation fields; interlocked
+operations supply CPU atomicity/order, not a transactional update of all fields
+and not completion of posted PCI writes. Initialize requires unpublished
+storage. Prepare/finalization require the serialized transfer owner; the
+completion lock also protects selected pointer/event handoff. An arbitrary
+concurrent Prepare versus an old helper invocation is not a supported lock-free
+API. GO/active publication excludes old in-flight ISR execution through
+KeSynchronizeExecution; software identity still cannot tag a physical source.
+
+Lock/IRQL audit: the owner holds TransferMutex before acquiring the completion
+spinlock. DPC event access stays inside that spinlock; ISR never takes it or
+dereferences a transfer. Prepare now runs at DISPATCH_LEVEL using only resident
+interlocked helpers, without waits, allocation or MMIO. The GO callback runs in
+the interrupt synchronization domain with only existing MMIO and atomic state
+operations, and is not called while holding the completion spinlock. Teardown
+releases that spinlock before acquiring TransferMutex, so the reviewed paths
+introduce no reverse nested lock order. The non-atomic DmaUnsafeToFree flag is
+protected by owner/list serialization and dispatch/PnP rundown, not by the
+tracker atomics alone.
+
+Remaining software qualification gaps: the host tests execute the production
+tracker, not the complete ISR/DPC/acquisition/unregister implementation. They
+do not emulate kernel IRQL, spinlock scheduling, weak/unsupported caller
+ordering, generation wraparound or actual STOP/REMOVE. General register-control
+IOCTLs can also write INTEN outside the acquisition mutex; this review does not
+establish a device-wide serialized read/modify/write contract for those callers.
+Consequently successful mask cleanup is neither a durable mask-ownership
+certificate nor permission to release hardware-active memory. A separate
+register-control ownership review and integrated kernel/Verifier scheduling
+tests remain necessary. No quarantine or hardware-shutdown policy was relaxed.
 
 Before future live WDM integration, independently establish stopped producers,
 stopped descriptor consumption, no new busmaster transactions, terminal
