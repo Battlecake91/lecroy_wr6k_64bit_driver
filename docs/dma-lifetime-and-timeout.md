@@ -52,6 +52,14 @@ are kept in the focused audit.
 
 ### Applicable release decision
 
+The [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) now recovers
+complete SGTA/IIMTC capture alternatives, two32-bit read-word banks, counter
+D-word equations and the done/sticky-IRQ pipeline. None establishes the
+final accepted PCI phase or bridge write retirement. PCI-SIG specifies no
+ordering relationship between sideband INTx and PCI transactions; therefore
+IRQ completion needs a hardware/platform-specific ordering premise even if
+the FPGA's terminal-descriptor event is correctly attributed.
+
 The current offline [FPGA/MCU partial proof](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown)
 does not change this decision. Source-backed reverse-SR and a two-FPGA
 START/SACQ diagnostic now demonstrate retained local state after START=0,
@@ -99,6 +107,8 @@ The Windows obligations are additional to device stop, not a way to obtain it:
   produce undefined behavior. It is not an FPGA/FIFO idle poll. Do not prescribe
   every DDI together: cleanup must match the API and adapter resources actually
   acquired, including IRQL and callback lifetime requirements.
+  Map-register/common-buffer/adapter teardown must not precede proven device
+  retirement and applicable host completion.
 
 The focused audit also verifies unsupported legacy `IRP_MJ_SHUTDOWN`, the
 timer rather than DMA-event wait preceding family-2 MTTCTL writes, and the

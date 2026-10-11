@@ -40,6 +40,10 @@ Write-Host 'Synthetic target MMIO tests and opt-in private MMIO report regressio
 & $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_mmio.py') -v
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Write-Host 'PCI initiator, descriptor capture and retirement evidence tests'
+& $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_dma.py') -v
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host 'Synthetic acquisition protocol tests and opt-in private receiver/SMT regressions'
 & $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_fpga_acquisition.py') -v
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

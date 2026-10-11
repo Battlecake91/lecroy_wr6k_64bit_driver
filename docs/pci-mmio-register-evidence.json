@@ -7,7 +7,7 @@
   "stable_until_explicit_restart": "Unknown",
   "verification": {
     "date": "2026-10-11",
-    "python_tests": {"c166": 18, "routing": 45, "mmio": 50, "acquisition": 65, "symbolic": 45, "total": 223, "status": "PASS"},
+    "python_tests": {"c166": 18, "routing": 45, "mmio": 50, "pci_dma": 31, "acquisition": 65, "symbolic": 45, "total": 254, "status": "PASS"},
     "private_checks": {"frame_calibration": "PASS", "native_architecture": 50, "pci_local_equations": 19, "status": "PASS"},
     "driver_dry_tests": {"source": 35, "completion": 24, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 311, "status": "PASS"},
     "not_run": ["WDK build", "hardware/MMIO/DMA/reset/programming experiments"],
@@ -20,6 +20,40 @@
     "existing_pci_transactions_terminated": "Unknown",
     "internal_buffers_drained": "Unknown",
     "host_dma_writes_completed": "Unknown"
+  },
+  "pci_dma": {
+    "document": "pci-dma-retirement-analysis.md",
+    "scope": "Configured topology, local cuts and counter D equations; no complete legal-PCI reachability, hardware revision or safe shutdown certificate",
+    "local_equations": {"status": "Verified", "count": 13, "checker": "tools/fpga/virtexe_dma.py:RELATIONS", "tests": "tests/dry/test_fpga_dma.py"},
+    "capture_bits": {"status": "Verified", "sgta": "AD[31:2], 30 FFs", "iimtc": "AD[31:0], 32 FFs", "word_a": 32, "word_b": 32, "condition": "Actual AD input TBUS alternative enabled and unique bus ownership; the latter is not assumed by capture topology tests"},
+    "descriptor_roles": {"status": "Inferred", "word_a": "Address candidate and whole-word zero detector X22,Y21 SLICE[1].X", "word_b": "32-bit segment counter source", "missing": "Complete owned two-DWORD fetch, pointer advance and chain/terminal retirement invariant"},
+    "counter_data": {
+      "status": "Verified",
+      "iimtc": {"bank": "X29,Y13..28 SLICE[1].XQ,YQ low-to-high", "equation": "(cl && reload) ? captured_IIMTC : old-1 modulo2^32", "condition": "D word only; distinct low/high CE gates not assumed continuously enabled"},
+      "segment": {"bank": "X20,Y10..25 SLICE[0].XQ,YQ low-to-high", "equation": "load ? word_B : (pending ? 2 : old-1) modulo2^32", "condition": "Matched load-replica state after matched INIT/clock; D word only"}
+    },
+    "completion_source": {"status": "Verified", "done": "X22,Y11 SLICE[0].YQ", "irq": "X22,Y11 SLICE[0].XQ", "equations": "C'=(cl&&C)||(L&&Z); IRQ'=C||(IRQ&&!(INTST_write&&TBUS_data0))", "retirement_implication": "Unknown", "physical_irq_provenance": "Unknown"},
+    "receive_bram": {"status": "Verified", "banks": ["X46,Y9 BRAM", "X46,Y13 BRAM"], "shape": "two256x16 halves", "write_clock": "X24,Y0 BUFGCE[0].O", "write_enable": "X43,Y10 SLICE[1].YQ", "read_clock": "X24,Y29 BUFGCE[1].O", "drained": "Unknown"},
+    "output_boundary": {"status": "Unknown", "signals": "All AD[31:0]/CBE#[3:0] output FF CE = X0,Y13 PCILOGIC.PCI_CE", "mux_alias": "X27,Y17 SLICE[0].Y input2: X0,Y19 IOI[3].IQ versus X1,Y17 BRAM.DOB[1]"},
+    "bounded_queries": {
+      "bound": 1, "base_consistency": "10 SAT", "sat": 9, "unsat": 1, "solver_unknown": 0, "status": "Inconclusive",
+      "initial_state": "Arbitrary runtime FF/memory; RST# deasserted; one PCI edge, no other-domain edge; no fairness",
+      "unknown_count": 218,
+      "results": [
+        {"number": 1, "query": "Qualified IIMCL clear with active driven REQ#", "solver": "sat"},
+        {"number": 2, "query": "Actual IRQ source rises with FRAME/REQ activity; final identity unknown", "solver": "sat"},
+        {"number": 3, "query": "Pointer bit2 candidate changes on clear; full advancement unknown", "solver": "sat"},
+        {"number": 4, "query": "Receive write disabled/no remote edge with PCI activity; payload provenance unknown", "solver": "sat"},
+        {"number": 5, "query": "STOP0/TRDY1 R0=1 Rd1=1 with active REQ excluded; not eventual retry retirement", "solver": "unsat"},
+        {"number": 6, "query": "Host timeout with PCI activity; timeout not an FPGA input", "solver": "sat"},
+        {"number": 7, "query": "IIMCL restart with request pending before/after", "solver": "sat"},
+        {"number": 8, "query": "IIMCL clear with receive write admission enabled", "solver": "sat"},
+        {"number": 9, "query": "Untagged actual IRQ latch; generation provenance unknown", "solver": "sat"},
+        {"number": 10, "query": "Enabled final ready phase; ownership assumed and host completion unmodeled", "solver": "sat"}
+      ],
+      "interpretation": "Local runtime candidates, not initialized reachable hardware counterexamples; no bounded result proves unbounded stop"
+    },
+    "shutdown_obligations": "All six Unknown; stable until explicit restart Unknown; preserve UnknownActive"
   },
   "shutdown_evaluation": {
     "producer_stopped": {"status": "Unknown", "obstruction": "MTTCTL bit 0 and physical START level transition recovered; downstream producer execution/acknowledgement unresolved; independent MAM load state retained"},
@@ -399,7 +433,7 @@
       "name": "SGTA",
       "mmio": {"status": "Verified", "bar": 0, "offset": "0x040", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
       "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x040", "gates": ["X17,Y13 SLICE[0].Y", "X17,Y13 SLICE[1].X"]},
-      "destination": {"status": "Inferred", "kind": "local FF banks fed by internal TBUS", "note": "Partial descriptor-address storage candidate; full bit layout not certified"},
+      "destination": {"status": "Verified", "kind": "30 local FFs with exact AD[31:2] TBUS capture alternatives", "note": "Unique active bus ownership and complete fetch/advance lifecycle remain Unknown", "evidence_ref": "pci_dma.capture_bits"},
       "status_source": {"status": "Unknown", "reason": "No complete readback word or descriptor-consumption acknowledgement"},
       "dma_safety": {"status": "Unknown", "reason": "Address publication does not prove consumption stopped or descriptors retired"}
     },
@@ -407,7 +441,7 @@
       "name": "IIMTC",
       "mmio": {"status": "Verified", "bar": 0, "offset": "0x044", "width_bits": 32, "operations": ["write"], "legacy_function": "0x171DE"},
       "decoded_address": {"status": "Verified", "condition_ref": "local_write", "register_value": "0x044", "gates": ["X15,Y12 SLICE[0].X", "X16,Y12 SLICE[0].Y"]},
-      "destination": {"status": "Inferred", "kind": "two local 16-FF banks fed by TBUS", "note": "Length/counter load candidate, not an idle predicate"},
+      "destination": {"status": "Verified", "kind": "two16-FF banks with exact AD[31:0] TBUS capture alternatives", "note": "Feeds recovered32-bit reload/decrement D equation; CE scheduling/readback and retirement remain separate", "evidence_ref": "pci_dma.counter_data.iimtc"},
       "status_source": {"status": "Unknown", "reason": "No fully correlated counter readback or final-host-write retirement bit"},
       "dma_safety": {"status": "Unknown", "reason": "Count exhaustion and PCI transaction retirement must be proven separately"}
     },

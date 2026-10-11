@@ -3585,7 +3585,7 @@ and PR#9 draft/open/unmerged remain unchanged.
 | Layer | Confirmed behavior | Safety consequence | Remaining evidence |
 | --- | --- | --- | --- |
 | Original x86 | 171DE publishes SGTA/IIMTC, IIMCL1 then one GO; ISR108D6 clears IIMCL; 137C4 clears MTTCTL; MAM postlude reads IIMST once | Timeout/IRQ/postlude are not a drain protocol | Generation-attributed final hardware completion and ordering contract |
-| PCI FPGA | BAR comparators, local IIMCL gates, mixed IIMST bit0 mux and REQ/FRAME/IRDY equations; reverse-SR read state now modeled | IIMCL0 with REQ active remains a conditional cut witness | PCILOGIC/PCIIOB timing and reachable descriptor/initiator state invariants |
+| PCI FPGA | BAR comparators, SGTA30/IIMTC32 and two32-bit AD capture banks, two counter D-word equations, done/IRQ pipeline and REQ/FRAME/IRDY equations | IIMCL0 with REQ active remains a conditional cut witness; IRQ source is not final PCI retirement | PCILOGIC/PCIIOB timing, complete address/command ownership and reachable descriptor/initiator invariants |
 | LVDS | Three phases, address/data pairing, parity, partial/repeated-word qualification and32-bit return mapping | Reception or sticky error/event is not retirement | Clock/CDC/error recovery and uniquely matched response/epoch |
 | U21 | MTTCTL clears E then START; SACQ three-stage return; independent counters and TX phase | No common durable stop gate recovered | Mode arbitration tied to actual external producer and response ownership |
 | U38 | Loader/pin-role correlation; START level/edge paths; synchronous producer SR/REV; delayed SACQ | START0 does not clear all retained runtime state | HAD639E/HTB645 acquisition and final-sample contracts, installed image/bank |
@@ -3596,9 +3596,13 @@ and PR#9 draft/open/unmerged remain unchanged.
 
 Dependency/impact backlog (no new hardware observation authorized):
 
-1. **Closed locally:** sparse MCU startup/serial-loop and flash-offset mapping,
-   dual SR/REV, SACQ physical return and bounded two-FPGA retention diagnostic.
-   Effective bank/configuration success is explicitly not closed.
+1. **PCI initiator/descriptor closure:** [PCI DMA retirement analysis](pci-dma-retirement-analysis.md)
+   is the canonical configured transition/lifecycle table, counter equations,
+   completion pipeline, receive-BRAM boundary, ten bounded diagnostics and
+   Windows/PCI ordering assessment. Capture topology and local equations are
+   closed; own-master command/address, pointer advancement, retry conservation
+   and IRQ-to-final-transaction reachability are not. Do not repeat the already
+   recovered MCU startup, loader or U21/U38 framing work.
 2. **External producer contract:** HAD639E and HTB645 definitions for accepted
    startstop/EndACQ, maximum pending samples, final memory write, clock-domain
    latency and retained/restart state. Existing diagrams are connectivity only;

@@ -16,16 +16,23 @@
   overall 311/311 PASS.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
   45 routing, 50 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
-  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), and 45 synthetic SMT tests:
-  **223/223 PASS**, plus private frame calibration,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 31 PCI DMA (8 synthetic,
+  20 private configured-logic, 3 private SMT), and 45 synthetic SMT tests:
+  **254/254 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
   sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
   local START/SACQ cones and buffer-admission limitations are documented in
   [FPGA analysis](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown).
   Stream1-to-U38 assignment is strongly inferred, not a live-image assertion.
-  All six DMA-quiescence obligations remain Unknown; no new driver build or
-  hardware test was performed for this offline analysis. PR #9 remains unmerged.
+  [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) adds exact
+  SGTA/IIMTC/two-word capture maps, 13 local equations and two 32-bit counter
+  D-word proofs. Ten additional bound1 runtime diagnostics yield nine SAT and
+  one UNSAT with ten consistent bases and zero solver-unknown results; all
+  are Inconclusive for physical shutdown, with 218 symbolic boundaries.
+  All six DMA-quiescence obligations and stable restart exclusion remain
+  Unknown. No new driver build or hardware test was performed for this offline
+  analysis. PR #9 remains unmerged.
 
 ## DMA/PnP staging
 
