@@ -14,11 +14,13 @@
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 24/24;
   overall 311/311 PASS.
-- Offline FPGA analysis regression: 45 routing, 49 MMIO, 61 acquisition
-  (10 synthetic, 21 private configured-logic, 24 U21 SMT, 6 timebase SMT),
-  and 40 synthetic SMT tests: **195/195 PASS**, plus private frame calibration,
+- Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
+  45 routing, 50 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), and 45 synthetic SMT tests:
+  **223/223 PASS**, plus private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
+  sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
   local START/SACQ cones and buffer-admission limitations are documented in
   [FPGA analysis](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown).
   Stream1-to-U38 assignment is strongly inferred, not a live-image assertion.

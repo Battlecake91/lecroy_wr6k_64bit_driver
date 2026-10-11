@@ -4,6 +4,15 @@
   "project_combine_commit": "234343d23e737e57f2727630e19008b509d7d522",
   "labels": ["Verified", "Inferred", "Unknown"],
   "safety": "UnknownActive; no DMA release permission; PR 9 must remain unmerged",
+  "stable_until_explicit_restart": "Unknown",
+  "verification": {
+    "date": "2026-10-11",
+    "python_tests": {"c166": 18, "routing": 45, "mmio": 50, "acquisition": 65, "symbolic": 45, "total": 223, "status": "PASS"},
+    "private_checks": {"frame_calibration": "PASS", "native_architecture": 50, "pci_local_equations": 19, "status": "PASS"},
+    "driver_dry_tests": {"source": 35, "completion": 24, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 311, "status": "PASS"},
+    "not_run": ["WDK build", "hardware/MMIO/DMA/reset/programming experiments"],
+    "scope": "Offline analysis and software regression, not hardware qualification or a six-obligation quiescence proof"
+  },
   "release_obligations": {
     "producer_stopped": "Unknown",
     "descriptor_engine_stopped": "Unknown",
@@ -31,7 +40,7 @@
       "ram": "U28 MT48LC8M8A2TG-75 external SDRAM",
       "start_ball": "AA5",
       "downstream_start_ball": "Revision-B U38 N2, sheet18/PDF286, FPGA bus bit18; M1 is SACQ, correcting earlier stepped-net transcription",
-      "downstream_mapping": {"status": "Inferred", "strength": "Strong but incomplete", "evidence": "Stream1 N2 CMOS input at X0,Y12 IOI[3], M1 output at X0,Y14 IOI[1], complementary D2/D1 PCCLKP/N outputs agree with schematic. Former M1 conflict disproved", "required": "Static C161PI configuration-device/stream-order mapping and actual installed assembly/firmware identity"},
+      "downstream_mapping": {"status": "Inferred", "strength": "Conditional on selected bank and successful serial configuration", "evidence": "Stream1 N2 input/M1 output/D2-D1 clock fingerprint, physical U21 DOUT to U38 DIN, C161 acquisition source+0x100000 and two-stream loop length correlate", "required": "Effective bank, serial configuration success and actual installed assembly/firmware identity"},
       "external_producer": "Sheet28/PDF296 U50 HAD639E; producer stop/end-of-data contract not established",
       "clock_balls": {"RX_CLK_P": "A11/GCK2", "BRD_CLK_125_CTRL": "AA12/GCK0", "125MHZ_MTT_P": "AB12/GCK1"},
       "clock_limit": "Board labels/connectivity; effective DLL clocks, phase and running frequency not inferred from labels"
@@ -44,8 +53,8 @@
       "stream_0_sha256": "227cba1ae543cf78b5b6d5700f719340e18df63850ec270eea47b5855c404337",
       "stream_1_sha256": "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b",
       "role_status": "Inferred",
-      "role_evidence": "Stream0 U21 RX/command fingerprint; stream1 U38 START=N2 input, SACQ=M1 output and complementary D2/D1 clock fingerprint. Strong but incomplete inference; serial loader order and live revision not established",
-      "mcu_resource": "BINARY.203: sparse Intel HEX, 56792 bytes; preserve addresses including 0x200000 range; no MCU execution/firmware export analyzed"
+      "role_evidence": "Stream0 U21 RX/command fingerprint; stream1 U38 START=N2 input, SACQ=M1 output and complementary D2/D1 clock fingerprint; C161 serial-loop/flash-offset correlation supports this update-image assignment, not live revision",
+      "mcu_resource": "BINARY.203: 56792 sparse bytes including executable candidates at0x200000; reset/serial loops and initial base decoded statically, no MCU execution"
     },
     "receiver": {
       "status": "Verified",
@@ -97,7 +106,7 @@
     },
     "remaining_work": [
       "Establish physical DLL/CDC/error-feedback acceptance under partial/repeated wire frames; logical qualification and parity equations are recovered",
-      "Complete static C161PI configuration-device/stream-order mapping and installed revision identity; former START/M1 conflict was incorrect, actual START=N2 agrees with stream1",
+      "Establish effective selected bank, serial configuration success and installed revision identity; C161 source/loop mapping recovered and START=N2 agrees with stream1",
       "Establish HAD639E external producer stop/end-of-data semantics; no available x86 export provides this contract",
       "Correlate full U21 mode arbitration around X27,Y8 SLICE[0].XQ and command-specific response/epoch association with unresolved downstream producer and PCI retirement contracts; local return bookkeeping/sticky MAM event now reconstructed but not global quiescence",
       "Establish installed/live revision, effective clock assumptions, authoritative Spartan-IIE PCI_CE contract and platform DMA retirement independently"
@@ -106,10 +115,28 @@
   "timebase_shutdown": {
     "date": "2026-10-11",
     "identity_status": "Inferred",
-    "identity_strength": "Strong but incomplete; not a live-firmware assertion",
+    "identity_strength": "Pin-role, physical-chain and MCU-loader-correlated update-image assignment; conditional bank/configuration success, not a live-firmware assertion",
     "schematic_correction": {"status": "Verified", "start": "U21 AA5 -> FPGA bus18 -> U38 N2", "sacq": "U38 M1 output", "bond85": {"N2": [0, 12, 3], "M1": [0, 14, 1]}},
-    "physical_configuration_chain": {"status": "Verified", "data": "sheet37/PDF305 U21 C21 DOUT -> MTT bus27; sheet18/PDF286 DIN_TB -> sheet17/PDF285 U38 C22 DIN", "clock": "U21 B22 CCLK -> bus26 -> U38 B22 CCLK", "program": "sheet19/PDF287 U38 PROGRAM_B -> bus28 ATC_PROG", "limit": "Physical chain only; effective C161 resource/byte-feeding sequence and installed revision Unknown"},
-    "loader_audit": {"status": "Verified", "hwupgrade_sha256": "0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1", "resource": "devicepack default AcqFpgaResId204 -> FindResourceA/LoadResource/LockResource -> Intel HEX text", "upgrade": "hwupgrade1001067C BothAcq path; devicepack getter indirect vtable+0x1A8 at1001087F; generic configuration selector2 at1000714A allocates0x80000 and calls10006C55", "limit": "Combined acquisition-resource handling, not proof of physical serial configuration-device order. No DLL executed"},
+    "physical_configuration_chain": {"status": "Verified", "data": "sheet37/PDF305 U21 C21 DOUT -> MTT bus27; sheet18/PDF286 DIN_TB -> sheet17/PDF285 U38 C22 DIN", "clock": "U21 B22 CCLK -> bus26 -> U38 B22 CCLK", "program": "MCU P2.10 _PROG/UC-control1 -> U21 PROG_B and ATC_PROG bus28 -> U38 PROG_B", "limit": "Connectivity and static byte-feeding recovered; effective bank/configuration success and installed revision Unknown"},
+    "loader_audit": {"status": "Verified", "hwupgrade_sha256": "0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1", "resource": "devicepack default AcqFpgaResId204 -> FindResourceA/LoadResource/LockResource -> Intel HEX text", "upgrade": "1001067C BothAcq path; getter vtable+0x1A8 at1001087F; selector2 allocates0x80000 at1000714A. Function1000450F selector2 offset0x100000 at10004833, selector3 offset0x180000 at10004823; MCU loops independently agree", "limit": "Static dispatch, not successful flash update or installed image. No DLL executed"},
+    "c161_loader": {
+      "status": "Verified",
+      "scope": "Static sparse-memory instructions and reviewed hardware wiring; conditional image assignment, not CPU execution proof",
+      "source": "BINARY.203 from identified devicepack; drawing901587 revB sheets39-40",
+      "sparse_identity": {"algorithm": "SHA256 of sorted u32le address followed by byte", "sha256": "c81c6023eda3ac9618f5a4934a4e25ccf39a4d06c7d44601b2c858300f91dcf3", "mapped_bytes": 56792, "spans": 8},
+      "decoder": {"repository": "https://github.com/ayyo42069/c166-disasm-plugin", "commit": "35d4488ee6b35d246dfc0dc87e0667b385f9d43e", "pin": "Four LF-normalized file SHA256 values enforced before import in c166_firmware.py; external GPL decoder not vendored", "authority": "https://www.keil.com/dd/docs/datashts/infineon/c166ism.pdf", "limit": "Display BFLDL/H/EXT and extended-SFR context incomplete; branch/EXT/serial-loop metadata independently checked"},
+      "inventory": {"instructions": 10612, "direct_flow_boundaries": 0, "operand_boundaries": 969, "limit": "Syntactic candidates with six vector entries/five reviewed bounded tables; no DPP execution/interrupt admission/reachability proof"},
+      "reset": "0 -> 0F38 -> 0E18 startup copies -> 0FF4 -> 3DF8 -> 3E7C -> 3ECE; 3EDE calls6D6C; 6D78 calls6F1C first",
+      "initial_base": "Startup tag6 record at1628 sequence copies6380/length0x78 toE6FC; first4bytes zero. Base page3:26FC/26FE, later640C/6410 also zero; no exclusion of indirect aliases/external bank selection",
+      "pins": {"P2.8": "pin87 _FPGA_INIT/UC11", "P2.9": "pin88 DIN/UC10", "P2.10": "pin89 _PROG/UC1", "P2.11": "pin90 DONE/UC8", "P2.12": "pin91 CCLK/UC7", "P2.13": "pin92 CCLK_PCI/UC12"},
+      "acquisition": {"entry": "6D6C", "source": "base+0x100000 at6DC0; word load6DCE", "loops": ["6DD0", "6E72"], "clock_bit": 12, "source_bytes": 360526, "length": "88*0x7F00 bits + ceil(0x5A64/16)*16 bits; six bytes beyond360520-byte resource"},
+      "pci": {"entry": "6F1C", "source": "base+0x180000 at6F6C", "loops": ["6F7C", "701E"], "clock_bit": 13, "source_bytes": 180260, "length": "44*0x7F00+0x2D20 bits"},
+      "serial_order": "Each word bit0..15: BSET clock, BMOV P2.9 from R15 bit, BCLR clock. Rising edge precedes assignment: first sample previous DIN, final assigned bit needs next edge",
+      "done_gate": "6D86/6F32 test P2.11 DONE and skip respective loader if high; not _FPGA_INIT or DMA idle; no final DONE poll established",
+      "direction_cleanup": "6F02..6F12 clears DP2.9;70AE..70C0 clears DP2.13",
+      "confidence": "Verified instructions/pins; Inferred stream0 U21/stream1 U38 conditional selected bank and successful configuration; live identity Unknown",
+      "tests": "test_c166_firmware.py:14 synthetic+4 private, exact private sparse hash, reset calls, four serial word loops, offset/length operands, DONE gate and startup base"
+    },
     "start_consumer": {
       "status": "Verified",
       "scope": "Configured stream1; physical U38 assignment Inferred",
@@ -121,7 +148,9 @@
       "falling_edge": "X3,Y10 SLICE[0].YQ D=!self, CE=!sync2&&sync3; falling-edge toggle, not stopped ACK",
       "rising_edge": "X10,Y1 SLICE[1].YQ delays level3; X16,Y1 SLICE[0].YQ and X16,Y1 SLICE[1].YQ D=level3&&!previous, separate CE/state paths",
       "sacq": "M1 registered output from X4,Y14 SLICE[0].SRL16E tap2; shift input=X18,Y1 SLICE[0].YQ OR X15,Y2 SLICE[0].XQ, CE1; three shifts plus output capture, no SRL reset",
-      "producer_boundary": "X15,Y2 SLICE[0].XQ configured FF_REV_ENABLE=1, reverse-SR priority unmodeled. Trigger admission, sampling and all producer drainage cannot be equated",
+      "producer_boundary": "X15,Y2 SLICE[0].XQ now modeled synchronous reset-dominant dual SR/REV INIT0 CE1; reset=X11,Y1 SLICE[0].X=X11,Y1 SLICE[1].YQ XOR X11,Y2 SLICE[0].YQ, preset=X18,Y1 SLICE[1].Y. START0 is not an async clear; complete sampling/drain semantics Unknown",
+      "sacq_return": "Sheet18 U38 M1 -> bus19 -> sheet38 U21 W3 (Y3 GND); W3.IQ -> X5,Y1 SLICE[0].YQ -> X10,Y6 SLICE[1].YQ, U21 X24,Y0 BUFGCE[0], CE1, local async reset. Connectivity reaches MTT advance and buffer-admission state; no final-operation claim",
+      "had_boundary": "U50 HAD639E sheet28 startstop J18/startstopn J17 via sheet27 ACQ_CTRL11/12=HADACQ2/3; not U21 START wire. Pending sample/final write/latency/restart contract unavailable",
       "clock_assumptions": "Local edge schedules only; no U38/U21/PCI frequency, phase or synchronized stop assumption"
     },
     "terminal_consumers": [
@@ -130,11 +159,11 @@
     ],
     "buffer_admission": {"status": "Verified", "write": "W=A||(B&&C); A=X18,Y1 SLICE[1].YQ, B=X17,Y14 SLICE[1].YQ, C=X19,Y7 SLICE[0].YQ; C'=B XOR C, not a simple delayed B", "read": "R=!boundary&&stable&&!X28,Y3 SLICE[1].Y&&X29,Y6 SLICE[0].XQ", "stop": "No direct E term in either cone; constructed SAT with E0 and W1, with zero bookkeeping and W1, and with sticky MAM event plus W1", "limit": "Conditional cut witnesses, not confirmed boot reachability or a PCI-bus-idle certificate"},
     "cross_layer_matrix": [
-      {"command": "MTTCTL=0", "u21": "Verified E0 then START0", "physical": "Verified U21 AA5 -> U38 N2", "timebase": "Verified local level pipeline and falling-edge toggle; image role Inferred", "producer": "Unknown reverse-SR/sampling closure", "queued_buffers": "Verified independent write/read and retained TX state", "return_status": "Unknown matched durable stop ACK", "pci_dma_consequence": "Unknown; no release"},
+      {"command": "MTTCTL=0", "u21": "Verified E0 then START0", "physical": "Verified U21 AA5 -> U38 N2 and SACQ M1 -> U21 W3", "timebase": "Verified level/edge and dual SR/REV transitions; image role conditional Inferred", "producer": "Unknown complete sampling/HAD stop", "queued_buffers": "Verified independent W/R, retained SACQ SRL and TX state", "return_status": "Unknown matched durable stop ACK", "pci_dma_consequence": "Unknown; no release"},
       {"command": "MTTRGO/count equality", "u21": "Verified full19-bit equality -> fast-domain state/admission", "physical": "Unknown completion output", "timebase": "Unknown operation-level correlation", "producer": "Unknown units/final operation", "queued_buffers": "Not implied empty", "return_status": "Unknown completion association", "pci_dma_consequence": "Unknown"},
       {"command": "MAMRGO/MAMPGO", "u21": "Verified full24-bit equality -> independent state; event requires MAMPGO and state0", "physical": "Unknown external producer completion", "timebase": "Not covered by START alone", "producer": "Unknown HAD639E/MAM contract", "queued_buffers": "Constructed SAT event with write admission", "return_status": "Verified sticky event, explicit CLRERR/payload2 clearing; MMIO epoch Unknown", "pci_dma_consequence": "Unknown"}
     ],
-    "formal_limits": "Actual configured FF/SRL transitions. Bounds0..4 for timebase; existing U21 bounds0..6. Arbitrary runtime state and other registers/environment symbolic; SRL and BRAM not assumed empty. SAT is constructed cut behavior; bounded UNSAT is not full reachability or unbounded safety. No invented ACK/PCI relation.",
+    "formal_limits": "Actual configured FF/SRL transitions. Timebase0..4; U210..6; two-FPGA diagnostic0..7 with independent symbol namespaces and only schematic START/SACQ joins. Chosen edge schedule not recovered clock ratio/fairness. START0 and zero cut writers with SRL initially1: level clears2, U21 SACQ third sample remains1 at6/clears7 (SAT base, UNSAT mismatch). Other runtime state symbolic; no hardware reachability, unbounded safety, invented ACK or PCI relation.",
     "release_obligations": "All six Unknown; preserve UnknownActive and quarantine"
   },
   "pcilogic": {
@@ -167,7 +196,9 @@
       {"url": "https://www.amd.com/en/support/downloads/adaptive-socs-and-fpgas/legacy-ise/v10_1-sp3.html", "provenance": "manufacturer", "result": "Lists Modelsim XE 10.1 libraries (2008-10-02, 125 MB); account.amd.com download target unavailable in research tool; archive contents not inspected"},
       {"url": "https://github.com/Xilinx/XilinxUnisimLibrary", "provenance": "original vendor repository, Apache-2.0", "result": "No applicable PCILOGIC source found in inspected/searchable current library; not a claim about all history"},
       {"url": "https://github.com/jhshi/openofdm/tree/ea638eb2d3abd6c6d9c0c87a430f393fc3ffc859/verilog/Xilinx/12.2", "provenance": "third-party historical ISE copy, redistribution rights not established", "result": "PCI_CE hits were delay primitives, not applicable PCILOGIC; no code imported"},
-      {"url": "https://opencores.org/forums/pci/2001/09/00003", "provenance": "historical implementation reference, not manufacturer authority", "result": "Reference unavailable; no equation recovered"}
+      {"url": "https://opencores.org/forums/pci/2001/09/00003", "provenance": "historical implementation reference, not manufacturer authority", "result": "Reference unavailable; no equation recovered"},
+      {"url": "https://fpga.eetrend.com/files-eetrend-xilinx/download/200912/67-72-cpcigsg157.pdf", "provenance": "Xilinx UG157 v3.1 dated2007-10-10, mirrored manufacturer document", "result": "Printed31 table3-3 confirms dedicated PCIIOB/PCILOGIC/PCI_CE resources for Spartan-II/IIE; CFG251 is an IP configuration option, not a recovered primitive equation or bitstream field"},
+      {"url": "https://docs.amd.com/api/khub/documents/eCaBHdwRMTXeIXAGo49sIg/content", "provenance": "manufacturer UG262 v4.18", "result": "No applicable Spartan-IIE PCILOGIC/PCIIOB transfer/timing model obtained; later-family documentation is not a substitute"}
     ],
     "exact_missing_evidence": "Applicable Spartan-IIE PCILOGIC and PCIIOB.PCI behavioral/timing definitions covering I1/I2/I3, dedicated ready inputs, polarity, CE sampling/settling and startup/reset; alternatively an existing independently identified passive trace with these signals and PCI clock",
     "model_policy": "Retain architecture boundary as time-varying unknown; do not invent an equation, fixed delay, reset value or constant CE"
@@ -231,7 +262,16 @@
       "wait_state_obstruction": "SAT abstract late-IRDY fixture even with CE=1: ready AD phase at step 5 while IRDY high; AD disabled at step 6 before initiator becomes ready at step 7. Missing reachable FSM/primitive invariants; not a hardware defect claim",
       "acceptance": "Inconclusive: exact PCILOGIC/PCIIOB behavior plus reachable FSM, clock/CDC and remote response evidence required"
     },
-    "other_requirements": "Effective clock/CDC contract, DLL.LOCKED/reset assumptions, reverse-SR FF X32,Y7 SLICE[0].XQ, reachable target FSM invariants and unique TBUS ownership at the accepted data edge"
+    "other_requirements": "Effective clock/CDC contract, DLL.LOCKED/reset assumptions, reachable target FSM invariants and unique TBUS ownership at the accepted data edge; reverse-SR X32,Y7 SLICE[0].XQ now modeled, not an idle proof"
+  },
+  "reverse_sr": {
+    "status": "Verified",
+    "behavior_source": "https://gab.wallawalla.edu/~larry.aamodt/engr433/xilinx_10_spartan2_hdl.pdf: Spartan-II/IIE ISE10.1.2 FDCPE printed33, FDRSE printed39",
+    "encoding_source": "prjcombine pinned commit:re/xilinx/v2xdl-verify/src/clb_lut4.rs::make_ffs Mode::Virtex",
+    "contract": "Dual SR/REV only: SR drives INIT, BY/REV drives !INIT; physical reset dominates set and CE; synchronous edge required, asynchronous controls override without edge. INIT not runtime drain state",
+    "pci_state": "X32,Y7 SLICE[0].XQ INIT0 sync CE1 D=self; reset=!X30,Y7 SLICE[0].Y, preset=X35,Y7 SLICE[0].Y; concrete256-mode suite plus private local FF regression; no IIMST idle assignment",
+    "tests": "test_fpga_symbolic.py exhaustive concrete256 combinations, both INIT polarities sync SMT, async control changes, unsupported fail-closed, separate FPGA namespaces; private MMIO/U38 regressions",
+    "unknown": "Reverse-only/missing REV/latches; PCILOGIC.PCI_CE, PCIIOB.PCI and physical DLL/BUFGCE/CDC timing remain Unknown"
   },
   "lvds_command_staging": {
     "status": "Verified",

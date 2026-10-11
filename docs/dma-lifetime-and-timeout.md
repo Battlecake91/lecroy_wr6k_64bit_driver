@@ -52,6 +52,16 @@ are kept in the focused audit.
 
 ### Applicable release decision
 
+The current offline [FPGA/MCU partial proof](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown)
+does not change this decision. Source-backed reverse-SR and a two-FPGA
+START/SACQ diagnostic now demonstrate retained local state after START=0,
+even with the modeled SACQ writer inputs held zero. MAM/MTT equality and sticky
+MAMPGO are local state/event evidence, not final descriptor or host-write
+retirement. The original single IIMST read and IIMCL clear do not acquire
+stronger meaning from the loader/image attribution. All six obligations and
+stability until explicit restart remain unproved; no production code changes
+or DMA-release permission follow from the analysis.
+
 For a transfer that **never launched**, cleanup may release its correctly owned
 resources only after launch admission is irrevocably closed for that generation
 and all software callbacks/readers that could use them are retired. This is

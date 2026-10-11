@@ -31,10 +31,11 @@ class System:
 Each step may contain selected effective clock edges and input/reset changes.
 Analog settling, metastability and clock generation are not silently modeled.
 """
-    def __init__(self, report, bound=4, timeout_ms=10000, powerup=True, schedule=None):
+    def __init__(self, report, bound=4, timeout_ms=10000, powerup=True, schedule=None, namespace=""):
         if bound < 0 or timeout_ms < 1:
             raise ValueError("nonnegative bound and positive timeout required")
         self.report, self.logic = report, report["logic"]
+        self.namespace = namespace
         self.bound, self.powerup = bound, powerup
         self.solver = z3.Solver()
         self.solver.set(timeout=timeout_ms, random_seed=0)
@@ -70,7 +71,7 @@ Analog settling, metastability and clock generation are not silently modeled.
     def var(self, category, name, t, sort=None):
         key = (category, name, t)
         if key not in self.variables:
-            symbol = category + ":" + name + "@" + str(t)
+            symbol = (self.namespace + ":" if self.namespace else "") + category + ":" + name + "@" + str(t)
             self.variables[key] = z3.Const(symbol, z3.BoolSort() if sort is None else sort)
         return self.variables[key]
 
@@ -206,7 +207,12 @@ Analog settling, metastability and clock generation are not silently modeled.
         for t in range(self.bound + 1):
             for name, c in self.registers.items():
                 if c["status"] != "unknown" and c["flags"]["SR_ENABLE"] and not c["flags"]["SR_SYNC"]:
-                    self.solver.add(z3.Implies(self.expr(c["sr"], t), self.state(name, t) == bool(c["init"])))
+                    if "rev" in c:
+                        reset, set_ = self.expr(c["reset"], t), self.expr(c["set"], t)
+                        self.solver.add(z3.Implies(reset, z3.Not(self.state(name, t))))
+                        self.solver.add(z3.Implies(z3.And(z3.Not(reset), set_), self.state(name, t)))
+                    else:
+                        self.solver.add(z3.Implies(self.expr(c["sr"], t), self.state(name, t) == bool(c["init"])))
 
     def _transition(self, t):
         for name, c in self.registers.items():
@@ -214,7 +220,15 @@ Analog settling, metastability and clock generation are not silently modeled.
                 continue
             edge = self.edge(c["clock"], t)
             value = z3.If(z3.And(edge, self.expr(c["ce"], t)), self.expr(c["data"], t), self.state(name, t))
-            if c["flags"]["SR_ENABLE"]:
+            if "rev" in c:
+                def apply_controls(value, at, active):
+                    reset, set_ = self.expr(c["reset"], at), self.expr(c["set"], at)
+                    return z3.If(z3.And(active, reset), z3.BoolVal(False),
+                                 z3.If(z3.And(active, set_), z3.BoolVal(True), value))
+                value = apply_controls(value, t, edge if c["flags"]["SR_SYNC"] else z3.BoolVal(True))
+                if not c["flags"]["SR_SYNC"]:
+                    value = apply_controls(value, t + 1, z3.BoolVal(True))
+            elif c["flags"]["SR_ENABLE"]:
                 sr = self.expr(c["sr"], t)
                 reset = z3.And(edge, sr) if c["flags"]["SR_SYNC"] else z3.Or(sr, self.expr(c["sr"], t + 1))
                 value = z3.If(reset, z3.BoolVal(bool(c["init"])), value)

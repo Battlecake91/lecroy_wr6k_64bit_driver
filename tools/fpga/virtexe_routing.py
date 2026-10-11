@@ -627,6 +627,8 @@ class LogicAnalyzer:
             entry.update(kind="register", data=data,
                          controls={p: self.input(inputs[p]) for p in ("CLK", "CE", "SR")},
                          mode={n: a for n, a in attrs.items() if n.startswith("FF")})
+            if attrs.get("FF_REV_ENABLE", {}).get("value") == 1:
+                entry["controls"]["REV"] = self.input(inputs["BY"])
         else:
             entry.update(kind="architecture_boundary", reason=f"unmodeled slice output {pin}")
             self.boundaries.append({"reason": entry["reason"]})
@@ -866,11 +868,22 @@ def register_contract(signal, node):
               "clock_contract": "caller must provide an edge of the selected effective clock"}
     if init not in (0, 1) or any(v not in (0, 1) for v in flags.values()):
         result.update(status="unknown", reason="unavailable register mode")
-    elif flags["LATCH"] or (common == "FF" and attr("FF_REV_ENABLE") != 0):
-        result.update(status="unknown", reason="latch or reverse SR not modeled")
+    elif flags["LATCH"]:
+        result.update(status="unknown", reason="latch not modeled")
+    elif common == "FF" and attr("FF_REV_ENABLE") not in (0, 1):
+        result.update(status="unknown", reason="unavailable reverse SR mode")
+    elif common == "FF" and attr("FF_REV_ENABLE") == 1 and (
+            not flags["SR_ENABLE"] or "REV" not in controls):
+        result.update(status="unknown", reason="reverse-only or missing REV control not modeled")
     else:
         result["status"] = "modeled_sync_ff" if flags["SR_SYNC"] else "modeled_async_ff"
         result["sr_contract"] = "single SR resets/sets to INIT and takes priority over CE; synchronous SR requires selected clock edge"
+        if common == "FF" and attr("FF_REV_ENABLE") == 1:
+            # Pinned make_ffs Mode::Virtex maps SR to INIT, BY/REV to !INIT.
+            result["rev"] = controls["REV"]
+            result["reset"] = controls["SR"] if init == 0 else controls["REV"]
+            result["set"] = controls["REV"] if init == 0 else controls["SR"]
+            result["sr_contract"] = "Spartan-II/IIE FDRSE/FDCPE: reset overrides set and CE; SR drives INIT, REV drives !INIT"
     return result
 
 
@@ -880,6 +893,10 @@ def register_step(report, signal, values, clock_edge=False):
         return contract
     try:
         sync = contract["flags"]["SR_SYNC"]
+        if "rev" in contract and (not sync or clock_edge):
+            for control, value in (("reset", 0), ("set", 1)):
+                if evaluate_data(contract[control], report["logic"], values):
+                    return {"status": "resolved", "next": value, "cause": control + " (reverse SR primitive)"}
         if contract["flags"]["SR_ENABLE"] and (not sync or clock_edge) and evaluate_data(contract["sr"], report["logic"], values):
             return {"status": "resolved", "next": contract["init"], "cause": "synchronous SR" if sync else "asynchronous SR"}
         if not clock_edge:

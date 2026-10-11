@@ -684,6 +684,32 @@ class PrivateTimebaseSmt(unittest.TestCase):
         self.impossible(m, m.state(a.TB_LEVEL[0], 0))
         self.assertEqual(register_contract(a.TB_LEVEL[0], self.r["logic"][a.TB_LEVEL[0]])["flags"]["SR_SYNC"], 0)
 
+    def test_reverse_sr_producer_uses_actual_by_preset_and_reset_priority(self):
+        q = a.TB_PRODUCER
+        c = register_contract(q, self.r['logic'][q])
+        self.assertEqual(c['status'], 'modeled_sync_ff')
+        self.assertEqual(c['init'], 0)
+        self.assertEqual(c['reset']['source'], 'X11,Y1 SLICE[0].X')
+        self.assertEqual(c['set']['source'], 'X18,Y1 SLICE[1].Y')
+        self.assertEqual(c['clock']['source'], a.CLOCK)
+        m = self.model([q], 1, a.CLOCK)
+        z3 = self.z3
+        reset, preset = m.expr(c['reset'], 0), m.expr(c['set'], 0)
+        expected = z3.If(reset, False, z3.If(preset, True, m.expr(c['data'], 0)))
+        self.impossible(m, m.state(q, 1) != expected)
+
+    def test_start_low_is_not_an_asynchronous_clear_of_reverse_sr_producer(self):
+        m = self.model([a.TB_PRODUCER], 0, a.CLOCK)
+        m.solver.add(self.z3.Not(m.signal(a.TB_START, 0)), m.state(a.TB_PRODUCER, 0))
+        self.assertEqual(m.solver.check(), self.z3.sat)
+        # Actual synchronous primitive; runtime witness is not boot reachability.
+
+    def test_producer_reset_is_actual_xor_of_two_state_registers(self):
+        m = self.model([a.TB_PRODUCER], 0, a.CLOCK)
+        c = register_contract(a.TB_PRODUCER, self.r['logic'][a.TB_PRODUCER])
+        self.impossible(m, m.expr(c['reset'], 0) != self.z3.Xor(
+            m.signal('X11,Y1 SLICE[1].YQ', 0), m.signal('X11,Y2 SLICE[0].YQ', 0)))
+
     def test_level_pipeline_clears_after_two_local_edges_not_pci_edges(self):
         m = self.model(a.TB_LEVEL, 2, a.CLOCK)
         for t in range(3):
@@ -725,6 +751,50 @@ class PrivateTimebaseSmt(unittest.TestCase):
         for i in range(16): m.solver.add(z3.Select(m.memory(memory, 0), z3.BitVecVal(i, 12)))
         self.impossible(m, z3.Or(z3.Not(m.state(output, 1)), z3.Not(m.state(output, 3)), m.state(output, 4)))
         # Writer states and clocks are independent cut inputs, not a claim of boot reachability.
+
+
+@unittest.skipUnless(os.environ.get('WR6K_ACQUISITION_REPORT') and
+                     os.environ.get('WR6K_ACQUISITION_SECOND_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC') == '1',
+                     'private cross-FPGA SMT not configured')
+class PrivateCrossFpgaSmt(unittest.TestCase):
+    def test_stopped_start_and_zero_producer_inputs_do_not_instantly_clear_sampled_sacq(self):
+        import z3
+        from virtexe_symbolic import System, clock_key
+        u21 = json.loads(Path(os.environ['WR6K_ACQUISITION_REPORT']).read_text(encoding='utf-8'))
+        u38 = json.loads(Path(os.environ['WR6K_ACQUISITION_SECOND_REPORT']).read_text(encoding='utf-8'))
+        self.assertEqual(u21['roots']['W3']['I'], a.SACQ_INPUT)
+        for i, name in enumerate(a.SACQ_SAMPLE):
+            self.assertEqual(u21['logic'][name]['data']['source'], a.SACQ_INPUT if i == 0 else a.SACQ_SAMPLE[i - 1])
+            self.assertEqual(register_contract(name, u21['logic'][name])['clock']['source'], a.TX_FAST)
+        host_cut = a.symbolic_cut(u21, {a.START, a.E, a.H, a.D1, a.D2, *a.SACQ_SAMPLE})
+        sacq = u38['roots']['M1']['O']
+        memory = 'X4,Y14 SLICE[0].SRL16E'
+        tb_cut = a.symbolic_cut(u38, {sacq, 'X18,Y1 SLICE[0].X', *a.TB_LEVEL})
+        tb_cut['memories'] = {memory: u38['memories'][memory]}
+        # One chosen witness schedule, not a recovered clock ratio or fairness rule.
+        c = System(host_cut, 7, powerup=False, namespace='U21',
+                   schedule=[{clock_key({'source': a.CLOCK, 'inv': False}),
+                              clock_key({'source': a.TX_FAST, 'inv': False})}] * 7)
+        t = System(tb_cut, 7, powerup=False, namespace='U38',
+                   schedule=[{clock_key({'source': a.CLOCK, 'inv': False})}] * 7)
+        c.solver.add(*t.solver.assertions())
+        c.solver.add(*[z3.Not(c.state(n, 0)) for n in (a.START, a.E, a.H, a.D1, a.D2)],
+                     *[c.state(n, 0) for n in a.SACQ_SAMPLE])
+        for bit in range(16):
+            c.solver.add(z3.Select(t.memory(memory, 0), z3.BitVecVal(bit, 12)))
+        for i in range(8):
+            # Only the two schematic-backed wires connect the independent models.
+            c.solver.add(t.signal(a.TB_START, i) == c.state(a.START, i),
+                         c.signal(a.SACQ_INPUT, i) == t.state(sacq, i),
+                         z3.Not(c.signal(a.RESET, i)), z3.Not(c.signal(a.V, i)),
+                         z3.Not(t.signal('X6,Y11 SLICE[0].YQ', i)),
+                         z3.Not(t.signal('X18,Y1 SLICE[0].YQ', i)),
+                         z3.Not(t.signal(a.TB_PRODUCER, i)))
+        self.assertEqual(c.solver.check(), z3.sat)
+        c.solver.add(z3.Or(c.state(a.START, 7), t.state(a.TB_LEVEL[-1], 2),
+                           z3.Not(c.state(a.SACQ_SAMPLE[-1], 6)), c.state(a.SACQ_SAMPLE[-1], 7)))
+        self.assertEqual(c.solver.check(), z3.unsat)
+        # Runtime SRL contents survive until shifted; no descriptor/host-memory claim.
 
 
 if __name__ == "__main__":

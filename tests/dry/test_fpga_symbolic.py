@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "fpga"))
 import z3
-from virtexe_routing import bram_contract, bram_width, evaluate_data, resolve_bus
+from virtexe_routing import bram_contract, bram_width, evaluate_data, resolve_bus, register_step, register_contract
 from virtexe_symbolic import System, clock_key, pci_environment
 
 
@@ -41,6 +41,62 @@ def bram(width_a=4, width_b=4):
 
 
 class SymbolicTests(unittest.TestCase):
+    def test_separate_fpga_namespaces_do_not_alias_states_or_unknowns(self):
+        r = report({'q.XQ': reg(s('missing')), 'missing': {'kind': 'architecture_boundary'}})
+        left = System(r, 1, powerup=False, namespace='U21')
+        right = System(r, 1, powerup=False, namespace='U38')
+        left.solver.add(*right.solver.assertions(), left.state('q.XQ', 0), z3.Not(right.state('q.XQ', 0)))
+        self.assertEqual(left.solver.check(), z3.sat)
+        self.assertFalse(z3.eq(left.signal('missing', 0), right.signal('missing', 0)))
+        self.assertFalse(z3.eq(left.memory('same', 0), right.memory('same', 0)))
+        self.assertFalse(z3.eq(left.edge(s('clk'), 0), right.edge(s('clk'), 0)))
+
+    def test_reverse_sr_exhaustive_concrete_priority(self):
+        for init, sync, sr, rev, ce, data, old, edge in itertools.product((0, 1), repeat=8):
+            node = reg(s("data"), init=init, sync=sync, sr=s("sr"), ce=s("ce"))
+            node["mode"]["FF_REV_ENABLE"]["value"] = 1
+            node["controls"]["REV"] = s("rev")
+            r = report({"q.XQ": node})
+            values = {"q.XQ": old, "sr": sr, "rev": rev, "ce": ce, "data": data}
+            reset, set_ = (sr, rev) if init == 0 else (rev, sr)
+            expected = (0 if reset else 1 if set_ else data if edge and ce else old) if (edge or not sync) else old
+            self.assertEqual(register_step(r, "q.XQ", values, edge)["next"], expected)
+
+    def test_reverse_sr_symbolic_sync_both_initial_polarities(self):
+        for init in (0, 1):
+            node = reg(s("data"), init=init, sync=1, sr=s("sr"), ce=s("ce"))
+            node["mode"]["FF_REV_ENABLE"]["value"] = 1
+            node["controls"]["REV"] = s("rev")
+            r = report({n: {"kind": "pad_input"} for n in ("sr", "rev", "ce", "data")})
+            r["logic"]["q.XQ"] = node
+            m = System(r, 1, powerup=False)
+            reset, set_ = (m.signal("sr", 0), m.signal("rev", 0)) if init == 0 else (m.signal("rev", 0), m.signal("sr", 0))
+            expected = z3.If(m.edge(s("clk"), 0), z3.If(reset, False, z3.If(set_, True,
+                z3.If(m.signal("ce", 0), m.signal("data", 0), m.state("q.XQ", 0)))), m.state("q.XQ", 0))
+            self.assertEqual(m.solver.check(), z3.sat)
+            self.assertImpossible(m, m.state("q.XQ", 1) != expected)
+
+    def test_reverse_sr_async_change_between_events_respects_new_controls(self):
+        for init in (0, 1):
+            node = reg(c(0), init=init, sr=s("sr"), ce=c(0))
+            node["mode"]["FF_REV_ENABLE"]["value"] = 1
+            node["controls"]["REV"] = s("rev")
+            m = System(report({"q.XQ": node, "sr": {"kind": "pad_input"}, "rev": {"kind": "pad_input"}}),
+                       1, powerup=False, schedule=[set()])
+            # Clear at t=0, preset at t=1, with no clock edge.
+            m.solver.add(m.signal("sr", 0) == (init == 0), m.signal("rev", 0) == (init == 1),
+                         m.signal("sr", 1) == (init == 1), m.signal("rev", 1) == (init == 0))
+            self.assertEqual(m.solver.check(), z3.sat)
+            self.assertImpossible(m, z3.Or(m.state("q.XQ", 0), z3.Not(m.state("q.XQ", 1))))
+
+    def test_reverse_sr_missing_control_remains_unknown(self):
+        node = reg(c(1))
+        node["mode"]["FF_REV_ENABLE"]["value"] = 1
+        self.assertEqual(register_contract("q.XQ", node)["status"], "unknown")
+        node["controls"]["REV"] = c(0)
+        node["mode"]["FF_SR_ENABLE"]["value"] = 0
+        self.assertEqual(register_contract("q.XQ", node)["status"], "unknown")
+
     def test_srl_shift_uses_old_bits_and_holds_without_selected_edge(self):
         memory = {"kind": "srl16e", "initial": 0, "data": s("d"), "enable": s("ce"), "clock": s("clk")}
         m = System(report(memories={"delay": memory}), 3, powerup=False,

@@ -24,6 +24,8 @@ if (-not $python) {
 }
 
 Write-Host 'Synthetic frame and routing tests (no private firmware required)'
+& $python @pythonArgs (Join-Path $repoRoot 'tests\dry\test_c166_firmware.py') -v
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $python @pythonArgs $decoder --self-test
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

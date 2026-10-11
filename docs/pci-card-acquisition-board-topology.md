@@ -35,10 +35,12 @@ required. The source drawings and rendered crops remain private.
 | Verified | Sheets 18-19 / PDF 286-287: separate ATC/MTT FPGA **U38 XC2S200E-FG456**, START on **N2**, SACQ on **M1**; sheet 40 / PDF 308: MCU U16 **C161PI** | Corrects the earlier stepped-net transcription START/M1 and U8 designator; ADC/MAM pending work is separate from controller register-load banks |
 | Verified | U21 TX P/N pairs: U12/V12, AA13/AB13, AA14/AB14, W14/Y14, V14/U14, Y15/AA15, V15/W15, Y16/AA16, V16/W16, Y17/AA17, V17/W17, W18/Y18; SYNC Y19/AA19; clock V13/W13; RST_ERR AA20/AB20 | Y19/AA19 is SYNC, not data lane11; physical map does not establish stop acknowledgement |
 | Verified | U21 E14 is RX_TXSTABLE; its sampled/inverted state participates in configured TX class selection | Link-stability feedback, not a producer-idle or command-generation tag |
-| Inferred | BINARY.204 stream 0 enables twelve U21 RX P pads plus SYNC and matching 0x080/0x084/0x064 predicates; stream 1 does not enable these RX pads | Strong role evidence, not proven loader order or live image identity |
+| Inferred | BINARY.204 stream 0 enables twelve U21 RX P pads plus SYNC and matching 0x080/0x084/0x064 predicates; stream 1 does not enable these RX pads | Pin fingerprint alone is role evidence, not proof of loader order or live image identity |
 | Verified | Stream1 configures **N2 input** at X0,Y12 IOI[3].I, **M1 output** at X0,Y14 IOI[1].PAD_O, complementary **D2/D1** outputs from X6,Y25 SLICE[1].Y | Matches START, SACQ and PCCLKP/N on sheet18. The previous M1 conflict was a schematic-reading error, not evidence for a missing image |
 | Verified | Sheet37/PDF305 U21 C21 DOUT -> MTT bus27 -> sheet18/PDF286 DIN_TB -> sheet17/PDF285 U38 C22 DIN; shared B22 CCLK via bus26 | Establishes the physical configuration chain, not the C161 routine's supplied bytes |
-| Inferred | Stream1 is the U38/timebase image: multiple pin directions, clock-pair polarity, START logic and configuration chain agree | Strong but incomplete inference. Static resource dispatch does not establish effective C161 byte feeding or installed assembly/firmware identity |
+| Inferred | Stream1 is the U38/timebase image: pin directions, clocks, START logic, physical chain and C161 source/loop lengths agree | Conditional on selected flash bank and successful serial configuration; not installed/live identity |
+| Verified | Sheet40 MCU P2.9 DIN, P2.10 _PROG, P2.11 DONE, P2.12 acquisition CCLK, P2.13 PCI CCLK; sheet39 _PROG reaches U21 and ATC_PROG bus28 | C161 6D6C uses base+0x100000 and360526 source bytes;6F1C uses base+0x180000 and180260 bytes. DONE-high bypass, one-edge DIN lag and six extra acquisition bytes prevent configuration-success assertion |
+| Verified | Sheet18 U38 M1 SACQ -> bus19 -> sheet38 U21 **W3**, not grounded Y3 | Configured three-stage U21 sampling; not an immediate DMA-stop ACK |
 
 ### Timebase START Boundary (2026-10-11)
 
@@ -55,8 +57,9 @@ is not a proof that all sampling/data production has ceased.
 
 SACQ is the registered output of a G-only SRL16E at X4,Y14 SLICE[0],
 tap2. Its input is the OR of X18,Y1 SLICE[0].YQ and X15,Y2 SLICE[0].XQ;
-the latter has configured reverse-SR mode, which remains an explicit
-symbolic-model boundary. Neither SACQ nor START is identified as a stable
+the latter's configured synchronous dual SR/REV mode is now source-backed and
+modeled. The external producer/drain contract remains Unknown. Neither SACQ nor
+START is identified as a stable
 host-visible DMA-stop acknowledgement. See the focused shutdown section in
 `pci-fpga-firmware-analysis.md` for equations, limitations and evidence requests.
 

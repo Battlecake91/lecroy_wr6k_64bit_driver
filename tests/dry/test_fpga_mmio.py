@@ -78,6 +78,13 @@ class SyntheticMmio(unittest.TestCase):
         self.assertIn("UnknownActive", matrix["safety"])
         self.assertEqual(len(matrix["release_obligations"]), 6)
         self.assertEqual(set(matrix["release_obligations"].values()), {"Unknown"})
+        self.assertEqual(matrix['stable_until_explicit_restart'], 'Unknown')
+        self.assertEqual(matrix['reverse_sr']['status'], 'Verified')
+        loader = matrix['timebase_shutdown']['c161_loader']
+        self.assertEqual(loader['scope'].split(';')[0], 'Static sparse-memory instructions and reviewed hardware wiring')
+        self.assertEqual(loader['acquisition']['source_bytes'], 360526)
+        self.assertEqual(loader['pci']['source_bytes'], 180260)
+        self.assertEqual(matrix['timebase_shutdown']['identity_status'], 'Inferred')
         self.assertEqual(matrix["pcilogic"]["status"], "Unknown")
         self.assertEqual(matrix["read_pipeline"]["status"], "Unknown")
         names = {r["name"] for r in matrix["registers"]}
@@ -141,6 +148,23 @@ class SyntheticMmio(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("WR6K_MMIO_REPORT"), "private MMIO report not configured")
 class PrivateMmio(unittest.TestCase):
+    def test_reverse_sr_pci_read_state_is_reset_dominant_not_implicit_idle(self):
+        name = 'X32,Y7 SLICE[0].XQ'
+        node = self.report['logic'][name]
+        c = register_contract(name, node)
+        self.assertEqual(c['status'], 'modeled_sync_ff')
+        self.assertEqual(c['data']['source'], name)
+        self.assertEqual(c['reset']['source'], 'X30,Y7 SLICE[0].Y')
+        self.assertTrue(c['reset']['inv'])
+        self.assertEqual(c['set']['source'], 'X35,Y7 SLICE[0].Y')
+        for old in (False, True):
+            for reset in (False, True):
+                for preset in (False, True):
+                    values = {name: old, 'X30,Y7 SLICE[0].Y': not reset, 'X35,Y7 SLICE[0].Y': preset}
+                    self.assertEqual(register_step(self.report, name, values, True)['next'],
+                                     0 if reset else 1 if preset else old)
+                    self.assertEqual(register_step(self.report, name, values, False)['next'], old)
+
     @classmethod
     def setUpClass(cls):
         path = Path(os.environ["WR6K_MMIO_REPORT"])

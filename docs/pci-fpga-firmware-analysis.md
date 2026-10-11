@@ -2370,7 +2370,8 @@ outside this public repository.
 
 - All **1,405 decoded FFs** have supported contracts: simultaneous pre-edge D
   sampling, CE hold, INIT, synchronous SR on selected edges, asynchronous SR
-  between edges and SR priority over CE. Unsupported latch/reverse-SR contracts
+  between edges and SR priority over CE. Dual SR/REV FDRSE/FDCPE behavior is
+  now source-backed as described below; unsupported latch/reverse-only contracts
   leave state unconstrained and label the result Inconclusive.
 - The **three effective clock domains** have separate symbolic edge events.
   Explicit schedules are supported. Constant clocks cannot edge; opposite
@@ -3003,10 +3004,10 @@ payload loads. Completed-operation/acknowledgement meaning remains unproved.
    proving that an accepted target read loads current AD data. The fully expanded
    AD0 output cone now has **no mixed-route boundary**: remaining hardblock
    boundaries are PCI_CE, three effective BUFGCE clocks and DLL.LOCKED.
-2. **Read/packet timing and identity:** Supply the effective clock/CDC contract,
-   DLL/reset assumptions and the exact reverse-SR primitive contract for
-   X32,Y7 SLICE[0].XQ (FF_REV_ENABLE=1, synchronous SR; retained as Unknown by
-   SMT). With these, verify target acceptance, TBUS ownership, output enable,
+2. **Read/packet timing and identity:** Supply the effective clock/CDC contract
+   and DLL/reset assumptions. The reverse-SR contract for X32,Y7 SLICE[0].XQ
+   is now modeled, but does not supply the missing PCI_CE contract. With the
+   remaining contracts, verify target acceptance, TBUS ownership, output enable,
    TRDY/DEVSEL and completion jointly. Correlate BAR1 `0x080` staging, command
    slot/valid/read-write fields and returned response with the acquisition-side
    decoder or an existing passive timestamped PCI+LVDS capture. Supply both
@@ -3311,11 +3312,10 @@ retired/ordered. PCI_CE remains unresolved; no invented primitive equation.
 Targeted evidence/analysis request, rather than an invented ACK:
 
 1. The **U21-AA5 to U38-N2** connection is now corrected and stream1 agrees.
-   Complete static C161PI configuration-device/stream-order correlation and
-   installed assembly/firmware identity. Do not request a replacement image
-   on the basis of the disproved M1 conflict. Existing BINARY.203 is available;
-   the missing evidence is its narrowly identified loader/control mapping,
-   not another copy of the HEX resource or x86-only driver exports.
+   The C161PI mapping below now independently correlates flash offsets and
+   serial loops. Installed bank/assembly identity and successful configuration
+   remain separate requirements. Do not request a replacement image on the
+   basis of the disproved M1 conflict or another x86-only loader export.
 2. Supply an existing HAD639E/MAM producer stop/end-of-data contract or existing
    passive START/MAM/MTT-data observations tied to command generation. This
    addresses producer stop and delayed data admission, not PCI retirement.
@@ -3345,9 +3345,9 @@ python -B tests/dry/test_fpga_acquisition.py -v
 ```
 
 Actual final execution: **10 synthetic + 21 private configured-logic + 24 private
-U21 SMT + 6 private timebase SMT acquisition tests PASS**, against private networks
-from the committed tool, including a newly reproduced stream1 SRL report.
-**45 routing + 49 MMIO + 40 symbolic tests**
+U21 SMT + 9 private timebase SMT + 1 private cross-FPGA SMT acquisition tests PASS**,
+against private networks from the current tool. **18 C166 tests** (14 synthetic,
+4 private), **45 routing + 50 MMIO + 45 symbolic tests**
 also PASS, as do private frame calibration, **50 native architecture checks**
 and **19 PCI state equations**. All eight driver dry suites PASS: source35,
 completion24, layout13, ownership17, SG-stage27, SG-sync149, IRP-lifetime8,
@@ -3381,12 +3381,109 @@ FindResourceA/LoadResource/LockResource and Intel-HEX text dispatch. In
 1001067C is the "Programming Acq FPGAs" branch; 1001087F invokes the
 devicepack-facing indirect getter at vtable+0x1A8. The acquisition selector2
 at1000714A allocates0x80000 and calls10006C55 at1000719C, separately from
-PCI selector3. These are combined-resource/upgrade paths, not decoded C161
-configuration bit loops. BINARY.203 remains available as sparse HEX;
-existing disassembly exports cover x86, not a validated C161 loader routine.
-No alternative U38 image has been demonstrated or is required by the
-disproved M1 conflict. Overall stream1-to-U38 identity is **strong but
-incomplete Inferred**; installed firmware and assembly identity remain Unknown.
+PCI selector3. The flash-selection branch independently chooses acquisition
+selector2 -> **0x100000** at10004833 and PCI selector3 -> **0x180000**
+at10004823; micro selector1 uses0x240000/size0x30000 at1000483C. Both FPGA
+regions are0x80000 bytes. These are static choices, not evidence that an update
+completed. The C161 loops below independently use the same FPGA offsets.
+No alternative U38 image has been demonstrated or is required by the disproved
+M1 conflict. Overall stream1-to-U38 identity is **Inferred conditional on this
+bank and successful serial configuration**; installed firmware remains Unknown.
+
+#### C161PI Reset, Bank And Serial Loader
+
+`tools/fpga/c166_firmware.py` preserves the sparse BINARY.203 map: **56792
+mapped bytes**, eight spans, including executable candidates at0x200000.
+The reproducible identity is SHA256 of sorted `(u32le address, byte)` pairs:
+`c81c6023eda3ac9618f5a4934a4e25ccf39a4d06c7d44601b2c858300f91dcf3`.
+No holes are filled and no data is linearly swept as code.
+
+The optional external [C166 decoder](https://github.com/ayyo42069/c166-disasm-plugin/tree/35d4488ee6b35d246dfc0dc87e0667b385f9d43e)
+is pinned by four LF-normalized file hashes before import; it is not vendored.
+Branch, EXT, BSET/BCLR/BMOV and loader interpretation were checked against the
+[Infineon C166 ISA v2.0](https://www.keil.com/dd/docs/datashts/infineon/c166ism.pdf).
+Its display helpers have incomplete BFLDL/H masks and EXT/extended-SFR context;
+therefore their rendered operands are not execution authority. The tool records
+these operand boundaries, and independently decodes branch/EXT metadata.
+
+Reset0 contains a far jump to0F38. The direct startup path is
+0F38 -> 0E18 (runtime initialization) -> 0FF4 -> 3DF8 -> 3E7C -> 3ECE,
+with a call at **3EDE -> 6D6C**. That routine first calls **6D78 -> 6F1C**.
+Non-self vector targets60/8C/90/A0/AC and five reviewed bounded dispatch tables
+produce **10612 syntactic instruction candidates, zero unresolved direct-flow
+boundaries, 969 explicit operand-context boundaries**. This does not prove
+interrupt admission, indirect memory aliasing or concrete boot reachability.
+
+The startup tag6 copy at0E9E..0EC0 interprets destination/source offset+page
+and byte length. Its record initializes **E6FC..E6FF from6380..6383 to zero**
+(whole copy length0x78). The later direct stores at640C/6410 also zero this
+base; 6418 writes20 to2702, **not** the base high word26FE. Effective bank
+changes through indirect stores or external programming are not excluded.
+
+| Routine / exact evidence | Verified static behavior | Limit |
+| --- | --- | --- |
+| 6D6C; source setup6DC0; word load6DCE | Base at page3:26FC/26FE plus **0x100000**; little-endian words loaded into R15 | Initial base0, not a universal bank invariant |
+| 6DD0 and6E72 | Sixteen unrolled P2.12-clock/P2.9-DIN triples, word bits0..15 | Clock rises **before** the DIN assignment; first sample is previous DIN |
+| 6E58/6E64/6EFA | 88 blocks of0x7F00 bits, then ceil(0x5A64/16) words: **360526 source bytes** | Six bytes beyond the contiguous360520-byte resource; contents/configuration success not assumed |
+| 6F1C; source setup6F6C; loops6F7C/701E | Base plus **0x180000**, P2.13 clock; 44 blocks of0x7F00 bits plus0x2D20 bits: **180260 bytes** | Distinct PCI loop, not the U21/U38 chain |
+| 6D86 /6F32 | P2.11 **DONE** high skips the respective routine | Not _FPGA_INIT, not an idle acknowledgement or image identity check |
+| 6D98/6DAA and6F44/6F56 | P2.10 _PROG clear/set | No final DONE polling established in these routines |
+| 6F02..6F12 /70AE..70C0 | DP2 cleanup makes DIN / PCI CCLK input respectively | No DMA drain semantics |
+
+The physical attribution was visually checked on drawing901587 revB sheets
+39-40: **P2.9 pin88 DIN/UC-control10; P2.10 pin89 _PROG/1;
+P2.11 pin90 DONE/8; P2.12 pin91 CCLK/7; P2.13 pin92 CCLK_PCI/12;
+P2.8 pin87 _FPGA_INIT/11**. _PROG reaches U21 PROG_B and bus28 ATC_PROG,
+then U38 PROG_B. Port addresses FFC0/FFC2 follow the
+[C161PI datasheet](https://www.infineon.com/assets/row/public/documents/10/49/infineon-c161pi-ds-en.pdf).
+
+Together with U21 DOUT -> U38 DIN, the acquisition loop length, bit order and
+matching pin-role fingerprints support stream0=U21/stream1=U38 for this update
+image. The [Spartan-IIE DS077 serial-chain contract](https://www.cs.york.ac.uk/rts/docs/Xilinx-datasource-2003-q1/datasheets/ds077_2.pdf)
+samples DIN on rising CCLK; loader word assignment is LSB-first over already
+bit-reversed resource bytes. The one-edge data lag, six additional source bytes,
+DONE-entry bypass, external bank and actual installed revision prevent an
+unconditional assertion of successful/current configuration. No update was run.
+
+Reproduction uses the sparse private JSON, `--entry`0/60/8C/90/A0/AC and
+reviewed IP:physical-table:count mappings4CE:9C0:6,2186:30CC:7,34BC:3720:10,
+578E:5C1E:9,200C38:643A:6. The last table is data page1 but code segment20;
+the tool preserves that distinction. All listings stay outside Git.
+
+#### Source-Backed Reverse-SR Closure
+
+The [Xilinx Spartan-II/IIE HDL Libraries Guide, ISE10.1.2](https://gab.wallawalla.edu/~larry.aamodt/engr433/xilinx_10_spartan2_hdl.pdf)
+defines FDRSE (printed39) and FDCPE (printed33): reset/clear overrides set/preset
+and CE; synchronous controls require the selected edge, asynchronous controls
+do not. Configuration INIT is power-up/GSR state, not runtime occupancy.
+Pinned Project Combine
+`re/xilinx/v2xdl-verify/src/clb_lut4.rs::make_ffs`, Mode::Virtex, maps BY to
+REV: INIT0 SR=reset/REV=set; INIT1 SR=set/REV=reset. This separates vendor
+behavioral authority from independently reconstructed configuration encoding.
+The concrete and Z3 models now implement this dual-control mode, tested across
+all256 combinations. Missing REV, latch and reverse-only contracts remain Unknown.
+
+Two previously blocked concrete properties now have regressions:
+
+- **U38 X15,Y2 SLICE[0].XQ:** INIT0, synchronous, CE1, local
+  X24,Y0 BUFGCE[1]. SR=X11,Y1 SLICE[0].X, exactly the XOR of
+  X11,Y1 SLICE[1].YQ and X11,Y2 SLICE[0].YQ; REV=X18,Y1 SLICE[1].Y.
+  Thus `next=SR?0:REV?1:D` on its edge. START=0 is **not** an asynchronous
+  clear of this state. Reset/preset are producer-state functions, not a proved
+  final-sample or buffer-empty predicate.
+- **PCI X32,Y7 SLICE[0].XQ:** INIT0, synchronous PCI clock, CE1, D=self,
+  reset=!X30,Y7 SLICE[0].Y, preset=X35,Y7 SLICE[0].Y. It feeds
+  X30,Y7 SLICE[0].YQ control and itself. This closes a local read-state gap;
+  neither its sticky state nor its reset is identified as IIMST DMA idle.
+
+Spartan-6 PCILOGICSE documentation is a different family and does not resolve
+Spartan-IIE PCILOGIC.PCI_CE or PCIIOB.PCI. No speculative equation was imported.
+[Xilinx UG157 v3.1, printed31 table3-3](https://fpga.eetrend.com/files-eetrend-xilinx/download/200912/67-72-cpcigsg157.pdf)
+does confirm dedicated PCIIOB/PCILOGIC/PCI_CE usage for Spartan-II/IIE.
+Its IP CFG251 option is not an equation or a decoded bitstream attribute.
+The reproduced PCI report contains4124 nodes/127 boundaries after expanding
+REV inputs, versus4311/15 for U38 and3881/151 for the existing U21 report.
+Counts are inventory diagnostics, not completeness or idle evidence.
 
 #### Actual START And SACQ Cones
 
@@ -3400,15 +3497,25 @@ U21 clock sites. START uses N2.I, not the disabled IQ latch.
 | Verified falling-edge event | X3,Y10 SLICE[0].YQ: D=!self, CE=!sync2&&sync3 | START falling toggles state; it is not a durable stopped ACK |
 | Verified rising-edge admission | X10,Y1 SLICE[1].YQ delays level3; X16,Y1 SLICE[0/1].YQ have D=level3&&!previous with separate enables | Reassertion can generate new local work; not an all-producer admission proof |
 | Verified SACQ delay | X4,Y14 SLICE[0] G-only SRL16E, tap2, D=X18,Y1 SLICE[0].YQ OR X15,Y2 SLICE[0].XQ, CE1; registered M1 output | Three shifts plus output capture, no SRL reset. Existing runtime contents survive START low |
-| Unknown producer-state closure | X15,Y2 SLICE[0].XQ has FF_REV_ENABLE=1; model explicitly rejects unvalidated reverse-SR priority | Cannot equate START/SACQ with sampling stopped, memory drained or host DMA finished |
+| Verified local producer-state transition | X15,Y2 SLICE[0].XQ dual SR/REV priority now modeled; synchronous reset is an XOR of two state FFs | Whole sampling/HAD admission and stable idle remain Unknown |
 
 The narrowly supported G-only SRL16E mode now follows pinned
 `ise-hammer/virtex/clb.rs` RAMCONFIG_1SHIFT and
 `v2xdl-verify/clb_lut4.rs::gen_srl` Mode::Virtex: effective SR is shift enable,
 BY is serial data, G1..4 select Q, old bit i-1 shifts to i. Unsupported
 multi-shift/RAM combinations remain Unknown. INIT is only power-up state.
-The reproduced private stream1 network has 4296 nodes/15 architecture
+The reproduced private stream1 network has 4311 nodes/15 architecture
 boundaries; no full network is committed.
+
+**SACQ return:** sheet18/PDF286 U38 M1 -> bus19 -> sheet38/PDF306 **U21 W3**
+(Y3 is ground). Configured U21 W3.I -> W3.IQ -> X5,Y1 SLICE[0].YQ ->
+X10,Y6 SLICE[1].YQ, all X24,Y0 BUFGCE[0], CE1, asynchronous local reset.
+Its downstream state reaches MTT advance CE and buffer-write admission through
+retained state. Connectivity alone does not establish sensitization or final
+operation semantics. HAD639E U50 sheet28 has startstop J18/startstopn J17 via
+ACQ_CTRL11/12 (sheet27 HADACQ2/3); these are not the U21 START wire. Neither
+the schematic nor the MCU serial loader specifies HAD639E pending-sample,
+memory-write completion, stop latency or restart behavior.
 
 #### Counter Consumers And Buffer Admission
 
@@ -3453,9 +3560,15 @@ The machine-readable counterpart is `timebase_shutdown` in
 | MAMRGO / MAMPGO | Verified 24-bit comparison -> independent state / event | External HAD639E/MAM completion Unknown | Sticky event explicitly cleared by qualified CLRERR/payload2; readback epoch Unknown | Unknown |
 
 Formal tests use actual FF/SRL transitions and pre-edge values. U38 bounds
-are 0..4; existing U21 sequences 0..6. Each FPGA is modeled separately with
-explicit selected **local** edges. No cross-FPGA clock relationship is
-introduced. Initial runtime state, other sequential states, producer inputs,
+are 0..4; existing U21 sequences 0..6. A new two-FPGA diagnostic uses separate
+symbol namespaces for state, inputs, memories and edges, joined **only** through
+the physical START and SACQ wires. Bounds0..7 use one chosen witness schedule,
+not a recovered clock ratio or fairness assumption. With START held low, both
+modeled SACQ writers held zero and runtime SRL cells initially one, U38 level
+state clears by2 while the third U21 SACQ sample is still high at6 and clears
+at7. Base SAT and mismatch UNSAT check actual FF/SRL transitions. This is a
+local delayed-state witness, not a hardware-reachable all-producer stop proof.
+Initial runtime state, other sequential states, producer inputs,
 and BRAM contents remain unconstrained unless a test states its local
 condition. SACQ delay checks initialize symbolic SRL contents explicitly for
 the witness, not from configuration INIT. SAT means constructed cut behavior,
@@ -3467,17 +3580,43 @@ stopped; no new PCI initiator transaction; outstanding transactions terminated;
 all buffers drained; host writes completed/ordered. UnknownActive/quarantine
 and PR#9 draft/open/unmerged remain unchanged.
 
-Targeted remaining evidence/analysis, with no new hardware experiments:
+#### Layer Matrix And Dependency-Ordered Research Backlog
 
-1. Validate the BINARY.203 C161 routine that feeds UC control DIN/CCLK and
-   ATC_PROG, including source offsets for the two 180260-byte streams. Physical
-   DOUT->DIN chain is now known; obtain the narrow routine/export and effective
-   configured resource selection, not another general x86 driver dump.
-2. Validate Virtex/Spartan-IIE reverse-SR priority for X15,Y2 SLICE[0].XQ,
-   then extend only its producer-state cone. This is a specific model gap,
-   not proof that a private U38 image is missing.
-3. Establish HAD639E/MAM end-of-data and downstream memory admission, full
-   U21 TX-mode arbitration and response-command/epoch association from existing
-   contracts or existing passive captures. SACQ delay is not such a contract.
-4. Independently establish PCI_CE, descriptor/transaction retirement, runtime
-   queue accounting and host-bridge ordering for the actual installed revision.
+| Layer | Confirmed behavior | Safety consequence | Remaining evidence |
+| --- | --- | --- | --- |
+| Original x86 | 171DE publishes SGTA/IIMTC, IIMCL1 then one GO; ISR108D6 clears IIMCL; 137C4 clears MTTCTL; MAM postlude reads IIMST once | Timeout/IRQ/postlude are not a drain protocol | Generation-attributed final hardware completion and ordering contract |
+| PCI FPGA | BAR comparators, local IIMCL gates, mixed IIMST bit0 mux and REQ/FRAME/IRDY equations; reverse-SR read state now modeled | IIMCL0 with REQ active remains a conditional cut witness | PCILOGIC/PCIIOB timing and reachable descriptor/initiator state invariants |
+| LVDS | Three phases, address/data pairing, parity, partial/repeated-word qualification and32-bit return mapping | Reception or sticky error/event is not retirement | Clock/CDC/error recovery and uniquely matched response/epoch |
+| U21 | MTTCTL clears E then START; SACQ three-stage return; independent counters and TX phase | No common durable stop gate recovered | Mode arbitration tied to actual external producer and response ownership |
+| U38 | Loader/pin-role correlation; START level/edge paths; synchronous producer SR/REV; delayed SACQ | START0 does not clear all retained runtime state | HAD639E/HTB645 acquisition and final-sample contracts, installed image/bank |
+| MAM / MTT | 24/19-bit equality and consumers, separate loads/advances, sticky MAMPGO event | Equality/event is not final word or descriptor completion | Counted unit, last admitted memory word, common halt/restart interlock |
+| Internal memory | Two256x16 BRAMs,8-bit pointers,9-bit modular bookkeeping, independent W/R | Zero bookkeeping can coexist with W1; no global empty predicate | Producer/consumer conservation, output and PCI queue ownership across CDC |
+| PCI transactions | Configured local initiator signals and IIMCL clear counterexample cuts | REQ deassertion alone cannot retire an issued/retried transaction | Exact hardblock behavior, descriptor consumption and outstanding-write accounting |
+| Windows DMA | Existing no-launch stage and UnknownActive quarantine; matching IRQ is only CompletionObserved | NeverLaunched cleanup only with software rundown; launched ownership cannot be released on these results | Device stop/drain plus applicable mapping/coherency/host-bridge ordering contract |
+
+Dependency/impact backlog (no new hardware observation authorized):
+
+1. **Closed locally:** sparse MCU startup/serial-loop and flash-offset mapping,
+   dual SR/REV, SACQ physical return and bounded two-FPGA retention diagnostic.
+   Effective bank/configuration success is explicitly not closed.
+2. **External producer contract:** HAD639E and HTB645 definitions for accepted
+   startstop/EndACQ, maximum pending samples, final memory write, clock-domain
+   latency and retained/restart state. Existing diagrams are connectivity only;
+   no available firmware export supplies their internal behavior.
+3. **Architecture contract:** family-applicable Spartan-IIE PCILOGIC.PCI_CE and
+   dedicated PCIIOB.PCI model, plus BUFGCE/DLL effective clock/reset behavior.
+   Generic libraries and Spartan-6 substitutes do not establish it. Without
+   this, descriptor/target retirement cuts cannot be promoted to a PCI proof.
+4. **Transport/state correlation:** existing passive command-tagged PCI+LVDS
+   captures (12 lanes, SYNC, clocks, errors, initial table/FIFO state), or the
+   original RTL/protocol contract, covering stop/load/retry and final response.
+   This must distinguish reception, sticky status and completed/drained work;
+   software generations cannot manufacture a missing hardware epoch.
+5. **Platform identity/order:** actual installed assembly/selected flash bank
+   and identified host bridge with its outstanding-write/IRQ ordering guarantee.
+   Only then evaluate all six obligations and stability until explicit restart.
+
+No available source-backed result supplies the missing joint admission,
+retirement or final-host-write implication. Expanding unrelated LUTs cannot
+substitute for these specific contracts. Preserve UnknownActive; do not activate
+WDM mappings, relax quarantine, or merge PR#9 based on this partial proof.
