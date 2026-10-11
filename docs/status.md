@@ -16,9 +16,9 @@
   overall 311/311 PASS.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
   45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
-  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 50 PCI DMA (11 synthetic,
-  27 private configured-logic, 12 private SMT), and 45 synthetic SMT tests:
-  **275/275 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 97 PCI DMA (19 synthetic,
+  48 private configured-logic, 30 private SMT), and 45 synthetic SMT tests:
+  **322/322 PASS**, zero failures/skips, plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
   sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
@@ -30,6 +30,14 @@
   equations, conditional read/write C/BE and all32 AD alternatives, and staging
   pointer increment/rewind/retention proofs. HEX/LH/LV owner qualification resolves
   all9,150 routes in the control-root report, including the named payload mux.
+  The handshake extension adds19 local truth tables, exact issue/rollback and
+  two-bit prefetch/four-bit availability equations, delayed-accept counter CEs,
+  eight receive-pointer inequalities and explicit PCI output-enable/CE limits.
+  Twelve focused bound2/4 scenarios have consistent bases, eleven SAT and one
+  bounded UNSAT, zero unknown/timeout results. Q=0/no issue locally excludes
+  rewind under mode1/A0; IRQ with Q nonzero is only a runtime-cut candidate.
+  Token observers never constrain hardware. Owned acceptance, global word
+  conservation, IRQ-after-every-word and bridge visibility remain Unknown.
   Ten additional bound1 runtime diagnostics yield nine SAT and
   one UNSAT with ten consistent bases and zero solver-unknown results; all
   are Inconclusive for physical shutdown, with 218 symbolic boundaries.
@@ -38,7 +46,7 @@
   ordering and host visibility remain separate unproved obligations.
   All six DMA-quiescence obligations and stable restart exclusion remain
   Unknown. No new driver build or hardware test was performed for this offline
-  analysis. PR #9 remains unmerged.
+  analysis. PR #9 remains draft, open and unmerged.
 
 ## DMA/PnP staging
 

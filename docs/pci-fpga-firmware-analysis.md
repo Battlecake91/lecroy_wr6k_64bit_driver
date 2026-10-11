@@ -2773,6 +2773,19 @@ as either entirely local or entirely acquisition-controller-owned is invalid.
 
 #### PCILOGIC Source Audit And Exact Missing Contract
 
+The focused [DMA handshake and rollback analysis](pci-dma-retirement-analysis.md#handshake-rollback-and-local-word-conservation)
+adds exact issue/J/v, rollback/prefetch Q, staging availability V and counter-CE
+equations with nineteen local truth-table checks. These internal signals
+distinguish prefetch attempts from delayed A-qualified progress, but A is not
+yet proved equal to an owned PCI acceptance event. All36 AD/CBE FFs hold when
+PCI_CE=0 on a selected PCI edge; this conditional hold proof does not recover
+the CE equation. Twelve focused actual-register projections avoid full-network
+timeouts; eleven SAT and one bounded UNSAT are not legal-launch reachability
+or host-visibility proofs. No other-family primitive semantics are substituted.
+The DS077 and ISE10.1 SP3 manufacturer provenance pages were rechecked for this
+focused task; no applicable primitive contents or transfer/timing contract was
+obtained. The exact evidence request below remains open.
+
 **Not resolved:** No applicable manufacturer PCILOGIC transfer/timing model is
 available in the inspected local evidence. Offline inventory checked the usual
 Xilinx installation paths, project/download/private evidence paths, applicable

@@ -261,6 +261,18 @@ conditional C/BE/AD selection, the16x32 staging store with increment/rewind,
 counter D equations and IRQ-source pipeline. The payload LH route is resolved
 by the same native owner-buffer rule as HEX, without selecting a preferred
 source. Physical owned transaction history and retirement remain unresolved.
+The focused handshake extension now establishes separate issue, delayed A,
+two-bit prefetch Q, four-bit availability V and rollback equations. Segment
+and IIMTC enables use delayed A-qualified progress rather than issue/retry
+attempts. The twelve focused runtime projections have eleven SAT results and
+one bounded UNSAT with consistent bases; IRQ can coexist with nonzero Q in an
+external-cut projection, not an established legal-launch hardware trace.
+Modulo conservation, conditional retry retention and a delayed near-full gate
+do not establish unique physical acceptance, no overwrite or host visibility.
+The exact family PCI_CE/PCIIOB contract and owned-transaction history remain
+required. All six release obligations and stable-until-restart remain Unknown;
+MTTCTL0, IIMCL0, timeout, abort and PnP rundown are not newly authorized release
+paths. See the canonical handshake/outcome matrix in the PCI DMA document.
 No invented stop logic was added:
 a free symbol named `stop_ack` would make the proposed safety checks vacuous.
 
@@ -345,8 +357,8 @@ That plan is not permission to run experiments or change quarantine.
 
 ### Offline review validation
 
-Re-run on 2026-10-11: **275 Python tests** (18 C166, 45 routing, 52 MMIO,
-50 PCI DMA, 65 acquisition, 45 synthetic SMT), zero failures/skips; decoder
+Re-run on 2026-10-11: **322 Python tests** (18 C166, 45 routing, 52 MMIO,
+97 PCI DMA, 65 acquisition, 45 synthetic SMT), zero failures/skips; decoder
 self-test, private frame calibration, **50 native architecture + 19 PCI local
 equation checks**, and all eight driver dry suites (**311 cases**) pass.
 Private firmware is used for configured-logic, firmware calibration and private
@@ -354,6 +366,10 @@ SMT checks; synthetic tests require no proprietary image. Ten separate bound1
 diagnostics have consistent bases, nine SAT/one UNSAT/zero solver-unknown;
 their scoped interpretation is in the PCI DMA document. No new WDK build or
 hardware execution occurred and no stop acknowledgement was invented.
+The twelve additional handshake/rollback projections also have consistent
+bases, eleven SAT/one bounded UNSAT/zero solver-unknown. Nineteen new local
+truth tables, availability arithmetic, reload-copy contracts and conditional
+PCI_CE output holding are covered by the extended DMA suite.
 The exploratory full-network bound2 IRQ query timed out; the actual-register
 cone result is SAT with explicitly unknown external cuts, not a reachable
 hardware counterexample. See the canonical DMA proof-assumption table.

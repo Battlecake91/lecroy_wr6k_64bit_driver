@@ -358,6 +358,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path, help="private configured network")
     parser.add_argument("--queries", action="store_true", help="run bounded PCI DMA queries (requires z3-solver)")
+    parser.add_argument("--handshake", action="store_true", help="run focused handshake/rollback queries (requires z3-solver)")
     parser.add_argument("--output", type=Path, help="private report outside repository")
     args = parser.parse_args()
     if args.output and (args.output.resolve().is_relative_to(Path(__file__).resolve().parents[2]) or
@@ -367,6 +368,10 @@ def main():
     evidence = focused_evidence(report)
     if args.queries:
         evidence["bounded"] = bounded_queries(report)
+    if args.handshake:
+        from virtexe_dma_handshake import H, cone_summary, handshake_queries, local_checks
+        evidence['handshake'] = dict(checks=local_checks(report), queries=handshake_queries(report),
+                                     cones={n:cone_summary(report,H[n]) for n in ('issue','rewind')})
     if args.output:
         args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"local_relations": len(evidence["checks"]),

@@ -14,6 +14,75 @@ from virtexe_dma import (IIMTC_GATES, NAMES, RELATIONS, SGTA_GATES, ad_origin,
                         ad_bus_drivers, payload_map, POINTER_REPLICAS, LOAD_REPLICAS)
 from virtexe_mmio import functional_expression
 from virtexe_routing import COMMIT, evaluate_data, register_contract, register_equivalence
+from virtexe_dma_handshake import (H, HANDSHAKE_RELATIONS, SCENARIOS, local_checks,
+                                  owned_phase, pending_next, projection,
+                                  handshake_queries, word_observer, receive_availability_checks)
+
+
+class SyntheticHandshake(unittest.TestCase):
+    def phase(self, **kwargs):
+        values = dict(owned=True, data_phase=True, output_enabled=True, frame=False,
+                      irdy=False, trdy=False, devsel=False, stop=True,
+                      transferred_before=False, claimed_before=True)
+        values.update(kwargs)
+        return owned_phase(**values)
+
+    def test_external_trdy_without_owned_enabled_data_phase_is_not_acceptance(self):
+        for key in ('owned', 'data_phase', 'output_enabled'):
+            self.assertFalse(self.phase(**{key:False})['accepted'])
+
+    def test_wait_final_and_disconnect_with_data(self):
+        self.assertTrue(self.phase(frame=True)['final_accepted'])
+        self.assertFalse(self.phase(frame=True,trdy=True)['final_accepted'])
+        self.assertTrue(self.phase(stop=False)['disconnect_with_data'])
+        self.assertTrue(self.phase(irdy=True)['wait'])
+
+    def test_retry_disconnect_and_abort_require_distinct_history(self):
+        self.assertTrue(self.phase(stop=False,trdy=True)['retry'])
+        self.assertFalse(self.phase(stop=False,trdy=True,transferred_before=True)['retry'])
+        self.assertTrue(self.phase(stop=False,trdy=True,transferred_before=True)['disconnect_without_data'])
+        self.assertTrue(self.phase(stop=False,trdy=True,devsel=True)['target_abort'])
+        self.assertFalse(self.phase(stop=False,trdy=True,devsel=True,claimed_before=False)['target_abort'])
+        self.assertFalse(self.phase(devsel=True,trdy=True,claimed_before=False)['master_abort'])
+        self.assertTrue(self.phase(devsel=True,trdy=True,claimed_before=False,response_window_expired=True)['master_abort'])
+
+    def test_pending_counter_simultaneous_events_are_not_naive_subtraction(self):
+        self.assertEqual(pending_next(2,True,True,True,True),2)
+        self.assertEqual(pending_next(2,True,False,True,True),1)
+        self.assertEqual(pending_next(0,True,False,True,False),3)
+        self.assertEqual(pending_next(1,False,False,False,True),1)
+
+    def test_rollback_drains_at_most_three_words_under_stated_mode(self):
+        for start in range(4):
+            q=start
+            for _ in range(3):
+                q=pending_next(q,True,False,False,q!=0)
+            self.assertEqual(q,0)
+
+    def test_word_observer_reports_unmatched_and_duplicate_events_without_constraints(self):
+        result=word_observer([{'write':(0,'a')},{'issue':0},{'rewind':True},
+                              {'issue':0},{'accept':True},{'issue':0},{'accept':True}])
+        self.assertEqual(result['accepted'],['a','a'])
+        self.assertIn('duplicate acceptance',result['violations'])
+        self.assertIn('rewind without issued token',word_observer([{'rewind':True}])['violations'])
+        self.assertIn('overwrite of pending token',word_observer([
+            {'write':(0,'a')},{'issue':0},{'write':(16,'b')}])['violations'])
+
+    def test_projection_preserves_actual_contract_and_names_external_cuts(self):
+        p={'logic':{H['q0']:{'kind':'register','data':{'source':'external'}},
+                    'external':{'kind':'register','data':{'constant':1}},
+                    'comb':{'kind':'combinational','data':{'source':'external'}}},'memories':{}}
+        result=projection(p,['q0'])
+        self.assertIs(result['logic'][H['q0']],p['logic'][H['q0']])
+        self.assertNotIn('external',result['logic'])
+
+    def test_public_handshake_matrix_keeps_unknown_safety_and_all_scenarios(self):
+        p=Path(__file__).resolve().parents[2]/'docs'/'pci-mmio-register-evidence.json'
+        m=json.loads(p.read_text(encoding='utf-8'))['pci_dma']['handshake_retirement']
+        self.assertEqual(m['local_relations'],len(HANDSHAKE_RELATIONS))
+        self.assertEqual(len(m['scenarios']),len(SCENARIOS))
+        self.assertEqual(m['owned_acceptance'],'Unknown')
+        self.assertEqual(m['irq_after_every_accepted_word'],'Unknown')
 
 
 class SyntheticDma(unittest.TestCase):
@@ -206,6 +275,137 @@ def add_relation(name, variables, predicate):
 
 for relation in RELATIONS:
     add_relation(*relation)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT'), 'private PCI report not configured')
+class PrivateHandshake(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.p=PrivateDma.p
+        cls.checks=local_checks(cls.p)
+
+    def test_receive_availability_is_eight_paired_pointer_inequalities(self):
+        r=receive_availability_checks(self.p)
+        self.assertEqual(len(r['pairs']),8)
+        self.assertEqual(r['status'],'Verified')
+        self.assertEqual(len({n for pair in r['pairs'] for n in pair}),16)
+
+    def test_prefetch_and_available_registers_reset_to_zero_on_pci_clock(self):
+        for name in ('q0','q1','rollback',*[f'available{i}' for i in range(4)]):
+            c=register_contract(H[name],self.p['logic'][H[name]])
+            self.assertEqual(c['init'],0)
+            self.assertEqual(c['clock']['source'],'X24,Y29 BUFGCE[1].O')
+            self.assertEqual(functional_expression(c['ce']),{'constant':1,'inv':False})
+            self.assertEqual(c['sr']['source'],self.p['roots']['RST#']['I'])
+
+
+def add_handshake_relation(name):
+    def test(self):
+        self.assertEqual(self.checks[name]['status'],'Verified')
+    setattr(PrivateHandshake,'test_handshake_equation_'+name,test)
+
+
+for name,_,_ in HANDSHAKE_RELATIONS:
+    add_handshake_relation(name)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC')=='1',
+                     'private PCI SMT not configured')
+class PrivateHandshakeSmt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.p=PrivateDma.p
+        cls.results=handshake_queries(cls.p)
+
+    def test_prefetch_two_bit_next_equation_with_simultaneous_events(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False)
+        q=lambda n:s.signal(H[n],0)
+        word=lambda lo,hi:z3.If(lo,z3.BitVecVal(1,2),z3.BitVecVal(0,2))+z3.If(hi,z3.BitVecVal(2,2),z3.BitVecVal(0,2))
+        old=word(q('q0'),q('q1'))
+        actual=word(*[s.expr(self.p['logic'][H[n]]['data'],0) for n in ('q0','q1')])
+        direction=z3.And(q('mode'),z3.Not(q('issue')),z3.Or(q('pci_accept'),q('rewind')))
+        toggle=z3.Or(direction,z3.And(q('issue'),z3.Not(q('pci_accept')),z3.Not(q('rewind'))))
+        expected=old+z3.If(toggle,z3.If(direction,z3.BitVecVal(3,2),z3.BitVecVal(1,2)),z3.BitVecVal(0,2))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(actual!=expected)
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_available_word_count_and_pointer_modulo_conservation(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False)
+        q=lambda n:s.signal(H[n],0)
+        regs=[H[f'available{i}'] for i in range(4)]
+        word=lambda values:sum((z3.If(v,z3.BitVecVal(1<<i,4),z3.BitVecVal(0,4)) for i,v in enumerate(values)),z3.BitVecVal(0,4))
+        old=word([s.signal(n,0) for n in regs])
+        actual=word([s.expr(self.p['logic'][n]['data'],0) for n in regs])
+        unit=lambda n:z3.If(q(n),z3.BitVecVal(1,4),z3.BitVecVal(0,4))
+        expected=old+unit('write')+unit('rewind')-unit('issue')
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(actual!=expected)
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_reload_high_and_low_copies_have_equal_next_functions_and_contracts(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False)
+        a,b=[register_contract(H[n],self.p['logic'][H[n]]) for n in ('reload','reload_hi')]
+        for key in ('init','flags','clock','ce','sr','rev','reset','set','status'):
+            self.assertEqual(functional_expression(a.get(key)),functional_expression(b.get(key)))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(s.expr(a['data'],0)!=s.expr(b['data'],0))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+    def test_issue_and_rewind_can_coexist_in_unreachable_or_runtime_cut(self):
+        from virtexe_symbolic import System,z3
+        s=System(self.p,bound=0,powerup=False)
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(s.signal(H['issue'],0),s.signal(H['rewind'],0))
+        self.assertEqual(s.solver.check(),z3.sat)
+
+    def test_mode_zero_can_retain_rollback_state_in_runtime_projection(self):
+        from virtexe_symbolic import System,clock_key,z3
+        local=projection(self.p,['q0','q1','rollback'])
+        pci=clock_key({'source':'X24,Y29 BUFGCE[1].O','inv':False})
+        s=System(local,bound=4,powerup=False,schedule=[{pci}]*4)
+        q=lambda n,t:s.signal(H.get(n,n),t)
+        for t in range(5):
+            s.solver.add(q(self.p['roots']['RST#']['I'],t),z3.Not(q('issue',t)),
+                         z3.Not(q('mode',t)),z3.Not(q('pci_accept',t)),z3.Not(q('end_edge',t)))
+        s.solver.add(q('q0',0),z3.Not(q('q1',0)),q('rollback',0))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.And(*[q('rewind',t) for t in range(5)]))
+        self.assertEqual(s.solver.check(),z3.sat)
+
+    def test_pci_ce_zero_holds_all_36_output_bits_not_automatic_sampling(self):
+        from virtexe_symbolic import System,clock_key,z3
+        outputs=[r['O'] for n,r in self.p['roots'].items() if n.startswith(('AD[','CBE#['))]
+        self.assertEqual(len(outputs),36)
+        local=projection(self.p,[],outputs)
+        pci=clock_key({'source':'X24,Y29 BUFGCE[1].O','inv':False})
+        s=System(local,bound=1,powerup=False,schedule=[{pci}])
+        for t in (0,1):
+            s.solver.add(s.signal(self.p['roots']['RST#']['I'],t))
+        s.solver.add(z3.Not(s.signal('X0,Y13 PCILOGIC.PCI_CE',0)))
+        self.assertEqual(s.solver.check(),z3.sat)
+        s.solver.add(z3.Or(*[s.signal(n,0)!=s.signal(n,1) for n in outputs]))
+        self.assertEqual(s.solver.check(),z3.unsat)
+
+
+def add_handshake_scenario(number):
+    def test(self):
+        result=self.results[number-1]
+        self.assertEqual(result['base_consistency'],'sat')
+        self.assertEqual(result['solver'],'unsat' if number==4 else 'sat')
+        self.assertFalse(result['unbounded_proof'])
+        self.assertFalse(result['observer_constraints'])
+        self.assertGreater(result['unknown_count'],0)
+    setattr(PrivateHandshakeSmt,f'test_handshake_scenario_{number:02d}',test)
+
+
+for number in range(1,len(SCENARIOS)+1):
+    add_handshake_scenario(number)
 
 
 @unittest.skipUnless(os.environ.get("WR6K_MMIO_REPORT") and os.environ.get("WR6K_FPGA_SYMBOLIC") == "1",

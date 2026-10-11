@@ -14,7 +14,8 @@ Evidence: existing private BINARY.205 decoded network, original x86 control
 flow and current x64 source. Project Combine is pinned to
 `234343d23e737e57f2727630e19008b509d7d522`. `Verified` below describes configured
 topology/local equations, not the installed hardware revision. The checks are
-in `tools/fpga/virtexe_dma.py` and `tests/dry/test_fpga_dma.py`; complete private
+in `tools/fpga/virtexe_dma.py`, `tools/fpga/virtexe_dma_handshake.py` and
+`tests/dry/test_fpga_dma.py`; complete private
 networks and capture maps are not published.
 
 ## Initiator state and protocol boundary
@@ -230,12 +231,15 @@ conservation do not prove full/empty distinction or prevent premature reuse.
 
 | Transition | Label | Exact scope / missing invariant |
 |---|---|---|
+| LVDS word received -> receive BRAM | Verified conditional | Existing receive capture/admission and remote-clock BRAM paths; sample identity, producer end-of-data and CDC coherence remain separate |
+| Receive BRAM -> staging RAM write | Verified conditional | All32 data alternatives, PCI-domain W and RAM16X1D write ports; cross-domain collision/valid-word history Unknown |
 | Host publication -> descriptor request | Inferred | Software table, SGTA/IIMCL capture and initial/pending equation; publication/coherency and owned request not closed |
 | Descriptor request -> fetch acceptance | Unknown | Conditional address/read command and AD capture; PCI_CE/ownership/history missing |
 | Fetch acceptance -> descriptor consumption | Verified conditional | B then A local capture for the stated pending/accept schedule; legal fetch and stalled/retry schedules Unknown |
 | Descriptor consumption -> payload selection | Verified conditional | Chain/load/zero and complete master-address equations; transaction identity still Inferred |
 | Payload selection -> PCI write | Verified conditional | All32 BRAM/staging/TBUS/AD D alternatives and write-command cofactor; driven accepted write Unknown |
 | PCI write -> final data-phase acceptance | Unknown | Own output enables, hardblock sampling and target history must agree |
+| Attempt -> rewind / final consumption | Verified mechanism / Unknown ownership | Actual Q/rollback/read-pointer equations below; universal retry-suffix preservation and unique accepted-token consumption not established |
 | Final acceptance -> internal completion | Unknown | No proved bijection from accepted words to counter/terminal events |
 | Internal completion -> IRQ source | Verified | Actual C/sticky-IRQ equations, not generation-tagged physical interrupt provenance |
 | IRQ source -> physical IRQ | Inferred | Interrupt masks/output path; effective electrical timing and final-transaction association not proved |
@@ -247,6 +251,192 @@ is a retention/reissue mechanism candidate, but its one-to-one correspondence
 with target retry, disconnect or abort is not established. In particular,
 no decoded error/readback predicate currently certifies discard, drain or
 reissue completion. Timeout/lost IRQ provide no FPGA cancellation event.
+
+## Handshake, rollback and local word conservation
+
+### Exact configured cuts
+
+The immediate issue cone has six FF cuts; the immediate rewind cone has three.
+The complete transitive data/control inventory of either root covers1,249 nodes,
+603 registers and49 pad inputs in the current target-root report. Its remaining
+architecture leaves are three effective BUFGCE clocks and DLL.LOCKED. This is
+graph coverage, not a proof of memory contents, CDC coherence or output timing.
+The full inventory stays private. The companion checker validates19 independent
+local truth tables, in addition to the prior15 DMA and19 PCI-control equations.
+
+Here `S0/S1` abbreviate `SLICE[0]/SLICE[1]`; lowercase names are coordinate cuts,
+not presumed PCI protocol states:
+
+```text
+issue = mode && !target && !B && J && v && h
+mode=X18,Y10 S0.YQ; target=X2,Y21 S1.XQ
+B=X2,Y13 S0.XQ; J=X4,Y13 S0.XQ; v=X5,Y5 S0.YQ; h=X5,Y8 S0.YQ
+
+J' = !target && ((a&&k)||(c&&v)||S||(!TRDY_raw&&!I&&v)
+                ||(!IRDY_raw&&k&&!e))
+a=X3,Y16 S0.XQ; k=X5,Y15 S0.YQ; c=X3,Y7 S1.XQ
+S=X4,Y9 S1.XQ; e=X2,Y14 S0.XQ; I=X2,Y15 S1.XQ
+v' = (S&&!GNT_raw)||(v_hold&&v); v_hold=X5,Y5 S0.Y
+h'=1
+
+rewind = rollback && (q0||q1)
+q0=X18,Y4 S1.YQ; q1=X18,Y4 S0.XQ; Q=q0+2*q1
+rollback=X19,Y7 S0.YQ
+rollback' = rewind || (ended&&!active&&!T&&(read_mode||write_mode))
+ended=X15,Y7 S0.YQ; active=X5,Y5 S0.XQ
+ended'=active; T=X8,Y7 S0.YQ
+T_D=address_disable&&(K||(!STOP_IQ&&DEVSEL_IQ))
+T_CE=active||!address_disable; address_disable=X4,Y9 S0.YQ
+K=X3,Y4 S0.X; read_mode=X19,Y7 S1.YQ; write_mode=X15,Y7 S1.YQ
+
+d = mode && !issue && (A||rewind)
+t = d || (issue&&!A&&!rewind)
+Q' = Q + (t ? (d ? -1 : 1) : 0)                 modulo4
+A=X4,Y13 S1.YQ; A'=!TRDY_raw&&v&&!I
+```
+
+Q/rollback/ended/active/J/v/h use PCI-clock FFs, CE=1 and asynchronous !RST#;
+Q/rollback/h initialize to0. T retains its decoded conditional CE, not CE=1.
+`mode` retains CE=`pending||load`; it is not a free synchronous reset for Q.
+The raw/IQ distinction is intentional. Dedicated PCIIOB ready taps are neither
+silently replaced by raw I nor assumed equal to IQ. Existing B/IRDY/control
+equations remain part of the original configured model, not a substitute FSM.
+
+Consequences **Verified locally**, with global interpretation still Unknown:
+
+- `issue` need not coincide with A or current TRDY readiness. It is a prefetch
+  advancement, not final consumption of a word by the target.
+- Issue and rewind can coexist in an arbitrary-runtime cut; read pointer then
+  holds. Whether a legal initialized transaction reaches that overlap is Unknown.
+- Mode1, no issue and A=0 drains a nonzero Q by one per rewind and gates rewind
+  off at Q=0. Starting locally Q=rollback=0 with no issue, four-edge rewind is
+  UNSAT. This is a bounded local exclusion, not a global ownership invariant.
+- A and rewind coalesce into one decrement when issue=0. Issue+A+rewind holds
+  Q rather than performing naive `+1-1-1`. A with Q=0 can wrap Q in a runtime
+  projection; excluding that state requires owned-transaction history.
+- Mode0 can retain nonzero Q and rollback across repeated rewind edges. The
+  four-edge SAT projection is not a demonstrated reachable underflow defect.
+
+### Availability and retention
+
+An actual four-bit available-word bank has low-to-high bits X22,Y6 S0.XQ,
+X22,Y7 S0.XQ, X22,Y8 S0.XQ, X22,Y8 S0.YQ. The configured equations are:
+
+```text
+V' = V + W + rewind - issue                       modulo16
+available_nonzero = (V!=0)
+throttle' = V3 && (V1||V2)                         i.e. V>=10
+W = received_available && !throttle
+```
+
+This bank initializes to0 and uses CE=1 on the PCI clock. Receive availability
+is an OR of eight paired FF inequalities, through four comparators. The producer
+side of those comparisons is a retained PCI-clock snapshot; the consumer side
+advances with staging admission. The paired comparator truth tables are checked,
+but snapshot coherence with the remote-clock receive writer is not assumed.
+Equality without an independently valid wrap/history invariant is not a full
+versus empty certificate. The delayed threshold is not a proof that V stays in
+the nonwrapped range under every issue/rewind/producer schedule.
+
+Together with the established write/read pointer equations, V preserves
+`V+read_index-write_index` modulo16. That arithmetic invariant does not prove
+word identity, prevent overwriting an unaccepted token, or establish CDC safety.
+For issue then rewind without an intervening producer write, the same RAM slot
+is selected again; W=0 preserves its contents. Retry preserves the destination
+address **conditionally** when load=pending=A=0, because the master-address
+equation then holds. Mapping those conditions to every physical retry and to
+the AD output pipeline remains Unknown. RAM reset is not a data erase.
+
+`word_observer` is a separate verification token ledger. It can flag unmatched
+issue/accept/rewind, duplicate identities or overwrite under a supplied event
+interpretation. It never supplies valid/pending constraints to System and is
+not evidence that a hypothetical token violation occurs on hardware.
+
+### Counter enables and completion
+
+The recovered full32-bit D-word equations now have validated CE meanings:
+
+```text
+write_accept' = A && write_mode
+IIMTC_CE = (cl&&reload)||(aux&&write_accept)
+segment_CE = load||pending||A
+```
+
+Low/high IIMTC reload copies have equal next functions, INIT and sampling
+contracts; equality requires common initialization/clock history, not arbitrary
+runtime aliasing. With load terms absent, segment decrements on delayed A,
+including descriptor-read progress. IIMTC decrements on a further delayed
+write-mode A qualified by aux. Neither counts issue, rewind or retry attempts.
+An accepted-32-bit-word interpretation is Inferred, conditional on A belonging
+to this card's owned data phase; complete descriptor semantics remain Unknown.
+
+The segment1->0 scenario is SAT while **current** TRDY_raw and IRDY shadow
+are high, because its CE uses an already registered A. This is pipeline timing,
+not proof that a word was lost. The existing completion equations do not directly
+test Q, V or PCI_CE. The projected IRQ-rise scenario with nonzero Q is SAT,
+but terminal/descriptor-zero inputs and ownership history are external cuts.
+Thus it neither proves premature IRQ on valid hardware execution nor proves
+IRQ-after-every-acceptance. Host visibility remains an independent obligation.
+
+### PCI outcomes and evidence matrix
+
+The protocol observer follows [PCI Local Bus Specification3.0](https://e2e.ti.com/cfs-file.ashx/__key/communityserver-discussions-components-files/639/1016.PCI.Local.Bus.Specification.Revision.3.0.pdf),
+sections3.2.1/3.3.3. Electrical0 means asserted. Address phase needs prior grant
+and bus-idle/start history; GNT withdrawal alone does not revoke an active owned
+transaction. Accepted data requires owned data phase, enabled outputs and
+IRDY=TRDY=0. FRAME=1 then marks the final accepted phase. STOP=0,DEVSEL=0,
+TRDY=1 before any transfer is retry; after a transfer it is disconnect without
+data. STOP=TRDY=DEVSEL=0 requests disconnect with data, transferred only when
+IRDY=0. Target abort needs prior claim then STOP=0,DEVSEL=TRDY=1. Master abort
+needs the expired response window with no claim, not one DEVSEL sample.
+
+| Owned protocol outcome | issue/rewind and read pointer | Pending word/address | Counter/completion |
+|---|---|---|---|
+| Wait | Current readiness does not determine issue; `read'=read+issue-rewind` | W0 retains RAM; AD/CBE hold if PCI_CE0 | A is delayed; previous progress can remain; completion Unknown |
+| Accepted phase | Same arithmetic; A/issue may differ by pipeline cycles | Own payload identity requires drive/sampling invariant | Internal A advances address/counts conditionally; physical equivalence Unknown |
+| Retry | Rollback/Q mechanism exists; exact first-phase correspondence Unknown | Same slot on matched issue/rewind with W0; address holds if no load/pending/A | No decrement merely because STOP asserted; eventual reissue/retirement Unknown |
+| Disconnect | Already accepted prefix and unaccepted tail need distinct history | Tail rewind candidate, not verified universal suffix conservation | A may count accepted prefix; terminal transaction association Unknown |
+| Abort | Cannot assign issue/rewind from one bus sample | Retention/discard/restart policy Unknown | No proved abort-to-drained/idle transition |
+| Final phase | STOP does not itself cancel a simultaneous transfer | Last word identity and output CE must agree | IRQ-after-last-owned-acceptance and host visibility Unknown |
+
+### Twelve focused bounded scenarios
+
+`virtexe_dma.py --handshake --output <private-path>` reproduces the checks and
+private traces. Original FF D/CE/SR/INIT contracts are retained; other named FFs
+are symbolic external cuts. PCI edges only, RST# deasserted at all boundaries,
+no fairness/remote edges/owned-transaction history are assumed. PCI_CE is left
+symbolic; a separate consistent-base mismatch proof shows all36 AD/CBE outputs
+hold on an edge with CE=0. Each query checks base consistency before its goal.
+
+| # | Scenario / exact qualification | Bound | Result |
+|---|---|---|---|
+| 1 | issue with TRDY1/A0 | 2 | SAT |
+| 2 | Internal A1 with issue0 | 2 | SAT |
+| 3 | Q=rollback=0, mode1/A0; issue then rewind | 2 | SAT |
+| 4 | Same local initial state, no issue throughout; any rewind | 4 | UNSAT |
+| 5 | Same local initial state; two issues then two rewinds drain Q | 4 | SAT |
+| 6 | A then STOP0/TRDY1 with rewind; partial-disconnect-shaped cut | 2 | SAT |
+| 7 | B1/segment-zero/STOP0/TRDY0 followed by A1; final-phase-shaped cut | 2 | SAT |
+| 8 | Actual segment1->0, no load/pending, delayed A1 and current TRDY1/I1 | 2 | SAT |
+| 9 | C=IRQ=0 then IRQ rise with Q nonzero | 2 | SAT |
+| 10 | Qualified IIMCL clear with rewind still pending | 2 | SAT |
+| 11 | Read15->0 by issue with TRDY1; matched bit0 replica | 2 | SAT |
+| 12 | Qualified IIMCL restart with all32 staging memories retained, W0 | 2 | SAT |
+
+All12 bases are SAT; zero solver-unknown results. These are projections, not
+boot/valid-launch reachable traces. In particular2 does not assert that a new
+owned PCI transfer occurs without any prior issue, and6/7 do not establish the
+required physical transaction history. SAT is not hardware failure; bounded
+UNSAT is not unbounded retirement or safe shutdown. Repeated retry and final
+word stalls still need the missing effective-output/ownership invariant.
+
+Validation on2026-10-11:97 DMA tests (19 synthetic,48 private configured-logic,
+30 private SMT), all PASS. The complete FPGA/MCU run has322 Python tests,
+zero failures/skips, decoder self-test/frame calibration,50 native architecture
+and19 native PCI local-equation checks PASS. All311 driver dry cases pass.
+The ten earlier full-network bound1 diagnostics were also rerun through the
+CLI, separately from the unit-test count. No hardware execution or WDK build
+was performed; the production driver and quarantine policy are unchanged.
 
 ## Stop/failure matrix and bounded diagnostics
 
