@@ -1,7 +1,8 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **software-only staged lifetime hardening**, 2026-10-05.
-Base reviewed: `fix/p0-irq-start-dma-gating` at `9f2ffa9`.
+Status: **software-only legacy completion/cleanup hardening**, 2026-10-11.
+Implementation base: `fix/p0-irq-start-dma-gating` at `82b4c4e`.
+Research reference only: PR #9 at `6d0fbfa`; no research merge.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -69,7 +70,7 @@ This is **partial damage containment**, not DMA engine stop/recovery:
    keeps the selected transfer resident through `KeSetEvent` while launch
    cleanup deselects it. Wrong-generation consumers use compare-and-swap and
    cannot erase a valid current IRQ marker.
-3. On a launched request with timeout/failed wait or a supposedly successful
+3. On a launched request with timeout/failed wait, failed interrupt-mask cleanup, or a supposedly successful
    event without matching physical-IRQ evidence, transition to
    `UnknownActive`, mark its transfer `DmaUnsafeToFree`, latch
    `DmaUnknownActive` and disable new IOCTL admission. An IRQ observed just
@@ -134,6 +135,69 @@ and before any MAM setup MMIO, so a prior timeout cannot be followed by a
 second launch from the queued request. STOP/SURPRISE/REMOVE still close the
 outer admission gate and wait for already-admitted synchronous IOCTLs before
 resource teardown.
+
+## Normal-success cleanup audit and implementation boundary
+
+The active MTT and MAM paths hold `TransferMutex` across selection, launch,
+wait and deselection. Their production lifetime chain is:
+
+| Boundary | Confirmed software contract | Remaining premise |
+| --- | --- | --- |
+| ISR | Reads enabled INTST, attributes bit 0 to the current software generation, acknowledges IIMCL and INTST and queues the DPC | The board IRQ is untagged; a delayed old physical source after a later GO cannot be distinguished. |
+| DPC/event | Checks transfer and IRQ generations; consumes the marker and signals the embedded event under `DmaCompletionLock` | CPU object exclusion is not device retirement. |
+| Wait/cleanup | Attempts the existing INTEN bit-0 mask before finalizing launched ownership; both wait and mask must succeed, with matching completion evidence | Mask helper success means register resolution/write was issued, not verified hardware masking or a PCI drain. |
+| Deselect | Clears the selected pointer and generation under the same completion lock as event signaling | An in-flight ISR may still acknowledge/queue work; it does not hold a transfer pointer. |
+| Unregister/process cleanup | Rejects selected or poisoned transfers; unlinks under `TransferMutex` before freeing | Unpoisoned normally completed legacy transfers still rely on the compatibility exception below. |
+| Free | Releases descriptor MDL/storage, unlocks source MDLs and frees the transfer only if not poisoned; poisoned allocations move to independent retention ownership | This legacy free gate is not `IdleProved` and is not suitable for hardware-active WDM mappings. |
+| STOP/REMOVE | Closes admission, drains IOCTLs, disconnects IRQ, flushes DPC work and stops the timer before transfer/BAR teardown; REMOVE also drains the remove lock | Software rundown cannot stop outstanding PCI writes. |
+| Next acquisition | Rejects the device-wide unknown-active latch; fresh generation preparation occurs only after rejecting an existing selected transfer under the completion lock | Fresh software identity does not establish retirement of prior hardware work. |
+
+Confirmed corrections:
+
+- Previously a successful wait was finalized before fallible mask cleanup.
+  A later mask failure changed only the returned status, leaving the transfer
+  unpoisoned and later acquisition admission open. Both launch paths now call
+  the shared `LecDmaCompletionFinishCleanup` decision after masking and before
+  deselection. Failure after GO permanently poisons ownership, closes admission
+  before fallible parent notification and retains descriptors and locked pages.
+  A mask error replaces success; an earlier timeout/error remains the returned
+  error. No additional MMIO operations or unverified readbacks are introduced.
+- Duplicate physical IRQ observation previously republished the same generation
+  even after a DPC consumed it. Only the first `DeviceActive -> Observed` winner
+  now publishes the marker. Duplicate sources still receive the existing ISR
+  acknowledgements, but cannot replenish software completion evidence.
+- Busy selection previously prepared a fresh tracker before checking the
+  selected pointer. Preparation now follows the busy check inside the lifetime
+  lock. This preserves the current tracker on rejection; it is defensive
+  ordering, not evidence of an observed race under the existing mutex contract.
+
+Successful legacy PFN acquisition, status/output ABI, descriptor format and
+32-bit limits remain unchanged. Cleanup before GO can still cancel arming and
+release `NeverLaunched` resources. Timeout-before/after-IRQ and STOP/REMOVE
+uncertainty cannot be rescued by a late IRQ or subsequent successful cleanup.
+No double-free or event-use-after-free was found in the audited serialized
+list/lock/rundown paths. Source-order tests guard those contracts; they are not
+an integrated kernel concurrency proof. Native tracker tests execute production
+C with synthetic thread scheduling, and fake-DDI suites check exact staging
+release/retention counts. Actual results and build limits are recorded in
+[regression testing](regression-testing.md).
+
+The normal-success compatibility exception is deliberately unchanged:
+`CompletionObserved != IdleProved`, yet the legacy PFN path can later free
+unpoisoned resources on that evidence. Its IRQ-to-final-device-access and host
+visibility ordering remains unverified. This patch does not solve that hardware
+lifetime problem or authorize live WDM DMA acquisition.
+
+Before future live WDM integration, independently establish stopped producers,
+stopped descriptor consumption, no new busmaster transactions, terminal
+outstanding transactions, drained internal buffers and completed/ordered host
+writes, stable until explicit restart. Also require physical IRQ provenance,
+adapter-defined completion/coherency handling, logical data/descriptor addresses
+within 32 bits, and one release gate joining pinned MDLs, descriptors, mappings,
+callbacks and remove-lock/publication rundown. Unknown-active ownership must
+survive removal without unmapping; no-launch release APIs cannot be reused for
+launched DMA. Recoverable kernel/Verifier and IOMMU qualification remains
+required after those contracts exist.
 
 ## Windows DMA-adapter migration design (not activated)
 

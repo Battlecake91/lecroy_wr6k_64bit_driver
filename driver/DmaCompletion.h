@@ -59,6 +59,13 @@ BOOLEAN LecDmaCompletionFinishWait(
     _In_ ULONGLONG Generation,
     _In_ BOOLEAN WaitSucceeded);
 
+/* After GO: TRUE requires quarantine; FALSE is legacy success, not idle. */
+BOOLEAN LecDmaCompletionFinishCleanup(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation,
+    _In_ BOOLEAN WaitSucceeded,
+    _In_ BOOLEAN InterruptMaskSucceeded);
+
 BOOLEAN LecDmaCompletionProveIdle(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation);

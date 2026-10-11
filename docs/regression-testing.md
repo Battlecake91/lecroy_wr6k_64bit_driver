@@ -304,10 +304,14 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows Dry regression on 2026-10-06:
-- Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
-  x64 `lecdiag` **PASS**.
-- Source/ABI contracts **35/35 PASS**.
+Current Windows offline regression on 2026-10-11:
+- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **PASS**.
+- Debug|x64 driver build: **BLOCKED**, MSB8036, required SDK/WDK
+  10.0.28000.0 unavailable. Installed SDK 10.0.26100.0 has no kernel headers
+  or libraries. The first sandboxed attempt also hit SDK discovery access
+  denial; retry with local SDK access established the missing-toolchain blocker.
+- Separate x64 `lecdiag` and `lecwatch` builds: **PASS** (not run on hardware).
+- Source/ABI contracts **42/42 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +319,19 @@ Current Windows Dry regression on 2026-10-06:
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **24/24 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**311/311** checks).
+- Live DMA completion-state suite **39/39 PASS**.
+- Overall **REGRESSION SUITE PASS: Dry** (**333/333** checks, build skipped).
+
+Completion tests compile the production tracker and cleanup decision with
+MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
+timeout on either side of IRQ observation, terminal retention, next-generation
+rejection after cleanup failure, preserved normal success and NeverLaunched
+cleanup, plus duplicate IRQs before/after consumption and concurrent first
+observation. Source guards tie the decision to both MTT/MAM cleanup paths,
+status propagation, poison-before-notification, DPC/event lifetime locking,
+unregister list ownership and ordered PnP rundown. These guards do not execute
+the full acquisition/unregister path or prove kernel race freedom. No hardware
+access, driver loading, Verifier or live DMA mapping was performed.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

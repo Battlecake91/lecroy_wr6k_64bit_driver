@@ -2,18 +2,20 @@
 
 ## Build and software regression
 
-- Windows x64 Debug driver and `lecdiag` build successfully with the installed
-  WDK 10.0.28000.0 toolchain.
+- Current offline check (2026-10-11): x64 `lecdiag` and `lecwatch` build
+  successfully. The Debug driver build is blocked by missing SDK/WDK
+  10.0.28000.0 (MSB8036); this environment has SDK 10.0.26100.0 without kernel
+  headers/libraries. No current driver build or hardware qualification is claimed.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge,
   the inactive synchronous v3 no-launch stage, the live PnP publication
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 35/35, layout 13/13, ownership 17/17,
+- Current result: source/ABI 42/42, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 24/24;
-  overall 311/311 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
+  overall 333/333 PASS with `-Mode Dry -SkipBuild`.
 
 ## DMA/PnP staging
 
@@ -66,6 +68,11 @@
   of its PFN-based resources therefore still depends on an unverified hardware
   IRQ-to-final-memory-access ordering premise. WDM mapping release remains
   forbidden on that evidence alone.
+- Launched cleanup now fails closed on interrupt-mask failure before
+  deselection; duplicate IRQs cannot republish consumed completion evidence.
+  Busy transfer selection cannot reset the current tracker. See the
+  [normal-success audit](dma-lifetime-and-timeout.md#normal-success-cleanup-audit-and-implementation-boundary)
+  for compatibility limits and future live-WDM prerequisites.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

@@ -1884,7 +1884,7 @@ LecExecuteLegacyMttTransferLocked(
     ULONGLONG dmaGeneration = 0;
     LARGE_INTEGER timeout;
     NTSTATUS status;
-    NTSTATUS disableStatus;
+    NTSTATUS disableStatus = STATUS_SUCCESS;
     BOOLEAN transferSelected = FALSE;
     BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
@@ -1994,16 +1994,6 @@ Cleanup:
             FALSE);
         LecMarkDmaUnknownActive(DevExt, Transfer);
     }
-    else if (dmaLaunched && LecDmaCompletionFinishWait(
-            &DevExt->DmaCompletion,
-            dmaGeneration,
-            (BOOLEAN)(status == STATUS_SUCCESS))) {
-        LecMarkDmaUnknownActive(DevExt, Transfer);
-        if (status == STATUS_SUCCESS) {
-            status = STATUS_IO_DEVICE_ERROR;
-        }
-    }
-
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -2017,6 +2007,18 @@ Cleanup:
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
             status = disableStatus;
+        }
+    }
+
+    /* Finalize ownership only after the fallible interrupt-mask cleanup. */
+    if (dmaLaunched && LecDmaCompletionFinishCleanup(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS),
+            (BOOLEAN)(NT_SUCCESS(disableStatus)))) {
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
         }
     }
 
@@ -3569,7 +3571,7 @@ LecIoctlAcquireBufferedOneChannel(
     volatile ULONG* errs;
     LARGE_INTEGER timeout;
     NTSTATUS status;
-    NTSTATUS disableStatus;
+    NTSTATUS disableStatus = STATUS_SUCCESS;
     BOOLEAN transferSelected = FALSE;
     BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
@@ -3833,16 +3835,6 @@ CleanupTransfer:
             FALSE);
         LecMarkDmaUnknownActive(DevExt, transfer);
     }
-    else if (dmaLaunched && LecDmaCompletionFinishWait(
-            &DevExt->DmaCompletion,
-            dmaGeneration,
-            (BOOLEAN)(status == STATUS_SUCCESS))) {
-        LecMarkDmaUnknownActive(DevExt, transfer);
-        if (status == STATUS_SUCCESS) {
-            status = STATUS_IO_DEVICE_ERROR;
-        }
-    }
-
     if (transferInterruptEnabled) {
         cleanupMask = (ULONG)InterlockedCompareExchange(
             (volatile LONG*)&DevExt->InterruptEnableShadow,
@@ -3856,6 +3848,18 @@ CleanupTransfer:
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
             status = disableStatus;
+        }
+    }
+
+    /* Finalize ownership only after the fallible interrupt-mask cleanup. */
+    if (dmaLaunched && LecDmaCompletionFinishCleanup(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS),
+            (BOOLEAN)(NT_SUCCESS(disableStatus)))) {
+        LecMarkDmaUnknownActive(DevExt, transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
         }
     }
 

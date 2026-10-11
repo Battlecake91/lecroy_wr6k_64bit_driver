@@ -113,14 +113,14 @@ LecSelectDmaTransfer(
         generation = (ULONGLONG)InterlockedIncrement64(
             &DevExt->DmaGenerationCounter);
     }
-    if (!LecDmaCompletionPrepare(&DevExt->DmaCompletion, generation)) {
-        return STATUS_DEVICE_NOT_READY;
-    }
-
     KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
     if (DevExt->CurrentTransfer != NULL ||
         DevExt->DmaActiveGeneration != 0) {
         status = STATUS_DEVICE_BUSY;
+    }
+    else if (!LecDmaCompletionPrepare(
+            &DevExt->DmaCompletion, generation)) {
+        status = STATUS_DEVICE_NOT_READY;
     }
     else {
         Transfer->DmaGeneration = generation;
