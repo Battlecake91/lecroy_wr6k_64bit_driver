@@ -30,8 +30,8 @@
       "mcu": "U16 C161PI",
       "ram": "U28 MT48LC8M8A2TG-75 external SDRAM",
       "start_ball": "AA5",
-      "downstream_start_ball": "Revision-B U38 M1, sheet18/PDF286, FPGA bus bit18",
-      "downstream_mapping": {"status": "Unknown", "verified_conflict": "Stream1 disables M1 input buffer and configures X0,Y14 IOI[1].PAD_O. Cannot assign it to revision-B U38 START consumer by stream order or device size", "required": "Actual assembly revision and static serial-loader destination map, or a correctly mapped U38 image"},
+      "downstream_start_ball": "Revision-B U38 N2, sheet18/PDF286, FPGA bus bit18; M1 is SACQ, correcting earlier stepped-net transcription",
+      "downstream_mapping": {"status": "Inferred", "strength": "Strong but incomplete", "evidence": "Stream1 N2 CMOS input at X0,Y12 IOI[3], M1 output at X0,Y14 IOI[1], complementary D2/D1 PCCLKP/N outputs agree with schematic. Former M1 conflict disproved", "required": "Static C161PI configuration-device/stream-order mapping and actual installed assembly/firmware identity"},
       "external_producer": "Sheet28/PDF296 U50 HAD639E; producer stop/end-of-data contract not established",
       "clock_balls": {"RX_CLK_P": "A11/GCK2", "BRD_CLK_125_CTRL": "AA12/GCK0", "125MHZ_MTT_P": "AB12/GCK1"},
       "clock_limit": "Board labels/connectivity; effective DLL clocks, phase and running frequency not inferred from labels"
@@ -44,7 +44,7 @@
       "stream_0_sha256": "227cba1ae543cf78b5b6d5700f719340e18df63850ec270eea47b5855c404337",
       "stream_1_sha256": "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b",
       "role_status": "Inferred",
-      "role_evidence": "Stream 0 enables all twelve U21 RX differential P pads and SYNC, implements matching DMA offsets; stream 1 does not enable these RX pads. Serial loader destination/order and live revision are not established",
+      "role_evidence": "Stream0 U21 RX/command fingerprint; stream1 U38 START=N2 input, SACQ=M1 output and complementary D2/D1 clock fingerprint. Strong but incomplete inference; serial loader order and live revision not established",
       "mcu_resource": "BINARY.203: sparse Intel HEX, 56792 bytes; preserve addresses including 0x200000 range; no MCU execution/firmware export analyzed"
     },
     "receiver": {
@@ -97,11 +97,45 @@
     },
     "remaining_work": [
       "Establish physical DLL/CDC/error-feedback acceptance under partial/repeated wire frames; logical qualification and parity equations are recovered",
-      "Resolve U38-M1 input versus stream1 disabled-input/output conflict from actual board revision and static C161PI serial-loader mapping; request a different U38 image only if mapping proves one is needed",
+      "Complete static C161PI configuration-device/stream-order mapping and installed revision identity; former START/M1 conflict was incorrect, actual START=N2 agrees with stream1",
       "Establish HAD639E external producer stop/end-of-data semantics; no available x86 export provides this contract",
       "Correlate full U21 mode arbitration around X27,Y8 SLICE[0].XQ and command-specific response/epoch association with unresolved downstream producer and PCI retirement contracts; local return bookkeeping/sticky MAM event now reconstructed but not global quiescence",
       "Establish installed/live revision, effective clock assumptions, authoritative Spartan-IIE PCI_CE contract and platform DMA retirement independently"
     ]
+  },
+  "timebase_shutdown": {
+    "date": "2026-10-11",
+    "identity_status": "Inferred",
+    "identity_strength": "Strong but incomplete; not a live-firmware assertion",
+    "schematic_correction": {"status": "Verified", "start": "U21 AA5 -> FPGA bus18 -> U38 N2", "sacq": "U38 M1 output", "bond85": {"N2": [0, 12, 3], "M1": [0, 14, 1]}},
+    "physical_configuration_chain": {"status": "Verified", "data": "sheet37/PDF305 U21 C21 DOUT -> MTT bus27; sheet18/PDF286 DIN_TB -> sheet17/PDF285 U38 C22 DIN", "clock": "U21 B22 CCLK -> bus26 -> U38 B22 CCLK", "program": "sheet19/PDF287 U38 PROGRAM_B -> bus28 ATC_PROG", "limit": "Physical chain only; effective C161 resource/byte-feeding sequence and installed revision Unknown"},
+    "loader_audit": {"status": "Verified", "hwupgrade_sha256": "0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1", "resource": "devicepack default AcqFpgaResId204 -> FindResourceA/LoadResource/LockResource -> Intel HEX text", "upgrade": "hwupgrade1001067C BothAcq path; devicepack getter indirect vtable+0x1A8 at1001087F; generic configuration selector2 at1000714A allocates0x80000 and calls10006C55", "limit": "Combined acquisition-resource handling, not proof of physical serial configuration-device order. No DLL executed"},
+    "start_consumer": {
+      "status": "Verified",
+      "scope": "Configured stream1; physical U38 assignment Inferred",
+      "input": "X0,Y12 IOI[3].I, unregistered N2; IQ disabled",
+      "level": "X2,Y7 SLICE[1].YQ D=1, asynchronous SR=!START INIT0; -> X6,Y7 SLICE[0].YQ (independent SR X6,Y11 SLICE[0].YQ) -> X6,Y3 SLICE[1].YQ",
+      "level_clock": "stream1 X24,Y0 BUFGCE[1].O",
+      "fast": "X2,Y11 SLICE[1].YQ -> X2,Y11 SLICE[0].YQ -> X3,Y12 SLICE[1].YQ, unconditional START sampling",
+      "fast_clock": "stream1 X24,Y29 BUFGCE[0].O",
+      "falling_edge": "X3,Y10 SLICE[0].YQ D=!self, CE=!sync2&&sync3; falling-edge toggle, not stopped ACK",
+      "rising_edge": "X10,Y1 SLICE[1].YQ delays level3; X16,Y1 SLICE[0].YQ and X16,Y1 SLICE[1].YQ D=level3&&!previous, separate CE/state paths",
+      "sacq": "M1 registered output from X4,Y14 SLICE[0].SRL16E tap2; shift input=X18,Y1 SLICE[0].YQ OR X15,Y2 SLICE[0].XQ, CE1; three shifts plus output capture, no SRL reset",
+      "producer_boundary": "X15,Y2 SLICE[0].XQ configured FF_REV_ENABLE=1, reverse-SR priority unmodeled. Trigger admission, sampling and all producer drainage cannot be equated",
+      "clock_assumptions": "Local edge schedules only; no U38/U21/PCI frequency, phase or synchronized stop assumption"
+    },
+    "terminal_consumers": [
+      {"status": "Verified", "command": "MTTRGO", "compare": "X10,Y18 SLICE[0].YB, full19-bit equality", "consumers": ["X9,Y16 SLICE[0].YQ D", "X10,Y16 SLICE[1].YQ D"], "next": "X9,Y16 state reaches X7,Y12 SLICE[1].YQ advance CE, X7,Y11 SLICE[0].YQ CE, X7,Y14 SLICE[1].YQ state D and X5,Y11 SLICE[1].YQ D", "clock": "U21 X24,Y0 BUFGCE[0].O", "units_and_final_host_write": "Unknown"},
+      {"status": "Verified", "command": "MAMRGO", "compare": "X15,Y22 SLICE[1].YB, full24-bit equality", "consumers": ["X16,Y19 SLICE[0].YQ D/CE", "X16,Y19 SLICE[1].YQ D"], "polarity": "state0 D=!equal||!mode; state1 D=!equal&&mode; mode=X13,Y20 SLICE[0].YQ", "next": "state0 -> MAMPGO sticky event and TX-mode X27,Y8 SLICE[0].XQ CE; state1 -> X17,Y20 SLICE[0].XQ and address/control pipeline", "clock": "U21 X24,Y0 BUFGCE[1].O", "units_and_completion_ack": "Unknown"}
+    ],
+    "buffer_admission": {"status": "Verified", "write": "W=A||(B&&C); A=X18,Y1 SLICE[1].YQ, B=X17,Y14 SLICE[1].YQ, C=X19,Y7 SLICE[0].YQ; C'=B XOR C, not a simple delayed B", "read": "R=!boundary&&stable&&!X28,Y3 SLICE[1].Y&&X29,Y6 SLICE[0].XQ", "stop": "No direct E term in either cone; constructed SAT with E0 and W1, with zero bookkeeping and W1, and with sticky MAM event plus W1", "limit": "Conditional cut witnesses, not confirmed boot reachability or a PCI-bus-idle certificate"},
+    "cross_layer_matrix": [
+      {"command": "MTTCTL=0", "u21": "Verified E0 then START0", "physical": "Verified U21 AA5 -> U38 N2", "timebase": "Verified local level pipeline and falling-edge toggle; image role Inferred", "producer": "Unknown reverse-SR/sampling closure", "queued_buffers": "Verified independent write/read and retained TX state", "return_status": "Unknown matched durable stop ACK", "pci_dma_consequence": "Unknown; no release"},
+      {"command": "MTTRGO/count equality", "u21": "Verified full19-bit equality -> fast-domain state/admission", "physical": "Unknown completion output", "timebase": "Unknown operation-level correlation", "producer": "Unknown units/final operation", "queued_buffers": "Not implied empty", "return_status": "Unknown completion association", "pci_dma_consequence": "Unknown"},
+      {"command": "MAMRGO/MAMPGO", "u21": "Verified full24-bit equality -> independent state; event requires MAMPGO and state0", "physical": "Unknown external producer completion", "timebase": "Not covered by START alone", "producer": "Unknown HAD639E/MAM contract", "queued_buffers": "Constructed SAT event with write admission", "return_status": "Verified sticky event, explicit CLRERR/payload2 clearing; MMIO epoch Unknown", "pci_dma_consequence": "Unknown"}
+    ],
+    "formal_limits": "Actual configured FF/SRL transitions. Bounds0..4 for timebase; existing U21 bounds0..6. Arbitrary runtime state and other registers/environment symbolic; SRL and BRAM not assumed empty. SAT is constructed cut behavior; bounded UNSAT is not full reachability or unbounded safety. No invented ACK/PCI relation.",
+    "release_obligations": "All six Unknown; preserve UnknownActive and quarantine"
   },
   "pcilogic": {
     "status": "Unknown",

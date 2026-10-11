@@ -3276,13 +3276,14 @@ plus fail-closed missing architecture connectivity. This resolves the former
 `unmodeled Y data path F6` in X27,Y13 SLICE[1].YQ; it does **not** assign its
 readback a convenient stop semantic.
 
-The **physical downstream boundary is revision-sensitive**. Service-manual
-sheet18 shows START at **U38 M1**, connected through FPGA(0:35) bit18 to U21
-AA5. The earlier U8 transcription is corrected. Stream1, independently
-re-exported from the same pinned decoder, disables M1's input buffer and
-configures X0,Y14 IOI[1].PAD_O instead. Therefore stream1 cannot simply be
-called the revision-B MTT consumer image. Matching size, family or serial
-position is insufficient. Likewise the manual's ADC **U50 HAD639E** is an
+The **physical downstream boundary is revision-sensitive**. Reinspection on
+2026-10-11 corrects the earlier stepped-net transcription: sheet18 shows
+START at **U38 N2**, connected through FPGA(0:35) bit18 to U21 AA5; **M1 is
+SACQ**. Stream1 enables N2 input and M1 output, so the formerly reported
+pin conflict does not exist. Multiple pin roles strongly support its U38
+assignment, but matching size/family/serial position alone would not suffice.
+The focused continuation below records the actual START consumers.
+Likewise the manual's ADC **U50 HAD639E** is an
 external producer, not implemented by the U21 register bank. No HAD639E
 execution/stop contract or matching passive producer trace is available here.
 
@@ -3309,11 +3310,12 @@ retired/ordered. PCI_CE remains unresolved; no invented primitive equation.
 
 Targeted evidence/analysis request, rather than an invented ACK:
 
-1. Resolve the **U21-AA5 to U38-M1 mismatch** using the actual assembly revision
-   and static loader destination/serial order. Provide the matching U38 image
-   only if different from the two existing streams; raw bitstream or validated
-   Intel HEX with pin/package identity suffices. C161PI loader disassembly with
-   configuration destinations would also suffice; x86-only exports do not.
+1. The **U21-AA5 to U38-N2** connection is now corrected and stream1 agrees.
+   Complete static C161PI configuration-device/stream-order correlation and
+   installed assembly/firmware identity. Do not request a replacement image
+   on the basis of the disproved M1 conflict. Existing BINARY.203 is available;
+   the missing evidence is its narrowly identified loader/control mapping,
+   not another copy of the HEX resource or x86-only driver exports.
 2. Supply an existing HAD639E/MAM producer stop/end-of-data contract or existing
    passive START/MAM/MTT-data observations tied to command generation. This
    addresses producer stop and delayed data admission, not PCI retirement.
@@ -3342,9 +3344,10 @@ $env:WR6K_FPGA_SYMBOLIC = '1'
 python -B tests/dry/test_fpga_acquisition.py -v
 ```
 
-Actual final execution: **10 synthetic + 21 private configured-logic + 18 private
-SMT acquisition tests PASS**, against newly reproduced private networks from
-the committed tool. Existing **44 routing + 49 MMIO + 39 symbolic tests**
+Actual final execution: **10 synthetic + 21 private configured-logic + 24 private
+U21 SMT + 6 private timebase SMT acquisition tests PASS**, against private networks
+from the committed tool, including a newly reproduced stream1 SRL report.
+**45 routing + 49 MMIO + 40 symbolic tests**
 also PASS, as do private frame calibration, **50 native architecture checks**
 and **19 PCI state equations**. All eight driver dry suites PASS: source35,
 completion24, layout13, ownership17, SG-stage27, SG-sync149, IRP-lifetime8,
@@ -3352,3 +3355,129 @@ PnP-publication38 (**311 total**). `git diff --check` passes. No WDK driver buil
 hardware test, MMIO access, programming, IRQ injection or reset experiment was
 performed. PR #9 stays draft/open/unmerged. This delivery records partial
 semantic closure and explicit remaining work, not a complete DMA-stop proof.
+
+### U38 Identity And Timebase Shutdown
+
+#### Identity Correction And Loader Evidence
+
+The premise of a missing/incompatible U38 image was caused by following the
+wrong one of two stepped nets on sheet18/PDF286. **START is N2; SACQ is M1**.
+The pinned FG456 BOND85 mapping gives N2=(0,12,3), M1=(0,14,1). Stream1
+enables N2 CMOS input and M1 output, and its D2/D1 complementary output pair
+matches PCCLKP/N. This is independent of size and stream order.
+
+The configuration chain is also explicit in the schematic:
+sheet37/PDF305 routes **U21 C21 DOUT -> MTT bus27** and **B22 CCLK -> bus26**;
+sheet18/PDF286 names bus27 DIN_TB and bus26 CCLK; sheet17/PDF285 connects
+these to **U38 C22 DIN and B22 CCLK**. Sheet19/PDF287 connects U38 PROGRAM_B
+to bus28 ATC_PROG. Thus the physical U21-to-U38 configuration-data route is
+**Verified**, not an inferred consequence of concatenation. It does not by
+itself prove which bytes the C161PI loader actually supplies.
+
+Static DLL audit (no execution) confirms devicepack default AcqFpgaResId204,
+FindResourceA/LoadResource/LockResource and Intel-HEX text dispatch. In
+`s65hwupgrade.dll` SHA256
+`0a1b6ee7d64dd6c7dd4a8117b801886be0b4e6366969e4176d675c3ee3011ec1`,
+1001067C is the "Programming Acq FPGAs" branch; 1001087F invokes the
+devicepack-facing indirect getter at vtable+0x1A8. The acquisition selector2
+at1000714A allocates0x80000 and calls10006C55 at1000719C, separately from
+PCI selector3. These are combined-resource/upgrade paths, not decoded C161
+configuration bit loops. BINARY.203 remains available as sparse HEX;
+existing disassembly exports cover x86, not a validated C161 loader routine.
+No alternative U38 image has been demonstrated or is required by the
+disproved M1 conflict. Overall stream1-to-U38 identity is **strong but
+incomplete Inferred**; installed firmware and assembly identity remain Unknown.
+
+#### Actual START And SACQ Cones
+
+Coordinates in this subsection belong to **stream1**, not identically named
+U21 clock sites. START uses N2.I, not the disabled IQ latch.
+
+| Configured evidence | Transition/meaning | Limit |
+| --- | --- | --- |
+| Verified level path | X2,Y7 SLICE[1].YQ: D=1, asynchronous SR=!START, INIT0; then X6,Y7 SLICE[0].YQ and X6,Y3 SLICE[1].YQ on local X24,Y0 BUFGCE[1] | Second stage has independent SR X6,Y11 SLICE[0].YQ; START low clears the pipeline after two local edges, not immediately everywhere |
+| Verified sampling path | X2,Y11 SLICE[1].YQ -> X2,Y11 SLICE[0].YQ -> X3,Y12 SLICE[1].YQ on local X24,Y29 BUFGCE[0] | Unconditional three-stage sampling; CDC/metastability timing is not proved |
+| Verified falling-edge event | X3,Y10 SLICE[0].YQ: D=!self, CE=!sync2&&sync3 | START falling toggles state; it is not a durable stopped ACK |
+| Verified rising-edge admission | X10,Y1 SLICE[1].YQ delays level3; X16,Y1 SLICE[0/1].YQ have D=level3&&!previous with separate enables | Reassertion can generate new local work; not an all-producer admission proof |
+| Verified SACQ delay | X4,Y14 SLICE[0] G-only SRL16E, tap2, D=X18,Y1 SLICE[0].YQ OR X15,Y2 SLICE[0].XQ, CE1; registered M1 output | Three shifts plus output capture, no SRL reset. Existing runtime contents survive START low |
+| Unknown producer-state closure | X15,Y2 SLICE[0].XQ has FF_REV_ENABLE=1; model explicitly rejects unvalidated reverse-SR priority | Cannot equate START/SACQ with sampling stopped, memory drained or host DMA finished |
+
+The narrowly supported G-only SRL16E mode now follows pinned
+`ise-hammer/virtex/clb.rs` RAMCONFIG_1SHIFT and
+`v2xdl-verify/clb_lut4.rs::gen_srl` Mode::Virtex: effective SR is shift enable,
+BY is serial data, G1..4 select Q, old bit i-1 shifts to i. Unsupported
+multi-shift/RAM combinations remain Unknown. INIT is only power-up state.
+The reproduced private stream1 network has 4296 nodes/15 architecture
+boundaries; no full network is committed.
+
+#### Counter Consumers And Buffer Admission
+
+U21 MTT equality X10,Y18 SLICE[0].YB feeds X9,Y16 SLICE[0].YQ and
+X10,Y16 SLICE[1].YQ in the X24,Y0 BUFGCE[0] domain. For the latter,
+`next=launch&&(old||(reload&&!equal))`, launch=X12,Y18 SLICE[0].YQ,
+reload=X5,Y11 SLICE[1].YQ. X9,Y16 state reaches advance-register
+X7,Y12 SLICE[1].YQ CE, X7,Y11 SLICE[0].YQ CE and X7,Y14/X5,Y11 state
+paths. Equality is an admission/state input, not final PCI descriptor/write.
+
+MAM equality X15,Y22 SLICE[1].YB feeds X16,Y19 SLICE[0/1].YQ in the
+controller domain. With mode=X13,Y20 SLICE[0].YQ their D functions are
+`!equal||!mode` and `!equal&&mode`. The first is enabled separately and
+feeds MAMPGO event generation, response snapshots and TX-mode state CE at
+X27,Y8 SLICE[0].XQ. The second feeds X17,Y20 SLICE[0].XQ and an
+address/control pipeline. The sticky event is therefore **not an unqualified
+equality/completion bit**. No counter units or final-sample/word/descriptor
+meaning are assigned. Separate load/advance/restart controls remain intact.
+
+Actual return write admission is `W=A||(B&&C)` with
+A=X18,Y1 SLICE[1].YQ (delayed X10,Y1 SLICE[1].YQ),
+B=X17,Y14 SLICE[1].YQ, C=X19,Y7 SLICE[0].YQ, and **C'=B XOR C**.
+It is not B&&!C or a simple delayed B. Read admission is
+`R=!boundary&&stable&&!X28,Y3 SLICE[1].Y&&X29,Y6 SLICE[0].XQ`.
+Neither has a direct E term. Eight-bit pointer updates/read-ahead and the
+nine-bit modular bookkeeping equation remain as previously verified.
+Zero bookkeeping can coexist with a new write; sticky MAM event or terminal
+equality can coexist with a write in actual-cone symbolic cuts. TX phase
+logic can also begin C/B phases after E/START are zero if an independent
+kick is present. These do not establish boot-reachable behavior, but exclude
+claiming an unconditional local stop-to-idle implication from these cuts.
+
+#### Cross-Layer Evidence And Proof Limits
+
+The machine-readable counterpart is `timebase_shutdown` in
+`pci-mmio-register-evidence.json`.
+
+| Command | U21 / physical output | U38 / producer | Queued buffers / return status | PCI consequence |
+| --- | --- | --- | --- | --- |
+| MTTCTL=0 | Verified E0, then START0; AA5->N2 | Verified local level/edge transitions in stream1; role Inferred; complete sampling/producer stop Unknown | Independent write/read and delayed SACQ/TX state; no matched durable stop ACK | Unknown, no release |
+| MTTRGO / equality | Verified 19-bit comparison -> separate fast-domain state/admission | Operation units and final producer action Unknown | Does not imply return/PCI queues empty | Unknown |
+| MAMRGO / MAMPGO | Verified 24-bit comparison -> independent state / event | External HAD639E/MAM completion Unknown | Sticky event explicitly cleared by qualified CLRERR/payload2; readback epoch Unknown | Unknown |
+
+Formal tests use actual FF/SRL transitions and pre-edge values. U38 bounds
+are 0..4; existing U21 sequences 0..6. Each FPGA is modeled separately with
+explicit selected **local** edges. No cross-FPGA clock relationship is
+introduced. Initial runtime state, other sequential states, producer inputs,
+and BRAM contents remain unconstrained unless a test states its local
+condition. SACQ delay checks initialize symbolic SRL contents explicitly for
+the witness, not from configuration INIT. SAT means constructed cut behavior,
+not confirmed boot reachability; mismatch UNSAT is bounded or combinational
+equivalence, never an unbounded end-to-end DMA proof.
+
+All six obligations remain **Unknown**: producer stopped; descriptor engine
+stopped; no new PCI initiator transaction; outstanding transactions terminated;
+all buffers drained; host writes completed/ordered. UnknownActive/quarantine
+and PR#9 draft/open/unmerged remain unchanged.
+
+Targeted remaining evidence/analysis, with no new hardware experiments:
+
+1. Validate the BINARY.203 C161 routine that feeds UC control DIN/CCLK and
+   ATC_PROG, including source offsets for the two 180260-byte streams. Physical
+   DOUT->DIN chain is now known; obtain the narrow routine/export and effective
+   configured resource selection, not another general x86 driver dump.
+2. Validate Virtex/Spartan-IIE reverse-SR priority for X15,Y2 SLICE[0].XQ,
+   then extend only its producer-state cone. This is a specific model gap,
+   not proof that a private U38 image is missing.
+3. Establish HAD639E/MAM end-of-data and downstream memory admission, full
+   U21 TX-mode arbitration and response-command/epoch association from existing
+   contracts or existing passive captures. SACQ delay is not such a contract.
+4. Independently establish PCI_CE, descriptor/transaction retirement, runtime
+   queue accounting and host-bridge ordering for the actual installed revision.

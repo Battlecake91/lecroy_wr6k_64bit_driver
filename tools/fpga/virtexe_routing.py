@@ -514,6 +514,18 @@ class LogicAnalyzer:
             return values[0] if len(values) == 1 else None
 
         def lut(letter):
+            if (letter == "G" and all(attrs.get(n, {}).get("value") == v for n, v in {
+                    "G_SHIFT_ENABLE": 1, "G_RAM_ENABLE": 0, "F_SHIFT_ENABLE": 0,
+                    "F_RAM_ENABLE": 0, "WA4_ENABLE": 0}.items()) and selection("DIF_MUX") == "BX"):
+                memory = f"X{terminal['x']},Y{terminal['y']} {terminal['bel']}.SRL16E"
+                if memory not in self.memories:
+                    self.memories[memory] = {"kind": "srl16e", "initial": attrs["G"]["value"],
+                        "semantics": "On selected clock edge with effective SR high, Q[0]=BY and Q[i]=old Q[i-1]. No reset; INIT is not runtime state.",
+                        "evidence": "pinned ise-hammer/virtex/clb.rs RAMCONFIG_1SHIFT and v2xdl-verify/clb_lut4.rs::gen_srl Mode::Virtex",
+                        "configuration": attrs, "data": self.input(inputs["BY"]),
+                        "enable": self.input(inputs["SR"]), "clock": self.input(inputs["CLK"])}
+                return {"op": "ram_read", "memory": memory,
+                        "address": {str(i): self.input(inputs[f"G{i + 1}"]) for i in range(4)}}
             if (all(attrs.get(n, {}).get("value") == v for n, v in {
                     "F_RAM_ENABLE": 1, "G_RAM_ENABLE": 1, "F_SHIFT_ENABLE": 0,
                     "G_SHIFT_ENABLE": 0, "WA4_ENABLE": 0}.items()) and selection("DIF_MUX") == "BY"):
@@ -985,9 +997,9 @@ def register_equivalence(report, left, right):
 
 
 def memory_step(report, memory, values, clock_edge=False):
-    """Update one decoded RAM16X1D from pre-edge values; never assume INIT at runtime."""
+    """Update decoded LUT memory from pre-edge values; never assume runtime INIT."""
     contract = report.get("memories", {}).get(memory, {})
-    if contract.get("kind") != "ram16x1d":
+    if contract.get("kind") not in ("ram16x1d", "srl16e"):
         return {"status": "unknown", "reason": "unmodeled memory"}
     try:
         current = values.get(memory)
@@ -995,6 +1007,9 @@ def memory_step(report, memory, values, clock_edge=False):
             raise ValueError("runtime memory contents unavailable: " + memory)
         if not clock_edge or not evaluate_data(contract["enable"], report["logic"], values):
             return {"status": "resolved", "next": current, "cause": "write disabled or no selected clock edge"}
+        if contract["kind"] == "srl16e":
+            data = evaluate_data(contract["data"], report["logic"], values)
+            return {"status": "resolved", "next": ((current << 1) | int(data)) & 0xFFFF, "cause": "shift"}
         address = sum(int(evaluate_data(pin, report["logic"], values)) << int(i)
                       for i, pin in contract["write_address"].items())
         data = evaluate_data(contract["data"], report["logic"], values)
@@ -1026,7 +1041,7 @@ def cone_summary(report, roots):
             pending.append(node["memory"])
         if node["kind"] == "ramb4":
             boundaries.setdefault(name, []).append("runtime BRAM contents/output latches are state, not an occupancy acknowledgement")
-        if node["kind"] == "ram16x1d":
+        if node["kind"] in ("ram16x1d", "srl16e"):
             boundaries.setdefault(name, []).append("runtime memory contents unavailable; INIT is not a drain acknowledgement")
         if node["kind"] == "register":
             contract = register_contract(name, node)

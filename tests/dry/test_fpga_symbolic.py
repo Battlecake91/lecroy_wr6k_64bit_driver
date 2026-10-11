@@ -41,6 +41,21 @@ def bram(width_a=4, width_b=4):
 
 
 class SymbolicTests(unittest.TestCase):
+    def test_srl_shift_uses_old_bits_and_holds_without_selected_edge(self):
+        memory = {"kind": "srl16e", "initial": 0, "data": s("d"), "enable": s("ce"), "clock": s("clk")}
+        m = System(report(memories={"delay": memory}), 3, powerup=False,
+                   schedule=[{clock_key(s("clk"))}, set(), {clock_key(s("clk"))}])
+        for t in range(4):
+            m.solver.add(m.signal("ce", t), m.signal("d", t))
+        old = m.memory("delay", 0)
+        for i in range(16):
+            m.solver.add(z3.Select(old, z3.BitVecVal(i, 12)) == bool(i & 1))
+        self.assertEqual(m.solver.check(), z3.sat)
+        for i in range(16):
+            expected = z3.BoolVal(True) if i == 0 else z3.Select(old, z3.BitVecVal(i - 1, 12))
+            self.assertImpossible(m, z3.Select(m.memory("delay", 1), z3.BitVecVal(i, 12)) != expected)
+        self.assertImpossible(m, m.memory("delay", 2) != m.memory("delay", 1))
+
     def assertImpossible(self, system, predicate):
         system.solver.push()
         system.solver.add(predicate)

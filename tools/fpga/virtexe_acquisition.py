@@ -53,6 +53,11 @@ TX_P, TX_E, TX_KICK = "X38,Y3 SLICE[0].XQ", "X38,Y4 SLICE[1].XQ", "X43,Y2 SLICE[
 TX_P_COPIES = (TX_P, "X38,Y3 SLICE[1].YQ", "X38,Y3 SLICE[0].YQ")
 TX_E_COPIES = (TX_E, "X38,Y3 SLICE[1].XQ", "X38,Y4 SLICE[1].YQ")
 COMPARE = {"MTTRGO": "X10,Y18 SLICE[0].YB", "MAMRGO": "X15,Y22 SLICE[1].YB"}
+TIMEBASE_SHA256 = "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b"
+TB_START = "X0,Y12 IOI[3].I"  # Revision-B U38 N2; M1 is SACQ output.
+TB_LEVEL = ("X2,Y7 SLICE[1].YQ", "X6,Y7 SLICE[0].YQ", "X6,Y3 SLICE[1].YQ")
+TB_SYNC = ("X2,Y11 SLICE[1].YQ", "X2,Y11 SLICE[0].YQ", "X3,Y12 SLICE[1].YQ")
+TB_TOGGLE = "X3,Y10 SLICE[0].YQ"
 
 
 def intel_hex(raw):
@@ -219,6 +224,29 @@ def sequential_leaves(expression, logic):
                 leaves.add(name)
     visit(expression)
     return leaves
+
+
+def register_consumers(report, target):
+    """Find actual sequential consumers through combinational logic only.
+
+    Unlike a fully expanded leaf inventory, retain a selected carry/mux node
+    as a boundary. This is connectivity evidence, not proof of sensitization.
+    """
+    logic = report["logic"]
+    def uses(expression, seen):
+        for part in expression_nodes(expression):
+            name = part.get("source")
+            if name == target:
+                return True
+            if name in seen or name not in logic:
+                continue
+            seen.add(name)
+            if logic[name]["kind"] == "combinational" and uses(logic[name]["data"], seen):
+                return True
+        return False
+    return {name: [part for part in ("data", "controls") if uses(node.get(part, {}), set())]
+            for name, node in logic.items() if node["kind"] == "register"
+            and any(uses(node.get(part, {}), set()) for part in ("data", "controls"))}
 
 
 def transmit_fields(report):

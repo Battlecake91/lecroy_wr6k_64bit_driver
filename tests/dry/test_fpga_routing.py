@@ -524,6 +524,32 @@ class RoutingTests(unittest.TestCase):
             expected = ((initial & ~(1 << address)) | (data << address)) if we and edge else initial
             self.assertEqual(memory_step(report, "m", values, bool(edge))["next"], expected)
 
+    def test_single_g_shift_is_runtime_srl_not_lut_or_reset(self):
+        router = CarryRouter()
+        original = router.bel
+        def bel(x, y, name):
+            b = original(x, y, name)
+            if name != "INPUT":
+                b["attributes"].update({k: {"value": v} for k, v in {
+                    "G_SHIFT_ENABLE": 1, "G_RAM_ENABLE": 0, "F_SHIFT_ENABLE": 0,
+                    "F_RAM_ENABLE": 0, "WA4_ENABLE": 0, "G": 0}.items()})
+                b["attributes"].update({k: {"selections": [v]} for k, v in {
+                    "DIF_MUX": "BX", "GYMUX": "G"}.items()})
+                b["inputs"].update({p: {"wire": [x, y, p]} for p in ("G3", "G4", "SR", "CLK")})
+            return b
+        router.bel = bel
+        analyzer = LogicAnalyzer(router)
+        root = analyzer.output({"x": 0, "y": 2, "bel": "SLICE[0]", "pin": "Y"})
+        report = analyzer.report({"out": root})
+        memory, contract = next(iter(report["memories"].items()))
+        self.assertEqual(contract["kind"], "srl16e")
+        self.assertEqual(contract["data"]["source"], "X0,Y2 INPUT.BY")
+        self.assertEqual(memory_step(report, memory, {}, True)["status"], "unknown")
+        for old, data, enable, edge in itertools.product((0, 1, 0xA5A5, 0x8000), range(2), range(2), range(2)):
+            values = {memory: old, "X0,Y2 INPUT.BY": data, "X0,Y2 INPUT.SR": enable}
+            expected = ((old << 1) | data) & 0xFFFF if enable and edge else old
+            self.assertEqual(memory_step(report, memory, values, bool(edge))["next"], expected)
+
     def test_missing_pci_state_network_cannot_pass_native_equation_checks(self):
         result = validate_pci_relations({"logic": {}})
         self.assertEqual(result["status"], "FAIL")

@@ -49,7 +49,7 @@ Analog settling, metastability and clock generation are not silently modeled.
         self.outputs = {n: d for n, d in self.logic.items() if d["kind"] == "memory_output"}
         self.domains = sorted({clock_key(c.get("clock", {})) for c in self.registers.values()} |
             {clock_key(p["clock"]) for m in self.memories.values() for p in
-             ([m] if m["kind"] == "ram16x1d" else m.get("ports", {}).values()) if "clock" in p})
+             ([m] if m["kind"] in ("ram16x1d", "srl16e") else m.get("ports", {}).values()) if "clock" in p})
         for domain in self.domains:
             c = json.loads(domain)
             source = self.logic.get(c.get("source"), {})
@@ -142,7 +142,7 @@ Analog settling, metastability and clock generation are not silently modeled.
                 for a in range(16) if expression["init"] & (1 << a) and all(i in pins or not a & (1 << i) for i in range(4))])
         elif expression.get("op") == "ram_read":
             name = expression["memory"]
-            if self.memories.get(name, {}).get("kind") != "ram16x1d":
+            if self.memories.get(name, {}).get("kind") not in ("ram16x1d", "srl16e"):
                 value = self.unknown("unmodeled runtime memory: " + name, t)
             else:
                 value = z3.Select(self.memory(name, t), self.address(expression["address"], t, stack))
@@ -187,7 +187,7 @@ Analog settling, metastability and clock generation are not silently modeled.
             elif self.powerup:
                 self.solver.add(self.state(name, 0) == bool(c["init"]))
         for name, m in self.memories.items():
-            if m["kind"] not in ("ram16x1d", "ramb4"):
+            if m["kind"] not in ("ram16x1d", "srl16e", "ramb4"):
                 self.unknown("unsupported memory: " + name, 0)
                 continue
             if self.powerup:
@@ -196,7 +196,7 @@ Analog settling, metastability and clock generation are not silently modeled.
                     self.unknown("memory INIT unavailable: " + name, 0)
                 else:
                     array = z3.K(z3.BitVecSort(12), z3.BoolVal(False))
-                    for i in range(16 if m["kind"] == "ram16x1d" else 4096):
+                    for i in range(4096 if m["kind"] == "ramb4" else 16):
                         if init & (1 << i):
                             array = z3.Store(array, z3.BitVecVal(i, 12), z3.BoolVal(True))
                     self.solver.add(self.memory(name, 0) == array)
@@ -228,7 +228,14 @@ Analog settling, metastability and clock generation are not silently modeled.
                     if "source" in a and a.get("source") == b.get("source") and a.get("inv", False) != b.get("inv", False):
                         self.solver.add(z3.Not(z3.And(self.edge(a, t), self.edge(b, t))))
         for name, m in self.memories.items():
-            if m["kind"] == "ram16x1d":
+            if m["kind"] == "srl16e":
+                old = self.memory(name, t)
+                shifted = z3.Store(old, z3.BitVecVal(0, 12), self.expr(m["data"], t))
+                for i in range(1, 16):
+                    shifted = z3.Store(shifted, z3.BitVecVal(i, 12), z3.Select(old, z3.BitVecVal(i - 1, 12)))
+                active = z3.And(self.edge(m["clock"], t), self.expr(m["enable"], t))
+                self.solver.add(self.memory(name, t + 1) == z3.If(active, shifted, old))
+            elif m["kind"] == "ram16x1d":
                 old = self.memory(name, t)
                 write = z3.And(self.edge(m["clock"], t), self.expr(m["enable"], t))
                 new = z3.If(write, z3.Store(old, self.address(m["write_address"], t), self.expr(m["data"], t)), old)
@@ -344,6 +351,7 @@ Analog settling, metastability and clock generation are not silently modeled.
     def coverage(self):
         return {"registers": len(self.registers), "modeled_registers": sum(c["status"] != "unknown" for c in self.registers.values()),
             "ram16x1d": sum(m["kind"] == "ram16x1d" for m in self.memories.values()),
+            "srl16e": sum(m["kind"] == "srl16e" for m in self.memories.values()),
             "ramb4": sum(m["kind"] == "ramb4" for m in self.memories.values()), "bram_output_bits": len(self.outputs),
             "clock_domains": len(self.domains), "unknowns": len(self.unknowns)}
 

@@ -299,9 +299,15 @@ have independent admission; the status candidate is a sticky MAMPGO-related
 event with explicit CLRERR-bit2 clearing, not an MTTCTL-zero ACK.
 A TX word can retain state after MTTCTL=0; neither count equality nor the
 error pair proves drainage. The detailed manual
-identifies downstream **U38 START/M1**, while stream1 disables that input and
-configures an output. Resolve this board/loader/image conflict before assigning
-downstream producer semantics. Full U21 mode arbitration and command-specific
+identifies downstream **U38 START/N2** (the former START/M1 transcription was
+incorrect; M1 carries SACQ). Stream1 enables N2 as an input and
+configures M1 as an output, matching the schematic. Its U38 assignment is
+strongly inferred, not proved by loader order or installed revision. Actual
+START synchronization, falling-edge toggle and delayed SACQ source are now
+reconstructed; reverse-SR producer-state semantics remain a model boundary.
+Return-write admission can coexist with E=0, zero bookkeeping or the sticky
+MAM event in constructed symbolic cuts. These are not boot-reachable hardware
+faults or a PCI-idle proof. Full U21 mode arbitration and command-specific
 response association remain unresolved, separately from external HAD639E producer,
 DLL/CDC, PCI_CE and host-retirement contracts. All six obligations remain
 Unknown; independent MAM/MTT load state and queued work must not be dismissed.

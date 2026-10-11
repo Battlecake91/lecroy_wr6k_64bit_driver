@@ -308,15 +308,22 @@ class PrivateAcquisition(unittest.TestCase):
             self.assertNotIn(a.E, a.sequential_leaves(self.l[name]["data"], self.l))
 
     @unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_SECOND_REPORT"), "second private stream not configured")
-    def test_second_stream_is_not_assumed_to_consume_schematic_start(self):
+    def test_second_stream_matches_corrected_start_sacq_and_clock_pin_fingerprint(self):
         report = json.loads(Path(os.environ["WR6K_ACQUISITION_SECOND_REPORT"]).read_text(encoding="utf-8"))
-        self.assertEqual(report["image_sha256"], "e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b")
+        self.assertEqual(report["image_sha256"], a.TIMEBASE_SHA256)
         self.assertEqual(report["pads"]["M1"]["attributes"]["IBUF_MODE"]["selections"], ["NONE"])
         self.assertNotIn("I", report["roots"]["M1"])
         self.assertNotIn("IQ", report["roots"]["M1"])
         self.assertEqual(report["roots"]["M1"]["O"], "X0,Y14 IOI[1].PAD_O")
         self.assertEqual(self.r["pads"]["AA5"]["location"], [3, 0, 1])
-        # Revision-B U38 START/M1 cannot be assigned stream1 semantics from size/order alone.
+        self.assertEqual(report["pads"]["N2"]["location"], [0, 12, 3])
+        self.assertEqual(report["pads"]["N2"]["attributes"]["IBUF_MODE"]["selections"], ["CMOS"])
+        self.assertEqual(report["roots"]["N2"]["I"], a.TB_START)
+        for ball, inv in (("D1", True), ("D2", False)):
+            data = report["logic"][report["roots"][ball]["O"]]["data"]
+            self.assertEqual(data["source"], "X6,Y25 SLICE[1].Y")
+            self.assertEqual(data["inv"], inv)
+        # START=N2, SACQ=M1. Pin-role agreement is not a live-revision/loader proof.
 
 
 @unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_REPORT") and os.environ.get("WR6K_FPGA_SYMBOLIC") == "1",
@@ -587,6 +594,137 @@ class PrivateAcquisitionSmt(unittest.TestCase):
         self.equivalent(m.expr(node["data"], 0), event)
         self.equivalent(m.expr(node["controls"]["CE"], 0), z3.Or(event, clear), constraints)
         self.assertEqual(register_contract("X19,Y24 SLICE[1].YQ", node)["clock"]["source"], a.CLOCK)
+
+    def test_terminal_conditions_reach_separate_registered_consumers(self):
+        self.assertEqual(a.register_consumers(self.r, a.COMPARE["MTTRGO"]), {
+            "X9,Y16 SLICE[0].YQ": ["data"], "X10,Y16 SLICE[1].YQ": ["data"]})
+        self.assertEqual(a.register_consumers(self.r, a.COMPARE["MAMRGO"]), {
+            "X16,Y19 SLICE[0].YQ": ["data", "controls"], "X16,Y19 SLICE[1].YQ": ["data"]})
+        self.assertIn("controls", a.register_consumers(self.r, "X9,Y16 SLICE[0].YQ")["X7,Y12 SLICE[1].YQ"])
+        self.assertIn("controls", a.register_consumers(self.r, "X16,Y19 SLICE[0].YQ")["X27,Y8 SLICE[0].XQ"])
+        self.assertEqual(register_contract("X9,Y16 SLICE[0].YQ", self.r["logic"]["X9,Y16 SLICE[0].YQ"])["clock"]["source"], a.TX_FAST)
+
+    def test_actual_write_read_admission_and_event_toggle_equations(self):
+        m, z3 = self.combinational_model(), self.z3
+        signal = lambda n: m.signal(n, 0)
+        b, external, toggle = map(signal, ("X17,Y14 SLICE[1].YQ", "X18,Y1 SLICE[1].YQ", "X19,Y7 SLICE[0].YQ"))
+        self.equivalent(signal("X20,Y4 SLICE[1].Y"), z3.Or(external, z3.And(b, toggle)))
+        self.equivalent(m.expr(self.r["logic"]["X19,Y7 SLICE[0].YQ"]["data"], 0), z3.Xor(b, toggle))
+        self.equivalent(signal("X29,Y4 SLICE[1].X"), z3.And(
+            z3.Not(signal("X29,Y4 SLICE[0].X")), signal("X32,Y4 SLICE[0].YQ"),
+            z3.Not(signal("X28,Y3 SLICE[1].Y")), signal("X29,Y6 SLICE[0].XQ")))
+        m.solver.add(z3.Not(signal(a.E)), external, z3.Not(signal("X29,Y4 SLICE[1].X")))
+        self.assertEqual(m.solver.check(), z3.sat)  # Constructed cut, not boot reachability.
+
+    def test_mam_terminal_event_polarity_and_sticky_status_can_coexist_with_write(self):
+        m, z3 = self.combinational_model(), self.z3
+        equal = m.signal(a.COMPARE["MAMRGO"], 0)
+        mode = m.signal("X13,Y20 SLICE[0].YQ", 0)
+        self.equivalent(m.expr(self.r["logic"]["X16,Y19 SLICE[0].YQ"]["data"], 0), z3.Or(z3.Not(equal), z3.Not(mode)))
+        self.equivalent(m.expr(self.r["logic"]["X16,Y19 SLICE[1].YQ"]["data"], 0), z3.And(z3.Not(equal), mode))
+        m.solver.add(z3.Not(m.signal(a.E, 0)), equal, m.state("X19,Y24 SLICE[1].YQ", 0),
+                     m.signal("X20,Y4 SLICE[1].Y", 0))
+        self.assertEqual(m.solver.check(), z3.sat)
+        # Comparison/event does not account for independent return producers.
+
+    def test_zero_bookkeeping_does_not_inhibit_next_write(self):
+        m, z3 = self.combinational_model(), self.z3
+        count = ["X30,Y1 SLICE[0].YQ"] + [f"X30,Y{y} SLICE[0].{axis}Q" for y in range(2, 6) for axis in ("X", "Y")]
+        m.solver.add(*[z3.Not(m.state(n, 0)) for n in count], z3.Not(m.state(a.E, 0)),
+                     m.signal("X18,Y1 SLICE[1].YQ", 0), m.signal("X29,Y4 SLICE[0].X", 0),
+                     m.signal("X20,Y4 SLICE[1].Y", 0))
+        self.assertEqual(m.solver.check(), z3.sat)
+
+    def test_mtt_terminal_state_equation_and_independent_return_write(self):
+        m, z3 = self.combinational_model(), self.z3
+        state = "X10,Y16 SLICE[1].YQ"
+        launch, reload, old, equal = [m.signal(n, 0) for n in
+            ("X12,Y18 SLICE[0].YQ", "X5,Y11 SLICE[1].YQ", state, a.COMPARE["MTTRGO"])]
+        self.equivalent(m.expr(self.r["logic"][state]["data"], 0),
+                        z3.And(launch, z3.Or(old, z3.And(reload, z3.Not(equal)))))
+        m.solver.add(equal, z3.Not(m.state(a.E, 0)), m.signal("X20,Y4 SLICE[1].Y", 0))
+        self.assertEqual(m.solver.check(), z3.sat)
+
+    def test_tx_phase_can_start_after_stop_with_independent_kick(self):
+        m = self.System(a.symbolic_cut(self.r, {a.E, a.START, a.TX_P, a.TX_E}), 2,
+                        powerup=False, schedule=[{self.clock_key({"source": a.TX_FAST, "inv": False})}] * 2)
+        z3 = self.z3
+        m.solver.add(z3.Not(m.state(a.TX_P, 0)), z3.Not(m.state(a.TX_E, 0)))
+        for t in range(3):
+            m.solver.add(z3.Not(m.signal(a.RESET, t)), z3.Not(m.state(a.E, t)),
+                         z3.Not(m.state(a.START, t)), m.signal(a.TX_KICK, t) == (t == 0))
+        self.impossible(m, z3.Or(z3.Not(m.state(a.TX_P, 1)), m.state(a.TX_E, 1),
+                                m.state(a.TX_P, 2), z3.Not(m.state(a.TX_E, 2))))
+        # Actual TX transitions, arbitrary independent kick; no claim that PCI completed.
+
+
+@unittest.skipUnless(os.environ.get("WR6K_ACQUISITION_SECOND_REPORT") and os.environ.get("WR6K_FPGA_SYMBOLIC") == "1",
+                     "private timebase SMT not configured")
+class PrivateTimebaseSmt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import z3
+        from virtexe_symbolic import System, clock_key
+        cls.z3, cls.System, cls.clock_key = z3, staticmethod(System), staticmethod(clock_key)
+        cls.r = json.loads(Path(os.environ["WR6K_ACQUISITION_SECOND_REPORT"]).read_text(encoding="utf-8"))
+
+    def model(self, names, bound, clock, powerup=False):
+        return self.System(a.symbolic_cut(self.r, set(names)), bound, powerup=powerup,
+                           schedule=[{self.clock_key({"source": clock, "inv": False})}] * bound)
+
+    def impossible(self, m, expression):
+        self.assertEqual(m.solver.check(), self.z3.sat)
+        m.solver.push(); m.solver.add(expression)
+        self.assertEqual(m.solver.check(), self.z3.unsat)
+        m.solver.pop()
+
+    def test_start_low_asynchronously_clears_first_level_stage_only(self):
+        m = self.model(a.TB_LEVEL, 0, a.CLOCK)
+        m.solver.add(self.z3.Not(m.signal(a.TB_START, 0)), m.state(a.TB_LEVEL[1], 0), m.state(a.TB_LEVEL[2], 0))
+        self.impossible(m, m.state(a.TB_LEVEL[0], 0))
+        self.assertEqual(register_contract(a.TB_LEVEL[0], self.r["logic"][a.TB_LEVEL[0]])["flags"]["SR_SYNC"], 0)
+
+    def test_level_pipeline_clears_after_two_local_edges_not_pci_edges(self):
+        m = self.model(a.TB_LEVEL, 2, a.CLOCK)
+        for t in range(3):
+            m.solver.add(self.z3.Not(m.signal(a.TB_START, t)), self.z3.Not(m.signal("X6,Y11 SLICE[0].YQ", t)))
+        self.impossible(m, self.z3.Or(*[m.state(n, 2) for n in a.TB_LEVEL]))
+
+    def test_three_stage_fast_sync_and_falling_edge_toggle(self):
+        m = self.model((*a.TB_SYNC, a.TB_TOGGLE), 4, a.FAST)
+        m.solver.add(*[m.state(n, 0) for n in a.TB_SYNC], self.z3.Not(m.state(a.TB_TOGGLE, 0)))
+        for t in range(5):
+            m.solver.add(self.z3.Not(m.signal(a.TB_START, t)))
+        self.impossible(m, self.z3.Or(*[m.state(n, 3) for n in a.TB_SYNC],
+            self.z3.Not(m.state(a.TB_TOGGLE, 3)), self.z3.Not(m.state(a.TB_TOGGLE, 4))))
+
+    def test_start_rise_does_not_toggle_falling_edge_register(self):
+        m = self.model((*a.TB_SYNC, a.TB_TOGGLE), 4, a.FAST, True)
+        for t in range(5): m.solver.add(m.signal(a.TB_START, t))
+        self.impossible(m, self.z3.Or(m.state(a.TB_TOGGLE, 4), self.z3.Not(m.state(a.TB_SYNC[-1], 3))))
+
+    def test_start_level_can_clear_while_other_local_clock_has_not_sampled(self):
+        m = self.model((*a.TB_LEVEL, *a.TB_SYNC), 2, a.CLOCK)
+        m.solver.add(*[m.state(n, 0) for n in a.TB_SYNC])
+        for t in range(3):
+            m.solver.add(self.z3.Not(m.signal(a.TB_START, t)), self.z3.Not(m.signal("X6,Y11 SLICE[0].YQ", t)))
+        self.impossible(m, self.z3.Or(m.state(a.TB_LEVEL[-1], 2), self.z3.Not(m.state(a.TB_SYNC[-1], 2))))
+
+    def test_sacq_is_delayed_runtime_state_not_start_low_ack(self):
+        z3 = self.z3
+        output = self.r["roots"]["M1"]["O"]
+        memory = "X4,Y14 SLICE[0].SRL16E"
+        cut = a.symbolic_cut(self.r, {output, "X18,Y1 SLICE[0].X"})
+        cut["memories"] = {memory: self.r["memories"][memory]}
+        m = self.System(cut, 4, powerup=False,
+                        schedule=[{self.clock_key({"source": a.CLOCK, "inv": False})}] * 4)
+        self.assertEqual(self.r["memories"][memory]["kind"], "srl16e")
+        for t in range(5):
+            m.solver.add(z3.Not(m.signal(a.TB_START, t)), z3.Not(m.signal("X18,Y1 SLICE[0].YQ", t)),
+                         z3.Not(m.signal("X15,Y2 SLICE[0].XQ", t)))
+        for i in range(16): m.solver.add(z3.Select(m.memory(memory, 0), z3.BitVecVal(i, 12)))
+        self.impossible(m, z3.Or(z3.Not(m.state(output, 1)), z3.Not(m.state(output, 3)), m.state(output, 4)))
+        # Writer states and clocks are independent cut inputs, not a claim of boot reachability.
 
 
 if __name__ == "__main__":
