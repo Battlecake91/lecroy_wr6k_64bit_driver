@@ -16,9 +16,11 @@
   overall 332/332 PASS, zero failures/skips.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
   45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
-  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 112 PCI DMA (24 synthetic,
-  48 private configured-logic, 40 private SMT), and 50 synthetic SMT tests:
-  **342/342 PASS** (156 synthetic, 186 private-firmware), zero failures/skips,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 125 PCI DMA (25 synthetic,
+  54 private configured-logic, 46 private SMT), and 52 synthetic SMT tests:
+  **357 distinct tests PASS** (159 synthetic, 198 private-firmware), zero
+  final failures/skips. The full runner passed355 tests; the final receive
+  rerun passed12 (ten overlap, two additional publication checks),
   plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
@@ -56,6 +58,12 @@
   All six DMA-quiescence obligations and stable restart exclusion remain
   Unknown. No new driver build or hardware test was performed for this offline
   analysis. PR #9 remains draft, open and unmerged.
+  The [receive-to-payload closure](pci-dma-retirement-analysis.md#receive-to-payload-evidence-closure)
+  adds15 distinct regressions: all32 input muxes, six pointer-bank contracts,
+  periodic modulo8/modulo4 publication (not ACK handshakes), threshold224,
+  C+W read lookahead, pre-edge DOB staging and reset-retained RAM. Snapshot
+  coherence requires clock/hold/setup evidence; modulo counters do not prove
+  valid occupancy, external acceptance, physical retirement or safe release.
 
 ## DMA/PnP staging
 

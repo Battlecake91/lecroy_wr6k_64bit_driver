@@ -338,6 +338,36 @@ class SymbolicTests(unittest.TestCase):
         self.assertEqual(m.check(m.state("out", 1))["solver"], "sat")
         self.assertEqual(m.check(z3.Not(m.state("out", 1)))["solver"], "sat")
 
+    def test_bram_to_staging_write_samples_prior_registered_output(self):
+        memory = bram(16, 16)
+        for port in 'AB':
+            memory['ports'][port].update(enable=c(port == 'B'), reset=c(0), write=c(0))
+        stage = {'kind': 'ram16x1d', 'initial': None, 'clock': s('clkB'),
+                 'enable': c(1), 'write_address': {'0': c(0)}, 'data': s('out')}
+        logic = {'out': {'kind': 'memory_output', 'memory': 'rx', 'port': 'B', 'bit': 0}}
+        m = System(report(logic, {'rx': memory, 'stage': stage}), 2, powerup=False,
+                   schedule=[{clock_key(s('clkB'))}] * 2)
+        for t in (0, 1):
+            m.solver.add(z3.Not(m.var('input', 'rx:cross_port_setup_window_overlap', t)))
+        at = lambda name, t: z3.Select(m.memory(name, t), z3.BitVecVal(0, 12))
+        self.assertImpossible(m, z3.Or(at('stage', 1) != m.state('out', 0),
+                                      m.state('out', 1) != at('rx', 0),
+                                      at('stage', 2) != at('rx', 0)))
+
+    def test_bram_near_edge_uncertainty_is_not_removed_by_absent_writer_edge(self):
+        memory = bram(16, 16)
+        for port in 'AB':
+            memory['ports'][port].update(enable=c(port == 'B'), reset=c(0), write=c(0))
+        logic = {'out': {'kind': 'memory_output', 'memory': 'rx', 'port': 'B', 'bit': 0}}
+        m = System(report(logic, {'rx': memory}), 1, powerup=False,
+                   schedule=[{clock_key(s('clkB'))}])
+        m.solver.add(m.var('input', 'rx:cross_port_setup_window_overlap', 0))
+        for predicate in (m.state('out', 1), z3.Not(m.state('out', 1))):
+            result = m.check(predicate)
+            self.assertEqual(result['base_consistency'], 'sat')
+            self.assertEqual(result['solver'], 'sat')
+            self.assertEqual(result['witness'], 'abstract_candidate')
+
     def test_bram_reset_clears_output_not_cells(self):
         m = self.bram_system()
         # Override the existing no-reset constraint in a separate fresh model.

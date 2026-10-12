@@ -2773,6 +2773,18 @@ as either entirely local or entirely acquisition-controller-owned is invalid.
 
 #### PCILOGIC Source Audit And Exact Missing Contract
 
+The focused [receive-to-payload closure](pci-dma-retirement-analysis.md#receive-to-payload-evidence-closure)
+consolidates all32 receive input muxes, both256x16 BRAM port contracts,
+binary pointer publication and the16x32 staging boundary. Whole-word checks
+establish the registered remote admission threshold224 and PCI read lookahead
+C+W. The publication controls are free-running modulo8 remote/modulo4 PCI
+dividers, **not an acknowledged FIFO handshake**. No ninth wrap bit occurs
+in the receive inequality predicate. Registered DOB is sampled by staging
+one edge later; global reset clears pointers but retains runtime RAM.
+Effective clock ratio, data hold/setup, first-word priming and no-lap remain
+unproved. These configured-image facts neither identify a physical hardware
+revision nor prove external payload acceptance, DMA retirement or safe release.
+
 The focused [DMA handshake and rollback analysis](pci-dma-retirement-analysis.md#handshake-rollback-and-local-word-conservation)
 adds exact issue/J/v, rollback/prefetch Q, staging availability V and counter-CE
 equations with nineteen local truth-table checks. These internal signals

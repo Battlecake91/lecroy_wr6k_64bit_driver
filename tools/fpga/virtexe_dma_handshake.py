@@ -120,6 +120,113 @@ def receive_availability_checks(report):
     return dict(status='Verified',pairs=result,scope='eight paired FF inequalities; no extra wrap bit or CDC proof')
 
 
+# Low-to-high bits. These are recovered registers, not an ideal FIFO model.
+RX_WRITE = tuple(sl(*v) for v in (
+    (42,7,1,'YQ'), (44,7,0,'YQ'), (44,8,0,'XQ'), (44,8,0,'YQ'),
+    (44,9,0,'XQ'), (44,9,0,'YQ'), (44,10,0,'XQ'), (44,10,0,'YQ')))
+RX_READ = tuple(sl(*v) for v in (
+    (38,6,0,'YQ'), (38,6,1,'YQ'), (38,7,1,'XQ'), (38,7,1,'YQ'),
+    (38,8,1,'XQ'), (38,8,1,'YQ'), (38,9,1,'XQ'), (38,9,1,'YQ')))
+RX_PUBLISHED = tuple(sl(*v) for v in (
+    (44,7,1,'YQ'), (44,7,1,'XQ'), (43,8,1,'YQ'), (43,8,1,'XQ'),
+    (42,8,0,'YQ'), (42,8,0,'XQ'), (44,9,1,'YQ'), (44,9,1,'XQ')))
+RX_SNAPSHOT = tuple(sl(*v) for v in (
+    (43,7,1,'YQ'), (43,7,1,'XQ'), (43,6,0,'YQ'), (43,6,0,'XQ'),
+    (42,7,0,'YQ'), (42,7,0,'XQ'), (43,9,1,'YQ'), (43,9,1,'XQ')))
+RX_FEEDBACK = tuple(sl(*v) for v in (
+    (38,7,0,'YQ'), (37,7,0,'YQ'), (39,7,1,'YQ'), (39,7,1,'XQ'),
+    (39,8,0,'YQ'), (39,8,0,'XQ'), (39,9,1,'YQ'), (39,9,1,'XQ')))
+RX_REMOTE_READ = tuple(sl(*v) for v in (
+    (41,7,0,'YQ'), (41,7,0,'XQ'), (41,7,1,'YQ'), (41,7,1,'XQ'),
+    (39,8,1,'YQ'), (39,8,1,'XQ'), (41,10,1,'YQ'), (41,10,1,'XQ')))
+RX_MEMORIES = ('X46,Y13 BRAM', 'X46,Y9 BRAM')
+RX_ENABLE = sl(43,10,1,'YQ')
+REMOTE_CLOCK = 'X24,Y0 BUFGCE[0].O'
+PCI_CLOCK = 'X24,Y29 BUFGCE[1].O'
+
+
+def receive_data_checks(report):
+    """Check all 32 immediate muxes, without claiming LVDS sample identity.
+
+    Both alternatives are runtime state: delayed word FFs or auxiliary BRAM
+    outputs. The mux selector's protocol meaning is deliberately not assigned.
+    """
+    from virtexe_routing import evaluate_data
+    banks = (
+        ((41,17,0), (43,17,1), (31,19,1), (34,19,1),
+         (44,12,0), (43,13,1), (45,18,1), (43,21,1)),
+        ((28,17,1), (27,18,0), (34,14,0), (35,13,0),
+         (41,8,1), (41,8,0), (41,16,1), (40,14,1)))
+    auxiliaries = (('X46,Y17 BRAM', 'X1,Y21 BRAM', 'X46,Y5 BRAM', 'X46,Y21 BRAM'),
+                   ('X1,Y17 BRAM', 'X1,Y13 BRAM', 'X46,Y1 BRAM', 'X46,Y25 BRAM'))
+    selectors = (sl(38,13,0,'X'), sl(34,13,1,'X'))
+    result = []
+    for half, memory in enumerate(RX_MEMORIES):
+        for bit in range(16):
+            register = sl(*banks[half][bit // 2], 'YQ' if bit % 2 == 0 else 'XQ')
+            auxiliary = f'{auxiliaries[half][bit // 4]}.DOB[{bit % 4}]'
+            selector = selectors[half]
+            source = report['memories'][memory]['ports']['A']['data'][str(bit)]
+            for assignment in range(8):
+                values = {n: bool(assignment & (1 << i))
+                          for i, n in enumerate((selector, register, auxiliary))}
+                if evaluate_data(source, report['logic'], values) != values[register if values[selector] else auxiliary]:
+                    raise ValueError(f'{memory} DIA[{bit}]: source mux differs')
+            result.append(dict(memory=memory, bit=bit, selector=selector,
+                               delayed=register, auxiliary=auxiliary, status='Verified'))
+    return result
+
+
+def receive_publication_checks(report):
+    """Recover periodic binary snapshots, without inventing an ACK handshake."""
+    from virtexe_routing import evaluate_data, register_contract
+    forward = (sl(44,6,1,'XQ'), sl(44,6,1,'YQ'), sl(44,6,0,'YQ'))
+    backward = (sl(40,7,0,'XQ'), sl(40,7,0,'YQ'))
+    chains = ((sl(44,5,1,'YQ'), forward[2], REMOTE_CLOCK),
+              (sl(44,5,0,'YQ'), sl(44,5,1,'YQ'), PCI_CLOCK),
+              (sl(44,4,0,'YQ'), sl(44,5,0,'YQ'), PCI_CLOCK),
+              (sl(43,4,0,'YQ'), sl(44,4,0,'YQ'), PCI_CLOCK),
+              (sl(40,7,1,'YQ'), backward[1], PCI_CLOCK),
+              (sl(40,9,1,'YQ'), sl(40,7,1,'YQ'), REMOTE_CLOCK),
+              (sl(40,9,0,'YQ'), sl(40,9,1,'YQ'), REMOTE_CLOCK),
+              (sl(40,8,0,'YQ'), sl(40,9,0,'YQ'), REMOTE_CLOCK))
+    for registers, clock in ((forward, REMOTE_CLOCK), (backward, PCI_CLOCK)):
+        for old in range(1 << len(registers)):
+            values = {n: bool(old & (1 << i)) for i, n in enumerate(registers)}
+            actual = sum(int(evaluate_data(report['logic'][n]['data'], report['logic'], values)) << i
+                         for i, n in enumerate(registers))
+            if actual != (old + 1) % (1 << len(registers)):
+                raise ValueError('receive publication divider differs')
+    for destination, source, _ in chains:
+        if functional_source(report['logic'][destination]['data']) != (source, False):
+            raise ValueError('receive publication delay chain differs')
+    for name, clock in (*[(n, REMOTE_CLOCK) for n in forward],
+                        *[(n, PCI_CLOCK) for n in backward],
+                        *[(n, c) for n, _, c in chains]):
+        c = register_contract(name, report['logic'][name])
+        if (c['status'] != 'modeled_async_ff' or 'rev' in c
+                or c['clock'].get('source') != clock or c['clock'].get('inv', False)
+                or not evaluate_data(c['ce'], report['logic'], {})
+                or c['init'] != 0 or c['flags'] != {'LATCH': 0, 'SR_ENABLE': 1, 'SR_SYNC': 0}
+                or functional_source(c['sr']) != (report['roots']['RST#']['I'], True)):
+            raise ValueError('receive publication register contract differs')
+    edges = ((sl(44,6,0,'X'), forward[2], sl(44,5,1,'YQ')),
+             (sl(43,4,1,'Y'), sl(44,4,0,'YQ'), sl(43,4,0,'YQ')),
+             (sl(40,7,0,'X'), backward[1], sl(40,7,1,'YQ')),
+             (sl(40,8,1,'Y'), sl(40,9,0,'YQ'), sl(40,8,0,'YQ')))
+    for gate, high, low in edges:
+        for old in range(4):
+            values = {high: bool(old & 1), low: bool(old & 2)}
+            if evaluate_data(report['logic'][gate]['data'], report['logic'], values) != (values[high] and not values[low]):
+                raise ValueError(f'{gate}: receive publication edge predicate differs')
+    return dict(status='Verified', forward_period=8, backward_period=4,
+                acknowledged=False, scope='periodic snapshot controls; no clock-ratio or metastability guarantee')
+
+
+def functional_source(expression):
+    return expression.get('source'), expression.get('inv', False)
+
+
 def owned_phase(*, owned, data_phase, output_enabled, frame, irdy, trdy,
                 devsel, stop, transferred_before, claimed_before,
                 response_window_expired=False):

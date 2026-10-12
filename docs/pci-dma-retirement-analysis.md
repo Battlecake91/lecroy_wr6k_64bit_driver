@@ -229,17 +229,162 @@ conservation do not prove full/empty distinction or prevent premature reuse.
 
 ### Lifecycle and proof boundary
 
+#### Receive-to-payload evidence closure
+
+The focused checks in `PrivateReceive` / `PrivateReceiveSmt` use the unchanged
+PCI image hash and Project Combine pin enforced by `PrivateDma.setUpClass`.
+`receive_data_checks` checks every immediate data mux exhaustively; it does not
+export a complete extracted network or assign external sample identities.
+The following contracts describe this configured image, not a verified live
+hardware revision.
+
+Both receive halves have the same eight address bits, enable/write controls
+and port timing. Port A is remote-clocked (`X24,Y0 BUFGCE[0].O`), enabled,
+with WE=`X43,Y10 SLICE[1].YQ`; port B is PCI-clocked
+(`X24,Y29 BUFGCE[1].O`), enabled and read-only. Both port resets are constant
+inactive. Each port is 16 bits wide with an eight-bit word address shifted by
+four into the shared 4096-bit storage. BRAM INIT remains unavailable; neither
+RAM contents nor output startup are zero-filled by the model.
+
+**All DIA sources.** In this compact table `Xx,Yy/Ss` denotes the SLICE at
+that coordinate. Each pair lists delayed bits in **YQ, XQ** order. Four
+successive bits use auxiliary **DOB[0..3]** in order. Selector true chooses
+the delayed FF; false chooses the auxiliary BRAM output. All 32 truth tables
+are checked, including inversions. These auxiliary memories are not the two
+receive halves and their contents are not automatically waveform samples.
+
+| Receive half / DIA bits | Delayed FF pairs (low to high) | Auxiliary source |
+|---|---|---|
+| X46,Y13 / 0..3 | X41,Y17/S0; X43,Y17/S1 | X46,Y17 BRAM |
+| X46,Y13 / 4..7 | X31,Y19/S1; X34,Y19/S1 | X1,Y21 BRAM |
+| X46,Y13 / 8..11 | X44,Y12/S0; X43,Y13/S1 | X46,Y5 BRAM |
+| X46,Y13 / 12..15 | X45,Y18/S1; X43,Y21/S1 | X46,Y21 BRAM |
+| X46,Y9 / 0..3 | X28,Y17/S1; X27,Y18/S0 | X1,Y17 BRAM |
+| X46,Y9 / 4..7 | X34,Y14/S0; X35,Y13/S0 | X1,Y13 BRAM |
+| X46,Y9 / 8..11 | X41,Y8/S1; X41,Y8/S0 | X46,Y1 BRAM |
+| X46,Y9 / 12..15 | X41,Y16/S1; X40,Y14/S1 | X46,Y25 BRAM |
+
+The selectors are X38,Y13/S0.X for X46,Y13 and X34,Y13/S1.X for X46,Y9.
+Their protocol meaning is not substituted for the configured mux function.
+
+**Addresses and admission.** Low-to-high bit order is retained in
+`RX_WRITE`, `RX_READ`, `RX_PUBLISHED`, `RX_SNAPSHOT`, `RX_FEEDBACK` and
+`RX_REMOTE_READ` in `virtexe_dma_handshake.py`. These are named recovered
+banks, not replacement FIFO state. Let P be RX_WRITE, C be RX_READ and
+Cr be RX_REMOTE_READ. Source-backed whole-word identities establish:
+
+```text
+Port-A address = P
+P_next = P + old_receive_WE                         modulo256, remote edge
+Port-B address = C + W                              modulo256, combinational
+C_next = C + W                                     modulo256, PCI edge
+receive_WE_next = ((P - Cr) modulo256 < 224) && !G   remote edge
+G = X43,Y10 SLICE[1].X
+```
+
+The receive WE is itself a CE=1, INIT=0, asynchronously reset FF. Its next
+qualifier is **not** the WE sampled by RAM or P on that same edge. G remains
+the actual upstream inhibit predicate; it is not renamed producer-done,
+word-valid or FIFO-full. The 224 threshold is local delayed backpressure,
+not a verified maximum global occupancy. C's D-function increments by one,
+but its CE equals W; the effective transition above includes that CE.
+
+**Pointer crossings.** P is captured into the remote RX_PUBLISHED bank under
+CE=X44,Y6/S0.X, then into PCI RX_SNAPSHOT under CE=X43,Y4/S1.Y. The latter
+is X44,Y4/S0.YQ && !X43,Y4/S0.YQ. Its request path includes remote
+X44,Y5/S1.YQ followed by PCI X44,Y5/S0.YQ, X44,Y4/S0.YQ,
+X43,Y4/S0.YQ. The remote capture CE is X44,Y6/S0.YQ && !X44,Y5/S1.YQ.
+Thus a held binary snapshot and delayed publication phase are visible; this
+is not a Gray-coded pointer synchronizer. Conversely, PCI RX_FEEDBACK captures C+W
+under X40,Y7/S0.X and remote RX_REMOTE_READ captures that bank under
+X40,Y8/S1.Y. All six eight-bit banks are INIT=0 with asynchronous !RST#.
+The eight existing inequalities compare RX_SNAPSHOT against C, with **no
+ninth wrap/phase bit in that predicate**.
+
+`receive_publication_checks` closes both publication-control cones: forward
+X44,Y6/S1.XQ, S1.YQ, S0.YQ form a CE=1 modulo8 remote counter. Reverse
+X40,Y7/S0.XQ, S0.YQ form a CE=1 modulo4 PCI counter. Their upper-bit edges,
+the named delay chains and all clocks/reset/INIT contracts are checked.
+Forward capture repeats every eight remote edges; reverse capture every
+four PCI edges, absent reset. **Neither divider waits for an acknowledgement
+from the other domain.** The reverse CE is the delayed rising edge of its
+counter's upper bit. Therefore the precise gap is not an unidentified ACK
+register: it is the effective clock ratio/phase, publication pulse sampling,
+binary-data hold window and synchronizer/BRAM setup behavior. Arbitrary
+independent clock schedules cannot establish coherent snapshots or no-lap.
+
+**Latency and reset.** Port B updates its output latch on a PCI edge. A
+staging write on that edge captures the **previous** DOB, not the just-read
+word at C+W. A synthetic two-edge check verifies this model timing without
+choosing an initialized BRAM output; a private one-edge check verifies all
+32 actual staging data inputs against pre-edge DOB. Interpreting the first
+staged word still needs priming/validity and collision-free history. The model
+keeps cross-port setup-window overlap and read collisions symbolic, including
+possible adjacent-edge overlap; omitting a remote edge is not a CDC proof.
+Global !RST# clears the checked pointer banks but cannot erase these BRAMs
+or the 32 staging RAM16X1Ds. A one-edge private mismatch check verifies
+retention during reset; it does not claim output latches are reset or idle.
+
+**Occupancy limit.** P=C can describe zero or 256 modulo advances without
+a no-lap invariant. Likewise V=0 can represent zero or 16 modular advances.
+The existing V+read_index-write_index conservation is only modulo16.
+Simultaneous W/issue/rewind obey their established equations, but neither an
+issue nor a rewind supplies a uniquely identified external acceptance.
+Delayed throttle at V>=10 is not a direct full flag. Reset-retained contents
+are neither valid occupancy nor proof of drain. No reachable overflow,
+underflow, duplicate payload or hardware fault is established by these
+arithmetic ambiguities.
+
+Classification here is precise: **Verified** means a configured local
+function/contract; **Conditional** requires an explicitly stated timing,
+selection or state premise; **Inferred** is a plausible semantic role;
+**Unknown** has no established end-to-end relation.
+
+| Boundary | Established evidence | Missing evidence | Classification |
+|---|---|---|---|
+| LVDS word qualification | Existing frame/capture structure; each data mux has exact runtime alternatives | Sample identity and complete external word-valid/end-of-data contract | Conditional |
+| Receive-BRAM admission | Shared old WE, remote-clock write ports, P increment and registered threshold224 | Link-word validity and cross-domain no-overwrite guarantee | Verified |
+| Receive-BRAM occupancy | Periodic modulo8/modulo4 publication; two binary snapshot directions; eight-bit inequality | Clock ratio/hold-window coherence, no-lap invariant and globally meaningful full/empty state | Unknown |
+| Staging-memory write | All32 pre-edge DOB inputs, W gate, PCI clock and actual write pointers | Priming and valid/collision-free received-word history | Conditional |
+| Staging-memory occupancy | Modulo16 pointer/V equations and delayed throttle | Unwrapped conservation, bounded occupancy and unique word identity | Unknown |
+| Internal payload selection | All32 RAM/TBUS/AD D alternatives under explicit unique-driver selections | Effective output loading/ownership and valid selected token | Conditional |
+| Internal consumption | Issue/rewind/read-pointer/Q mechanisms | Bijection between issued/reissued tokens and accepted words | Inferred |
+| External transaction acceptance | Conditional PCI observer, distinct from internal bookkeeping | Correlated owned phases, PCILOGIC timing and host-bridge visibility | Unknown |
+
+**Formal audit delta.** The new bound0 word identities are configured
+Boolean identities under arbitrary register cuts, with SAT bases before
+mismatch UNSAT. Registered admission and reset/retention are bound1 local
+properties; the synthetic output pipeline is bound2 under no collision.
+They are not initialized LVDS-to-payload executions. Existing runtime SAT
+and initialized descriptor-prefix results retain the scopes in the formal
+evidence table below; no new PCI stimulus, host-memory transaction, unbounded
+proof or physical failure interpretation is introduced. All six release
+obligations remain Unknown.
+
+**Remaining work and expected offline value.** Both periodic publication
+control cones are now closed; repeating their individual LUTs is not useful.
+A targeted next analysis is worthwhile only with the effective remote/PCI
+clock frequency, phase/stop relationship and applicable synchronizer timing.
+It can then test publication hold/admission bounds while preserving actual
+FF clocks and reset history. Proving first-word priming and no-lap across the
+link additionally needs the applicable remote
+word-valid/backpressure contract and bounded producer response, not just
+another arithmetic LUT. BRAM startup/collision and synchronizer timing need
+applicable architecture/timing evidence. External retirement still needs
+PCILOGIC, owned PCI phase history and the host-bridge/Windows contract;
+another receive-pointer-only round cannot close those gaps.
+
 | Transition | Label | Exact scope / missing invariant |
 |---|---|---|
-| LVDS word received -> receive BRAM | Verified conditional | Existing receive capture/admission and remote-clock BRAM paths; sample identity, producer end-of-data and CDC coherence remain separate |
-| Receive BRAM -> staging RAM write | Verified conditional | All32 data alternatives, PCI-domain W and RAM16X1D write ports; cross-domain collision/valid-word history Unknown |
+| LVDS word received -> receive BRAM | Conditional | Existing receive capture/admission and remote-clock BRAM paths; sample identity, producer end-of-data and CDC coherence remain separate |
+| Receive BRAM -> staging RAM write | Conditional | All32 data alternatives, PCI-domain W and RAM16X1D write ports; cross-domain collision/valid-word history Unknown |
 | Host publication -> descriptor request | Inferred | Software table, SGTA/IIMCL capture and initial/pending equation; publication/coherency and owned request not closed |
 | Descriptor request -> fetch acceptance | Unknown | Conditional address/read command and AD capture; PCI_CE/ownership/history missing |
-| Fetch acceptance -> descriptor consumption | Verified conditional | B then A local capture for the stated pending/accept schedule; legal fetch and stalled/retry schedules Unknown |
-| Descriptor consumption -> payload selection | Verified conditional | Chain/load/zero and complete master-address equations; transaction identity still Inferred |
-| Payload selection -> PCI write | Verified conditional | All32 BRAM/staging/TBUS/AD D alternatives and write-command cofactor; driven accepted write Unknown |
+| Fetch acceptance -> descriptor consumption | Conditional | B then A local capture for the stated pending/accept schedule; legal fetch and stalled/retry schedules Unknown |
+| Descriptor consumption -> payload selection | Conditional | Chain/load/zero and complete master-address equations; transaction identity still Inferred |
+| Payload selection -> PCI write | Conditional | All32 BRAM/staging/TBUS/AD D alternatives and write-command cofactor; driven accepted write Unknown |
 | PCI write -> final data-phase acceptance | Unknown | Own output enables, hardblock sampling and target history must agree |
-| Attempt -> rewind / final consumption | Verified mechanism / Unknown ownership | Actual Q/rollback/read-pointer equations below; universal retry-suffix preservation and unique accepted-token consumption not established |
+| Attempt -> rewind / final consumption | Conditional | Actual Q/rollback/read-pointer equations below; universal retry-suffix preservation and unique accepted-token consumption not established |
 | Final acceptance -> internal completion | Unknown | No proved bijection from accepted words to counter/terminal events |
 | Internal completion -> IRQ source | Verified | Actual C/sticky-IRQ equations, not generation-tagged physical interrupt provenance |
 | IRQ source -> physical IRQ | Inferred | Interrupt masks/output path; effective electrical timing and final-transaction association not proved |
@@ -430,11 +575,13 @@ required physical transaction history. SAT is not hardware failure; bounded
 UNSAT is not unbounded retirement or safe shutdown. Repeated retry and final
 word stalls still need the missing effective-output/ownership invariant.
 
-Validation on2026-10-11:112 DMA tests (24 synthetic,48 private configured-logic,
-40 private SMT), all PASS. The complete FPGA/MCU run has342 Python tests
-(156 synthetic,186 private-firmware),
+Validation on2026-10-12:125 distinct DMA tests (25 synthetic,54 private configured-logic,
+46 private SMT), all PASS across the full run and final receive rerun.
+The FPGA/MCU validation has357 distinct Python tests
+(159 synthetic,198 private-firmware),
 zero failures/skips, decoder self-test/frame calibration,50 native architecture
-and19 native PCI local-equation checks PASS. All332 driver dry cases pass.
+and19 native PCI local-equation checks PASS. The previously recorded332 driver
+dry cases were not rerun for this receive-focused task.
 The new initialized bound40/52 prefixes add12 diagnostics (9 SAT,3 UNSAT,
 zero solver-unknown results), separately from the earlier ten bound1 runtime
 and twelve bound2/4 projected diagnostics. No hardware execution or WDK build

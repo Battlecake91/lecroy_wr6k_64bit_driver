@@ -17,6 +17,10 @@ from virtexe_routing import COMMIT, evaluate_data, register_contract, register_e
 from virtexe_dma_handshake import (H, HANDSHAKE_RELATIONS, SCENARIOS, local_checks,
                                   owned_phase, pending_next, projection,
                                   handshake_queries, word_observer, receive_availability_checks)
+from virtexe_dma_handshake import (RX_WRITE, RX_READ, RX_PUBLISHED, RX_SNAPSHOT,
+                                  RX_FEEDBACK, RX_REMOTE_READ, RX_MEMORIES,
+                                  RX_ENABLE, REMOTE_CLOCK, PCI_CLOCK, receive_data_checks,
+                                  receive_publication_checks)
 from virtexe_dma_reachability import closed_cone, initialized_prefix, launch_stimulus
 
 
@@ -65,6 +69,13 @@ class SyntheticReachability(unittest.TestCase):
 
 
 class SyntheticHandshake(unittest.TestCase):
+    def test_modulo_pointer_equality_and_zero_bookkeeping_do_not_encode_fullness(self):
+        # Arithmetic ambiguity, not a reachable firmware overflow witness.
+        for size in (16, 256):
+            for origin in range(size):
+                self.assertEqual((origin + size) % size, origin)
+                self.assertEqual((size - 0) % size, 0)
+
     def phase(self, **kwargs):
         values = dict(owned=True, data_phase=True, output_enabled=True, frame=False,
                       irdy=False, trdy=False, devsel=False, stop=True,
@@ -364,6 +375,179 @@ def add_handshake_relation(name):
 
 for name,_,_ in HANDSHAKE_RELATIONS:
     add_handshake_relation(name)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT'), 'private receive report not configured')
+class PrivateReceive(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.p = PrivateDma.p
+
+    def test_all_32_receive_input_muxes_have_two_distinct_runtime_sources(self):
+        rows = receive_data_checks(self.p)
+        self.assertEqual(len(rows), 32)
+        self.assertEqual(len({r['delayed'] for r in rows}), 32)
+        self.assertEqual(len({r['auxiliary'] for r in rows}), 32)
+
+    def test_publication_dividers_and_delay_chains_are_not_an_acknowledged_fifo(self):
+        r = receive_publication_checks(self.p)
+        self.assertEqual((r['forward_period'], r['backward_period']), (8, 4))
+        self.assertFalse(r['acknowledged'])
+
+    def test_publication_check_rejects_changed_divider_function(self):
+        n = sl(44,6,1,'XQ')
+        altered = dict(self.p, logic=dict(self.p['logic']))
+        altered['logic'][n] = dict(self.p['logic'][n], data={'constant': 0})
+        with self.assertRaises(ValueError):
+            receive_publication_checks(altered)
+
+    def test_receive_ports_are_remote_write_pci_read_without_memory_reset(self):
+        for name in RX_MEMORIES:
+            m = self.p['memories'][name]
+            self.assertIsNone(m['initial'])
+            for port, clock in (('A', REMOTE_CLOCK), ('B', PCI_CLOCK)):
+                p = m['ports'][port]
+                self.assertEqual(p['width'], 16)
+                self.assertEqual(p['address_shift'], 4)
+                self.assertEqual(set(p['address']), {str(i) for i in range(8)})
+                self.assertEqual(p['clock']['source'], clock)
+                self.assertEqual(functional_expression(p['enable']), {'constant': 1, 'inv': False})
+                self.assertEqual(functional_expression(p['reset']), {'constant': 1, 'inv': True})
+                expected = {'source': RX_ENABLE, 'inv': False} if port == 'A' else {'constant': 1, 'inv': True}
+                self.assertEqual(functional_expression(p['write']), expected)
+
+    def test_pointer_banks_have_exact_clock_capture_reset_and_init_contracts(self):
+        banks = ((RX_WRITE, REMOTE_CLOCK, RX_ENABLE),
+                 (RX_READ, PCI_CLOCK, sl(27,7,0,'X')),
+                 (RX_PUBLISHED, REMOTE_CLOCK, sl(44,6,0,'X')),
+                 (RX_SNAPSHOT, PCI_CLOCK, sl(43,4,1,'Y')),
+                 (RX_FEEDBACK, PCI_CLOCK, sl(40,7,0,'X')),
+                 (RX_REMOTE_READ, REMOTE_CLOCK, sl(40,8,1,'Y')))
+        for registers, clock, enable in banks:
+            for name in registers:
+                c = register_contract(name, self.p['logic'][name])
+                self.assertEqual(c['status'], 'modeled_async_ff')
+                self.assertNotIn('rev', c)
+                self.assertEqual(c['init'], 0)
+                self.assertEqual(functional_expression(c['clock']), {'source': clock, 'inv': False})
+                self.assertEqual(functional_expression(c['ce']), {'source': enable, 'inv': False})
+                self.assertEqual(functional_expression(c['sr']), {'source': self.p['roots']['RST#']['I'], 'inv': True})
+                self.assertEqual(c['flags']['SR_SYNC'], 0)
+
+    def test_snapshot_data_are_named_banks_not_gray_code_or_extra_wrap_bit(self):
+        for destinations, sources in ((RX_PUBLISHED, RX_WRITE),
+                                      (RX_SNAPSHOT, RX_PUBLISHED),
+                                      (RX_REMOTE_READ, RX_FEEDBACK)):
+            for destination, source in zip(destinations, sources):
+                self.assertEqual(functional_expression(self.p['logic'][destination]['data']),
+                                 {'source': source, 'inv': False})
+        pairs = receive_availability_checks(self.p)['pairs']
+        self.assertEqual({frozenset(p) for p in pairs},
+                         {frozenset(p) for p in zip(RX_READ, RX_SNAPSHOT)})
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC') == '1',
+                     'private receive SMT not configured')
+class PrivateReceiveSmt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.p = PrivateDma.p
+
+    def word(self, system, names, data=False):
+        from virtexe_symbolic import z3
+        values = [system.expr(self.p['logic'][n]['data'], 0) if data else system.signal(n, 0)
+                  for n in names]
+        return sum((z3.If(v, z3.BitVecVal(1 << i, 8), z3.BitVecVal(0, 8))
+                    for i, v in enumerate(values)), z3.BitVecVal(0, 8))
+
+    def impossible(self, system, mismatch):
+        from virtexe_symbolic import z3
+        self.assertEqual(system.solver.check(), z3.sat, 'Non-vacuous base required')
+        system.solver.add(mismatch)
+        self.assertEqual(system.solver.check(), z3.unsat)
+
+    def test_receive_producer_increments_modulo256_at_the_actual_write_address(self):
+        from virtexe_symbolic import System, z3
+        s = System(self.p, bound=0, powerup=False)
+        old = self.word(s, RX_WRITE)
+        mismatches = [self.word(s, RX_WRITE, data=True) != old + 1]
+        for name in RX_MEMORIES:
+            address = self.p['memories'][name]['ports']['A']['address']
+            mismatches.extend(s.expr(address[str(i)], 0) != s.signal(n, 0) for i, n in enumerate(RX_WRITE))
+        self.impossible(s, z3.Or(*mismatches))
+
+    def test_receive_read_lookahead_and_feedback_use_C_plus_staging_admission(self):
+        from virtexe_symbolic import System, z3
+        s = System(self.p, bound=0, powerup=False)
+        write = s.signal(H['write'], 0)
+        expected = self.word(s, RX_READ) + z3.If(write, z3.BitVecVal(1, 8), z3.BitVecVal(0, 8))
+        effective_read = z3.If(write, self.word(s, RX_READ, data=True), self.word(s, RX_READ))
+        mismatches = [effective_read != expected,
+                      self.word(s, RX_FEEDBACK, data=True) != expected]
+        for n in RX_READ:
+            c = register_contract(n, self.p['logic'][n])
+            mismatches.append(s.expr(c['ce'], 0) != write)
+        for name in RX_MEMORIES:
+            address = self.p['memories'][name]['ports']['B']['address']
+            actual = sum((z3.If(s.expr(address[str(i)], 0), z3.BitVecVal(1 << i, 8), z3.BitVecVal(0, 8))
+                          for i in range(8)), z3.BitVecVal(0, 8))
+            mismatches.append(actual != expected)
+        self.impossible(s, z3.Or(*mismatches))
+
+    def test_all_staging_bits_capture_preedge_receive_outputs_on_a_pci_edge(self):
+        from virtexe_symbolic import System, clock_key, z3
+        s = System(self.p, bound=1, powerup=False,
+                   schedule=[{clock_key({'source': PCI_CLOCK, 'inv': False})}])
+        for t in (0, 1):
+            s.solver.add(s.signal(self.p['roots']['RST#']['I'], t))
+        s.solver.add(s.signal(H['write'], 0))
+        mismatches = []
+        for bit, d in payload_map(self.p).items():
+            address = s.address(d['write_address'], 0)
+            stored = z3.Select(s.memory(d['memory'], 1), address)
+            source = f'{RX_MEMORIES[bit // 16]}.DOB[{bit % 16}]'
+            mismatches.append(stored != s.signal(source, 0))
+        self.impossible(s, z3.Or(*mismatches))
+
+    def test_receive_registered_write_qualifier_uses_modulo_difference_threshold224(self):
+        from virtexe_symbolic import System, z3
+        s = System(self.p, bound=0, powerup=False)
+        difference = self.word(s, RX_WRITE) - self.word(s, RX_REMOTE_READ)
+        inhibit = s.signal(sl(43,10,1,'X'), 0)
+        expected = z3.And(z3.ULT(difference, z3.BitVecVal(224, 8)), z3.Not(inhibit))
+        actual = s.expr(self.p['logic'][RX_ENABLE]['data'], 0)
+        c = register_contract(RX_ENABLE, self.p['logic'][RX_ENABLE])
+        self.assertEqual(c['clock']['source'], REMOTE_CLOCK)
+        self.assertEqual(functional_expression(c['ce']), {'constant': 1, 'inv': False})
+        self.assertEqual(c['init'], 0)
+        self.impossible(s, actual != expected)
+
+    def test_global_reset_clears_pointers_but_does_not_erase_receive_or_staging_ram(self):
+        from virtexe_symbolic import System, clock_key, z3
+        clocks = {clock_key({'source': n, 'inv': False}) for n in (PCI_CLOCK, REMOTE_CLOCK)}
+        s = System(self.p, bound=1, powerup=False, schedule=[clocks])
+        for t in (0, 1):
+            s.solver.add(z3.Not(s.signal(self.p['roots']['RST#']['I'], t)))
+        memories = [*RX_MEMORIES, *[r['memory'] for r in payload_map(self.p).values()]]
+        mismatches = [s.memory(n, 0) != s.memory(n, 1) for n in memories]
+        mismatches.extend(s.signal(n, 1) for n in (*RX_WRITE, *RX_READ, *RX_SNAPSHOT))
+        self.impossible(s, z3.Or(*mismatches))
+
+    def test_registered_receive_admission_uses_preedge_enable_not_next_qualifier(self):
+        from virtexe_symbolic import System, clock_key, z3
+        local = projection(self.p, [*RX_WRITE, RX_ENABLE])
+        s = System(local, bound=1, powerup=False,
+                   schedule=[{clock_key({'source': REMOTE_CLOCK, 'inv': False})}])
+        for t in (0, 1):
+            s.solver.add(s.signal(self.p['roots']['RST#']['I'], t))
+        before = self.word(s, RX_WRITE)
+        after = sum((z3.If(s.signal(n, 1), z3.BitVecVal(1 << i, 8), z3.BitVecVal(0, 8))
+                     for i, n in enumerate(RX_WRITE)), z3.BitVecVal(0, 8))
+        expected = before + z3.If(s.signal(RX_ENABLE, 0), z3.BitVecVal(1, 8), z3.BitVecVal(0, 8))
+        self.impossible(s, z3.Or(after != expected,
+                                s.signal(RX_ENABLE, 1) != s.expr(self.p['logic'][RX_ENABLE]['data'], 0)))
 
 
 @unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC') == '1',
