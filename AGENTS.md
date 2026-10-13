@@ -31,7 +31,7 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` exists. Its current PR revision has an owner-reported successful Windows Debug x64 build, but has not been loaded or hardware-verified.
+- A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
