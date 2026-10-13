@@ -45,6 +45,7 @@ typedef struct _WORK {
     BOOLEAN Absolute;
     BOOLEAN Close;
     BOOLEAN Quarantine;
+    BOOLEAN Invalidate;
     HANDLE Entered;
     HANDLE Done;
 } WORK;
@@ -53,7 +54,8 @@ static DWORD WINAPI Worker(PVOID Context)
 {
     WORK* work = (WORK*)Context;
     if (work->Entered) SetEvent(work->Entered);
-    if (work->Quarantine) LecQuarantineInterruptAdmission(work->DevExt);
+    if (work->Invalidate) LecInvalidateInterruptHardware(work->DevExt);
+    else if (work->Quarantine) LecQuarantineInterruptAdmission(work->DevExt);
     else if (work->Close) LecSetInterruptAdmission(work->DevExt, FALSE);
     else if (work->Absolute) work->Status = LecWriteInterruptMask(work->DevExt, work->Bits);
     else work->Status = LecUpdateInterruptMask(work->DevExt,
@@ -162,6 +164,52 @@ int main(int argc, char** argv)
             dev.InterruptEnableShadow == registers[0x084 / 4],
             "acquisition and shadow stay coherent under conflicting generic write");
         CloseHandle(second.Entered); CloseHandle(second.Done);
+    }
+
+    /* A separate FDO fixture: invalidation cannot pass an issued writer. */
+    {
+        LECS65_DEVICE_EXTENSION unavailable = {0};
+        WORK first = {0}, second = {0};
+        HANDLE a, b;
+        InitializeCriticalSection(&unavailable.InterruptControlLock);
+        InitializeCriticalSection(&unavailable.IoAdmissionLock);
+        unavailable.InterruptObject = &irq;
+        unavailable.InterruptConnected = TRUE;
+        unavailable.Started = TRUE;
+        unavailable.Bar[0] = (PUCHAR)registers;
+        unavailable.BarLength[0] = sizeof(registers);
+        LecSetInterruptAdmission(&unavailable, TRUE);
+        CHECK(!LecIsInterruptHardwareUnavailable(&unavailable),
+            "fresh ISR/DPC hardware predicate allows access");
+        first.DevExt = second.DevExt = &unavailable;
+        first.Bits = 2;
+        second.Invalidate = TRUE;
+        second.Entered = CreateEvent(NULL, TRUE, FALSE, NULL);
+        second.Done = CreateEvent(NULL, TRUE, FALSE, NULL);
+        ResetEvent(writeEntered); ResetEvent(writeResume);
+        InterlockedExchange(&pauseWrite, 1);
+        a = CreateThread(NULL, 0, Worker, &first, 0, NULL);
+        if (!a || WaitForSingleObject(writeEntered, 10000) != WAIT_OBJECT_0) return 11;
+        b = CreateThread(NULL, 0, Worker, &second, 0, NULL);
+        if (!b || WaitForSingleObject(second.Entered, 10000) != WAIT_OBJECT_0) return 12;
+        CHECK(WaitForSingleObject(second.Done, 20) == WAIT_TIMEOUT,
+            "surprise invalidation waits behind an in-flight INTEN writer");
+        SetEvent(writeResume); Join(a); Join(b);
+        CHECK(first.Status == STATUS_SUCCESS &&
+            LecIsInterruptHardwareUnavailable(&unavailable),
+            "invalidation publishes the resident ISR/DPC stop predicate");
+        before = writes;
+        CHECK(!NT_SUCCESS(LecReadInterruptMask(&unavailable, &value)) &&
+            !NT_SUCCESS(LecMaskInterruptsForPnp(&unavailable)) && writes == before,
+            "invalidated FDO rejects read and cleanup without register writes");
+        LecSetInterruptAdmission(&unavailable, TRUE);
+        LecInvalidateInterruptHardware(&unavailable);
+        CHECK(!unavailable.AcceptIoctls && !unavailable.InterruptWriteAdmission &&
+            LecIsInterruptHardwareUnavailable(&unavailable),
+            "restart and repeated invalidation cannot clear unavailable latch");
+        CloseHandle(second.Entered); CloseHandle(second.Done);
+        DeleteCriticalSection(&unavailable.InterruptControlLock);
+        DeleteCriticalSection(&unavailable.IoAdmissionLock);
     }
 
     /* Pause inside the actual production critical section, before MMIO. */

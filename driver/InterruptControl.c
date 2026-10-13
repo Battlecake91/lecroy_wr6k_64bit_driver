@@ -31,7 +31,7 @@ LecInterruptOperationSynchronized(PVOID Context)
     BOOLEAN cleanup = op->Acquisition &&
         op->ClearBits == 1 && op->SetBits == 0;
 
-    if (devExt->InterruptHardwareUnavailable ||
+    if (LecIsInterruptHardwareUnavailable(devExt) ||
         (!devExt->Started && !op->Teardown) ||
         devExt->Bar[0] == NULL ||
         devExt->BarLength[0] < 0x084 + sizeof(ULONG)) {
@@ -152,7 +152,7 @@ LecInvalidateInterruptHardware(PLECS65_DEVICE_EXTENSION DevExt)
 {
     KIRQL irql;
     KeAcquireSpinLock(&DevExt->InterruptControlLock, &irql);
-    DevExt->InterruptHardwareUnavailable = TRUE;
+    (VOID)InterlockedExchange(&DevExt->InterruptHardwareUnavailable, 1);
     DevExt->InterruptWriteAdmission = FALSE;
     KeReleaseSpinLock(&DevExt->InterruptControlLock, irql);
 }
@@ -166,7 +166,7 @@ LecSetInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt, BOOLEAN Enable)
     KeAcquireSpinLock(&DevExt->InterruptControlLock, &irql);
     KeAcquireSpinLock(&DevExt->IoAdmissionLock, &admissionIrql);
     Enable = Enable && !DevExt->DmaUnknownActive &&
-        !DevExt->InterruptHardwareUnavailable;
+        !LecIsInterruptHardwareUnavailable(DevExt);
     DevExt->InterruptWriteAdmission = Enable;
     DevExt->AcceptIoctls = Enable;
     KeReleaseSpinLock(&DevExt->IoAdmissionLock, admissionIrql);
@@ -182,4 +182,11 @@ LecQuarantineInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt)
     (VOID)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
     DevExt->InterruptWriteAdmission = FALSE;
     KeReleaseSpinLock(&DevExt->InterruptControlLock, irql);
+}
+
+BOOLEAN
+LecIsInterruptHardwareUnavailable(PLECS65_DEVICE_EXTENSION DevExt)
+{
+    return (BOOLEAN)(InterlockedCompareExchange(
+        &DevExt->InterruptHardwareUnavailable, 0, 0) != 0);
 }

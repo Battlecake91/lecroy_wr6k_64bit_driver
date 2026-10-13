@@ -304,7 +304,8 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows offline regression on 2026-10-12:
+Current Windows offline regression on 2026-10-13, PR #10 baseline `860196d`
+plus the unavailable-hardware guard in this change (not the research snapshot):
 - `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **PASS**.
 - Debug|x64 driver build: **BLOCKED**, MSB8036, required SDK/WDK
   10.0.28000.0 unavailable. Installed SDK 10.0.26100.0 has no kernel headers
@@ -312,7 +313,7 @@ Current Windows offline regression on 2026-10-12:
   kernel compilation did not start. This is not a C compilation result.
 - Separate x64 `lecdiag` and `lecwatch` builds: **PASS**, no reported warnings
   or errors (not run on hardware).
-- Source/ABI contracts **45/45 PASS**.
+- Source/ABI contracts **46/46 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -322,14 +323,28 @@ Current Windows offline regression on 2026-10-12:
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
 - Live DMA completion-state suite **39/39 PASS**.
 - Deterministic native instruction-interleaving suite **2/2 PASS**.
-- Native production INTEN helper checks **44/44 PASS** (within the DMA
+- Native production INTEN helper checks **49/49 PASS** (within the DMA
   completion suite, MMIO and kernel synchronization test doubles only).
-- Overall **REGRESSION SUITE PASS: Dry** (**382/382** functional checks across
+- Overall **REGRESSION SUITE PASS: Dry** (**388/388** functional checks across
   eight suites, 0 FAIL / 0 SKIP; driver build skipped).
 - Default stress: five scenarios x 1,000 iterations, **5,000/5,000 PASS**.
   Separate expanded stress: five scenarios x 10,000 iterations,
   **50,000/50,000 PASS**, zero failed races. INTEN RMW stress adds
   **1,000/1,000 PASS** by default and **10,000/10,000 PASS** expanded.
+  Candidate total: **66,000/66,000** stress iterations, 0 FAIL / 0 SKIP,
+  separate from the 388 functional checks. The unavailable kernel build is a
+  blocked qualification gate, not an extra passing test.
+
+Exact installed tools used: Visual Studio Community 2022 **17.14.1**
+(installation **17.14.36119.2**), MSBuild file version **17.14.8.25101**,
+MSVC tools directory **14.44.35207**, compiler file version
+**19.44.35207.1**, SDK **10.0.26100.0** (user-mode/shared/UCRT only).
+Both separately built utilities have PE machine **0x8664 (AMD64)**; neither
+was executed. Native completion/INTEN compilation reported **0 warnings and
+0 errors** with warnings-as-errors. This is not a kernel compiler result:
+the final official Debug build again failed before kernel C compilation with
+**0 warnings / 1 MSB8036 setup error**, without retargeting. No current SYS
+exists for architecture/import/export verification.
 
 Completion tests compile the production tracker and cleanup decision with
 MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
@@ -359,9 +374,15 @@ are test doubles, not device accesses. Tests cover acquisition enable/cleanup,
 generic full writes preserving or conflicting with bit 0, physical versus
 cached reads, receive-enable idempotence, mapping/length and synchronization
 failure, repeated acquisition, terminal quarantine, STOP closure, surprise
-unavailability and absent BAR rejection. Five gated two-thread schedules pause
+unavailability and absent BAR rejection. Six gated two-thread schedules pause
 a writer inside the production critical section while another caller attempts
-an absolute update, RMW, STOP or quarantine. Expanded stress runs 10,000
+an absolute update, RMW, STOP, quarantine or surprise invalidation. Five added
+checks execute the production atomic unavailable predicate/invalidation:
+fresh availability, writer-before-invalidation ordering, latch publication,
+rejection of reads/cleanup without MMIO, and irreversible restart rejection.
+One added source guard binds that predicate to the ISR and HWInt DPC before
+their hardware branches; it is not host execution of those kernel paths.
+Expanded stress runs 10,000
 two-writer RMW schedules and checks both shadow and issued register value.
 No recoverable bus-error return is fabricated for WRITE_REGISTER_ULONG, whose
 production DDI is void. Failed mask issue feeds the separately tested actual
@@ -370,15 +391,6 @@ claimed. Late-IRQ filtering is checked against the shared shadow and production
 source contract, not by injecting a real IRQ. See the complete inventory and
 compatibility exception in [DMA lifetime](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 
-Reproduce offline validation from the repository root:
-
-```powershell
-.\scripts\test-driver.ps1 -Mode Dry -SkipBuild
-.\tests\dry\test-dma-completion.ps1 -StressIterations 10000
-.\scripts\build-lecdiag.ps1
-.\scripts\build-lecwatch.ps1
-```
-
 For a genuine driver build, install the project's SDK **and** WDK
 10.0.28000.0 with the VS 2022 C++ toolchain. Missing components include SDK
 platform metadata/user-mode headers and WDK `Include\10.0.28000.0\km\ntddk.h`,
@@ -386,11 +398,21 @@ matching shared headers, and `Lib\10.0.28000.0\km\x64\ntoskrnl.lib`, `hal.lib`
 and `wmilib.lib` under `C:\Program Files (x86)\Windows Kits\10`.
 The available SDK 10.0.26100.0 contains only user-mode/shared/UCRT support;
 no kernel-header/library retarget or native-test substitution was used.
-On the properly provisioned owner machine, run without installing/loading:
+On the properly provisioned owner machine, use **Developer PowerShell for
+VS 2022 (x64 tools)** from the repository root. This single fail-fast sequence
+builds, checks binary metadata and runs only offline tests; it does not install
+or load the driver. Inspect the reported SYS machine (must be AMD64), entry
+point, imports and any exports; DriverEntry need not be an exported symbol.
 
 ```powershell
+$ErrorActionPreference = 'Stop'
 .\scripts\build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch
-.\scripts\test-driver.ps1 -Mode Dry
+$sys = Join-Path (Get-Location) 'x64\Debug\LecS65AcqDrv.sys'
+if (!(Test-Path -LiteralPath $sys)) { throw "Missing driver: $sys" }
+dumpbin.exe /headers /imports /exports $sys
+if ($LASTEXITCODE -ne 0) { throw 'SYS metadata inspection failed' }
+.\scripts\test-driver.ps1 -Mode Dry -SkipBuild
+.\tests\dry\test-dma-completion.ps1 -StressIterations 10000
 ```
 
 PR #10 is a software-reviewed candidate with an outstanding kernel-build

@@ -283,7 +283,7 @@ typedef struct _LECS65_DEVICE_EXTENSION {
      */
     KSPIN_LOCK InterruptControlLock;
     BOOLEAN InterruptWriteAdmission;
-    BOOLEAN InterruptHardwareUnavailable;
+    volatile LONG InterruptHardwareUnavailable;
     volatile ULONG InterruptPendingShadow;
     /* Original FUN_000108D6 accumulates ERRS at main+0x134A. */
     volatile LONG LegacyErrorStatusLatch;
@@ -358,6 +358,8 @@ NTSTATUS LecMaskInterruptsForPnp(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecSetInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt, BOOLEAN Enable);
 VOID LecQuarantineInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecInvalidateInterruptHardware(PLECS65_DEVICE_EXTENSION DevExt);
+/* Resident metadata predicate; callable by ISR/DPC, not a hardware-idle test. */
+BOOLEAN LecIsInterruptHardwareUnavailable(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecDrainIoctls(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 
 NTSTATUS LecForwardLockedIrp(

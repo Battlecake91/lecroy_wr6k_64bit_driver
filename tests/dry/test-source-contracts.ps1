@@ -633,6 +633,20 @@ Test-Contract "INTEN acquisition bit and narrow teardown exceptions remain expli
     $acquisitionText -match 'LecMaskInterruptsForPnp\(DevExt\)'
 }
 
+Test-Contract "surprise invalidation gates ISR and HWInt DPC before hardware access" {
+    $isr = [regex]::Match($acquisitionText,
+        '(?s)BOOLEAN\s+LecInterruptService\(.*?(?=\r?\nVOID\s+LecInterruptDpc)')
+    $dpc = [regex]::Match($acquisitionText,
+        '(?s)VOID\s+LecInterruptDpc\(.*?(?=\r?\nNTSTATUS\s+LecInjectLegacyPendingAndDispatch)')
+    $isr.Success -and $dpc.Success -and
+    $isr.Value -match '(?s)if \(LecIsInterruptHardwareUnavailable\(devExt\).*?return FALSE;.*?READ_REGISTER_ULONG' -and
+    $dpc.Value -match '(?s)pending & 0x08UL.*?!LecIsInterruptHardwareUnavailable\(devExt\).*?READ_REGISTER_ULONG' -and
+    $driverText -match 'volatile LONG InterruptHardwareUnavailable' -and
+    $interruptText -match 'InterlockedExchange\(&DevExt->InterruptHardwareUnavailable, 1\)' -and
+    $interruptText -match '(?s)LecIsInterruptHardwareUnavailable\(.*?InterlockedCompareExchange' -and
+    $interruptText -notmatch 'InterlockedExchange\(&DevExt->InterruptHardwareUnavailable, 0\)'
+}
+
 Test-Contract "public packed register ABI size guards are still present" {
     $required = @(
         'sizeof\(LECS65_REG_READ_LEGACY\) == 4',

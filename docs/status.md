@@ -2,23 +2,29 @@
 
 ## Build and software regression
 
-- Current offline check (2026-10-12): x64 `lecdiag` and `lecwatch` build
+- Current offline check (2026-10-13), implementation PR #10 baseline `860196d`
+  plus the unavailable-hardware guard: x64 `lecdiag` and `lecwatch` build
   successfully. The Debug driver build is blocked by missing SDK/WDK
   10.0.28000.0 (MSB8036); this environment has SDK 10.0.26100.0 without kernel
   headers/libraries. No current driver build or hardware qualification is claimed.
+  VS Community 2022 17.14.1 (17.14.36119.2), MSBuild 17.14.8.25101 and MSVC
+  19.44.35207.1 were used. Final kernel attempt: 0 warnings / 1 setup error,
+  before C compilation; no SYS architecture/import/export result is available.
+  Both utility binaries are AMD64 (PE 0x8664), with no reported build warnings/errors.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge,
   the inactive synchronous v3 no-launch stage, the live PnP publication
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 45/45, layout 13/13, ownership 17/17,
+- Current result: source/ABI 46/46, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
-  plus deterministic interleavings 2/2 and native INTEN checks 44/44;
-  overall 382/382 PASS with `-Mode Dry -SkipBuild`, and 6,000/6,000 default
+  plus deterministic interleavings 2/2 and native INTEN checks 49/49;
+  overall 388/388 PASS with `-Mode Dry -SkipBuild`, and 6,000/6,000 default
   DMA/INTEN stress races PASS. Separate expanded stress: 60,000/60,000 PASS,
-  zero failures. Native C tests
+  zero failures (66,000 candidate stress iterations total; functional tests
+  0 FAIL / 0 SKIP). Native C tests
   use `/W4 /WX`; no full kernel acquisition/rundown execution is claimed.
 
 ## DMA/PnP staging
@@ -77,8 +83,14 @@
   Busy transfer selection cannot reset the current tracker. See the
   [normal-success audit](dma-lifetime-and-timeout.md#normal-success-cleanup-audit-and-implementation-boundary)
   for compatibility limits and future live-WDM prerequisites.
-- The second-pass PR #10 review found no newly demonstrated production defect
-  in its changes. Deterministic native tests demonstrate that an already
+- The final PR #10 integration review found one additional gap: surprise
+  removal's unavailable latch did not gate ISR or HWInt DPC MMIO. It is now a
+  resident interlocked LONG predicate checked before both hardware branches.
+  Native tests cover latch/writer ordering and irreversible admission closure;
+  source guards cover the ISR/DPC call sites. The predicate cannot cancel work
+  already past its check, and does not replace disconnect/flush/drain or prove
+  absent-device safety for all other raw MMIO.
+  Deterministic native tests demonstrate that an already
   in-flight marker publisher/consumer can return TRUE after uncertainty wins;
   that result is not release authority. Serialized owner and event lifetime
   locking remain prerequisites. Integrated kernel scheduling remains
@@ -90,6 +102,13 @@
   physical reads. Native helper tests use MMIO/lock doubles; hardware mask
   acceptance and initial/reset shadow agreement remain unverified. See the
   [INTEN access inventory](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
+- Integration target `82b4c4e` is an ancestor of the reviewed implementation;
+  no textual conflict or missing project source/header item was found. The
+  source-backed lifetime matrix, legacy DEVICE_BUSY compatibility classification
+  and remaining decision gates are in [DMA lifetime](dma-lifetime-and-timeout.md).
+  PR #10 remains Draft/open and unmerged, software-reviewed but not kernel-build
+  qualified or deployment-ready. Research PR #9 at `6bff97f` remains separate;
+  no research merge or live WDM activation occurred.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

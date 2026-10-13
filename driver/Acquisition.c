@@ -740,7 +740,8 @@ LecInterruptService(
 
     UNREFERENCED_PARAMETER(Interrupt);
 
-    if (!devExt->Started ||
+    if (LecIsInterruptHardwareUnavailable(devExt) ||
+        !devExt->Started ||
         devExt->Bar[0] == NULL ||
         devExt->BarLength[0] < LECS65_BAR0_INTST + sizeof(ULONG) ||
         devExt->Bar[1] == NULL ||
@@ -1020,6 +1021,7 @@ LecInterruptDpc(
      * input, and do not repeatedly poll HWInt from this DPC.
      */
     if ((pending & 0x08UL) != 0 &&
+        !LecIsInterruptHardwareUnavailable(devExt) &&
         devExt->Bar[1] != NULL &&
         devExt->BarLength[1] >= LECS65_BAR1_HWINT + sizeof(ULONG)) {
         volatile ULONG* hwInt = (volatile ULONG*)(

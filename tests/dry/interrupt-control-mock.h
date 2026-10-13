@@ -12,7 +12,7 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     BOOLEAN Started;
     BOOLEAN AcceptIoctls;
     BOOLEAN InterruptWriteAdmission;
-    BOOLEAN InterruptHardwareUnavailable;
+    volatile LONG InterruptHardwareUnavailable;
     BOOLEAN InterruptConnected;
     CRITICAL_SECTION* InterruptObject;
     volatile LONG DmaUnknownActive;
@@ -40,3 +40,4 @@ NTSTATUS LecMaskInterruptsForPnp(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecSetInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt, BOOLEAN Enable);
 VOID LecQuarantineInterruptAdmission(PLECS65_DEVICE_EXTENSION DevExt);
 VOID LecInvalidateInterruptHardware(PLECS65_DEVICE_EXTENSION DevExt);
+BOOLEAN LecIsInterruptHardwareUnavailable(PLECS65_DEVICE_EXTENSION DevExt);
