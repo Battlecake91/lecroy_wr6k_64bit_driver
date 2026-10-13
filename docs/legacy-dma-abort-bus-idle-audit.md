@@ -638,6 +638,27 @@ The original MTTCTL=0 write and unchecked optional wait therefore still cannot
 authorize DMA release. All six independent shutdown obligations remain Unknown;
 see `pci-mmio-register-evidence.json::shutdown_evaluation` for exact obstructions.
 
+### Completion and IRQ Proof Boundary
+
+The focused [configured-source audit](pci-dma-retirement-analysis.md#completion-and-irq-proof-boundary)
+verifies the terminal -> C -> sticky IRQ pipeline and the low/Hi-Z INTA# output.
+INTST ACK is set-dominated by C; INTEN0 removes this source's pad contribution
+but does not clear C/IRQ or stop processing. Other enabled sources may retain
+the line. IIMCL0 is a captured control change with old-state pipeline latency,
+not an atomic global clear; IIMCL1 does not clear C while cl1 retains it.
+Reset of these FFs does not establish RAM/producer/bridge draining.
+
+The original ISR's IIMCL0/INTST ACK and readback therefore cannot be promoted
+to a shutdown certificate. No individual acquisition-generation tag occurs
+in the decoded completion/output cone. Software generation checks establish
+software ownership, not the epoch of an untagged late physical source.
+The13 new narrow formal queries use actual FFs: twelve mismatch UNSAT and one
+runtime-cut SAT, all bases SAT, zero UNKNOWN. None proves full initialized
+execution with valid remaining payload, or that final accepted PCI writes
+precede IRQ and are host-visible. All six release obligations and stable
+restart exclusion remain Unknown; preserve UnknownActive quarantine and the
+inactive live WDM path. Production code and shutdown policy are unchanged.
+
 Sources (schematic descriptions only; private drawings are not redistributed):
 
 - [LeCroy WaveRunner 6000 Series Service Manual, section 4.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=25)

@@ -178,6 +178,164 @@ host-memory transaction. IRQ-source state is not automatically physical INTx
 assertion, host completion or generation provenance. INTEN masking is not
 cancellation of this source pipeline.
 
+## Completion and IRQ Proof Boundary
+
+The strongest supported statement is **internal terminal processing produces a
+sticky, untagged interrupt source**. Neither that source nor a deasserted INTA#
+certifies DMA retirement. `virtexe_completion.py` reuses the existing decoder
+and symbolic FF implementation. Only the documented INTA# output is added to
+the private report; three additional logic nodes, not a new routing inventory.
+Project Combine remains pinned to `234343d23e737e57f2727630e19008b509d7d522`.
+These are configured-image contracts, not confirmation of the running revision.
+
+For an older private target report, call `include_interrupt_output(report, router)`
+with the matching existing decoder/router (the helper checks image hash and pin),
+keep its result private, and select it with `WR6K_MMIO_REPORT`. With the existing
+private binary and symbolic dependencies configured, reproduce the focused audit:
+`python -B tests/dry/test_fpga_dma.py PrivateCompletion PrivateCompletionSmt -v`.
+The normal `tests/dry/test-fpga-decoder.ps1` runner includes these cases; an older
+report without the INTA root explicitly skips the new classes, not a PASS.
+
+### Source and state inventory
+
+All sequential entries below use PCI clock `X24,Y29 BUFGCE[1].O`, asynchronous
+SR=`!X12,Y29 IOI[1].I` (RST#), no REV, and INIT0 except reload INIT1.
+CE is 1 unless specified. Combinational entries have no independent clock,
+CE or retained/reset state; their source FFs supply that history.
+
+| Signal | Exact configured source / D / CE | Set, clear and lifetime |
+|---|---|---|
+| segment_zero | `X20,Y10 SLICE[1].X`; full32-bit segment-bank zero reduction, bank `X20,Y10..25 SLICE[0].XQ,YQ` | Combinational zero, not buffer empty; segment CE=`load_replica || pending || A` |
+| load_replica | `X22,Y20 SLICE[0].YQ`, D=`X22,Y19 SLICE[1].Y` | D=`L && !Z && !(U && V)`; U=`X20,Y19 SLICE[1].Y`, V=`X19,Y21 SLICE[0].Y`; overwritten each edge. Matched replicas require common INIT/clock history |
+| pending | `X26,Y18 SLICE[1].YQ`; D=`initial || chain || (aux && F)` | Rearmable descriptor processing, not a pending-write count; initial=`cl && reload`, chain=`L && Bzero && !Z`, aux=`X26,Y18 SLICE[0].XQ` |
+| segment_gate | `X20,Y25 SLICE[1].X`; `!load_replica && !pending` | Excludes those two current descriptor qualifiers only |
+| F | `X22,Y10 SLICE[0].YQ`; `segment_zero && segment_gate` | Overwritten every edge; can remain high while the condition holds, not necessarily a one-cycle pulse |
+| next_phase | `X24,Y21 SLICE[1].YQ`; LUT INIT `0xBA30`, zero-based inputs accept,F,self,phase | D=`(self && !F) || (phase && accept)`; accept=`X19,Y8 SLICE[0].YQ`, phase=`X23,Y21 SLICE[1].YQ`; rearmable, not an idle acknowledgement |
+| L | `X26,Y18 SLICE[0].YQ`; `F && next_phase` | Overwritten each edge; terminal pipeline qualifier, not final PCI acceptance |
+| Z | `X22,Y21 SLICE[1].X`; full32-bit captured Word-A zero | Descriptor address/sentinel condition; Word-B need not be zero |
+| C | `X22,Y11 SLICE[0].YQ`; `(cl && C) || (L && Z)` | Set by terminal term; retained while cl1; clears on an edge only if both terms are false |
+| IRQ | `X22,Y11 SLICE[0].XQ`; `C || (IRQ && !(INTST_write && data0))` | Sticky and set-dominant; ACK clears only with C0; no acquisition generation field |
+| reload | `X25,Y20 SLICE[1].XQ`; D via `X25,Y20 SLICE[1].Y`, `!cl && (C || reload)` | INIT1; cl1 clears it, cl0 retains/sets it from C; not a drain flag |
+| cl | `X23,Y14 SLICE[1].YQ`; D=`X21,Y1 TBUS.OUT`, CE=`X17,Y13 SLICE[1].Y` | Qualified IIMCL BAR0+0x048 bit0 capture; holds otherwise; write0 changes this state, not every downstream state immediately |
+| INTST_write | `X16,Y8 SLICE[0].X`; qualified BAR0+0x080 write decoder | Combinational ACK strobe, not a read-clear or completion timestamp |
+| data0 | `X21,Y1 TBUS.OUT`; conditional captured AD0 alternative | Shared bus data, not an unconditional owned CPU write; existing TBUS ownership qualifications remain |
+
+### Dependencies, direct versus indirect
+
+```text
+segment counter == 0 -- !load && !pending --> F --> L <-- next_phase
+captured Word-A == 0 -----------------------------> C <-- cl/self
+C -----------------------------------------------> IRQ <-- self / INTST ACK
+IRQ & INTEN0 -- other five masked sources --------> INTA low/Hi-Z
+               configuration inhibit ------------> INTA disabled
+```
+
+| Bookkeeping | Direct completion-source check | Established indirect relationship / limit |
+|---|---|---|
+| Receive write/read pointers, published pointer and PCI snapshot | None in the six reduced equations | Their comparisons qualify receive availability/staging admission. Periodic publication is not an empty/ACK test; snapshot coherence remains conditional |
+| Staging write/read pointers | None | W/issue/rewind update modulo16 indices. Neither equal indices nor stored contents alone establish occupancy or unique retirement |
+| Availability V | None | V participates in staging throttling/admission; not a tested final-word predicate in C or IRQ |
+| Issue/rewind/Q | None | Prefetch/rollback and pointer arithmetic influence processing; no final retry-retirement check appears in C/IRQ |
+| Descriptor pending/load | Direct negative qualification of F | A previously retained L/C/IRQ does not imply present pending0. Counter/descriptor advances depend on delayed A, accept and load history |
+
+The actual count CEs and phase controls establish **indirect** coupling to PCI
+progress. The reduced equations do not explicitly test receive-empty,
+staging-empty, pending retry, owned final acceptance or host visibility.
+This absence is not proof that an outstanding payload is physically reachable
+at completion. The runtime-cut SAT witness below is not such a proof either.
+
+### Interrupt lifecycle
+
+The output is configured low/Hi-Z: PAD_O=0 at `X0,Y12 IOI[3]`; PAD_T=1
+disables the drive. The outer LUT is `X11,Y8 SLICE[1].Y`, INIT `0xFF04`:
+`T=G4 || (!G1 && G2 && !G3)`, correcting the historical provisional inverse.
+Exhausting all8192 assignments establishes
+`T=G4 || !OR(source[i] && INTEN[i])` for six sources. INTEN0 is
+`X16,Y7 SLICE[0].YQ`, D=`X17,Y1 TBUS.OUT`, CE=`X12,Y13 SLICE[0].X`
+(BAR0+0x084); its AD0 capture alternative and five sibling AD1..5 captures are
+verified. G4=`X7,Y10 SLICE[1].XQ`, D=`X8,Y6 TBUS.OUT`, CE=`X8,Y10 SLICE[0].X`,
+captures an AD10 alternative. The local inhibit role is Verified; accepting
+and interpreting a whole configuration transaction remains separately scoped.
+All these FFs share the PCI/reset contract and INIT0. Do not confuse the INTEN
+write-storage FFs with the existing INTEN bit0 read mux, which aliases IRQ.
+
+INTEN0=0 removes this IRQ's contribution without clearing C or IRQ; another
+enabled source may still assert INTA. INTST ACK with C1 cannot clear IRQ.
+After IIMCL0, C sees the **old** cl at the first edge; with no new L&&Z term,
+C clears on the next edge. ACK must then sample C0 to clear IRQ. This is an
+equation-level timing example, not a recommended live write sequence.
+IIMCL1 while cl/C are already1 retains C even with ACK; there is no automatic
+new-acquisition epoch reset. Repeated terminal terms can reassert the source.
+RST# resets these FFs to INIT, but does not establish RAM erase, producer stop
+or upstream drain. No individual DMA-generation identity occurs in this source
+or output cone; software generation checks cannot recover physical provenance.
+
+### Narrow formal results
+
+`PrivateCompletionSmt` has13 queries, every base SAT. Each row uses actual
+configured FF contracts with explicit PCI edges, no fairness, no transaction
+ownership and no invented idle/accepted-word state. Unless specified, RST# is
+deasserted and initial FFs/omitted named-cut histories are arbitrary runtime.
+UNSAT is the **mismatch** query, not a whole-device shutdown proof.
+
+| Query | Bound | Fixture / requested property | Result |
+|---|---:|---|---|
+| 1 | 4 | F=L=C=IRQ=0; segment_zero=Z=next_phase=1, load=pending=cl=ACK=0; F1,L2,C3,IRQ4, not IRQ3 | UNSAT mismatch |
+| 2 | 1 | C=IRQ=cl=ACK=data0=1, L0; IRQ remains1 | UNSAT mismatch |
+| 3 | 1 | C0,IRQ=ACK=data0=cl=1,L0; IRQ clears | UNSAT mismatch |
+| 4 | 1 | As3, data0=0; IRQ retained | UNSAT mismatch |
+| 5 | 1 | C=IRQ=cl=mask0=1,L0; qualified mask capture0; other masks/G4=0; C/IRQ retained, pad disabled | UNSAT mismatch |
+| 6 | 3 | cl=C=IRQ=1,L0; qualified IIMCL0 then ACK/data1 with cl CE0; old-cl pipeline and reload set | UNSAT mismatch |
+| 7 | 2 | cl=C=IRQ=reload=1,L0; qualified IIMCL1 and ACK1; C/IRQ retained, reload cleared | UNSAT mismatch |
+| 8 | 5 | C=IRQ=cl=0,Z=ACK=data0=1; L pulses at0/3; IRQ2,not IRQ3,IRQ5 | UNSAT mismatch |
+| 9 | 0 | Assert async RST# without clock; selected FFs equal INIT, including reload1 | UNSAT mismatch |
+| 10 | 0 | Configured INIT in local projection, reset deasserted; same INIT vector | UNSAT mismatch |
+| 11 | 0 | mask0=0; other sources/masks/G4 arbitrary; IRQ cofactor cannot affect T | UNSAT mismatch |
+| 12 | 0 | All six masks0; sources/G4 arbitrary; T1 | UNSAT mismatch |
+| 13 | 2 | C=IRQ=cl=0,L=Z=1; nonzero V/Q, issue/rewind/pending and differing receive/snapshot/staging pointer cuts; C1,IRQ2 | SAT witness |
+
+There are12 mismatch UNSAT and1 constructed SAT, zero solver UNKNOWN. Query10
+is initialized only for this local projection, not a complete initialized
+acquisition. Query13 proves compatibility of independent cuts with the local
+equations, not simultaneous full-machine reachability, valid occupancy or
+physical outstanding DMA. The other source histories are deliberately
+unconstrained; the equations have no corresponding generation/host contract.
+
+### Shutdown obligations and next evidence
+
+All six **end-to-end** obligations, and stability until explicit restart,
+remain **Unknown**. Verified local facts do not upgrade these classifications.
+
+| Obligation | Strongest current partial evidence | Smallest missing evidence artifact |
+|---|---|---|
+| Producer stopped | Conditional START/control and count-equality topology | Applicable HAD639E/MTT/MAM stop/last-word contract matched to the installed revision |
+| Descriptor engine stopped | Verified pending/load/terminal equations | Same-epoch stop-to-admission invariant including retained reload/phase state and descriptor fetch history |
+| No new PCI master transactions | Verified local initiator controls, no stop certificate | Applicable PCIIOB/PCILOGIC sampling/drive contract plus stop-to-no-start invariant |
+| Outstanding transactions terminated | Conditional protocol acceptance and delayed A | Same-epoch ownership/final-phase/retry history correlated with IRQ, including final output-register sampling |
+| Internal buffers drained | Verified modulo pointer and storage contracts, no drain flag | Valid/wrap/CDC invariant or existing correlated internal trace covering RX, staging, reissue and final word |
+| Host DMA writes completed/ordered | No board/platform completion contract | Actual bridge/chipset identity and applicable posted-write/INTx plus Windows adapter visibility contract |
+| Stable until explicit restart | Sticky C/IRQ is not stable inactivity | Proven absorbing no-admission/no-issue state across clocks and retained state, released only by qualified restart |
+
+Priorities for further work:
+
+1. **Existing firmware/configuration:** maintain these bounded regressions and
+   correct specific inconsistencies. The focused source/INTA audit is complete;
+   another general firmware-only round is not justified for release safety.
+2. **Manufacturer architecture documentation:** obtain the applicable old-family
+   PCIIOB/PCILOGIC timing contract, effective clock/setup requirements and producer
+   last-word semantics. Generic/new-family primitives cannot replace it.
+3. **Existing correlated traces or separately authorized observation:** identify
+   the installed image and correlate a single epoch's final accepts, queued
+   words and IRQ. External PCI pins alone cannot certify internal FIFO empty.
+4. **OS/host-bridge evidence:** establish write visibility/ordering independently
+   of endpoint source logic; no FPGA-only solver can prove this contract.
+5. **Not currently actionable:** a complete shutdown/release certificate or
+   universal restart exclusion without those artifacts. Stop increasing bounds,
+   re-solving isolated LUTs or imposing empty/idle assumptions to obtain UNSAT.
+
+`CompletionObserved != IdleProved`; retain UnknownActive quarantine and inactive
+WDM acquisition. No production/hardware behavior is changed by this audit.
+
 PCI receive storage is `X46,Y9 BRAM` and `X46,Y13 BRAM`, two 256x16 halves.
 Port A uses remote `X24,Y0 BUFGCE[0].O` and write enable
 `X43,Y10 SLICE[1].YQ`. Port B is PCI-clocked, read-only, enabled and not reset
@@ -575,13 +733,16 @@ required physical transaction history. SAT is not hardware failure; bounded
 UNSAT is not unbounded retirement or safe shutdown. Repeated retry and final
 word stalls still need the missing effective-output/ownership invariant.
 
-Validation on2026-10-12:125 distinct DMA tests (25 synthetic,54 private configured-logic,
-46 private SMT), all PASS across the full run and final receive rerun.
-The FPGA/MCU validation has357 distinct Python tests
-(159 synthetic,198 private-firmware),
+Validation on2026-10-13:142 distinct DMA tests (25 synthetic,58 private configured-logic,
+59 private SMT), all PASS in the full run; the final28-case rerun passed
+(17 completion/matrix and11 synthetic DMA, all overlap) after the final
+qualifier/matrix checks were added. Reproducing the INTA extension added exactly
+three logic nodes with the original image hash and pinned architecture.
+The FPGA/MCU validation has374 distinct Python tests
+(159 synthetic,215 private-firmware),
 zero failures/skips, decoder self-test/frame calibration,50 native architecture
 and19 native PCI local-equation checks PASS. The previously recorded332 driver
-dry cases were not rerun for this receive-focused task.
+dry cases were not rerun for this completion-focused task.
 The new initialized bound40/52 prefixes add12 diagnostics (9 SAT,3 UNSAT,
 zero solver-unknown results), separately from the earlier ten bound1 runtime
 and twelve bound2/4 projected diagnostics. No hardware execution or WDK build

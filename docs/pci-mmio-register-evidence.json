@@ -28,11 +28,13 @@
     "hardware_idle_proved": false
   },
   "verification": {
-    "date": "2026-10-11",
-    "python_tests": {"c166": 18, "routing": 45, "mmio": 52, "pci_dma": 112, "acquisition": 65, "symbolic": 50, "total": 342, "synthetic": 156, "private_firmware": 186, "pci_dma_split": {"synthetic": 24, "private_configured": 48, "private_smt": 40}, "status": "PASS", "failed": 0, "skipped": 0},
+    "date": "2026-10-13",
+    "python_tests": {"c166": 18, "routing": 45, "mmio": 52, "pci_dma": 142, "acquisition": 65, "symbolic": 52, "total": 374, "synthetic": 159, "private_firmware": 215, "pci_dma_split": {"synthetic": 25, "private_configured": 58, "private_smt": 59}, "status": "PASS", "failed": 0, "skipped": 0},
     "private_checks": {"frame_calibration": "PASS", "native_architecture": 50, "pci_local_equations": 19, "status": "PASS"},
     "driver_dry_tests": {"source": 43, "completion": 37, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 332, "status": "PASS", "failed": 0, "skipped": 0},
-    "not_run": ["WDK build", "hardware/MMIO/DMA/reset/programming experiments"],
+    "driver_dry_tests_scope": "Previously established software review result; not rerun for the completion/IRQ audit",
+    "completion_final_rerun": {"passed": 28, "completion": 17, "synthetic_dma": 11, "failed": 0, "skipped": 0, "overlap_with_full_suite": 28},
+    "not_run": ["WDK build", "driver dry suites for this completion audit", "hardware/MMIO/DMA/reset/programming experiments"],
     "scope": "Offline analysis and software regression, not hardware qualification or a six-obligation quiescence proof"
   },
   "release_obligations": {
@@ -118,6 +120,86 @@
       "segment": {"bank": "X20,Y10..25 SLICE[0].XQ,YQ low-to-high", "equation": "load ? word_B : (pending ? 2 : old-1) modulo2^32", "condition": "Matched load-replica state after matched INIT/clock; D word only"}
     },
     "completion_source": {"status": "Verified", "done": "X22,Y11 SLICE[0].YQ", "irq": "X22,Y11 SLICE[0].XQ", "equations": "C'=(cl&&C)||(L&&Z); IRQ'=C||(IRQ&&!(INTST_write&&TBUS_data0))", "retirement_implication": "Unknown", "physical_irq_provenance": "Unknown"},
+    "completion_irq_proof_boundary": {
+      "status": "Verified",
+      "scope": "Local configured contracts only; retirement implication Unknown",
+      "canonical": "pci-dma-retirement-analysis.md#completion-and-irq-proof-boundary",
+      "image_scope": "Pinned update image; installed revision and effective physical timing not verified",
+      "common_ff_contract": {"clock": "X24,Y29 BUFGCE[1].O", "sr": "!X12,Y29 IOI[1].I async", "ce": 1, "init": 0, "exceptions": "reload INIT1; cl CE X17,Y13 SLICE[1].Y; INTEN CE X12,Y13 SLICE[0].X; G4 CE X8,Y10 SLICE[0].X"},
+      "inventory_checks": {"checker": "tools/fpga/virtexe_completion.py", "ff_contracts": 16, "qualifier_truth_tables": 2, "rows_per_qualifier": 16, "status": "Verified", "scope": "local contracts"},
+      "sources": [
+        {"name": "segment_zero", "signal": "X20,Y10 SLICE[1].X", "condition": "full32-bit segment count zero", "lifetime": "combinational; not buffer empty"},
+        {"name": "segment_gate", "signal": "X20,Y25 SLICE[1].X", "condition": "!load_replica && !pending", "lifetime": "combinational"},
+        {"name": "load_replica", "signal": "X22,Y20 SLICE[0].YQ", "data": "X22,Y19 SLICE[1].Y", "condition": "L && !Z && !(U && V); U=X20,Y19 SLICE[1].Y, V=X19,Y21 SLICE[0].Y", "lifetime": "overwritten each edge; descriptor-load qualifier"},
+        {"name": "pending", "signal": "X26,Y18 SLICE[1].YQ", "condition": "initial || chain || (aux && F)", "lifetime": "rearmable descriptor state, not outstanding-write count"},
+        {"name": "F", "signal": "X22,Y10 SLICE[0].YQ", "condition": "F'=segment_zero && segment_gate", "lifetime": "overwritten each edge, can remain high"},
+        {"name": "next_phase", "signal": "X24,Y21 SLICE[1].YQ", "data": "LUT0xBA30 inputs accept,F,self,phase", "condition": "(self && !F) || (phase && accept)", "lifetime": "rearmable phase history"},
+        {"name": "L", "signal": "X26,Y18 SLICE[0].YQ", "condition": "L'=F && next_phase", "lifetime": "overwritten each edge"},
+        {"name": "Z", "signal": "X22,Y21 SLICE[1].X", "condition": "captured32-bit Word-A zero, independent of Word-B", "lifetime": "combinational"},
+        {"name": "C", "signal": "X22,Y11 SLICE[0].YQ", "condition": "C'=(cl && C)||(L && Z)", "lifetime": "sticky while cl1; clears only when both terms false"},
+        {"name": "IRQ", "signal": "X22,Y11 SLICE[0].XQ", "condition": "IRQ'=C||(IRQ && !(INTST_write && data0))", "lifetime": "sticky, set dominates ACK, no generation field"},
+        {"name": "reload", "signal": "X25,Y20 SLICE[1].XQ", "data": "X25,Y20 SLICE[1].Y", "condition": "reload'=!cl && (C || reload)", "lifetime": "INIT1; clears cl1, retains/sets cl0"},
+        {"name": "cl", "signal": "X23,Y14 SLICE[1].YQ", "data": "X21,Y1 TBUS.OUT", "condition": "qualified IIMCL write captures bit0; holds otherwise", "lifetime": "retained control, not stop ACK"},
+        {"name": "INTST_write", "signal": "X16,Y8 SLICE[0].X", "condition": "qualified BAR0+0x080 write", "lifetime": "combinational ACK strobe"},
+        {"name": "data0", "signal": "X21,Y1 TBUS.OUT", "condition": "conditional AD0 capture alternative", "lifetime": "combinational shared bus; ownership separately qualified"}
+      ],
+      "dependencies": [
+        {"state": "RX write/read/published/snapshot pointers", "direct_completion_check": false, "indirect": "receive availability and staging admission; CDC coherence conditional"},
+        {"state": "staging write/read pointers", "direct_completion_check": false, "indirect": "W/issue/rewind modulo16 arithmetic, not occupancy/retirement"},
+        {"state": "availability V", "direct_completion_check": false, "indirect": "throttling/admission, not final empty acknowledgement"},
+        {"state": "issue/rewind/Q", "direct_completion_check": false, "indirect": "prefetch/rollback and processing history; unique final retirement Unknown"},
+        {"state": "pending/load", "direct_completion_check": true, "direct": "negative qualification of F only", "limit": "retained L/C/IRQ does not imply current pending0"}
+      ],
+      "dependency_limit": "Absence of a direct empty check is not proof of reachable outstanding physical DMA at completion",
+      "inta_output": {
+        "status": "Verified", "root": "X0,Y12 IOI[3]", "output": 0,
+        "disable_lut": "X11,Y8 SLICE[1].Y INIT0xFF04",
+        "disable_equation": "T=G4 || (!G1 && G2 && !G3)=G4 || !OR(source[i] && INTEN[i])",
+        "exhaustive_assignments": 8192,
+        "correction": "Replaces historical provisional inverse; T1 is Hi-Z, not assertion",
+        "mask_storage": ["AD0: X16,Y7 SLICE[0].YQ", "AD1: X16,Y7 SLICE[0].XQ", "AD2: X12,Y8 SLICE[0].YQ", "AD3: X12,Y8 SLICE[0].XQ", "AD4: X13,Y8 SLICE[1].YQ", "AD5: X13,Y8 SLICE[1].XQ"],
+        "source_states": ["X22,Y11 SLICE[0].XQ", "X18,Y8 SLICE[1].YQ", "X18,Y11 SLICE[0].YQ", "X18,Y11 SLICE[0].XQ", "X15,Y8 SLICE[1].YQ", "X16,Y8 SLICE[0].YQ"],
+        "mask0_data": "X17,Y1 TBUS.OUT; conditional captured AD0 alternative",
+        "G4": "X7,Y10 SLICE[1].XQ; D X8,Y6 TBUS.OUT, AD10 capture alternative; local inhibit Verified, whole accepted config semantics separately scoped",
+        "limit": "Mask removes contribution, not C/IRQ state; other enabled sources can assert pad; no electrical/live observation"
+      },
+      "lifecycle": {
+        "ack": "C set dominates INTST ACK; ACK needs C0 and data0=1",
+        "mask": "INTEN0=0 leaves C/IRQ unchanged; INTEN bit0 read mux aliases IRQ, not write-storage state",
+        "clear": "IIMCL0 capture does not immediately clear C: old-cl sampling and retained terminal terms matter",
+        "restart": "IIMCL1 while cl/C1 retains C, not a new epoch; repeated terminal terms can reassert IRQ",
+        "reset": "FF INIT restored asynchronously; no RAM erase/producer/bridge drain implication",
+        "generation": "No per-acquisition tag in completion/output cone; physical source provenance Unknown"
+      },
+      "formal": {
+        "bases_sat": 13, "mismatch_unsat": 12, "constructed_sat": 1, "solver_unknown": 0,
+        "common_assumptions": "Actual selected FF contracts, explicit PCI edges, RST# deasserted except query9, omitted named sources independent, no fairness or transaction ownership",
+        "results": [
+          {"id": 1, "bound": 4, "initial": "runtime", "fixture": "F=L=C=IRQ0; segment_zero=Z=next_phase1; load=pending=cl=ACK0", "property": "F1,L2,C3,IRQ4,not IRQ3", "solver": "unsat mismatch"},
+          {"id": 2, "bound": 1, "initial": "runtime", "fixture": "C=IRQ=cl=ACK=data0=1,L0", "property": "IRQ1", "solver": "unsat mismatch"},
+          {"id": 3, "bound": 1, "initial": "runtime", "fixture": "C0,IRQ=cl=ACK=data0=1,L0", "property": "IRQ clears", "solver": "unsat mismatch"},
+          {"id": 4, "bound": 1, "initial": "runtime", "fixture": "query3 with data0=0", "property": "IRQ retained", "solver": "unsat mismatch"},
+          {"id": 5, "bound": 1, "initial": "runtime", "fixture": "C=IRQ=cl=mask0=1,L0; qualified mask0 capture0; other masks/G4=0", "property": "C/IRQ retained, pad disabled", "solver": "unsat mismatch"},
+          {"id": 6, "bound": 3, "initial": "runtime", "fixture": "cl=C=IRQ1,L0; IIMCL0 then ACK/data1, cl CE0", "property": "old-cl pipeline and reload set", "solver": "unsat mismatch"},
+          {"id": 7, "bound": 2, "initial": "runtime", "fixture": "cl=C=IRQ=reload1,L0; IIMCL1 and ACK1", "property": "C/IRQ retained, reload cleared", "solver": "unsat mismatch"},
+          {"id": 8, "bound": 5, "initial": "runtime", "fixture": "C=IRQ=cl0,Z=ACK=data0=1; L pulses0/3", "property": "IRQ2,not IRQ3,IRQ5", "solver": "unsat mismatch"},
+          {"id": 9, "bound": 0, "initial": "runtime with async reset", "fixture": "RST# asserted, no clock edge", "property": "selected FFs equal INIT, reload1", "solver": "unsat mismatch"},
+          {"id": 10, "bound": 0, "initial": "configured INIT local projection", "fixture": "RST# deasserted", "property": "selected INIT vector", "solver": "unsat mismatch"},
+          {"id": 11, "bound": 0, "initial": "runtime", "fixture": "mask0=0; other sources/masks/G4 arbitrary", "property": "IRQ cofactor independent", "solver": "unsat mismatch"},
+          {"id": 12, "bound": 0, "initial": "runtime", "fixture": "all six masks0; sources/G4 arbitrary", "property": "T1", "solver": "unsat mismatch"},
+          {"id": 13, "bound": 2, "initial": "runtime", "fixture": "C=IRQ=cl0,L=Z1; nonzero V/Q/issue/rewind/pending, differing RX/snapshot/staging pointer cuts", "property": "C1,IRQ2", "solver": "sat witness"}
+        ],
+        "interpretation": "Local conditional equations only; query10 is not complete initialized acquisition; query13 is not reachable outstanding DMA or valid occupancy; no hardware safety property"
+      },
+      "research_priority": [
+        {"priority": 1, "class": "existing firmware/configuration", "action": "Maintain focused regression and resolve specific inconsistencies; local source/output audit complete"},
+        {"priority": 2, "class": "manufacturer architecture documentation", "action": "Applicable old-family PCIIOB/PCILOGIC sampling/drive, clock/setup and producer last-word contracts"},
+        {"priority": 3, "class": "existing correlated traces or separately authorized observation", "action": "Installed revision, same-epoch accepts/IRQ and internal valid/wrap/CDC state"},
+        {"priority": 4, "class": "OS/host-bridge evidence", "action": "Actual chipset/bridge posted-write/INTx ordering and Windows adapter visibility"},
+        {"priority": 5, "class": "not currently actionable", "action": "End-to-end shutdown proof without external contracts; stop broad deeper-bound searches, repeated cone extraction or assumed empty/idle states"}
+      ],
+      "safety": "CompletionObserved != IdleProved; UnknownActive and inactive WDM preserved; no production or hardware changes"
+    },
     "receive_bram": {"status": "Verified", "banks": ["X46,Y9 BRAM", "X46,Y13 BRAM"], "shape": "two256x16 halves", "write_clock": "X24,Y0 BUFGCE[0].O", "write_enable": "X43,Y10 SLICE[1].YQ", "read_clock": "X24,Y29 BUFGCE[1].O", "drained": "Unknown"},
     "payload_staging": {"status": "Verified", "shape": "32 distinct RAM16X1D, 16x32 store", "source": "AD0..15 staging input X46,Y13 DOB0..15; AD16..31 X46,Y9 DOB0..15", "write_index_next": "write_index+W modulo16", "read_index_next": "read_index+issue-rewind modulo16", "W": "X37,Y7 SLICE[1].X && !X22,Y7 SLICE[1].YQ", "issue": "X19,Y8 SLICE[1].X", "rewind": "X20,Y7 SLICE[0].X", "pointer_proof": "bound0 joint mismatch UNSAT with matched pointer copies", "retention_proof": "bound1 all32 runtime memories hold on one PCI edge with W=0, mismatch UNSAT", "unique_retirement_and_no_premature_reuse": "Unknown"},
     "resolved_mux": {"status": "Verified", "sink": "X27,Y17 SLICE[0].Y zero-based input2 / G3", "source": "X1,Y17 BRAM.DOB[1] noninverted", "cause": "Missing tile-owner ProgBuf guard for LH/LV helper aliases; same correction as HEX", "io_guard": "frame2212 bit354 inv0 raw0 disabled", "bram_guard": "frame2110 bit355 inv1 raw0 active", "source_role": "Separate remote-clock1024x4 auxiliary memory, not PCI input or either receive256x16 half; metadata meaning Inferred, sample semantics Unknown", "regression": "Original guards and each-owner/both-owner in-memory flips; image unchanged"},
@@ -144,12 +226,13 @@
     "shutdown_obligations": "All six Unknown; stable until explicit restart Unknown; preserve UnknownActive"
   },
   "shutdown_evaluation": {
-    "producer_stopped": {"status": "Unknown", "obstruction": "MTTCTL bit 0 and physical START level transition recovered; downstream producer execution/acknowledgement unresolved; independent MAM load state retained"},
-    "descriptor_engine_stopped": {"status": "Unknown", "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT"},
-    "no_new_pci_master_transactions": {"status": "Unknown", "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts"},
-    "existing_pci_transactions_terminated": {"status": "Unknown", "obstruction": "Target read/response and link framing do not establish PCI initiator retirement"},
-    "internal_buffers_drained": {"status": "Unknown", "obstruction": "TX snapshots, 72 RX frame-bank FFs and runtime RAM/BRAM retain state; response/SYNC/event are not occupancy predicates"},
-    "host_dma_writes_completed": {"status": "Unknown", "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved"}
+    "producer_stopped": {"status": "Unknown", "obstruction": "MTTCTL bit 0 and physical START level transition recovered; downstream producer execution/acknowledgement unresolved; independent MAM load state retained", "smallest_missing_artifact": "Applicable installed-revision HAD639E/MTT/MAM stop and last-word contract"},
+    "descriptor_engine_stopped": {"status": "Unknown", "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT", "smallest_missing_artifact": "Same-epoch stop-to-admission invariant including retained reload/phase and descriptor fetch history"},
+    "no_new_pci_master_transactions": {"status": "Unknown", "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts", "smallest_missing_artifact": "Applicable PCIIOB/PCILOGIC sampling/drive contract plus stop-to-no-start invariant"},
+    "existing_pci_transactions_terminated": {"status": "Unknown", "obstruction": "Target read/response and link framing do not establish PCI initiator retirement", "smallest_missing_artifact": "Same-epoch owned final-phase/retry and output-register sampling history correlated with IRQ"},
+    "internal_buffers_drained": {"status": "Unknown", "obstruction": "TX snapshots, 72 RX frame-bank FFs and runtime RAM/BRAM retain state; response/SYNC/event are not occupancy predicates", "smallest_missing_artifact": "Valid/wrap/CDC invariant or correlated internal trace covering RX, staging, reissue and final word"},
+    "host_dma_writes_completed": {"status": "Unknown", "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved", "smallest_missing_artifact": "Actual bridge/chipset identity and applicable posted-write/INTx plus Windows adapter visibility contract"},
+    "stability_until_explicit_restart": {"status": "Unknown", "obstruction": "Sticky C/IRQ is not stable inactivity", "smallest_missing_artifact": "Absorbing no-admission/no-issue state across clocks/retained state, released only by qualified restart"}
   },
   "acquisition_controller": {
     "scope": "Configured receiver qualification/parity/sequence, load/control/count comparisons and TX serialization; physical timing, matched response retirement and live revision Unknown",

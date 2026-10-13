@@ -16,11 +16,11 @@
   overall 332/332 PASS, zero failures/skips.
 - Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
   45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
-  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 125 PCI DMA (25 synthetic,
-  54 private configured-logic, 46 private SMT), and 52 synthetic SMT tests:
-  **357 distinct tests PASS** (159 synthetic, 198 private-firmware), zero
-  final failures/skips. The full runner passed355 tests; the final receive
-  rerun passed12 (ten overlap, two additional publication checks),
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 142 PCI DMA (25 synthetic,
+  58 private configured-logic, 59 private SMT), and 52 synthetic SMT tests:
+  **374 distinct tests PASS** (159 synthetic, 215 private-firmware), zero
+  final failures/skips on2026-10-13. The full runner passed374 tests;
+  the final rerun passed28 (17 completion/matrix and11 synthetic DMA, all overlap),
   plus decoder self-test and private frame calibration,
   50 native architecture checks and 19 PCI local-state equations PASS.
   The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
@@ -64,6 +64,18 @@
   C+W read lookahead, pre-edge DOB staging and reset-retained RAM. Snapshot
   coherence requires clock/hold/setup evidence; modulo counters do not prove
   valid occupancy, external acceptance, physical retirement or safe release.
+  The [Completion and IRQ Proof Boundary](pci-dma-retirement-analysis.md#completion-and-irq-proof-boundary)
+  adds17 distinct regressions,16 FF contracts, two16-row qualifier checks and
+  all8192 source/mask/inhibit assignments. It corrects the historical provisional
+  INTA LUT inverse: PAD_O=0, PAD_T=`G4 || !OR(source[i] && INTEN[i])`.
+  Thirteen narrow actual-FF queries have SAT bases:12 mismatch UNSAT and1
+  runtime-cut SAT, zero solver UNKNOWN. They cover set-dominant ACK, source
+  retention under masking, old-state IIMCL clear, retained C on IIMCL1,
+  repeated terminal pulses, reset/INIT and nonzero bookkeeping cuts. The SAT
+  case is not initialized reachability or remaining physical DMA. No source
+  generation tag or drain acknowledgement is established; all six release
+  obligations and stability remain Unknown. Broad deeper-bound searches should
+  stop until the exact architecture/trace/platform artifacts listed there exist.
 
 ## DMA/PnP staging
 

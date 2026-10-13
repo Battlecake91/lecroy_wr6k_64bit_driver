@@ -641,12 +641,12 @@ per-bit inversion markers, is:
 1111111100000100
 ```
 
-All four inputs affect this truth table. Under the conventional Xilinx
-LUT input-index convention it corresponds to
-`!G4 OR (G1 & !G2 & G3)`; keep that Boolean form **provisional**
-until the old-family LUT input-order convention is independently checked.
-The raw 16-bit logical vector and source connectivity above do not depend
-on that Boolean simplification.
+All four inputs affect this truth table. The pinned decoder/native calibration
+now establishes the input-index convention: INIT `0xFF04` gives
+`G4 OR (!G1 & G2 & !G3)`. This replaces the earlier provisional inverse.
+This is the **disable/Hi-Z** signal, not the active-low assertion predicate.
+The complete six-source/mask equation is exhaustively checked over8192
+assignments; see [Completion and IRQ Proof Boundary](pci-dma-retirement-analysis.md#completion-and-irq-proof-boundary).
 
 ### PCI-clocked state input into the interrupt LUT
 
@@ -710,13 +710,17 @@ In particular, none of the recovered signals is yet identified as:
 Consequently, `INTA#` assertion/deassertion remains **insufficient**
 to authorize DMA mapping/page release.
 
-### Pending interrupt-cone work
+### Completed local interrupt-cone audit
 
-The `X7,Y10 SLICE[1]` state flip-flop's **BX data source, CE and SR**
-and the three combinational sources feeding the interrupt LUT's
-`G1..G3` remain open. This work is still required, but the discovery
-of the configured hard `PCILOGIC` block makes its input cone and
-`PCI_CE` fanout the more direct PCI-busmaster lead.
+The existing report plus three output-cone nodes resolves BX=`X8,Y6 TBUS.OUT`,
+CE=`X8,Y10 SLICE[0].X`, async SR=`!X12,Y29 IOI[1].I`, INIT0 and the AD10 capture
+alternative for G4. G1..G3 combine six source/INTEN pairs. The configured
+PAD_O is0 and PAD_T=`G4 || !OR(source[i] && INTEN[i])`; INTEN0 masks the
+`X22,Y11 SLICE[0].XQ` completion source without clearing it. Other enabled
+sources can still assert the pad. This closes the local combinational/FF
+inventory, not installed-image identity, source epoch, electrical observation,
+buffer drain, PCI transaction retirement or host-write visibility. Do not
+repeat this cone search to claim those independent physical contracts.
 
 References:
 

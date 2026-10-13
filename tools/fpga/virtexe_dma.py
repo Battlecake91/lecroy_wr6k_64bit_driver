@@ -255,6 +255,28 @@ def focused_evidence(report):
             "safety": "UnknownActive unchanged; no DMA retirement or host completion certificate"}
 
 
+def include_interrupt_output(report, router):
+    """Extend the private decoded report only at the documented INTA# pad.
+
+    Reuse existing nodes/routes/memories. This is offline configuration
+    decoding, not interrupt injection or a new routing inventory.
+    """
+    from virtexe_routing import LogicAnalyzer
+    from hashlib import sha256
+    from virtexe_xc2s200e_decode import reverse_byte_bits
+    if report.get('project_combine_commit') != COMMIT:
+        raise ValueError('Project Combine pin mismatch')
+    if sha256(reverse_byte_bits(router.image.packet_bytes)).hexdigest() != report.get('image_sha256'):
+        raise ValueError('private image/report mismatch')
+    analyzer = LogicAnalyzer(router, max_cells=len(report['logic']) + 512)
+    analyzer.logic = dict(report['logic'])
+    analyzer.routes = dict(report['routes'])
+    analyzer.memories = dict(report['memories'])
+    roots = dict(report['roots'])
+    roots['INTA#'] = {p: analyzer.iob_output(0, 12, 3, p) for p in ('O', 'T')}
+    return dict(report, **analyzer.report(roots))
+
+
 def phase_observation(frame, irdy, trdy, stop, devsel, first, claimed):
     """Conventional PCI observations, conditional on this card owning the bus.
 

@@ -22,6 +22,8 @@ from virtexe_dma_handshake import (RX_WRITE, RX_READ, RX_PUBLISHED, RX_SNAPSHOT,
                                   RX_ENABLE, REMOTE_CLOCK, PCI_CLOCK, receive_data_checks,
                                   receive_publication_checks)
 from virtexe_dma_reachability import closed_cone, initialized_prefix, launch_stimulus
+from virtexe_completion import (completion_contracts, completion_queries, interrupt_checks,
+                               MASKS, INHIBIT, MASK_GATE)
 
 
 class SyntheticReachability(unittest.TestCase):
@@ -966,6 +968,78 @@ class PrivateDmaSmt(unittest.TestCase):
             detail = str({"old": model.eval(old), "actual": model.eval(data), "expected": model.eval(expected),
                           "load": model.eval(load), "pending": model.eval(s.signal(NAMES["pending"], 0))})
         self.assertEqual(answer, z3.unsat, detail)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT'), 'private PCI report not configured')
+class PrivateCompletion(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateDma.setUpClass()
+        cls.p = PrivateDma.p
+        if 'INTA#' not in cls.p['roots']:
+            raise unittest.SkipTest('extend existing private report at INTA# with include_interrupt_output')
+
+    def test_all_source_mask_and_inhibit_assignments(self):
+        self.assertEqual(interrupt_checks(self.p)['rows'], 8192)
+
+    def test_actual_ff_clock_reset_enable_and_initialization_contracts(self):
+        contracts = completion_contracts(self.p)
+        for key, c in contracts.items():
+            with self.subTest(key=key):
+                self.assertEqual(c['clock'], {'source': 'X24,Y29 BUFGCE[1].O', 'inv': False})
+                self.assertEqual(c['sr'], {'source': 'X12,Y29 IOI[1].I', 'inv': True})
+                self.assertEqual(c['init'], int(key == 'reload'))
+                self.assertEqual(c['flags'], {'LATCH': 0, 'SR_ENABLE': 1, 'SR_SYNC': 0})
+                self.assertNotIn('rev', register_contract(c['signal'], self.p['logic'][c['signal']]))
+                expected_ce = ({'source': MASK_GATE, 'inv': False} if key.startswith('inten') else
+                               {'source': sl(17, 13, 1, 'Y'), 'inv': False} if key == 'cl' else
+                               {'source': sl(8, 10, 0, 'X'), 'inv': False} if key == 'inhibit' else
+                               {'constant': 1, 'inv': False})
+                self.assertEqual(c['ce'], expected_ce)
+
+    def test_inten_bits_and_configuration_bit10_capture_alternatives(self):
+        self.assertEqual({i: d['signal'] for i, d in capture_map(self.p, [MASK_GATE]).items()},
+                         dict(enumerate(MASKS)))
+        self.assertEqual(ad_origin(self.p, self.p['logic'][INHIBIT]['data'])['bit'], 10)
+
+    def test_interrupt_output_lut_mutation_is_rejected(self):
+        name = sl(11, 8, 1, 'Y')
+        data = dict(self.p['logic'][name]['data'])
+        data['init'] ^= 1
+        changed = dict(self.p, logic=dict(self.p['logic']))
+        changed['logic'][name] = dict(self.p['logic'][name], data=data)
+        with self.assertRaisesRegex(ValueError, 'disable equation'):
+            interrupt_checks(changed)
+
+
+@unittest.skipUnless(os.environ.get('WR6K_MMIO_REPORT') and os.environ.get('WR6K_FPGA_SYMBOLIC') == '1',
+                     'private completion SMT not enabled')
+class PrivateCompletionSmt(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        PrivateCompletion.setUpClass()
+        cls.results = completion_queries(PrivateCompletion.p)
+        if len(cls.results) != 13:
+            raise ValueError('completion query coverage differs')
+        matrix = json.loads((Path(__file__).resolve().parents[2] / 'docs' /
+                             'pci-mmio-register-evidence.json').read_text(encoding='utf-8'))
+        cls.matrix = matrix['pci_dma']['completion_irq_proof_boundary']['formal']['results']
+
+
+def _completion_test(index):
+    def test(self):
+        result = self.results[index]
+        self.assertEqual(result['base_consistency'], 'sat', result)
+        self.assertEqual(result['solver'], 'sat' if index == 12 else 'unsat', result)
+        self.assertIn('not legal-launch or hardware safety proof', result['scope'])
+        self.assertEqual(self.matrix[index]['id'], index + 1)
+        self.assertEqual(self.matrix[index]['bound'], result['bound'])
+        self.assertEqual(self.matrix[index]['solver'].split()[0], result['solver'])
+    return test
+
+
+for _index in range(13):
+    setattr(PrivateCompletionSmt, f'test_completion_contract_{_index + 1:02d}', _completion_test(_index))
 
 
 if __name__ == "__main__":
