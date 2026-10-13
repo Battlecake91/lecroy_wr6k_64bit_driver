@@ -113,14 +113,14 @@ LecSelectDmaTransfer(
         generation = (ULONGLONG)InterlockedIncrement64(
             &DevExt->DmaGenerationCounter);
     }
-    if (!LecDmaCompletionPrepare(&DevExt->DmaCompletion, generation)) {
-        return STATUS_DEVICE_NOT_READY;
-    }
-
     KeAcquireSpinLock(&DevExt->DmaCompletionLock, &irql);
     if (DevExt->CurrentTransfer != NULL ||
         DevExt->DmaActiveGeneration != 0) {
         status = STATUS_DEVICE_BUSY;
+    }
+    else if (!LecDmaCompletionPrepare(
+            &DevExt->DmaCompletion, generation)) {
+        status = STATUS_DEVICE_NOT_READY;
     }
     else {
         Transfer->DmaGeneration = generation;
@@ -254,7 +254,7 @@ LecMarkDmaUnknownActive(
 {
     /* Poison memory ownership before publishing device-wide uncertainty. */
     Transfer->DmaUnsafeToFree = TRUE;
-    (void)InterlockedExchange(&DevExt->DmaUnknownActive, 1);
+    LecQuarantineInterruptAdmission(DevExt);
     /* Block new hardware work before any secondary notification can fail. */
     LecSetIoctlAdmission(DevExt, FALSE);
     if (DevExt->DmaPnpPublication != NULL) {
@@ -740,7 +740,8 @@ LecInterruptService(
 
     UNREFERENCED_PARAMETER(Interrupt);
 
-    if (!devExt->Started ||
+    if (LecIsInterruptHardwareUnavailable(devExt) ||
+        !devExt->Started ||
         devExt->Bar[0] == NULL ||
         devExt->BarLength[0] < LECS65_BAR0_INTST + sizeof(ULONG) ||
         devExt->Bar[1] == NULL ||
@@ -1020,6 +1021,7 @@ LecInterruptDpc(
      * input, and do not repeatedly poll HWInt from this DPC.
      */
     if ((pending & 0x08UL) != 0 &&
+        !LecIsInterruptHardwareUnavailable(devExt) &&
         devExt->Bar[1] != NULL &&
         devExt->BarLength[1] >= LECS65_BAR1_HWINT + sizeof(ULONG)) {
         volatile ULONG* hwInt = (volatile ULONG*)(
@@ -1155,27 +1157,6 @@ LecConnectInterrupt(
     return status;
 }
 
-static BOOLEAN
-LecMaskHardwareInterruptsSynchronized(_In_ PVOID Context)
-{
-    PLECS65_DEVICE_EXTENSION devExt = (PLECS65_DEVICE_EXTENSION)Context;
-
-    /*
-     * INTEN is BAR0+0x084. Serialize the final mask write with the ISR
-     * while the interrupt connection and BAR mapping are still valid.
-     */
-    InterlockedExchange(
-        (volatile LONG*)&devExt->InterruptEnableShadow, 0);
-
-    if (devExt->Bar[0] != NULL &&
-        devExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
-        WRITE_REGISTER_ULONG(
-            (volatile ULONG*)(devExt->Bar[0] + 0x084), 0);
-    }
-
-    return TRUE;
-}
-
 VOID
 LecQuiesceDeferredWork(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
@@ -1188,15 +1169,9 @@ LecQuiesceDeferredWork(
     if (HardwareAccessible &&
         DevExt->Bar[0] != NULL &&
         DevExt->BarLength[0] >= 0x084 + sizeof(ULONG)) {
-        if (DevExt->InterruptConnected &&
-            DevExt->InterruptObject != NULL) {
-            (VOID)KeSynchronizeExecution(
-                DevExt->InterruptObject,
-                LecMaskHardwareInterruptsSynchronized,
-                DevExt);
-        }
-        else {
-            (VOID)LecMaskHardwareInterruptsSynchronized(DevExt);
+        NTSTATUS maskStatus = LecMaskInterruptsForPnp(DevExt);
+        if (!NT_SUCCESS(maskStatus)) {
+            LecTrace("PnP INTEN mask was not issued: 0x%08X\n", maskStatus);
         }
     }
 

@@ -6,6 +6,15 @@
  * CompletionObserved records a matching physical interrupt. It is not a
  * hardware-idle certificate. Only an independent board/platform contract may
  * authorize the IdleProved transition.
+ *
+ * These interlocked fields are not a lock-free multi-generation owner API.
+ * Initialize only unpublished storage. The transfer owner serializes Prepare,
+ * arming and finalization with TransferMutex; selection/deselection and DPC
+ * event access also share DmaCompletionLock. The interrupt synchronization
+ * domain excludes an in-flight old ISR across GO/active publication.
+ * Observe/Consume may finish concurrently with failed finalization: their
+ * return value alone must never authorize resource release. UnknownActive
+ * remains authoritative even if an in-flight operation returns TRUE.
  */
 typedef enum _LECS65_DMA_COMPLETION_PHASE {
     LecDmaCompletionNeverLaunched = 0,
@@ -58,6 +67,13 @@ BOOLEAN LecDmaCompletionFinishWait(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
     _In_ ULONGLONG Generation,
     _In_ BOOLEAN WaitSucceeded);
+
+/* After GO: TRUE requires quarantine; FALSE is legacy success, not idle. */
+BOOLEAN LecDmaCompletionFinishCleanup(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation,
+    _In_ BOOLEAN WaitSucceeded,
+    _In_ BOOLEAN InterruptMaskSucceeded);
 
 BOOLEAN LecDmaCompletionProveIdle(
     _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,

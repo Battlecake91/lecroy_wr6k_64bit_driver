@@ -304,10 +304,17 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows Dry regression on 2026-10-06:
-- Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
-  x64 `lecdiag` **PASS**.
-- Source/ABI contracts **35/35 PASS**.
+Current Windows offline regression on 2026-10-13, reviewed PR #10 HEAD
+`07683fa6ea293836ffb9cb656f6728084ac924e0` (not the research snapshot):
+
+- The owner ran
+  `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
+  with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**.
+- Owner-reported Debug|x64 kernel build: **PASS**, 0 compiler warnings,
+  0 build errors, and `LecS65AcqDrv.sys` generated successfully.
+- Owner-reported x64 `lecdiag.exe` and `lecwatch.exe` builds: **PASS**.
+- The owner then ran `scripts/test-driver.ps1 -Mode Dry`: **PASS**.
+- Source/ABI contracts **46/46 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +322,96 @@ Current Windows Dry regression on 2026-10-06:
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **24/24 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**311/311** checks).
+- Live DMA completion-state suite **39/39 PASS**.
+- Deterministic native instruction-interleaving suite **2/2 PASS**.
+- Native production INTEN helper checks **49/49 PASS** (within the DMA
+  completion suite, MMIO and kernel synchronization test doubles only).
+- Overall **REGRESSION SUITE PASS: Dry** (**388/388** functional checks across
+  eight suites, 0 FAIL / 0 SKIP).
+- Default DMA race stress: five scenarios x 1,000 iterations,
+  **5,000/5,000 PASS**. INTEN RMW stress: **1,000/1,000 PASS**.
+
+The toolchain, kernel/utility build results and aggregate 388/388,
+5,000/5,000 and 1,000/1,000 results were supplied from the owner's Windows
+console log, not an independent Codex build execution. The per-suite counts
+above are the current runner decomposition and were reproduced by the Codex
+run below. Together they qualify the reviewed Debug x64 source as buildable
+and software-regression clean; they do **not** qualify Release x64, driver
+loading, Driver Verifier, HLK or hardware behavior.
+
+A separate Codex execution on 2026-10-13 ran
+`scripts/test-driver.ps1 -Mode Dry -SkipBuild` against the same reviewed
+source baseline. It independently reproduced **388/388** functional checks,
+**5,000/5,000** DMA race iterations and **1,000/1,000** INTEN RMW iterations,
+all passing. That run intentionally skipped the kernel and utility builds.
+
+Completion tests compile the production tracker and cleanup decision with
+MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
+timeout on either side of IRQ observation, terminal retention, next-generation
+rejection after cleanup failure, preserved normal success and NeverLaunched
+cleanup, plus duplicate IRQs before/after consumption and concurrent first
+observation. Source guards tie the decision to both MTT/MAM cleanup paths,
+status propagation, poison-before-notification, DPC/event lifetime locking,
+unregister list ownership and ordered PnP rundown. These guards do not execute
+the full acquisition/unregister path or prove kernel race freedom. No hardware
+access, driver loading, Verifier or live DMA mapping was performed.
+
+`test-dma-completion-races.c` compiles the actual `DmaCompletion.c` with native
+Windows interlocked instructions and MSVC `/O2 /W4 /WX`. A test-only wrapper pauses one chosen thread
+after an instruction completes; it does not replace the atomic operation with
+a model. It forces delayed marker publication after UnknownActive and an
+already-validated consumer returning TRUE after failed finalization. Both cases
+retain terminal ownership: neither the marker nor the return value is an idle
+or release certificate. Stress covers simultaneous observations, observation
+versus mask failure/timeout, consumption versus mask failure, and an old
+recorded generation versus a fresh generation. Finite repeated schedules are
+not exhaustive or a substitute for kernel synchronization/IRQL qualification.
+
+`test-interrupt-control.c` compiles the production InterruptControl.c with
+MSVC `/O2 /W4 /WX`. Array-backed MMIO and critical-section-backed kernel locks
+are test doubles, not device accesses. Tests cover acquisition enable/cleanup,
+generic full writes preserving or conflicting with bit 0, physical versus
+cached reads, receive-enable idempotence, mapping/length and synchronization
+failure, repeated acquisition, terminal quarantine, STOP closure, surprise
+unavailability and absent BAR rejection. Six gated two-thread schedules pause
+a writer inside the production critical section while another caller attempts
+an absolute update, RMW, STOP, quarantine or surprise invalidation. Five added
+checks execute the production atomic unavailable predicate/invalidation:
+fresh availability, writer-before-invalidation ordering, latch publication,
+rejection of reads/cleanup without MMIO, and irreversible restart rejection.
+One added source guard binds that predicate to the ISR and HWInt DPC before
+their hardware branches; it is not host execution of those kernel paths.
+Expanded stress runs 10,000
+two-writer RMW schedules and checks both shadow and issued register value.
+No recoverable bus-error return is fabricated for WRITE_REGISTER_ULONG, whose
+production DDI is void. Failed mask issue feeds the separately tested actual
+completion tracker; no full acquisition/ISR/DPC or kernel IRQL execution is
+claimed. Late-IRQ filtering is checked against the shared shadow and production
+source contract, not by injecting a real IRQ. See the complete inventory and
+compatibility exception in [DMA lifetime](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
+
+For a genuine driver build, use the project's SDK/WDK **10.0.28000.0** with
+the VS 2022 x64 C++ toolchain. The owner-side result above confirms that this
+toolchain is available on the Windows development checkout. From **Developer
+PowerShell for VS 2022 (x64 tools)** at the repository root, this fail-fast sequence
+builds, checks binary metadata and runs only offline tests; it does not install
+or load the driver. Inspect the reported SYS machine (must be AMD64), entry
+point, imports and any exports; DriverEntry need not be an exported symbol.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+.\scripts\build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch
+$sys = Join-Path (Get-Location) 'x64\Debug\LecS65AcqDrv.sys'
+if (!(Test-Path -LiteralPath $sys)) { throw "Missing driver: $sys" }
+dumpbin.exe /headers /imports /exports $sys
+if ($LASTEXITCODE -ne 0) { throw 'SYS metadata inspection failed' }
+.\scripts\test-driver.ps1 -Mode Dry -SkipBuild
+.\tests\dry\test-dma-completion.ps1 -StressIterations 10000
+```
+
+PR #10 is Debug x64 owner-build-qualified and software-regression-qualified for
+controlled development integration. It is not Release x64, Driver Verifier,
+HLK or hardware qualified and is not a deployment-qualified release.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

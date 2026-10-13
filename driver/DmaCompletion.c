@@ -159,8 +159,8 @@ LecDmaCompletionObservePhysicalIrq(
         &Tracker->Phase,
         LecDmaCompletionObserved,
         LecDmaCompletionDeviceActive);
-    if (phase != LecDmaCompletionDeviceActive &&
-        phase != LecDmaCompletionObserved) {
+    /* Only the first observation may publish a signal for this generation. */
+    if (phase != LecDmaCompletionDeviceActive) {
         return FALSE;
     }
 
@@ -231,6 +231,20 @@ LecDmaCompletionFinishWait(
         }
         phase = LecDmaCompletionReadLong(&Tracker->Phase);
     }
+}
+
+BOOLEAN
+LecDmaCompletionFinishCleanup(
+    _Inout_ PLECS65_DMA_COMPLETION_TRACKER Tracker,
+    _In_ ULONGLONG Generation,
+    _In_ BOOLEAN WaitSucceeded,
+    _In_ BOOLEAN InterruptMaskSucceeded)
+{
+    /* A successful wait cannot override failed software cleanup. */
+    return LecDmaCompletionFinishWait(
+        Tracker,
+        Generation,
+        (BOOLEAN)(WaitSucceeded && InterruptMaskSucceeded));
 }
 
 BOOLEAN

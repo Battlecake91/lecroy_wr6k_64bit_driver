@@ -1,7 +1,9 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **software-only staged lifetime hardening**, 2026-10-05.
-Base reviewed: `fix/p0-irq-start-dma-gating` at `9f2ffa9`.
+Status: **ready for controlled development integration; not deployment-qualified**, 2026-10-13.
+Implementation base: `fix/p0-irq-start-dma-gating` at `82b4c4e`.
+Final source-review baseline: PR #10 at `07683fa6ea293836ffb9cb656f6728084ac924e0`, plus the owner-build evidence and regression updates accompanying this document.
+Research reference only: PR #9 at `6bff97ff473035cd7b5a0b6bd51cf48cfe82d364`; no research merge.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
 ## Established original x86 control flow
@@ -69,7 +71,7 @@ This is **partial damage containment**, not DMA engine stop/recovery:
    keeps the selected transfer resident through `KeSetEvent` while launch
    cleanup deselects it. Wrong-generation consumers use compare-and-swap and
    cannot erase a valid current IRQ marker.
-3. On a launched request with timeout/failed wait or a supposedly successful
+3. On a launched request with timeout/failed wait, failed interrupt-mask cleanup, or a supposedly successful
    event without matching physical-IRQ evidence, transition to
    `UnknownActive`, mark its transfer `DmaUnsafeToFree`, latch
    `DmaUnknownActive` and disable new IOCTL admission. An IRQ observed just
@@ -82,8 +84,8 @@ This is **partial damage containment**, not DMA engine stop/recovery:
 
 The defensive active-path patch has not been executed under Driver Verifier,
 in a DMA fault-injection simulation or on real PCI hardware. The current Dry
-result covers source contracts and inactive staging only; do not treat it as
-runtime evidence for the active path.
+result covers source contracts, native production completion/INTEN helpers and
+inactive staging; it does not execute the integrated active kernel path.
 
 ### Live completion evidence states
 
@@ -134,6 +136,310 @@ and before any MAM setup MMIO, so a prior timeout cannot be followed by a
 second launch from the queued request. STOP/SURPRISE/REMOVE still close the
 outer admission gate and wait for already-admitted synchronous IOCTLs before
 resource teardown.
+
+## Normal-success cleanup audit and implementation boundary
+
+The active MTT and MAM paths hold `TransferMutex` across selection, launch,
+wait and deselection. Their production lifetime chain is:
+
+| Boundary | Confirmed software contract | Remaining premise |
+| --- | --- | --- |
+| ISR | Reads enabled INTST, attributes bit 0 to the current software generation, acknowledges IIMCL and INTST and queues the DPC | The board IRQ is untagged; a delayed old physical source after a later GO cannot be distinguished. |
+| DPC/event | Checks transfer and IRQ generations; consumes the marker and signals the embedded event under `DmaCompletionLock` | CPU object exclusion is not device retirement. |
+| Wait/cleanup | Attempts the existing INTEN bit-0 mask before finalizing launched ownership; both wait and mask must succeed, with matching completion evidence | Mask helper success means register resolution/write was issued, not verified hardware masking or a PCI drain. |
+| Deselect | Clears the selected pointer and generation under the same completion lock as event signaling | An in-flight ISR may still acknowledge/queue work; it does not hold a transfer pointer. |
+| Unregister/process cleanup | Rejects selected or poisoned transfers; unlinks under `TransferMutex` before freeing | Unpoisoned normally completed legacy transfers still rely on the compatibility exception below. |
+| Free | Releases descriptor MDL/storage, unlocks source MDLs and frees the transfer only if not poisoned; poisoned allocations move to independent retention ownership | This legacy free gate is not `IdleProved` and is not suitable for hardware-active WDM mappings. |
+| STOP/REMOVE | Closes admission, drains IOCTLs, disconnects IRQ, flushes DPC work and stops the timer before transfer/BAR teardown; REMOVE also drains the remove lock | Software rundown cannot stop outstanding PCI writes. |
+| Next acquisition | Rejects the device-wide unknown-active latch; fresh generation preparation occurs only after rejecting an existing selected transfer under the completion lock | Fresh software identity does not establish retirement of prior hardware work. |
+
+Confirmed corrections:
+
+- Previously a successful wait was finalized before fallible mask cleanup.
+  A later mask failure changed only the returned status, leaving the transfer
+  unpoisoned and later acquisition admission open. Both launch paths now call
+  the shared `LecDmaCompletionFinishCleanup` decision after masking and before
+  deselection. Failure after GO permanently poisons ownership, closes admission
+  before fallible parent notification and retains descriptors and locked pages.
+  A mask error replaces success; an earlier timeout/error remains the returned
+  error. No additional MMIO operations or unverified readbacks are introduced.
+- Duplicate physical IRQ observation previously republished the same generation
+  even after a DPC consumed it. Only the first `DeviceActive -> Observed` winner
+  now publishes the marker. Duplicate sources still receive the existing ISR
+  acknowledgements, but cannot replenish software completion evidence.
+- Busy selection previously prepared a fresh tracker before checking the
+  selected pointer. Preparation now follows the busy check inside the lifetime
+  lock. This preserves the current tracker on rejection; it is defensive
+  ordering, not evidence of an observed race under the existing mutex contract.
+
+Successful legacy PFN acquisition, status/output ABI, descriptor format and
+32-bit limits remain unchanged. Cleanup before GO can still cancel arming and
+release `NeverLaunched` resources. Timeout-before/after-IRQ and STOP/REMOVE
+uncertainty cannot be rescued by a late IRQ or subsequent successful cleanup.
+No double-free or event-use-after-free was found in the audited serialized
+list/lock/rundown paths. Source-order tests guard those contracts; they are not
+an integrated kernel concurrency proof. Native tracker tests execute production
+C with synthetic thread scheduling, and fake-DDI suites check exact staging
+release/retention counts. Actual results and build limits are recorded in
+[regression testing](regression-testing.md).
+
+The normal-success compatibility exception is deliberately unchanged:
+`CompletionObserved != IdleProved`, yet the legacy PFN path can later free
+unpoisoned resources on that evidence. Its IRQ-to-final-device-access and host
+visibility ordering remains unverified. This patch does not solve that hardware
+lifetime problem or authorize live WDM DMA acquisition.
+
+### Concurrent execution review
+
+The complete PR #10 diff at `07683fa` against the current development target
+`82b4c4e` was reviewed independently of previous test passes. The target is an
+ancestor (0 target-only / 4 implementation-only commits at review start), so
+there is no textual integration conflict. One additional source-level gap was
+demonstrated: surprise removal latched unavailable hardware for INTEN helpers,
+but the shared ISR and queued HWInt DPC did not check that latch before MMIO.
+The latch is now an interlocked LONG and a resident metadata-only predicate
+gates both paths. Normal connected operation and register sequences are
+unchanged. This guard is not an interrupt rundown or physical idle proof.
+
+| Race | Result / required synchronization | Evidence boundary |
+| --- | --- | --- |
+| Two IRQ observations / duplicate after consumption | Only the first active-to-observed CAS publishes a marker. | Actual C native thread tests and repeated simultaneous observations. Real ISRs additionally share the interrupt synchronization domain. |
+| IRQ publication versus failed cleanup | An ISR paused after the phase CAS can publish its marker after cleanup sets UnknownActive. That marker cannot restore the phase or permit subsequent consumption/release. | Deterministically paused native interlocked instruction; timeout and mask-failure stress. |
+| DPC consumption versus failed cleanup | A consumer paused after checking Observed can still return TRUE after UnknownActive is set. This is a possible CPU wake, not release authority. The owner retains resources and later consumption/reuse fails. | Deterministically paused actual C consumer and consumption/mask-failure stress. |
+| Selection while a transfer is selected | Busy check and preparation share DmaCompletionLock; rejection leaves the current tracker untouched. | Source/lock audit and integration guard; full selection function is not host-executed. |
+| Timeout versus completion | Failed finalization wins regardless of prior/late observation; no late success can recover unknown ownership. | Native ordered cases and repeated concurrent calls. |
+| STOP/REMOVE versus completion | Admission closes and synchronous owners drain before IRQ/DPC/list teardown. The current transfer owner, not a second PnP finalizer, resolves the wait. | Production call-path audit plus fake publication/IRP tests; no real kernel PnP execution. |
+| Surprise notification versus ISR/HWInt DPC | A caller that observes the atomic unavailable latch skips its hardware branch; INTEN invalidation is serialized behind an existing INTEN writer. | Native production invalidation/predicate tests and ISR/DPC source guards. An access already past its predicate can still finish; disconnect/flush/drain remain necessary. |
+| IRQ after deselection | ISR reads active generation zero and does not hold a transfer pointer; DPC finds no selected transfer. | Source audit. A delayed physical source after a later GO remains untagged and unresolved. |
+| Quarantine versus unregister/process close | Both live cleanup classification and unregister/process list access are serialized by TransferMutex. Poison precedes deselection and mutex release; unregister rejects poisoned ownership. | Call-path/lock audit plus independent retention tests; integrated legacy unregister scheduling is not executed. |
+| Reuse after success / failure then next acquisition | Success can prepare a fresh legacy generation; stale recorded generations fail. Mask failure leaves a terminal tracker and device latch before releasing the owner mutex. | Native success/reuse and failure tests; stale/new observation stress. |
+
+The tracker contains naturally aligned 64-bit generation fields; interlocked
+operations supply CPU atomicity/order, not a transactional update of all fields
+and not completion of posted PCI writes. Initialize requires unpublished
+storage. Prepare/finalization require the serialized transfer owner; the
+completion lock also protects selected pointer/event handoff. An arbitrary
+concurrent Prepare versus an old helper invocation is not a supported lock-free
+API. GO/active publication excludes old in-flight ISR execution through
+KeSynchronizeExecution; software identity still cannot tag a physical source.
+
+Lock/IRQL audit: the owner holds TransferMutex before acquiring the completion
+spinlock. DPC event access stays inside that spinlock; ISR never takes it or
+dereferences a transfer. Prepare now runs at DISPATCH_LEVEL using only resident
+interlocked helpers, without waits, allocation or MMIO. The GO callback runs in
+the interrupt synchronization domain with only existing MMIO and atomic state
+operations, and is not called while holding the completion spinlock. Teardown
+releases that spinlock before acquiring TransferMutex, so the reviewed paths
+introduce no reverse nested lock order. The non-atomic DmaUnsafeToFree flag is
+protected by owner/list serialization and dispatch/PnP rundown, not by the
+tracker atomics alone.
+
+Remaining software qualification gaps: host tests execute the production
+tracker and INTEN control helpers, not the complete ISR/DPC/acquisition/
+unregister implementation. They do not emulate kernel IRQL, spinlock scheduling,
+weak/unsupported caller ordering, generation wraparound or actual STOP/REMOVE.
+Device-wide INTEN serialization is defined below; integrated kernel/Verifier
+scheduling tests remain necessary. No quarantine or hardware-shutdown policy
+was relaxed. Successful mask issue is not a hardware mask acknowledgement or
+permission to release hardware-active memory.
+
+### Source-backed lifecycle matrix
+
+These rows describe the live legacy owner and the separate inactive WDM
+mapping boundary, not a new hardware state machine. Sources are
+`Acquisition.c:LecSelectDmaTransfer`, `LecArmSelectedDma`,
+`LecDeselectDmaTransfer`, `LecMarkDmaUnknownActive`, `LecFreeTransfer`,
+`LecUnregisterTransfer`, `LecQuiesceDeferredWork`; `DmaCompletion.c` state
+helpers; `Ioctl.c` MTT/MAM cleanup; and `Device.c` PnP teardown.
+
+| State/boundary | Owner, allowed operation and transition | Locks / ISR-DPC exposure | MDL/mapping and admission policy |
+| --- | --- | --- | --- |
+| NeverLaunched | Transfer/list owner may select, arm, unregister or free after no-launch rundown. Prepare requires unpublished or serialized storage. | TransferMutex for live list/owner; DmaCompletionLock for selection/event identity. No accepted active-generation completion. | Legacy MDLs/descriptors may be freed; staged WDM release requires its no-launch gate/rundown. Device admission must also be open before launch. |
+| Arming | Selected owner may launch under ISR exclusion or cancel to NeverLaunched only before GO and without uncertainty. An IRQ here forces UnknownActive. | Owner mutex; short completion-lock publication, then KeSynchronizeExecution for GO/active publication. ISR uses metadata, never the transfer pointer. | Retain resources while arming; generic INTEN cannot change bit 0. No concurrent selected owner or unregister. |
+| DeviceActive | Selected synchronous owner waits and finalizes; only first matching IRQ records CompletionObserved. Failure becomes UnknownActive. | Owner mutex spans wait/cleanup; ISR atomics, DPC event handoff under completion lock. | No software release. Other allowed INTEN writes preserve bit 0; serialized next acquisition cannot start. |
+| CompletionObserved | DPC may signal the matching event; owner masks before FinishCleanup, then deselects. Failed wait/mask still becomes UnknownActive. | DPC and deselection use the same lock; mutex prevents unregister until classification completes. | Legacy PFN success can later free/reuse unpoisoned resources: explicit unverified compatibility exception. WDM mapping release remains forbidden without IdleProved. |
+| UnknownActive | Owner poisons transfer before terminal device admission closure and fallible parent notification; late IRQ/cleanup cannot recover. | Owner mutex plus IC for latch/gate, completion atomics for evidence. Queued DPC cannot confer release authority. | Pinned MDLs/descriptors retained; acquisition rejected, ordinary INTEN writes rejected. Only existing clear-only/PnP-zero exceptions while hardware accessible. |
+| Quarantined | LecFreeTransfer marks quarantine and rehomes poisoned allocation ownership into independent retention; no free/reset/reuse transition. | Transfer/list serialization and publication anchor rundown; disconnect/flush precede FDO teardown. | Retains transfer, descriptor MDL/storage and user MDLs beyond FDO deletion, including retention on notification failure. No live mapping release is introduced. |
+| STOP/REMOVE | Close admission, drain owners, disconnect IRQ, remove/flush DPC and cancel timer before transfer/BAR teardown. Surprise first invalidates hardware. | PASSIVE PnP rundown; completion pointer clears under its lock, list cleanup under mutex; REMOVE also drains remove lock. | Unpoisoned legacy cleanup follows compatibility policy; poisoned resources survive. Software teardown alone never proves PCI idle. |
+| Restart attempt | Clean STOP can reopen only after successful START/connection. Same-FDO unknown-active or surprise-unavailable latches cannot reopen or be reset by admission helpers. | IC -> IoAdmissionLock serializes restart against closure/writers. | No IRQ/mask success releases quarantine. New attachment, driver reload or device restart is not proven recovery of retained active DMA. |
+
+The acquisition wait is bounded and nonalertable (five seconds). This review
+does not add immediate IRP cancellation or a cancellation-driven hardware
+abort: the synchronous IOCTL/remove-lock owner remains until wait and cleanup
+return. Kernel cancellation, STOP/REMOVE and interrupt scheduling still need
+controlled qualification; source contracts are not an execution of those paths.
+
+## Device-wide INTEN ownership
+
+Source audit and offline validation: 2026-10-13. INTEN is the aligned DWORD
+at **BAR0+0x084**, not BAR1+0x084 (MTTRGO). There is no separate Interrupt.c;
+ISR/DPC and PnP interrupt teardown are in Acquisition.c. Dynamic family-1
+register writes use LecGetBar1Register and cannot alias BAR0 INTEN. Generic
+register operations are DWORD aligned, so adjacent byte/word writes cannot
+bypass this INTEN route. There is no new mask or shutdown command.
+
+### Complete access inventory
+
+The following are confirmed source callers, not a claim that all have been
+observed in an external application trace. Physical INTEN reads/writes now
+occur only in InterruptControl.c:LecInterruptOperationSynchronized.
+`IC` below means InterruptControlLock plus KeSynchronizeExecution while the
+interrupt is connected. Without an ISR, IC's spinlock remains sufficient for
+software writers. Ordinary callers enter at <= DISPATCH_LEVEL; the short
+synchronized callback runs at the connected interrupt's SynchronizeIrql.
+IOCTL owners that take TransferMutex run at PASSIVE_LEVEL.
+
+| Caller / route | BAR/offset; operation | Synchronization / IRQL | Ownership/admission; active transfer; after quarantine |
+| --- | --- | --- | --- |
+| LecExecuteLegacyMttTransferLocked | 0/084; shadow RMW, physical W: enable bit 0, cleanup clear bit 0 | TransferMutex then IC; PASSIVE -> DISPATCH -> DIRQL | Acquisition-only bit-0 role. Enable requires open gate; cleanup may only clear bit 0 after closure. Active: yes. Quarantine: clear-only exception. |
+| LecIoctlAcquireBufferedOneChannel (MAM) | Same as MTT | Same as MTT | Same rules; final cleanup failure still poisons launched resources before deselection. |
+| LecIoctlCfDc2110 control 00A0 | 0/084; shadow RMW, physical W: bits 04/10/20 | TransferMutex then IC | Open gate, preserves bit 0 and all other bits. Active: serialized by transfer owner. After quarantine: rejected, including already admitted calls. |
+| LecIoctlCfDc2110 response fetch | 0/084; shadow RMW, physical W only when bit 08 changes | TransferMutex then IC | Open gate; existing first-enable-only behavior retained. Active: owner-serialized. Quarantine: rejected. |
+| CFDC2190 in LecS65DeviceControl | 0/084; shadow RMW, physical W: bit 02 | IC; ordinary IOCTL context | Open gate; may race an active transfer but cannot change bit 0. Quarantine: INTEN change rejected. Its earlier ERRM write is a separate legacy operation, not a transactional INTEN/ERRM pair. |
+| LecSetLegacyRegister -> LecCommitLegacyInterruptMask | 0/084; full physical W and shadow publication, known register-list index 13 | IC; IOCTL context | Full-value request must preserve current bit 0; otherwise DEVICE_BUSY. Active: yes, preserving bit 0. Quarantine: rejected. |
+| LecIoctlRegisterWrite, legacy/extended | 0/084; full physical W and shadow publication | IC; IOCTL context, remove/admission rundown | Same ownership rule as SetOneRegister; other BAR/offset accesses unchanged. |
+| LecIoctlRegisterRead, legacy/extended | 0/084; physical R, not a cached return | IC; IOCTL context, remove/admission rundown | Read does not modify shadow or establish idle. An already admitted read can finish after ordinary closure while BAR remains valid; unavailable hardware rejects it. |
+| LecFillLegacyRegisterEntry | 0/084; shadow R only | Interlocked snapshot; IOCTL context | Legacy type-2 cached query remains cached, no physical read. Already admitted query may finish after closure. |
+| LecInterruptService | Atomic unavailable check, then shadow R for early-zero rejection and INTST filtering; no physical INTEN access | Interrupt synchronization domain, DIRQL | Skips hardware if unavailable is observed. Otherwise runs until disconnect; no transfer pointer is used. Quarantine does not itself prove IRQ absence. |
+| LecInterruptDpc | No INTEN/shadow access or write; atomic unavailable check gates HWInt MMIO | DPC/completion lock, DISPATCH | Software evidence processing remains possible; unavailable hardware skips the HWInt branch. Never re-enables INTEN or proves idle. |
+| LecQuiesceDeferredWork -> LecMaskInterruptsForPnp | 0/084; physical zero W, shadow publication | IC after IOCTL drain; PASSIVE -> DIRQL | Existing mask-only teardown exception, never enable. STOP/normal REMOVE only with accessible BAR. SURPRISE skips it. No hardware-idle conclusion. |
+| LecDisconnectInterrupt | Shadow invalidation to zero, no INTEN write | After drain and IoDisconnectInterrupt, PASSIVE | No ISR/writer remains. This is invalidation, not a claim that absent hardware accepted zero. |
+| LecS65AddDevice / LecConnectInterrupt / START | Initial zeroed shadow; lock initialization; connect has no INTEN access | Unpublished FDO initialization, PASSIVE | START publishes gate only after successful connection. Physical initial/reset mask is not established by a zeroed software shadow. UnknownActive and surprise-unavailable cannot reopen. |
+| LecSetIoctlAdmission -> LecSetInterruptAdmission | Gate state only, no INTEN access | IC spinlock then IoAdmissionLock; <= DISPATCH | Serializes STOP/REMOVE closure against in-flight INTEN writers. Outer IOCTL rundown still protects BAR/interrupt lifetime. |
+| LecMarkDmaUnknownActive -> LecQuarantineInterruptAdmission | Terminal device latch/gate only, no INTEN access | TransferMutex then IC spinlock | Transfer poisoned first; latch and gate close atomically against INTEN writers, before outer admission closure and fallible notification. No reopening. |
+| SURPRISE_REMOVAL -> LecInvalidateInterruptHardware | Interlocked unavailable latch/gate only, no INTEN access | IC spinlock before outer closure/drain | Later INTEN operations reject even cleanup, PnP masking and physical reads. ISR/DPC skip hardware when they observe the latch; already in-flight access cannot be retroactively undone. |
+
+### Confirmed defects and corrected contract
+
+Previously generic register writes bypassed the shadow entirely. The legacy
+commit helper published shadow before MMIO without a device-wide lock; two
+writers could leave the final shadow different from the last issued value.
+Several callers read shadow outside the commit, so unrelated RMW changes could
+be lost and a stale mask could re-enable acquisition bit 0 after cleanup.
+Closing outer IOCTL admission did not stop an already admitted writer.
+
+All normal writes, RMW decisions and physical reads now share IC. The ISR
+cannot observe the write/shadow publication halfway through that critical
+section. RMW starts from the latest shadow under the lock. Generic full-value
+writes retain their explicit replacement semantics for non-DMA bits, including
+unknown bits; they may not change bit 0 in either direction. Only the two
+acquisition paths change bit 0. A stale generic value containing bit 0 therefore
+fails after cleanup rather than silently undoing it. These are source-proven
+call boundaries; arbitrary future internal callers must not claim that role.
+
+Quarantine and STOP close the INTEN write gate under the same lock as writers.
+A write already inside the critical section finishes before closure; a waiter
+rechecks and rejects after closure. The only write exceptions are existing
+acquisition clear-bit-0 cleanup and PnP's all-zero mask. Neither can enable a
+bit. Surprise-unavailable overrides both exceptions and all physical reads.
+This does not retrofit device-wide ownership for every other MMIO register:
+for example an already admitted CFDC2190 may issue its preceding ERRM write
+before its INTEN update is rejected. It cannot use that write to bypass INTEN
+ownership. Broader raw-register/command safety remains a separate audit scope.
+
+Lock order is TransferMutex (where already held) -> InterruptControlLock ->
+interrupt synchronization lock, or InterruptControlLock -> IoAdmissionLock
+for admission changes. No path holds IoAdmissionLock while acquiring IC.
+The ISR takes neither ordinary spinlock, and no callback takes a blocking
+mutex, allocates, logs or waits. DPC event lifetime remains under
+DmaCompletionLock, which is not held when entering IC. PnP drains synchronous
+owners before disconnect/unmap, so no admitted helper can outlive its BAR or
+interrupt object. Helpers are nonpageable and must not be invoked recursively
+from ISR/synchronization callbacks. This uses the documented
+[KeSynchronizeExecution IRQL contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kesynchronizeexecution).
+
+### Compatibility and unverified hardware boundaries
+
+IOCTL numbers, input/output layouts, register index 13, and Information=0 on
+successful writes are unchanged. Generic non-INTEN controls are not blanket
+rejected. Generic INTEN attempts that change bit 0 now return
+STATUS_DEVICE_BUSY; callers can preserve that bit and change other bits. The
+original register UI can select INTEN, but no supplied runtime trace establishes
+a requirement for unrelated software to own acquisition bit 0. This intentional
+hardening exception still requires eventual owner/kernel compatibility testing.
+The existing control-word masks, receive-enable idempotence, ERRM-before-INTEN
+ordering, acquisition enable/cleanup writes and PnP zero-mask values remain.
+
+ABI review against the current target confirms SetOneRegister `0x0022303C`
+still accepts its packed 266-byte setter (index at +0x101, value at +0x106),
+with index 13 resolving BAR0+0x084. Query `0x00223040` retains its 4-byte size,
+266-byte entry and 11,438-byte list output forms; cached type-2 INTEN queries
+do not read hardware. Generic read/write `0xCFDC21C0`/`0xCFDC21C4` keep the
+4/5-byte read and 8/9-byte write request forms and BAR validation; successful
+reads return Information=4 and writes Information=0. BAR1+0x084 remains
+MTTRGO, not INTEN. Malformed lengths/alignment/ranges still fail before access.
+
+| Changed caller outcome | Classification |
+| --- | --- |
+| Generic/setter full-value INTEN changes current bit 0 in either direction, even while idle | Intended safety hardening: STATUS_DEVICE_BUSY, no write/shadow change. |
+| Stale full value would restore bit 0 after cleanup | Intended safety hardening: same DEVICE_BUSY rejection. |
+| Existing external register UI depends on owning bit 0 | Unverified external caller dependency; no supplied trace establishes it. Not a demonstrated regression or reason to bypass ownership. |
+| Normal MTT/MAM acquisition-owned enable/cleanup; non-DMA bit updates preserving bit 0 | Preserved documented software contracts; kernel/application compatibility remains unqualified. |
+
+Already-admitted calls rejected after closure use INVALID_DEVICE_STATE;
+dispatch rejects new calls with DEVICE_NOT_READY. No public layout or control
+code changed, and no source-demonstrated unrelated ABI regression was found.
+
+Validation failures return failure without changing shadow or issuing MMIO.
+Mask failure continues to feed FinishCleanup and retain launched resources.
+The actual [WRITE_REGISTER_ULONG DDI](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_ulong)
+returns **void**, not an acknowledged-write status. STATUS_SUCCESS from this
+helper means *issued*, not *hardware accepted* or *PCI write retired*.
+No guessed readback/barrier/reset sequence or recoverable bus-error status is
+invented. Faults on an unexpectedly absent device, reset-era physical/shadow
+agreement, durable hardware masking, IRQ provenance and DMA final-host-access
+ordering remain unverified. Tests inject invalid mapping/length, not a
+fictional recoverable status from the void DDI. The normal legacy success
+exception still depends on the unresolved hardware completion premise;
+CompletionObserved != IdleProved and live WDM mapping release stays disabled.
+
+Before future live WDM integration, independently establish stopped producers,
+stopped descriptor consumption, no new busmaster transactions, terminal
+outstanding transactions, drained internal buffers and completed/ordered host
+writes, stable until explicit restart. Also require physical IRQ provenance,
+adapter-defined completion/coherency handling, logical data/descriptor addresses
+within 32 bits, and one release gate joining pinned MDLs, descriptors, mappings,
+callbacks and remove-lock/publication rundown. Unknown-active ownership must
+survive removal without unmapping; no-launch release APIs cannot be reused for
+launched DMA. Recoverable kernel/Verifier and IOMMU qualification remains
+required after those contracts exist.
+
+### Integration decision gates
+
+- **PASS (offline):** current target is an ancestor; all 24 project source/header
+  items exist, InterruptControl.c is included exactly once, and Debug/Release
+  x64 retain v143 and SDK 10.0.28000.0. Public ABI headers are unchanged. All
+  eight Dry suites include the completion/INTEN tests and pass (388 functional
+  checks, 5,000 default DMA race iterations and 1,000 default INTEN RMW
+  iterations). A separate Codex run reproduced these software-only results.
+- **PASS (owner Debug build):** the owner reported a successful Debug x64
+  SDK/WDK 10.0.28000.0 build at reviewed HEAD `07683fa`, using MSVC tools
+  14.41.34120: 0 warnings, 0 errors, `LecS65AcqDrv.sys` generated, with x64
+  `lecdiag.exe` and `lecwatch.exe` also passing their build checks. This is
+  owner-console evidence, not an independent Codex build. Release x64 was not
+  built.
+- **DEVELOPMENT INTEGRATION:** **READY FOR DEVELOPMENT INTEGRATION** as the
+  four reviewed PR commits on top of `82b4c4e`, followed by the documentation
+  evidence commit. No textual conflict or unintended source outside the DMA,
+  interrupt, PnP, IOCTL compatibility, tests and canonical documentation scope
+  was found. This is not authorization to install, load or deploy the driver.
+- **REMAINING QUALIFICATION:** validate kernel
+  IRQL/interrupt-lock behavior, cancellation/rundown and legacy caller bit-0
+  compatibility in a controlled environment before deployment. The predicate
+  cannot cancel an ISR/DPC already past its check; broader already-admitted
+  non-INTEN MMIO remains outside this focused ownership change.
+- **HARDWARE BLOCKED:** physical IRQ provenance, producer/descriptor stop,
+  initiator inactivity, outstanding transaction/buffer retirement and ordered
+  host-memory visibility remain unproved. The completed research
+  [owner handoff](https://github.com/Battlecake91/lecroy_wr6k_64bit_driver/blob/6bff97ff473035cd7b5a0b6bd51cf48cfe82d364/docs/handoffs/fpga-dma-implementation-owner-handoff.md)
+  and [missing evidence](https://github.com/Battlecake91/lecroy_wr6k_64bit_driver/blob/6bff97ff473035cd7b5a0b6bd51cf48cfe82d364/docs/handoffs/fpga-dma-missing-evidence.md)
+  are references, not merged implementation or release authority.
+
+See [reproducible Windows validation](regression-testing.md) for the toolchain
+inventory, actual test counts and the owner command sequence. PR #10 remains
+unmerged and is not Release, Driver Verifier, HLK, hardware or deployment
+qualified, nor a solution to physical DMA shutdown. PR #9 remains separate
+and unmerged.
 
 ## Windows DMA-adapter migration design (not activated)
 
