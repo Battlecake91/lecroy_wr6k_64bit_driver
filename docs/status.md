@@ -2,30 +2,33 @@
 
 ## Build and software regression
 
-- Current offline check (2026-10-13), implementation PR #10 baseline `860196d`
-  plus the unavailable-hardware guard: x64 `lecdiag` and `lecwatch` build
-  successfully. The Debug driver build is blocked by missing SDK/WDK
-  10.0.28000.0 (MSB8036); this environment has SDK 10.0.26100.0 without kernel
-  headers/libraries. No current driver build or hardware qualification is claimed.
-  VS Community 2022 17.14.1 (17.14.36119.2), MSBuild 17.14.8.25101 and MSVC
-  19.44.35207.1 were used. Final kernel attempt: 0 warnings / 1 setup error,
-  before C compilation; no SYS architecture/import/export result is available.
-  Both utility binaries are AMD64 (PE 0x8664), with no reported build warnings/errors.
+- Owner-reported Windows validation on 2026-10-13 at reviewed PR #10 HEAD
+  `07683fa6ea293836ffb9cb656f6728084ac924e0` used SDK/WDK 10.0.28000.0
+  and MSVC tools 14.41.34120. The owner ran
+  `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
+  and `scripts/test-driver.ps1 -Mode Dry`: the Debug x64 kernel driver built
+  with 0 warnings and 0 errors, `LecS65AcqDrv.sys` was generated, and x64
+  `lecdiag.exe` and `lecwatch.exe` passed their build checks. The same owner
+  console log reports 388/388 Dry functional checks, 5,000/5,000 DMA race
+  iterations and 1,000/1,000 INTEN RMW iterations passing. This evidence was
+  supplied by the owner; it was not an independent Codex build execution.
+  Release x64, driver loading, Driver Verifier, HLK and hardware qualification
+  were not performed.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge,
   the inactive synchronous v3 no-launch stage, the live PnP publication
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 46/46, layout 13/13, ownership 17/17,
+- A separate Codex-run offline check on 2026-10-13 used
+  `scripts/test-driver.ps1 -Mode Dry -SkipBuild` at the same reviewed source
+  baseline. Result: source/ABI 46/46, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
   plus deterministic interleavings 2/2 and native INTEN checks 49/49;
-  overall 388/388 PASS with `-Mode Dry -SkipBuild`, and 6,000/6,000 default
-  DMA/INTEN stress races PASS. Separate expanded stress: 60,000/60,000 PASS,
-  zero failures (66,000 candidate stress iterations total; functional tests
-  0 FAIL / 0 SKIP). Native C tests
-  use `/W4 /WX`; no full kernel acquisition/rundown execution is claimed.
+  overall 388/388 PASS, with 5,000/5,000 DMA stress and 1,000/1,000 INTEN
+  RMW stress iterations passing. Native C tests use `/W4 /WX`; this rerun
+  skipped the kernel build and does not execute kernel acquisition/rundown.
 
 ## DMA/PnP staging
 
@@ -102,13 +105,16 @@
   physical reads. Native helper tests use MMIO/lock doubles; hardware mask
   acceptance and initial/reset shadow agreement remain unverified. See the
   [INTEN access inventory](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
-- Integration target `82b4c4e` is an ancestor of the reviewed implementation;
+- Integration target `82b4c4e` is an ancestor of the reviewed implementation
+  (0 target-only / 4 PR commits at `07683fa`);
   no textual conflict or missing project source/header item was found. The
   source-backed lifetime matrix, legacy DEVICE_BUSY compatibility classification
   and remaining decision gates are in [DMA lifetime](dma-lifetime-and-timeout.md).
-  PR #10 remains Draft/open and unmerged, software-reviewed but not kernel-build
-  qualified or deployment-ready. Research PR #9 at `6bff97f` remains separate;
-  no research merge or live WDM activation occurred.
+  PR #10 is ready for controlled development-branch integration but remains
+  unmerged and is not deployment-ready. Debug x64 is owner-build-qualified at
+  the reviewed HEAD; Release x64 and kernel/runtime qualification remain open.
+  Research PR #9 at `6bff97f` remains separate; no research merge or live WDM
+  activation occurred.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

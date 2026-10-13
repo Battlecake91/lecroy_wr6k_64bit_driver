@@ -304,15 +304,16 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows offline regression on 2026-10-13, PR #10 baseline `860196d`
-plus the unavailable-hardware guard in this change (not the research snapshot):
-- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **PASS**.
-- Debug|x64 driver build: **BLOCKED**, MSB8036, required SDK/WDK
-  10.0.28000.0 unavailable. Installed SDK 10.0.26100.0 has no kernel headers
-  or libraries. The current build attempt reports 0 warnings / 1 setup error;
-  kernel compilation did not start. This is not a C compilation result.
-- Separate x64 `lecdiag` and `lecwatch` builds: **PASS**, no reported warnings
-  or errors (not run on hardware).
+Current Windows offline regression on 2026-10-13, reviewed PR #10 HEAD
+`07683fa6ea293836ffb9cb656f6728084ac924e0` (not the research snapshot):
+
+- The owner ran
+  `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
+  with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**.
+- Owner-reported Debug|x64 kernel build: **PASS**, 0 compiler warnings,
+  0 build errors, and `LecS65AcqDrv.sys` generated successfully.
+- Owner-reported x64 `lecdiag.exe` and `lecwatch.exe` builds: **PASS**.
+- The owner then ran `scripts/test-driver.ps1 -Mode Dry`: **PASS**.
 - Source/ABI contracts **46/46 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
@@ -326,25 +327,23 @@ plus the unavailable-hardware guard in this change (not the research snapshot):
 - Native production INTEN helper checks **49/49 PASS** (within the DMA
   completion suite, MMIO and kernel synchronization test doubles only).
 - Overall **REGRESSION SUITE PASS: Dry** (**388/388** functional checks across
-  eight suites, 0 FAIL / 0 SKIP; driver build skipped).
-- Default stress: five scenarios x 1,000 iterations, **5,000/5,000 PASS**.
-  Separate expanded stress: five scenarios x 10,000 iterations,
-  **50,000/50,000 PASS**, zero failed races. INTEN RMW stress adds
-  **1,000/1,000 PASS** by default and **10,000/10,000 PASS** expanded.
-  Candidate total: **66,000/66,000** stress iterations, 0 FAIL / 0 SKIP,
-  separate from the 388 functional checks. The unavailable kernel build is a
-  blocked qualification gate, not an extra passing test.
+  eight suites, 0 FAIL / 0 SKIP).
+- Default DMA race stress: five scenarios x 1,000 iterations,
+  **5,000/5,000 PASS**. INTEN RMW stress: **1,000/1,000 PASS**.
 
-Exact installed tools used: Visual Studio Community 2022 **17.14.1**
-(installation **17.14.36119.2**), MSBuild file version **17.14.8.25101**,
-MSVC tools directory **14.44.35207**, compiler file version
-**19.44.35207.1**, SDK **10.0.26100.0** (user-mode/shared/UCRT only).
-Both separately built utilities have PE machine **0x8664 (AMD64)**; neither
-was executed. Native completion/INTEN compilation reported **0 warnings and
-0 errors** with warnings-as-errors. This is not a kernel compiler result:
-the final official Debug build again failed before kernel C compilation with
-**0 warnings / 1 MSB8036 setup error**, without retargeting. No current SYS
-exists for architecture/import/export verification.
+The toolchain, kernel/utility build results and aggregate 388/388,
+5,000/5,000 and 1,000/1,000 results were supplied from the owner's Windows
+console log, not an independent Codex build execution. The per-suite counts
+above are the current runner decomposition and were reproduced by the Codex
+run below. Together they qualify the reviewed Debug x64 source as buildable
+and software-regression clean; they do **not** qualify Release x64, driver
+loading, Driver Verifier, HLK or hardware behavior.
+
+A separate Codex execution on 2026-10-13 ran
+`scripts/test-driver.ps1 -Mode Dry -SkipBuild` against the same reviewed
+source baseline. It independently reproduced **388/388** functional checks,
+**5,000/5,000** DMA race iterations and **1,000/1,000** INTEN RMW iterations,
+all passing. That run intentionally skipped the kernel and utility builds.
 
 Completion tests compile the production tracker and cleanup decision with
 MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
@@ -391,15 +390,10 @@ claimed. Late-IRQ filtering is checked against the shared shadow and production
 source contract, not by injecting a real IRQ. See the complete inventory and
 compatibility exception in [DMA lifetime](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 
-For a genuine driver build, install the project's SDK **and** WDK
-10.0.28000.0 with the VS 2022 C++ toolchain. Missing components include SDK
-platform metadata/user-mode headers and WDK `Include\10.0.28000.0\km\ntddk.h`,
-matching shared headers, and `Lib\10.0.28000.0\km\x64\ntoskrnl.lib`, `hal.lib`
-and `wmilib.lib` under `C:\Program Files (x86)\Windows Kits\10`.
-The available SDK 10.0.26100.0 contains only user-mode/shared/UCRT support;
-no kernel-header/library retarget or native-test substitution was used.
-On the properly provisioned owner machine, use **Developer PowerShell for
-VS 2022 (x64 tools)** from the repository root. This single fail-fast sequence
+For a genuine driver build, use the project's SDK/WDK **10.0.28000.0** with
+the VS 2022 x64 C++ toolchain. The owner-side result above confirms that this
+toolchain is available on the Windows development checkout. From **Developer
+PowerShell for VS 2022 (x64 tools)** at the repository root, this fail-fast sequence
 builds, checks binary metadata and runs only offline tests; it does not install
 or load the driver. Inspect the reported SYS machine (must be AMD64), entry
 point, imports and any exports; DriverEntry need not be an exported symbol.
@@ -415,8 +409,9 @@ if ($LASTEXITCODE -ne 0) { throw 'SYS metadata inspection failed' }
 .\tests\dry\test-dma-completion.ps1 -StressIterations 10000
 ```
 
-PR #10 is a software-reviewed candidate with an outstanding kernel-build
-gate, not a build-qualified or hardware-qualified release.
+PR #10 is Debug x64 owner-build-qualified and software-regression-qualified for
+controlled development integration. It is not Release x64, Driver Verifier,
+HLK or hardware qualified and is not a deployment-qualified release.
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

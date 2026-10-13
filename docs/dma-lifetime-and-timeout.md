@@ -1,8 +1,8 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **software-reviewed integration candidate; kernel build blocked**, 2026-10-13.
+Status: **ready for controlled development integration; not deployment-qualified**, 2026-10-13.
 Implementation base: `fix/p0-irq-start-dma-gating` at `82b4c4e`.
-Final integration review baseline: PR #10 at `860196dfe6c7728e72051a25c5628b281756b942`, plus the unavailable-hardware guard and regression updates accompanying this document.
+Final source-review baseline: PR #10 at `07683fa6ea293836ffb9cb656f6728084ac924e0`, plus the owner-build evidence and regression updates accompanying this document.
 Research reference only: PR #9 at `6bff97ff473035cd7b5a0b6bd51cf48cfe82d364`; no research merge.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
@@ -191,9 +191,9 @@ lifetime problem or authorize live WDM DMA acquisition.
 
 ### Concurrent execution review
 
-The complete PR #10 diff at `860196d` against the current development target
+The complete PR #10 diff at `07683fa` against the current development target
 `82b4c4e` was reviewed independently of previous test passes. The target is an
-ancestor (0 target-only / 3 implementation-only commits at review start), so
+ancestor (0 target-only / 4 implementation-only commits at review start), so
 there is no textual integration conflict. One additional source-level gap was
 demonstrated: surprise removal latched unavailable hardware for INTEN helpers,
 but the shared ISR and queued HWInt DPC did not check that latch before MMIO.
@@ -410,12 +410,20 @@ required after those contracts exist.
   items exist, InterruptControl.c is included exactly once, and Debug/Release
   x64 retain v143 and SDK 10.0.28000.0. Public ABI headers are unchanged. All
   eight Dry suites include the completion/INTEN tests and pass (388 functional
-  checks and 66,000 default plus expanded stress iterations).
-- **BLOCKED:** the official final Debug x64 kernel build stops at MSB8036 before
-  C compilation because SDK/WDK 10.0.28000.0 is absent. There is no SYS to
-  inspect for architecture/imports/exports. Successful x64 utility/native-test
-  builds do not qualify kernel compilation or the Release configuration.
-- **OWNER QUALIFICATION:** after the required toolchain build, validate kernel
+  checks, 5,000 default DMA race iterations and 1,000 default INTEN RMW
+  iterations). A separate Codex run reproduced these software-only results.
+- **PASS (owner Debug build):** the owner reported a successful Debug x64
+  SDK/WDK 10.0.28000.0 build at reviewed HEAD `07683fa`, using MSVC tools
+  14.41.34120: 0 warnings, 0 errors, `LecS65AcqDrv.sys` generated, with x64
+  `lecdiag.exe` and `lecwatch.exe` also passing their build checks. This is
+  owner-console evidence, not an independent Codex build. Release x64 was not
+  built.
+- **DEVELOPMENT INTEGRATION:** **READY FOR DEVELOPMENT INTEGRATION** as the
+  four reviewed PR commits on top of `82b4c4e`, followed by the documentation
+  evidence commit. No textual conflict or unintended source outside the DMA,
+  interrupt, PnP, IOCTL compatibility, tests and canonical documentation scope
+  was found. This is not authorization to install, load or deploy the driver.
+- **REMAINING QUALIFICATION:** validate kernel
   IRQL/interrupt-lock behavior, cancellation/rundown and legacy caller bit-0
   compatibility in a controlled environment before deployment. The predicate
   cannot cancel an ISR/DPC already past its check; broader already-admitted
@@ -429,8 +437,9 @@ required after those contracts exist.
 
 See [reproducible Windows validation](regression-testing.md) for the toolchain
 inventory, actual test counts and the owner command sequence. PR #10 remains
-a Draft integration candidate, not build-qualified, deployment-qualified or a
-solution to physical DMA shutdown. PR #9 remains separate and unmerged.
+unmerged and is not Release, Driver Verifier, HLK, hardware or deployment
+qualified, nor a solution to physical DMA shutdown. PR #9 remains separate
+and unmerged.
 
 ## Windows DMA-adapter migration design (not activated)
 
