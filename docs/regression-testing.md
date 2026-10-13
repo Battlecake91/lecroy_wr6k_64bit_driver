@@ -1,6 +1,6 @@
 # Regression test architecture
 
-Date: 2026-09-30
+Date: 2026-10-13
 
 The replacement driver now has one front-end regression runner:
 
@@ -304,46 +304,42 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows offline regression on 2026-10-13, reviewed PR #10 HEAD
-`07683fa6ea293836ffb9cb656f6728084ac924e0` (not the research snapshot):
+Current Windows offline regression on 2026-10-13 used a clean worktree at
+development merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
+The commands and results below are new Codex executions, not the earlier
+owner-reported PR #10 console evidence:
 
-- The owner ran
-  `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
-  with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**.
-- Owner-reported Debug|x64 kernel build: **PASS**, 0 compiler warnings,
-  0 build errors, and `LecS65AcqDrv.sys` generated successfully.
-- Owner-reported x64 `lecdiag.exe` and `lecwatch.exe` builds: **PASS**.
-- The owner then ran `scripts/test-driver.ps1 -Mode Dry`: **PASS**.
-- Source/ABI contracts **46/46 PASS**.
-- DMA descriptor layout **13/13 PASS**.
-- Asynchronous mapping ownership **17/17 PASS**.
-- Asynchronous fake-WDM SG bridge **27/27 PASS**.
-- Synchronous WDM v3 no-launch and PnP-parent fake-DDI suite
-  **149/149 PASS**.
-- Live PnP publication lifetime suite **38/38 PASS**.
-- Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **39/39 PASS**.
-- Deterministic native instruction-interleaving suite **2/2 PASS**.
-- Native production INTEN helper checks **49/49 PASS** (within the DMA
-  completion suite, MMIO and kernel synchronization test doubles only).
-- Overall **REGRESSION SUITE PASS: Dry** (**388/388** functional checks across
-  eight suites, 0 FAIL / 0 SKIP).
-- Default DMA race stress: five scenarios x 1,000 iterations,
-  **5,000/5,000 PASS**. INTEN RMW stress: **1,000/1,000 PASS**.
+- `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
+  with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**: Debug|x64
+  driver **PASS**, 0 warnings, 0 errors; `LecS65AcqDrv.sys`, x64
+  `lecdiag.exe` and x64 `lecwatch.exe` generated successfully.
+- The first `scripts/build-driver.ps1 -Configuration Release` run found a
+  real project defect: Release inherited `/MANIFEST` while linking with
+  `/DRIVER`, producing `LNK1295`. Release now explicitly sets
+  `GenerateManifest=false`, matching Debug, and a clean MSBuild
+  `Release|x64` rebuild passes with 0 warnings and 0 errors.
+- `dumpbin /headers /imports /exports` on both SYS files reports AMD64 machine
+  `0x8664`, native subsystem, `DriverEntry` as the PE entry point, and only
+  `ntoskrnl.exe` and `HAL.dll` imports. No exports are present or required.
+- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **389/389 PASS**, comprising
+  source/ABI **47/47**, descriptor layout **13/13**, mapping ownership
+  **17/17**, asynchronous SG **27/27**, synchronous v3/PnP **149/149**,
+  PnP publication **38/38**, PnP IRP/remove-lock **8/8**, DMA completion
+  **39/39**, deterministic interleavings **2/2**, and production INTEN helper
+  checks **49/49**. The new contract verifies the shared Debug/Release driver
+  manifest and toolset policy.
+- The default run passed **5,000/5,000** DMA race iterations and
+  **1,000/1,000** INTEN RMW iterations.
+- `tests/dry/test-dma-completion.ps1 -StressIterations 10000` passed
+  **50,000/50,000** DMA race iterations and **10,000/10,000** INTEN RMW
+  iterations, plus the same 39 completion and 2 deterministic checks.
+  Default plus expanded runs reproduce the established **66,000/66,000**
+  stress comparison.
 
-The toolchain, kernel/utility build results and aggregate 388/388,
-5,000/5,000 and 1,000/1,000 results were supplied from the owner's Windows
-console log, not an independent Codex build execution. The per-suite counts
-above are the current runner decomposition and were reproduced by the Codex
-run below. Together they qualify the reviewed Debug x64 source as buildable
-and software-regression clean; they do **not** qualify Release x64, driver
-loading, Driver Verifier, HLK or hardware behavior.
-
-A separate Codex execution on 2026-10-13 ran
-`scripts/test-driver.ps1 -Mode Dry -SkipBuild` against the same reviewed
-source baseline. It independently reproduced **388/388** functional checks,
-**5,000/5,000** DMA race iterations and **1,000/1,000** INTEN RMW iterations,
-all passing. That run intentionally skipped the kernel and utility builds.
+These executions qualify both Debug and Release x64 compilation and the
+hardware-independent source/native contracts at the merged development source.
+They do **not** install or load the driver, exercise kernel scheduling, prove
+physical DMA retirement, run Driver Verifier or HLK, or qualify hardware.
 
 Completion tests compile the production tracker and cleanup decision with
 MSVC `/W4 /WX`. New deterministic cases cover wait-success/mask-failure,
@@ -391,27 +387,32 @@ source contract, not by injecting a real IRQ. See the complete inventory and
 compatibility exception in [DMA lifetime](dma-lifetime-and-timeout.md#device-wide-inten-ownership).
 
 For a genuine driver build, use the project's SDK/WDK **10.0.28000.0** with
-the VS 2022 x64 C++ toolchain. The owner-side result above confirms that this
-toolchain is available on the Windows development checkout. From **Developer
+the VS 2022 x64 C++ toolchain. The current clean-worktree result confirms that
+this toolchain is available on the Windows development host. From **Developer
 PowerShell for VS 2022 (x64 tools)** at the repository root, this fail-fast sequence
-builds, checks binary metadata and runs only offline tests; it does not install
+builds both configurations, checks binary metadata and runs only offline tests; it does not install
 or load the driver. Inspect the reported SYS machine (must be AMD64), entry
 point, imports and any exports; DriverEntry need not be an exported symbol.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 .\scripts\build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch
-$sys = Join-Path (Get-Location) 'x64\Debug\LecS65AcqDrv.sys'
-if (!(Test-Path -LiteralPath $sys)) { throw "Missing driver: $sys" }
-dumpbin.exe /headers /imports /exports $sys
-if ($LASTEXITCODE -ne 0) { throw 'SYS metadata inspection failed' }
+.\scripts\build-driver.ps1 -Configuration Release
+foreach ($configuration in @('Debug', 'Release')) {
+    $sys = Join-Path (Get-Location) "x64\$configuration\LecS65AcqDrv.sys"
+    if (!(Test-Path -LiteralPath $sys)) { throw "Missing driver: $sys" }
+    dumpbin.exe /headers /imports /exports $sys
+    if ($LASTEXITCODE -ne 0) { throw "SYS metadata inspection failed: $sys" }
+}
 .\scripts\test-driver.ps1 -Mode Dry -SkipBuild
 .\tests\dry\test-dma-completion.ps1 -StressIterations 10000
 ```
 
-PR #10 is Debug x64 owner-build-qualified and software-regression-qualified for
-controlled development integration. It is not Release x64, Driver Verifier,
-HLK or hardware qualified and is not a deployment-qualified release.
+The merged PR #10 source is Debug/Release x64 build-qualified and
+software-regression-qualified. It is not Driver Verifier, HLK, kernel-runtime
+or hardware qualified and is not a deployment-qualified release. The next
+controlled stage is defined in the
+[kernel-runtime qualification plan](kernel-runtime-qualification.md).
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication

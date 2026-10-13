@@ -1,8 +1,8 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **ready for controlled development integration; not deployment-qualified**, 2026-10-13.
-Implementation base: `fix/p0-irq-start-dma-gating` at `82b4c4e`.
-Final source-review baseline: PR #10 at `07683fa6ea293836ffb9cb656f6728084ac924e0`, plus the owner-build evidence and regression updates accompanying this document.
+Status: **merged and offline-qualified; not deployment-qualified**, 2026-10-13.
+Implementation base: `fix/p0-irq-start-dma-gating` at merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
+Final PR #10 source-review parent: `fae8a50bb2b622628cd57e18723c3037698f06b5`; the merge tree is identical.
 Research reference only: PR #9 at `6bff97ff473035cd7b5a0b6bd51cf48cfe82d364`; no research merge.
 Analysis: original x86 disassembly compared against the native x64 acquisition and cleanup paths. **Neither an original-hardware idle guarantee nor a successful x64 hardware test is established here.**
 
@@ -52,7 +52,7 @@ confidence levels, x86/x64 differences,
 and safe future verification requirements
 are kept in the focused audit.
 
-## Defensive x64 behavior staged on the draft branch
+## Defensive x64 behavior on the merged development branch
 
 This is **partial damage containment**, not DMA engine stop/recovery:
 
@@ -404,25 +404,25 @@ survive removal without unmapping; no-launch release APIs cannot be reused for
 launched DMA. Recoverable kernel/Verifier and IOMMU qualification remains
 required after those contracts exist.
 
-### Integration decision gates
+### Post-merge qualification gates
 
-- **PASS (offline):** current target is an ancestor; all 24 project source/header
-  items exist, InterruptControl.c is included exactly once, and Debug/Release
-  x64 retain v143 and SDK 10.0.28000.0. Public ABI headers are unchanged. All
-  eight Dry suites include the completion/INTEN tests and pass (388 functional
-  checks, 5,000 default DMA race iterations and 1,000 default INTEN RMW
-  iterations). A separate Codex run reproduced these software-only results.
-- **PASS (owner Debug build):** the owner reported a successful Debug x64
-  SDK/WDK 10.0.28000.0 build at reviewed HEAD `07683fa`, using MSVC tools
-  14.41.34120: 0 warnings, 0 errors, `LecS65AcqDrv.sys` generated, with x64
-  `lecdiag.exe` and `lecwatch.exe` also passing their build checks. This is
-  owner-console evidence, not an independent Codex build. Release x64 was not
-  built.
-- **DEVELOPMENT INTEGRATION:** **READY FOR DEVELOPMENT INTEGRATION** as the
-  four reviewed PR commits on top of `82b4c4e`, followed by the documentation
-  evidence commit. No textual conflict or unintended source outside the DMA,
-  interrupt, PnP, IOCTL compatibility, tests and canonical documentation scope
-  was found. This is not authorization to install, load or deploy the driver.
+- **PASS (ancestry and project):** PR #10 is merged at `69ad853`; all project
+  source/header items exist and `InterruptControl.c` is included exactly once.
+  Public ABI headers remain unchanged and the inactive WDM stage has no live
+  acquisition, IOCTL or PnP entry point.
+- **PASS (Debug and Release builds):** a new Codex execution in a clean Windows
+  worktree used SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Debug x64 and,
+  after correcting Release manifest generation, a clean Release x64 rebuild
+  both passed with 0 warnings and 0 errors. The SYS files are AMD64 native
+  images with `DriverEntry` and only `ntoskrnl.exe`/`HAL.dll` imports.
+- **PASS (offline regression):** all Dry suites pass 389/389 functional checks.
+  Default stress passes 5,000 DMA and 1,000 INTEN iterations; expanded stress
+  passes 50,000 DMA and 10,000 INTEN iterations. The combined established
+  comparison is 66,000/66,000. This remains software-only evidence.
+- **DEVELOPMENT STATE:** merged and offline-qualified. This is not authorization
+  to install, load or deploy the driver. Future execution must follow the
+  [kernel-runtime qualification plan](kernel-runtime-qualification.md) on a
+  disposable, recoverable system.
 - **REMAINING QUALIFICATION:** validate kernel
   IRQL/interrupt-lock behavior, cancellation/rundown and legacy caller bit-0
   compatibility in a controlled environment before deployment. The predicate
@@ -436,8 +436,8 @@ required after those contracts exist.
   are references, not merged implementation or release authority.
 
 See [reproducible Windows validation](regression-testing.md) for the toolchain
-inventory, actual test counts and the owner command sequence. PR #10 remains
-unmerged and is not Release, Driver Verifier, HLK, hardware or deployment
+inventory, actual test counts and commands. PR #10 is merged and Debug/Release
+build-qualified, but is not Driver Verifier, HLK, hardware or deployment
 qualified, nor a solution to physical DMA shutdown. PR #9 remains separate
 and unmerged.
 

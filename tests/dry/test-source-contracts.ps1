@@ -149,6 +149,24 @@ Test-Contract "legacy driver build remains 1002" {
     $driverText -match 'LECS65_LEGACY_DRIVER_BUILD\s+.*?1002'
 }
 
+Test-Contract "Debug and Release x64 disable manifests for driver linking" {
+    $projectXml = [xml]$driverProjectText
+    $namespace = New-Object System.Xml.XmlNamespaceManager($projectXml.NameTable)
+    $namespace.AddNamespace('msb', 'http://schemas.microsoft.com/developer/msbuild/2003')
+    foreach ($configuration in @('Debug', 'Release')) {
+        $group = $projectXml.SelectSingleNode(
+            "//msb:PropertyGroup[@Label='Configuration' and contains(@Condition, '$configuration|x64')]",
+            $namespace)
+        if ($null -eq $group -or
+            $group.PlatformToolset -ne 'v143' -or
+            $group.GenerateManifest -ne 'false' -or
+            $group.EmbedManifest -ne 'false') {
+            return $false
+        }
+    }
+    return $true
+}
+
 Test-Contract "26 represented driver IOCTL constants keep their numeric values" {
     foreach ($entry in $represented.GetEnumerator()) {
         $actual = Get-HexDefine -Text $driverText -Name $entry.Key
