@@ -5,18 +5,20 @@
 observations only. **Do not publish firmware/bitstream image bytes,
 vendor binaries, schematics or license data.**
 
-**Current milestone:** The existing decoder now feeds a tested, bounded Z3
-transition model, including registers, distributed RAM, configured BRAM ports,
-and architecture-correct internal BUFT resolution. Native firmware calibration
-passes 47 checks; 19 PCI local equation/alias checks pass. The expanded network
-has 3,359 logic nodes and 9,129 resolved routing paths, with 21 routing paths
-still Unknown/ambiguous. See [Formal State Analysis](#formal-state-analysis).
-The PCI-clocked Q/P
-transition relations, FRAME output/OE shadow registers, delayed IRDY OE,
-REQ output and grant-qualified start logic are reconstructed below in
-[Verified PCI Control Register Network](#verified-pci-control-register-network).
-The INTA# output-enable cone and its PCI-clocked X7/Y10 state remain
-independently established. No complete DMA-quiescence predicate is proven.
+**Current milestone:** The scoped offline reconstruction is consolidated in the
+[final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md).
+Native firmware calibration passes50 checks and19 PCI local equations pass.
+The control-root report has all9150 routes resolved; later target/receive and
+INTA extensions have distinct scopes. Earlier sections retain historical partial
+17/29-output,47-check calibration and network counts; current AD/CBE coverage is all36
+output FFs, not a proven PCI_CE transfer function. Register, memory, clock and
+BUFT models preserve their explicit unknown boundaries. See the
+[DMA retirement analysis](pci-dma-retirement-analysis.md) for descriptor,
+receive/staging and completion/IRQ contracts. No complete DMA-quiescence
+predicate, installed-image identity or host-write visibility is proven.
+
+Terminology: an "installed update image" below means the resource in the
+host-installed device pack, **not** evidence that the device loaded it.
 
 **Important:** The update image is not proof of the currently
 running firmware revision, and an IRQ does not establish DMA bus idle.
@@ -112,9 +114,10 @@ serial trigger FPGA families. **None is established as the photographed
 XC2S200E PCI image.** This does **not** prove the PCI image is absent:
 it may be a PE resource, library-packed bytes, a private updater format,
 located in an unscanned directory, or acquired from a separate storage source.
-No current evidence identifies the actual PCI bitstream.
+The running PCI image remains unidentified. The default device-pack PCI update
+resource was subsequently identified and decoded below; these are distinct claims.
 
-Next **offline/passive-only** step: metadata (file sizes, digital signatures,
+Historical **offline/passive-only** discovery plan (not a new DMA-safety task): metadata (file sizes, digital signatures,
 SHA-256, PE versions), ASCII/UTF-16 string references, PE resources and
 linkage among `s65hwupgrade.dll`, `hwprogrammer.exe`,
 `xstreamhwprogrammer.exe`, `s65devicepacksvr.dll` and existing
@@ -204,9 +207,10 @@ the **default resource IDs** registered by the S65 device-pack
 component, as documented immediately below. The user-configurable
 resource-ID CVARs may nevertheless be overridden at runtime.
 
-**Remaining follow-up:** Privately inspect the PCI image's Xilinx
-configuration commands and placement details, and identify whether the
-running card's firmware revision matches the installed update image.
+**Remaining follow-up:** Establish whether the running card's firmware revision
+matches the decoded update image using existing configuration/identity records.
+Configuration commands, placement, routing and the focused internal logic have
+already been inspected; do not repeat that work as a shutdown-proof substitute.
 The registered default resource IDs do not establish that the running
 device uses that exact revision. No firmware loader or upgrade should be
 called. The bitstream is not RTL or proof of DMA completion/PCI drain.
@@ -748,10 +752,11 @@ The configured mux values are:
 | `I2` | `1000001` | `HEX_V1[3]` |
 | `I3` | `0001` | `HEX_V4[1]` |
 
-The companion input-polarity bits at `MAIN[52][3]` and
-`MAIN[53][3]` are both set in the update image. Their final
-logical inversion meaning has not yet been independently
-validated and is therefore not interpreted here.
+The companion input-polarity bits at `MAIN[52][3]` and `MAIN[53][3]` are both
+set in the update image. Interpretation was held open at this early step;
+subsequent configured-route/LUT-input-order checks establish noninverted fabric
+inputs in [source-LUT reduction](#pcilogic-source-lut-truth-table-reduction-2026-10-09).
+That does not supply the hardblock's missing effective transfer/timing contract.
 
 This is the first direct evidence that the installed PCI FPGA image
 uses the device's dedicated **hard PCI timing/clock-enable block**,
@@ -769,9 +774,9 @@ which physical PCI handshake/control nets feed them, whether `PCI_CE`
 means DMA idle, or whether all initiated/posted PCI writes have drained.
 No safe DMA-unmap criterion follows yet.
 
-**Status:** the selected `PCILOGIC` input nets and the installed
-`PCI_CE` fanout are traced in the following section. Their semantic
-connection to PCI arbitration/transaction state remains open.
+**Status:** the selected `PCILOGIC` input nets, state connections and configured
+`PCI_CE` fanout are resolved in subsequent sections. Effective hardblock timing
+and the end-to-end relation to owned transaction retirement remain Unknown.
 
 References:
 - [Project Combine Virtex feature database](https://github.com/prjunnamed/prjcombine/blob/main/databases/virtex.txt)
@@ -3083,22 +3088,21 @@ remain unchanged; PR #9 remains open and unmerged.
 
 #### Independent DMA-Quiescence Evaluation
 
-| Obligation | Result | Exact obstruction after link reconstruction |
-|---|---|---|
-| Producer stopped | Unknown | MTTCTL bit0 and physical START clearing are decoded below, but producer execution/idle and independent MAM work remain unresolved |
-| Descriptor engine stopped | Unknown | No stable descriptor-admission/consumption acknowledgement; conditional IIMCL clear still permits abstract REQ activity |
-| No new PCI master transaction | Unknown | No configured stable gate tied to command-specific stop response excludes all later initiator starts |
-| Existing PCI transactions terminal | Unknown | Target-side read/response and link framing do not prove initiator transaction retirement |
-| Internal buffers drained | Unknown | TX snapshots, two RX frame banks and runtime RAM/BRAM retain state; neither SYNC nor response/event is occupancy-zero |
-| Host DMA writes completed | Unknown | No WR6k-specific final-write/interrupt ordering or host-bridge drain contract |
+The single authoritative release/stability matrix is
+[`pci-mmio-register-evidence.json::shutdown_evaluation`](pci-mmio-register-evidence.json).
+All six release obligations and stability until explicit restart remain Unknown.
+It replaces the duplicated six-row table here; local link/terminal/IRQ facts
+do not upgrade any row. [Provider requests](handoffs/fpga-dma-missing-evidence.md)
+identify the smallest architecture, producer, identity, transaction/buffer and
+platform artifacts, rather than requesting completed reconstruction again.
 
 Cross-layer consequence: original MTTCTL zero writes, optional unchecked waits,
 ISR IIMCL clear and a response event cannot be combined into an invented safe
 release predicate. The configured link transitions are exercised in the existing
 Z3 model; no speculative acknowledgement variable or production release path
-was added. The precise next evidence is the applicable PCI primitive model and
-the acquisition-controller LVDS receive/dispatch/status-return implementation,
-including both MTT and MAM, queue/descriptor admission and stable drain semantics.
+was added. The receiver/dispatch/status logic is now recovered locally;
+the remaining evidence is applicable physical/timing and producer/queue contracts
+plus matched execution/retirement invariants, not another generic receiver decode.
 Existing offline traces may instead establish command identity and timing, but
 cannot alone establish all six obligations under faults and restart. Identify the
 actually running PCI/acquisition firmware separately from BINARY.205.
@@ -3123,7 +3127,7 @@ Two 180,260-byte streams have sync at relative offset 4:
 | Stream | SHA-256 | Configured role evidence |
 |---|---|---|
 | 0 | `227cba1ae543cf78b5b6d5700f719340e18df63850ec270eea47b5855c404337` | Twelve U21 RX P pads and SYNC enabled as DIFF; matching DMA offsets; controller role Inferred |
-| 1 | `e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b` | Those RX pads disabled; exact loader destination not independently proven |
+| 1 | `e3a679c4fa4304ca4d9e7387c099e1245d28c9db56b3d436f6e2a14095fed68b` | Those RX pads disabled; later START/SACQ/clock/loader correlation strongly infers U38, conditional on bank and successful configuration; not live identity |
 
 Both parse as XC2S200E geometry with 2,240 main frames. Do **not** use PCI-image
 `validate_knowns` on acquisition images. Serial-chain order, board option and

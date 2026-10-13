@@ -278,20 +278,20 @@ a free symbol named `stop_ack` would make the proposed safety checks vacuous.
 
 ### Six independent release obligations
 
-All six device-specific conclusions remain **Unknown/Inconclusive**. The
+All six device-specific conclusions remain **Unknown**. The
 following assumptions would have to become evidence; none is enabled in the
 solver or driver by this review. No hardware-confirmed stop counterexample
 has been obtained. A possible execution allowed by missing evidence is not
 a decoded hardware execution.
 
-| Obligation | Verified partial evidence | Missing assumption/dependency | Counterexample or limitation | Software observability |
-|---|---|---|---|---|
-| Producer stopped | MTTCTL bit0, physical START clearing and separate 19/24-bit MTT/MAM load banks decoded | START must be tied to actual producer execution and queued data | MTTCTL=0 alone retains independent MAM/MTT load state; no producer-stop trace | No correlated producer-empty/stopped status |
-| Descriptor engine stopped | SGTA30/IIMTC32, two32-bit banks, pointer load/chain/step8 and B-then-A conditional capture verified | Owned fetch/advance/chain lifecycle and durable consumption disable | Pointer can change at clear; pending has chain/retained-state terms not dominated by cl; reachable post-stop fetch unproved | No identified descriptor-idle acknowledgement |
-| New PCI transactions blocked | Local REQ/FRAME/IRDY equations are decoded | Stop/ack must dominate every start/retry path | Prior bound-16 SAT pin activity has **no stop antecedent**, so is not a post-stop counterexample | Inactive external pins are not a durable software predicate |
-| Existing transactions complete | Physical PCI interface, sampled handshake and actual done/sticky-IRQ pipeline | Owned terminal/retry/disconnect/abort history and IRQ-to-final-phase invariant must close | IRQ latch rise can coexist with activity in a local cut; another master's pins are not evidence | IIMST/IRQ relationship to retirement unproved |
-| Internal buffers drained | Two receive256x16 BRAM halves and complete32-bit staging-to-AD path; staging pointer increment/rewind verified | Wrap/valid/CDC conservation and link queues must be tied to ack | W=0 retains all32 staging memories; issue minus rewind is not unique accepted retirement; named mux alias resolved | No correlated FIFO-empty/readback contract |
-| Host-side completion | Windows adapter flush/release contracts are documented | Board completion ordering plus applicable platform/adapter contract | CPU barriers and adapter cache flush are not board-stop operations | DDI result is visible, but not a WR6k stop/bridge-drain certificate |
+The single authoritative matrix is
+[`pci-mmio-register-evidence.json::shutdown_evaluation`](pci-mmio-register-evidence.json),
+including the seventh row for stability until explicit restart. It replaces the
+duplicated six-row table here and records local evidence, missing invariant,
+artifact/provider, software consequence and exact request IDs. The
+[final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md)
+and [implementation handoff](handoffs/fpga-dma-implementation-owner-handoff.md)
+provide the bounded current interpretation. No partial result upgrades a row.
 
 **Formal question disposition:** ten actual-register diagnostics now cover
 clear/request, IRQ/activity, pointer-bit changes, receive admission, retry cuts,

@@ -150,7 +150,7 @@ of our previous source and trace results:
 | The FPGA responds to conventional PCI signals and provides buffered `INTA#`. | The physical PCI endpoint is Spartan-IIE `U3` on the **interface card**. The driver-visible BAR register map and IRQ are host-facing abstractions of this PCI endpoint and/or its downstream logic. | The schematics do not alone assign every individual BAR register to PCI-FPGA RTL or downstream acquisition FPGA logic. |
 | `CFDC2110` family-0 `0x90`, local `BAR1 SPICTL/SPIDAT/SPIDIN` (source-confirmed) | An already recovered **host/board SPI register path**. Acquisition overview independently names `SPI_IO` and `UC_SPI`, while the external probe/front-panel uses I2C per the user. | Neither PDF establishes a one-to-one connection from host `0x90` or BAR1 SPI to a physical front I2C EEPROM transaction. |
 | `CFDC2110` forwarded firmware `0x4A` AP015 metadata | High-level result **after** some board/front-end identification process, consistent with the user's ADC-first / EEPROM-over-I2C sequence. | Exact ADC value, low-level I2C addresses/bytes, EEPROM field mapping and possible caching/firmware translation are unobserved in the IOCTL JSONL. |
-| `BAR0 INTST/INTEN 0x08`, `BAR1 HWInt 0x410`, software pending `0x0200` | Recovered host-side asynchronous board event delivery. Its existence and functioning for physical hotplug and jaw events are supported by the actual traces. | It is **not** a physical ADC sample or a raw I2C transaction, and a missing newly captured event does not imply XStream failed to display its existing unlocked-jaw warning. |
+| `BAR0 INTST/INTEN bit 0x08` (register offsets `0x080/0x084`), `BAR1 HWInt 0x410`, software pending `0x0200` | Recovered host-side asynchronous board event delivery. Its existence and functioning for physical hotplug and jaw events are supported by the actual traces. | It is **not** a physical ADC sample or a raw I2C transaction, and a missing newly captured event does not imply XStream failed to display its existing unlocked-jaw warning. |
 | `CFDC2138`/MAM and MTT transfer programming | Acquisition overview physically separates timebase TB, the two `ADC+MAM` regions, FPGA block FP and channel front-ends. | Do not identify card Spartan `U3` as the AM/AM2 FPGA or assert an exact link command format or low-level allocation/ownership without further RTL/sheets. |
 
 **Three separate non-volatile storage categories, not one:**
@@ -286,9 +286,8 @@ The installed XStream `s65devicepacksvr.dll` includes
 the PCI Spartan-IIE update image as an Intel-HEX
 resource. The bitstream is decoded to device geometry,
 and private schematic/package correlations have
-identified the PCI control pads. The initial
-`INTA#` output-enable routing and two absent
-local source selections are documented in
+identified the PCI control pads. The completed local
+`INTA#` source/mask/output cone and its remaining physical proof limits are documented in
 **[PCI FPGA firmware analysis](pci-fpga-firmware-analysis.md)**.
 That document is the canonical home for firmware
 image provenance, resource IDs, frame geometry,
@@ -299,3 +298,6 @@ a proven match to the running PCI card firmware.
 No FPGA busmaster quiescence, acquisition abort,
 host-bridge posted-write drain or safe DMA mapping
 release is established.
+
+The [final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md)
+consolidates the physical/configured/inferred boundary and provider requests.

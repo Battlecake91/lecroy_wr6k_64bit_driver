@@ -8,6 +8,7 @@
   "software_safety_review": {
     "document": "dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions",
     "scope": "Defensive source review, existing offline test validation and software-only regression; no new initiator, transaction stimulus or production behavior",
+    "source_scope": "Research-checkout review, not validation of later implementation PRs; see the pinned baseline in handoffs/fpga-dma-implementation-owner-handoff.md",
     "confirmed_properties": [
       "CompletionObserved alone does not authorize mapping release",
       "No production caller invokes LecDmaCompletionProveIdle or the async SG launch/idle hooks",
@@ -34,6 +35,15 @@
     "driver_dry_tests": {"source": 43, "completion": 37, "layout": 13, "ownership": 17, "sg_stage": 27, "sg_sync": 149, "irp_lifetime": 8, "pnp_publication": 38, "total": 332, "status": "PASS", "failed": 0, "skipped": 0},
     "driver_dry_tests_scope": "Previously established software review result; not rerun for the completion/IRQ audit",
     "completion_final_rerun": {"passed": 28, "completion": 17, "synthetic_dma": 11, "failed": 0, "skipped": 0, "overlap_with_full_suite": 28},
+    "completion_final_rerun_scope": "Recorded prior completion-audit rerun; not an additional consolidation execution",
+    "consolidation_validation": {
+      "baseline_commit": "7108ee7638da021094b7d22959d55a7a4ec0cb7b",
+      "python_passed": 374, "failed": 0, "skipped": 0,
+      "json_consumer_rerun": {"passed": 11, "failed": 0, "skipped": 0, "overlap_with_full_suite": 11},
+      "documentation_checks": {"passed": 6, "failed": 0, "skipped": 0, "scope": "seven-row schema/status/summary; inventory IDs; request IDs;42 file/heading links; totals; UTF-8/ASCII and publication placeholders"},
+      "production_code_changed": false,
+      "hardware_or_wdk_execution": false
+    },
     "not_run": ["WDK build", "driver dry suites for this completion audit", "hardware/MMIO/DMA/reset/programming experiments"],
     "scope": "Offline analysis and software regression, not hardware qualification or a six-obligation quiescence proof"
   },
@@ -225,14 +235,87 @@
     },
     "shutdown_obligations": "All six Unknown; stable until explicit restart Unknown; preserve UnknownActive"
   },
+  "shutdown_matrix_authority": {
+    "path": "pci-mmio-register-evidence.json::shutdown_evaluation",
+    "scope": "Single authoritative seven-row end-to-end release/stability matrix; other status lists are summaries only",
+    "evidence_index": "handoffs/fpga-reverse-engineering-final-evidence.md",
+    "implementation_handoff": "handoffs/fpga-dma-implementation-owner-handoff.md",
+    "provider_requests": "handoffs/fpga-dma-missing-evidence.md",
+    "required_fields": ["status", "local_evidence", "missing_invariant", "smallest_missing_artifact", "artifact_provider", "driver_consequence", "request_ids"],
+    "upgrade_rule": "No obligation upgraded from Unknown without independently sufficient end-to-end evidence; local SAT/UNSAT is not release permission",
+    "driver_consequence_scope": "Requirements for proved retirement and future hardware-active WDM release; the existing normal-success PFN compatibility exception remains unverified and unchanged"
+  },
   "shutdown_evaluation": {
-    "producer_stopped": {"status": "Unknown", "obstruction": "MTTCTL bit 0 and physical START level transition recovered; downstream producer execution/acknowledgement unresolved; independent MAM load state retained", "smallest_missing_artifact": "Applicable installed-revision HAD639E/MTT/MAM stop and last-word contract"},
-    "descriptor_engine_stopped": {"status": "Unknown", "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT", "smallest_missing_artifact": "Same-epoch stop-to-admission invariant including retained reload/phase and descriptor fetch history"},
-    "no_new_pci_master_transactions": {"status": "Unknown", "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts", "smallest_missing_artifact": "Applicable PCIIOB/PCILOGIC sampling/drive contract plus stop-to-no-start invariant"},
-    "existing_pci_transactions_terminated": {"status": "Unknown", "obstruction": "Target read/response and link framing do not establish PCI initiator retirement", "smallest_missing_artifact": "Same-epoch owned final-phase/retry and output-register sampling history correlated with IRQ"},
-    "internal_buffers_drained": {"status": "Unknown", "obstruction": "TX snapshots, 72 RX frame-bank FFs and runtime RAM/BRAM retain state; response/SYNC/event are not occupancy predicates", "smallest_missing_artifact": "Valid/wrap/CDC invariant or correlated internal trace covering RX, staging, reissue and final word"},
-    "host_dma_writes_completed": {"status": "Unknown", "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved", "smallest_missing_artifact": "Actual bridge/chipset identity and applicable posted-write/INTx plus Windows adapter visibility contract"},
-    "stability_until_explicit_restart": {"status": "Unknown", "obstruction": "Sticky C/IRQ is not stable inactivity", "smallest_missing_artifact": "Absorbing no-admission/no-issue state across clocks/retained state, released only by qualified restart"}
+    "producer_stopped": {
+      "status": "Unknown",
+      "local_evidence": "Configured U21 MTTCTL E/START transitions, separate19/24-bit MTT/MAM equality paths; physical U38 START=N2/SACQ=M1",
+      "missing_invariant": "A matched stop prevents every producer and identifies its last admitted word, including independent MAM and queued LVDS work",
+      "obstruction": "START level and retained local state do not establish downstream producer execution/acknowledgement",
+      "smallest_missing_artifact": "Applicable installed-revision HAD639E/MTT/MAM stop and last-word contract, including maximum queued data",
+      "artifact_provider": ["acquisition hardware documentation", "existing correlated traces or separately authorized hardware observation", "firmware configuration identity"],
+      "driver_consequence": "Do not release buffers or mark idle from START0/MTTCTL0; preserve separate producer paths",
+      "request_ids": ["A1", "A2", "C1"]
+    },
+    "descriptor_engine_stopped": {
+      "status": "Unknown",
+      "local_evidence": "SGTA30/IIMTC32, two32-bit capture banks, step8/chain pointer, pending/load/terminal and counter equations",
+      "missing_invariant": "Matched stop excludes all later descriptor fetch, chain, reload and consumption despite retained state",
+      "obstruction": "No stable admission/consumption acknowledgement; conditional IIMCL clear with active REQ remains abstract SAT",
+      "smallest_missing_artifact": "Same-epoch stop-to-admission invariant with actual descriptor table/fetch history and retained reload/phase state under applicable PCI sampling semantics",
+      "artifact_provider": ["firmware equations plus applicable architecture documentation", "existing correlated transaction traces or separately authorized hardware observation"],
+      "driver_consequence": "Keep descriptor pool, MDL and addresses resident; no idle/release classification from IIMCL clear",
+      "request_ids": ["X1", "P1", "P2"]
+    },
+    "no_new_pci_master_transactions": {
+      "status": "Unknown",
+      "local_evidence": "Configured REQ/FRAME/IRDY/enable controls and all36 AD/CBE output FF CE connections",
+      "missing_invariant": "The acknowledged stop excludes every new bus-master request/start/address and retry/reissue path across effective clocks",
+      "obstruction": "No stable configured gate correlated with a matched stop response excludes all new starts",
+      "smallest_missing_artifact": "Applicable PCI_W_VE PCILOGIC/PCIIOB sampling/drive contract plus same-epoch stop-to-no-start invariant",
+      "artifact_provider": ["Xilinx architecture documentation", "existing correlated traces or separately authorized hardware observation"],
+      "driver_consequence": "Masking INTEN or observing inactive pins cannot authorize next acquisition, unmapping or address reuse",
+      "request_ids": ["X1", "X2", "P1"]
+    },
+    "existing_pci_transactions_terminated": {
+      "status": "Unknown",
+      "local_evidence": "Conditional protocol acceptance, delayed A-qualified counters and internal terminal/C/IRQ pipeline",
+      "missing_invariant": "Every owned descriptor/data phase, retry, disconnect or abort is terminal before an attributable completion certificate",
+      "obstruction": "Target read/response and link framing do not establish PCI initiator retirement",
+      "smallest_missing_artifact": "Same-epoch ownership, final-phase/retry history and output-register sampling correlated with IRQ",
+      "artifact_provider": ["applicable architecture documentation", "existing correlated transaction traces or separately authorized hardware observation"],
+      "driver_consequence": "CompletionObserved is not IdleProved; keep all launched mapping/MDL/descriptor ownership until separately proved retirement",
+      "request_ids": ["X1", "X2", "P1"]
+    },
+    "internal_buffers_drained": {
+      "status": "Unknown",
+      "local_evidence": "RX two256x16 BRAMs,32 staging RAM16X1D cells, modulo pointers, periodic publication, W/issue/rewind and retention",
+      "missing_invariant": "Valid/wrap/CDC conservation excludes every queued, pending-output or reissuable word after the stop certificate",
+      "obstruction": "TX/RX snapshots and RAM/BRAM retain state; response/SYNC/event are not occupancy predicates",
+      "smallest_missing_artifact": "Initial valid/wrap state plus coherent RX/staging/reissue/final-word history or a validated invariant under actual clock/memory timing",
+      "artifact_provider": ["applicable memory/clock architecture documentation", "acquisition queue contract", "existing correlated internal traces or separately authorized hardware observation"],
+      "driver_consequence": "No pointer-equality, zero-memory, disabled-W, reset or IRQ-based drain shortcut; retain unknown-active resources",
+      "request_ids": ["X2", "A2", "P2"]
+    },
+    "host_dma_writes_completed": {
+      "status": "Unknown",
+      "local_evidence": "Endpoint source/output logic and documented Windows adapter API responsibilities; no board/platform completion contract",
+      "missing_invariant": "Every prior device write is host-visible and ordered before CPU consumption or reuse, under the actual bridge and selected DMA mapping API",
+      "obstruction": "Final DMA write, interrupt and upstream bridge/host visibility ordering remain unproved",
+      "smallest_missing_artifact": "Actual bridge/chipset identity and applicable posted-write/INTx ordering plus Windows adapter mapping/coherency contract",
+      "artifact_provider": ["host-platform specifications", "Windows DMA API/adapter contract", "existing correlated platform evidence"],
+      "driver_consequence": "CPU barriers, ISR rundown and adapter cleanup are not board stop; PFN addresses are not general device logical addresses",
+      "request_ids": ["H1", "H2", "P1"]
+    },
+    "stability_until_explicit_restart": {
+      "status": "Unknown",
+      "local_evidence": "Sticky C/IRQ, rearmable pending/reload/phase, retained RAM and explicit IIMCL capture",
+      "missing_invariant": "The stopped state is absorbing for all producer, descriptor and initiator clocks until a qualified explicit restart of the correct epoch",
+      "obstruction": "Sticky C/IRQ is not stable inactivity and the source has no per-acquisition generation tag",
+      "smallest_missing_artifact": "Joint no-admission/no-issue invariant covering retained state and old-source exclusion, tied to the accepted stop/restart protocol",
+      "artifact_provider": ["firmware invariant under external architecture/producer contracts", "existing correlated traces or separately authorized hardware observation"],
+      "driver_consequence": "Fresh software generation cannot retire old DMA or identify a late old physical source; quarantine remains irreversible",
+      "request_ids": ["A1", "X1", "P1", "P2"]
+    }
   },
   "acquisition_controller": {
     "scope": "Configured receiver qualification/parity/sequence, load/control/count comparisons and TX serialization; physical timing, matched response retirement and live revision Unknown",

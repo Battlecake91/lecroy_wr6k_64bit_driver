@@ -79,6 +79,22 @@
 
 ## DMA/PnP staging
 
+The current offline FPGA phase is consolidated in the
+[final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md),
+[implementation-owner handoff](handoffs/fpga-dma-implementation-owner-handoff.md)
+and [provider requests](handoffs/fpga-dma-missing-evidence.md). The inventory
+distinguishes17 Verified,8 Conditional,4 Inferred and10 Unknown findings. The
+single authoritative seven-row release/stability matrix is
+`pci-mmio-register-evidence.json::shutdown_evaluation`; every row remains Unknown.
+No current-evidence-only investigation is identified that would materially close
+those external hardware/platform gaps. General firmware-only reconstruction is
+therefore not currently justified. Installed-image identity remains Unknown;
+normal-success PFN compatibility is not IOMMU or retirement certification.
+The consolidation reran all374 FPGA/MCU cases, decoder/frame calibration and
+50/19 native architecture/PCI checks successfully;11 JSON-consumer cases were
+rerun (overlap), and six package-consistency checks passed. No new driver dry,
+WDK build or hardware execution is claimed for the documentation-only task.
+
 - The active acquisition path still uses PFN-derived DMA addresses; its
   software completion attribution and rundown are now generation-checked.
   Adapter-mapped staging is not reachable from acquisition, IOCTL

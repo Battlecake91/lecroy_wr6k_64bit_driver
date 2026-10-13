@@ -66,8 +66,10 @@ the FPGA's terminal-descriptor event is correctly attributed.
 Disabling staging admission retains memory; advancing its issue pointer is
 not unique accepted-write retirement because it has an actual rewind term.
 Consequently `NeverLaunched` software cleanup remains separate from
-`DeviceActive -> CompletionObserved`. Neither completion nor timeout permits
-`IdleProved` or release. Retain `UnknownActive -> Quarantined` ownership;
+`DeviceActive -> CompletionObserved`. Neither completion nor timeout proves
+`IdleProved` or authorizes a new hardware-active WDM release path. The existing
+normal-success legacy PFN cleanup remains the unverified compatibility exception
+documented below, not proof that all launched resources are retained. Retain `UnknownActive -> Quarantined` ownership;
 the inactive WDM stage must not gain a launch/release path from these proofs.
 
 The current offline [FPGA/MCU partial proof](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown)
@@ -88,8 +90,8 @@ transfer must not be relabeled NeverLaunched by preparing a new generation.
 
 For a transfer that **did launch**, there is currently **no verified release
 point after abort, timeout, shutdown, STOP or REMOVE**. A future release requires
-all six obligations in the
-[cross-layer audit](legacy-dma-abort-bus-idle-audit.md#six-independent-release-obligations),
+all six obligations in the single authoritative
+[`shutdown_evaluation` matrix](pci-mmio-register-evidence.json),
 a stable no-restart condition, the applicable Windows DMA completion/release
 operations, and software ISR/DPC/timer/IRP ownership rundown. An ack must be
 attributable to the affected transfer and remain valid until explicit restart;
@@ -126,6 +128,11 @@ discarded INTST read during source cleanup. None supplies `IdleProved`.
 No production code or compatibility policy is changed by this analysis;
 the known successful-PFN-path exception below remains an unresolved risk,
 not certified release behavior. `UnknownActive` quarantine stays mandatory.
+
+The [implementation-owner handoff](handoffs/fpga-dma-implementation-owner-handoff.md)
+consolidates activation prerequisites and separates this research-baseline software
+audit from later implementation-branch fixes. No new hardware-idle proof or
+production behavior follows from that consolidation.
 
 ## Defensive x64 behavior staged on the draft branch
 

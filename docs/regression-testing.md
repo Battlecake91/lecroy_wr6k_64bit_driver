@@ -338,12 +338,14 @@ helper requires a SAT base and restores its solver stack even on assertion
 failure; inconsistent and UNKNOWN bases are rejected. No production driver or
 FPGA model behavior is changed.
 
-The complete existing FPGA/MCU suite passes **342/342** Python tests: **156
-synthetic / 186 private-firmware**, zero failures/skips. Its 112 DMA tests split
-as 24 synthetic, 48 private configured-logic and 40 private SMT, counted from
+The complete existing FPGA/MCU suite passes **374/374** Python tests: **159
+synthetic / 215 private-firmware**, zero failures/skips. Its142 DMA tests split
+as25 synthetic,58 private configured-logic and59 private SMT, counted from
 the executed unittest classes. Decoder self-test, private frame calibration,
 50 native architecture checks and 19 PCI local equations also pass. These are
 offline validations of the existing model, not new physical PCI transactions.
+Current evidence scope, replay dependencies and release limitations are indexed
+in the [final FPGA evidence package](handoffs/fpga-reverse-engineering-final-evidence.md).
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication
@@ -472,6 +474,11 @@ Ordinary hosted CI can run Dry. Hardware and XStream require a machine attached 
 the actual acquisition hardware.
 
 ## Current verification status
+
+The owner-run build/hardware milestones below are historical execution records,
+not current FPGA/MCU or child-suite counts. The current offline analysis total
+is374 above and in `docs/status.md`; this consolidation performs no WDK rebuild
+or hardware run. Preserve the scope of the earlier8/8 front-end result.
 
 The first owner-run Dry execution on Windows 10 / VS 2022 / WDK successfully built
 the driver and lecdiag: driver build completed with 0 warnings and 0 errors, and

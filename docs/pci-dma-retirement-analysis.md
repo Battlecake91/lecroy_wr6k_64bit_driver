@@ -306,15 +306,14 @@ unconstrained; the equations have no corresponding generation/host contract.
 All six **end-to-end** obligations, and stability until explicit restart,
 remain **Unknown**. Verified local facts do not upgrade these classifications.
 
-| Obligation | Strongest current partial evidence | Smallest missing evidence artifact |
-|---|---|---|
-| Producer stopped | Conditional START/control and count-equality topology | Applicable HAD639E/MTT/MAM stop/last-word contract matched to the installed revision |
-| Descriptor engine stopped | Verified pending/load/terminal equations | Same-epoch stop-to-admission invariant including retained reload/phase state and descriptor fetch history |
-| No new PCI master transactions | Verified local initiator controls, no stop certificate | Applicable PCIIOB/PCILOGIC sampling/drive contract plus stop-to-no-start invariant |
-| Outstanding transactions terminated | Conditional protocol acceptance and delayed A | Same-epoch ownership/final-phase/retry history correlated with IRQ, including final output-register sampling |
-| Internal buffers drained | Verified modulo pointer and storage contracts, no drain flag | Valid/wrap/CDC invariant or existing correlated internal trace covering RX, staging, reissue and final word |
-| Host DMA writes completed/ordered | No board/platform completion contract | Actual bridge/chipset identity and applicable posted-write/INTx plus Windows adapter visibility contract |
-| Stable until explicit restart | Sticky C/IRQ is not stable inactivity | Proven absorbing no-admission/no-issue state across clocks and retained state, released only by qualified restart |
+The single authoritative seven-row matrix is
+[`pci-mmio-register-evidence.json::shutdown_evaluation`](pci-mmio-register-evidence.json).
+Each row records strongest local evidence, the missing end-to-end invariant,
+smallest artifact/provider, driver consequence and request IDs. This replaces
+the independently maintained release table here. The
+[final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md)
+and [provider requests](handoffs/fpga-dma-missing-evidence.md) are the concise
+implementation entry points; neither adds a second release criterion.
 
 Priorities for further work:
 
@@ -983,17 +982,12 @@ buffers drained; host DMA writes completed. Stability until explicit restart
 is also **Unknown**. Local equation proofs are not conditionally proved
 end-to-end release obligations.
 
-Targeted missing evidence, not a request to repeat available loader analysis:
-
-| Missing evidence | Exact invariant blocked / targeted request |
-|---|---|
-| Spartan-IIE PCI_W_VE PCILOGIC | Applicable simulation/RTL truth and timing for I1/I2/I3 plus dedicated IRDY/TRDY -> PCI_CE, including reset/startup. Needed to turn all36 AD/CBE output bits into correctly sampled commands/data; Spartan-6 PCILOGICSE is not a substitute. |
-| PCIIOB.PCI and effective clocks/reset | Dedicated tap polarity, sampling phase, DLL/BUFGCE edge/reset behavior and BRAM collision contract. Needed for own-master handshake, CDC admission and simultaneous read/write correctness. The named LH route is resolved; no missing alias evidence is requested for it. |
-| Descriptor/transaction execution | Existing trace/core simulation starting from known SGTA/IIMTC and actual count/address/chain table; capture REQ/GNT, AD/CBE, output enables, FRAME/IRDY/TRDY/DEVSEL/STOP, every accepted phase, retry/disconnect/abort and IRQ. Needed for legal fetch, unique entry consumption, terminal/error progress and IRQ ordering. |
-| Buffer execution/ownership | Initial valid/wrap state and synchronized receive write/read pointers, staging write_index/read_index, W/issue/rewind and actual accepted-write events for the same trace, including a stalled final word. Needed to distinguish retained/reissued words, wrap/full/empty, unique retirement and premature reuse. |
-| Producer/end-of-data | Applicable HAD639E/MTT/MAM stop and last-word contract, including maximum queued data after START clear and independent producer completion. Needed for stopped production and final receive admission; no clock edge alone is not drain evidence. |
-| Installed revision | Read-only existing identification/configuration records tying PCI U3 and acquisition U21/U38 images to the assembly under review. Needed to apply configured-image findings to the device, not to prove local Boolean equations. |
-| Host bridge/platform | Bridge identity and applicable posted-write drain/interrupt ordering contract, plus Windows adapter mapping/coherency requirements for that platform. Needed for accepted PCI write -> host visibility and safe mapping release, independently of FPGA IRQ ordering. |
+The authoritative matrix above maps each obligation to exact provider request
+IDs in [missing evidence](handoffs/fpga-dma-missing-evidence.md). That document
+replaces the duplicated artifact-request table here. It specifies architecture,
+producer/queue, configuration identity, same-epoch transaction/buffer and platform
+inputs, and explicitly excludes repeating completed reconstruction or conducting
+unapproved hardware experiments.
 
 No full safe-shutdown proof is possible from the currently recovered cuts.
 The remaining contract must cover these architecture, execution and platform gaps jointly. PR #9 stays draft,
