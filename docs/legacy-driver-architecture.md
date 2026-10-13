@@ -241,12 +241,19 @@ descriptor construction
 
 `FUN_00014847` binds these known registers.
 
+These are recovered **driver access names**, not a declaration of physical
+register ownership. The [focused PCI target decode](pci-fpga-firmware-analysis.md#focused-pci-target-mmio-decode-2026-10-10)
+and [machine-readable evidence matrix](pci-mmio-register-evidence.json) separate
+local config/DMA-offset storage candidates from acquisition forwarding and
+unresolved readback. In particular, IIMCL=0 is not a certified idle acknowledgement.
+
 ### BAR0 / interrupt-DMA region
 
 Known descriptors include:
 
 ```text
-+0x000  START / acquisition firmware/start register
++0x000  FVER / PCI-interface firmware version
++0x00C  START / initialization start-status register
 +0x004  ERRS
 +0x008  ERRM
 +0x040  SGTA / acquisition DMA descriptor-table address
@@ -612,6 +619,14 @@ handlers are:
 - `DEVICE_CONTROL 0x11018` is the entire original 27-case IOCTL dispatcher;
 - `POWER 0x1B096`, `SYSTEM_CONTROL 0x10CEA`,
   and `PNP 0x1A6EA` use their respective WDM paths.
+
+In particular, the SHUTDOWN entry is **not** a DMA shutdown callback: its
+concrete unsupported handler issues no MMIO or stop/idle wait. STOP/REMOVE
+use separate callbacks; `0x1082E` conditionally unmaps three MMIO resource
+wrappers through `0x106A0`, then disconnects the interrupt through `0x18648`.
+These are software resource operations, not a revocation of host-memory DMA.
+See the [cross-layer shutdown audit](legacy-dma-abort-bus-idle-audit.md#additional-focused-shutdown-and-command-findings)
+for the command/acknowledgement distinction and FPGA correlation boundary.
 
 **Table boundary:** the dump requested 30 DWORDs, but only
 the first **28** at `0x1CD10..0x1CD7F` are dispatch pointers.

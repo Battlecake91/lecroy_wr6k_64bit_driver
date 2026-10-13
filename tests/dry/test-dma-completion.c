@@ -83,6 +83,7 @@ int main(void)
     HANDLE worker;
     HANDLE workers[2];
     unsigned attempt;
+    LONG phase;
 
     (void)setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -287,6 +288,57 @@ int main(void)
     check("late IRQ cannot recover or reuse quarantined generation",
         !LecDmaCompletionObservePhysicalIrq(&tracker, 13) &&
         !LecDmaCompletionPrepare(&tracker, 14));
+
+    reset(&tracker, 20);
+    check("normal success consumes IRQ without proving releasable ownership",
+        activate(&tracker, 20) &&
+        LecDmaCompletionObservePhysicalIrq(&tracker, 20) &&
+        LecDmaCompletionConsumeSignal(&tracker, 20) &&
+        !LecDmaCompletionFinishWait(&tracker, 20, TRUE) &&
+        LecDmaCompletionReadPhase(&tracker) == LecDmaCompletionObserved &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 20));
+    check("legacy next-generation preparation discards observed evidence, not hardware activity",
+        LecDmaCompletionPrepare(&tracker, 21) &&
+        LecDmaCompletionReadPhase(&tracker) == LecDmaCompletionNeverLaunched &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 20) &&
+        !LecDmaCompletionConsumeSignal(&tracker, 20));
+    check("untagged delayed old physical source can be attributed to the newly active generation",
+        activate(&tracker, 21) &&
+        LecDmaCompletionObservePhysicalIrq(&tracker, 21) &&
+        LecDmaCompletionConsumeSignal(&tracker, 21) &&
+        !LecDmaCompletionFinishWait(&tracker, 21, TRUE) &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 21));
+
+    /* Predicate coverage, not a claim that these fixture states are reachable. */
+    for (phase = LecDmaCompletionNeverLaunched;
+         phase <= LecDmaCompletionQuarantined; ++phase) {
+        char label[96];
+        BOOLEAN expected = (BOOLEAN)(phase == LecDmaCompletionNeverLaunched ||
+            phase == LecDmaCompletionIdleProved);
+        reset(&tracker, 30);
+        tracker.Phase = phase;
+        (void)sprintf_s(label, sizeof(label),
+            "mapping release phase %ld requires no launch or independent idle evidence", phase);
+        check(label, LecDmaCompletionMayReleaseMapping(&tracker, 30) == expected &&
+            !LecDmaCompletionMayReleaseMapping(&tracker, 29));
+    }
+    check("null tracker and zero generation cannot authorize release",
+        !LecDmaCompletionMayReleaseMapping(NULL, 30) &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 0));
+    reset(&tracker, 31);
+    check("uncertainty cannot be repaired by a later success or idle assertion",
+        activate(&tracker, 31) &&
+        LecDmaCompletionFinishWait(&tracker, 31, FALSE) &&
+        !LecDmaCompletionProveIdle(&tracker, 31) &&
+        LecDmaCompletionFinishWait(&tracker, 31, TRUE) &&
+        LecDmaCompletionReadPhase(&tracker) == LecDmaCompletionUnknownActive &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 31));
+    check("quarantine rejects idle, completion and generation reuse together",
+        LecDmaCompletionMarkQuarantined(&tracker, 31) &&
+        !LecDmaCompletionProveIdle(&tracker, 31) &&
+        !LecDmaCompletionObservePhysicalIrq(&tracker, 31) &&
+        !LecDmaCompletionPrepare(&tracker, 32) &&
+        !LecDmaCompletionMayReleaseMapping(&tracker, 31));
 
     printf("DMA COMPLETION: %u/%u passed; %u failed.\n",
         passed, passed + failed, failed);

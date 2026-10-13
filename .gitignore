@@ -37,4 +37,10 @@ packages/
 license-backups/
 *.ds2433.bin
 
+# Private LeCroy FPGA firmware/schematic evidence used only for offline analysis.
+private_evidence/
+BINARY_*.bin
+BINARY_*.mcs
+WR6k_PCI_FPGA_Handoff_*/
+
 xstream-automation-dump*.txt

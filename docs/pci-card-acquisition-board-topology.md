@@ -1,6 +1,7 @@
 # PCI interface card and acquisition-board hardware boundaries
 
-**Evidence reviewed:** the user's two **one-page, A2** uploads:
+**Evidence reviewed:** the user's two **one-page, A2** uploads, plus the
+locally available service-manual mainboard child sheets described below:
 `PCI Card.pdf` (PCI interface schematic, title area names Perigee LLC
 and dates it 12 March 2003), and `Overview.pdf` (LeCroy Corporation
 acquisition-board **top-level overview**, drawing/model area shows
@@ -15,6 +16,56 @@ the Overview itself carries a LeCroy proprietary-information notice.
 **Document scope:** the PCI card is not the same PCB as the LeCroy
 acquisition board or the ProBus probe/front-panel module.
 All three layers must be distinguished during driver reconstruction.
+
+## Acquisition Controller Child Sheets
+
+The local `LeCroy-WaveRunner-6000-SM.pdf` contains the full 45-sheet mainboard
+drawing, not just the overview. Drawing 901587 rev B / model 901586-XX appears
+at PDF pages 269-313 (one-based; sheet N is PDF page 268+N). This corrects the
+earlier inventory limited to `Overview.pdf`. No new schematic download is
+required. The source drawings and rendered crops remain private.
+
+| Evidence grade | Physical evidence | Interpretation limit |
+|---|---|---|
+| Verified | Sheets 36-39 / PDF 304-307: control FPGA **U21 XC2S200E-FG456**, RX connector J11 and TX connector J10 | Separate from PCI-card U3; schematic revision does not prove installed assembly |
+| Verified | U21 RX P/N pairs: B19/A19, B18/A18, B17/A17, E16/E17, D16/C16, B16/A16, D15/C15, B15/A15, D14/C14, B14/A14, D13/C13, B13/A13; SYNC C12/B12; RST_ERR D12/E12 | Direction is acquisition-controller RX, not another PCI interface |
+| Verified | RX_CLK_P A11/GCK2; BRD_CLK_125_CTRL AA12/GCK0; 125MHZ_MTT_P AB12/GCK1 | Dedicated clock pins are not fabric IQ; labels do not establish effective DLL timing |
+| Verified | U21 **START ball AA5**, on MTT bus toward timebase sheet 18 | Not B8, a different configured pulse output |
+| Verified | Sheet 36: U28 MT48LC8M8A2TG-75 SDRAM on DRAM_INTERFACE; sheet 39: U18 XC18V04 PROM marked DNI | Neither RAM occupancy nor fitted configuration source follows from labels |
+| Verified | Sheets 18-19 / PDF 286-287: separate ATC/MTT FPGA **U38 XC2S200E-FG456**, START on **N2**, SACQ on **M1**; sheet 40 / PDF 308: MCU U16 **C161PI** | Corrects the earlier stepped-net transcription START/M1 and U8 designator; ADC/MAM pending work is separate from controller register-load banks |
+| Verified | U21 TX P/N pairs: U12/V12, AA13/AB13, AA14/AB14, W14/Y14, V14/U14, Y15/AA15, V15/W15, Y16/AA16, V16/W16, Y17/AA17, V17/W17, W18/Y18; SYNC Y19/AA19; clock V13/W13; RST_ERR AA20/AB20 | Y19/AA19 is SYNC, not data lane11; physical map does not establish stop acknowledgement |
+| Verified | U21 E14 is RX_TXSTABLE; its sampled/inverted state participates in configured TX class selection | Link-stability feedback, not a producer-idle or command-generation tag |
+| Inferred | BINARY.204 stream 0 enables twelve U21 RX P pads plus SYNC and matching 0x080/0x084/0x064 predicates; stream 1 does not enable these RX pads | Pin fingerprint alone is role evidence, not proof of loader order or live image identity |
+| Verified | Stream1 configures **N2 input** at X0,Y12 IOI[3].I, **M1 output** at X0,Y14 IOI[1].PAD_O, complementary **D2/D1** outputs from X6,Y25 SLICE[1].Y | Matches START, SACQ and PCCLKP/N on sheet18. The previous M1 conflict was a schematic-reading error, not evidence for a missing image |
+| Verified | Sheet37/PDF305 U21 C21 DOUT -> MTT bus27 -> sheet18/PDF286 DIN_TB -> sheet17/PDF285 U38 C22 DIN; shared B22 CCLK via bus26 | Establishes the physical configuration chain, not the C161 routine's supplied bytes |
+| Inferred | Stream1 is the U38/timebase image: pin directions, clocks, START logic, physical chain and C161 source/loop lengths agree | Conditional on selected flash bank and successful serial configuration; not installed/live identity |
+| Verified | Sheet40 MCU P2.9 DIN, P2.10 _PROG, P2.11 DONE, P2.12 acquisition CCLK, P2.13 PCI CCLK; sheet39 _PROG reaches U21 and ATC_PROG bus28 | C161 6D6C uses base+0x100000 and360526 source bytes;6F1C uses base+0x180000 and180260 bytes. DONE-high bypass, one-edge DIN lag and six extra acquisition bytes prevent configuration-success assertion |
+| Verified | Sheet18 U38 M1 SACQ -> bus19 -> sheet38 U21 **W3**, not grounded Y3 | Configured three-stage U21 sampling; not an immediate DMA-stop ACK |
+
+### Timebase START Boundary (2026-10-11)
+
+The two parallel stepped nets on sheet18 must be followed to their actual
+pin rows: START terminates at N2; SACQ terminates at M1. The pinned BOND85
+mapping places them at west-side `(0,12,3)` and `(0,14,1)` respectively.
+Stream1 uses the unregistered N2 input, not its disabled IQ sampler.
+
+START low asynchronously clears X2,Y7 SLICE[1].YQ, followed by two local
+X24,Y0 BUFGCE[1] stages. An independent X24,Y29 BUFGCE[0] three-stage
+sampling chain drives a **falling-edge toggle**. No frequency/phase relation
+between these domains, U21 or the PCI FPGA is assumed. Trigger-edge logic
+is not a proof that all sampling/data production has ceased.
+
+SACQ is the registered output of a G-only SRL16E at X4,Y14 SLICE[0],
+tap2. Its input is the OR of X18,Y1 SLICE[0].YQ and X15,Y2 SLICE[0].XQ;
+the latter's configured synchronous dual SR/REV mode is now source-backed and
+modeled. The external producer/drain contract remains Unknown. Neither SACQ nor
+START is identified as a stable
+host-visible DMA-stop acknowledgement. See the focused shutdown section in
+`pci-fpga-firmware-analysis.md` for equations, limitations and evidence requests.
+
+The configured receiver and START equations are documented in
+[Acquisition Controller Receiver And DMA Command Cuts](pci-fpga-firmware-analysis.md#acquisition-controller-receiver-and-dma-command-cuts).
+No acknowledged stop/drain or safe DMA release predicate has been established.
 
 ## Directly visible PCI interface card (PCI Card.pdf, sheet 1)
 
@@ -99,7 +150,7 @@ of our previous source and trace results:
 | The FPGA responds to conventional PCI signals and provides buffered `INTA#`. | The physical PCI endpoint is Spartan-IIE `U3` on the **interface card**. The driver-visible BAR register map and IRQ are host-facing abstractions of this PCI endpoint and/or its downstream logic. | The schematics do not alone assign every individual BAR register to PCI-FPGA RTL or downstream acquisition FPGA logic. |
 | `CFDC2110` family-0 `0x90`, local `BAR1 SPICTL/SPIDAT/SPIDIN` (source-confirmed) | An already recovered **host/board SPI register path**. Acquisition overview independently names `SPI_IO` and `UC_SPI`, while the external probe/front-panel uses I2C per the user. | Neither PDF establishes a one-to-one connection from host `0x90` or BAR1 SPI to a physical front I2C EEPROM transaction. |
 | `CFDC2110` forwarded firmware `0x4A` AP015 metadata | High-level result **after** some board/front-end identification process, consistent with the user's ADC-first / EEPROM-over-I2C sequence. | Exact ADC value, low-level I2C addresses/bytes, EEPROM field mapping and possible caching/firmware translation are unobserved in the IOCTL JSONL. |
-| `BAR0 INTST/INTEN 0x08`, `BAR1 HWInt 0x410`, software pending `0x0200` | Recovered host-side asynchronous board event delivery. Its existence and functioning for physical hotplug and jaw events are supported by the actual traces. | It is **not** a physical ADC sample or a raw I2C transaction, and a missing newly captured event does not imply XStream failed to display its existing unlocked-jaw warning. |
+| `BAR0 INTST/INTEN bit 0x08` (register offsets `0x080/0x084`), `BAR1 HWInt 0x410`, software pending `0x0200` | Recovered host-side asynchronous board event delivery. Its existence and functioning for physical hotplug and jaw events are supported by the actual traces. | It is **not** a physical ADC sample or a raw I2C transaction, and a missing newly captured event does not imply XStream failed to display its existing unlocked-jaw warning. |
 | `CFDC2138`/MAM and MTT transfer programming | Acquisition overview physically separates timebase TB, the two `ADC+MAM` regions, FPGA block FP and channel front-ends. | Do not identify card Spartan `U3` as the AM/AM2 FPGA or assert an exact link command format or low-level allocation/ownership without further RTL/sheets. |
 
 **Three separate non-volatile storage categories, not one:**
@@ -191,3 +242,62 @@ is later needed. Details:
 
 This information refines the schematic's `ID Chip` label,
 whose contents cannot be inferred from the picture alone.
+
+## DMA-related physical-layer findings and provenance (2026-10-06)
+
+Independent manufacturer documentation confirms that the separate PCI board
+is a **transaction repeater** between conventional PCI and the acquisition
+controller over LVDS, with its digital PCI/LVDS logic in a Xilinx
+Spartan-IIE FPGA (WaveRunner 6000 service manual, sections 4.3, 4.6.1.3).
+A public WaveRunner 6200 investigation independently reports three
+`XC2S200E` FPGAs: one `PQ208` PCI-card device and two `FG456`
+acquisition-board devices. These observations corroborate the owner's
+schematic, but do not identify the package/speed grade or fitted PCB
+revision of the actual working unit.
+
+The PCI board's `U3` terminates the buffered conventional PCI interface
+(including requester arbitration lines `REQ#/GNT#`) and terminates both LVDS
+headers `J1/J2`. The acquisition controller FPGA has separate MAM and
+MTT/timebase producer/control domains. The host's common `SGTA/IIMTC/IIMCL`
+register path and source-specific `MAMRGO/MTTRGO` launches are evidence of a
+shared **driver-visible** transfer interface, not evidence of the exact
+number of RTL engines, internal FIFOs or a common abort operation.
+
+No reviewed schematic or public service/manual excerpt documents the PCI
+FPGA's descriptor-fetch state machine, outstanding initiator requests,
+posted-write FIFO, remote LVDS work queue, interrupt-to-write-retirement
+ordering or a device-specific halt/drain acknowledgement. See
+[`legacy-dma-abort-bus-idle-audit.md`](legacy-dma-abort-bus-idle-audit.md)
+for the DMA-lifetime consequence: neither completion IRQ nor any inferred
+reset/disable sequence proves that host memory can be unmapped or reused.
+
+Additional public documentation:
+
+- [Manufacturer PCI description, section 4.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=25)
+- [Acquisition controller, section 4.6.1.3](https://www.manualslib.com/manual/2455899/Lecroy-Waverunner-6000-Series.html?page=30)
+- [LeCroy acquisition main-board drawing index and public schematic source](https://www.ko4bb.com/getsimple/index.php?dir=LeCroy/LeCroy_6000_series_Digital_Storage_Oscilloscope_Service_Manual/Schematics&id=manuals)
+- [Independent XC2S200E/link inspection, related WaveRunner 6200](https://www.eevblog.com/forum/repair/lecroy-waverunner-6200-repair/)
+
+Do not publish owner-supplied drawing PDFs, bitstreams or license memory.
+
+## PCI FPGA firmware and configuration analysis
+
+The installed XStream `s65devicepacksvr.dll` includes
+the PCI Spartan-IIE update image as an Intel-HEX
+resource. The bitstream is decoded to device geometry,
+and private schematic/package correlations have
+identified the PCI control pads. The completed local
+`INTA#` source/mask/output cone and its remaining physical proof limits are documented in
+**[PCI FPGA firmware analysis](pci-fpga-firmware-analysis.md)**.
+That document is the canonical home for firmware
+image provenance, resource IDs, frame geometry,
+package bonds and bitstream routing evidence.
+
+These results describe an **installed upgrade image**, not
+a proven match to the running PCI card firmware.
+No FPGA busmaster quiescence, acquisition abort,
+host-bridge posted-write drain or safe DMA mapping
+release is established.
+
+The [final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md)
+consolidates the physical/configured/inferred boundary and provider requests.

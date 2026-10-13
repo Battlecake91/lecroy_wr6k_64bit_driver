@@ -10,12 +10,90 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- Current result: source/ABI 35/35, layout 13/13, ownership 17/17,
+- Current result: source/ABI 43/43, layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
-  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 24/24;
-  overall 311/311 PASS.
+  publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 37/37;
+  overall 332/332 PASS, zero failures/skips.
+- Offline FPGA/MCU analysis regression: 18 C166 (14 synthetic, 4 private),
+  45 routing, 52 MMIO, 65 acquisition (10 synthetic, 21 private configured-logic,
+  24 U21 SMT, 9 timebase SMT, 1 cross-FPGA SMT), 142 PCI DMA (25 synthetic,
+  58 private configured-logic, 59 private SMT), and 52 synthetic SMT tests:
+  **374 distinct tests PASS** (159 synthetic, 215 private-firmware), zero
+  final failures/skips on2026-10-13. The full runner passed374 tests;
+  the final rerun passed28 (17 completion/matrix and11 synthetic DMA, all overlap),
+  plus decoder self-test and private frame calibration,
+  50 native architecture checks and 19 PCI local-state equations PASS.
+  The corrected U38 START=N2/SACQ=M1 mapping, physical configuration chain,
+  sparse C161 loader/flash-offset correlation, dual SR/REV primitive semantics,
+  local START/SACQ cones and buffer-admission limitations are documented in
+  [FPGA analysis](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown).
+  Stream1-to-U38 assignment is strongly inferred, not a live-image assertion.
+  [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) adds exact
+  SGTA/IIMTC/two-word capture maps, 15 local equations, full pointer/master-address
+  equations, conditional read/write C/BE and all32 AD alternatives, and staging
+  pointer increment/rewind/retention proofs. HEX/LH/LV owner qualification resolves
+  all9,150 routes in the control-root report, including the named payload mux.
+  The handshake extension adds19 local truth tables, exact issue/rollback and
+  two-bit prefetch/four-bit availability equations, delayed-accept counter CEs,
+  eight receive-pointer inequalities and explicit PCI output-enable/CE limits.
+  Twelve focused bound2/4 scenarios have consistent bases, eleven SAT and one
+  bounded UNSAT, zero unknown/timeout results. Q=0/no issue locally excludes
+  rewind under mode1/A0; IRQ with Q nonzero is only a runtime-cut candidate.
+  Token observers never constrain hardware. Owned acceptance, global word
+  conservation, IRQ-after-every-word and bridge visibility remain Unknown.
+  Ten additional bound1 runtime diagnostics yield nine SAT and
+  one UNSAT with ten consistent bases and zero solver-unknown results; all
+  are Inconclusive for physical shutdown, with 218 symbolic boundaries.
+  A full-network bound2 IRQ query timed out; its actual-register cone is SAT
+  only as a retained-state candidate with unknown external cuts. Final-phase
+  ordering and host visibility remain separate unproved obligations.
+  The new initialized transitive-state closure (1,513 FFs,42 memories) starts
+  with configured INIT/reset and four actually accepted host writes. A single
+  conditional execution reaches descriptor address/command at35, external
+  read accepts at37/38, delayed internal A at38/39, and count1/address0x200000
+  capture. No internal runtime FF cut or guessed PCI_CE is used. Two separate
+  whole-prefix environments (bound40 stalled fetch and bound52 mapped memory
+  with no remote edges) yield9 SAT/3 UNSAT, zero timeouts/unknown results; neither
+  can raise IRQ in its bound. No payload-completion/IRQ safety proof follows.
+  All six DMA-quiescence obligations and stable restart exclusion remain
+  Unknown. No new driver build or hardware test was performed for this offline
+  analysis. PR #9 remains draft, open and unmerged.
+  The [receive-to-payload closure](pci-dma-retirement-analysis.md#receive-to-payload-evidence-closure)
+  adds15 distinct regressions: all32 input muxes, six pointer-bank contracts,
+  periodic modulo8/modulo4 publication (not ACK handshakes), threshold224,
+  C+W read lookahead, pre-edge DOB staging and reset-retained RAM. Snapshot
+  coherence requires clock/hold/setup evidence; modulo counters do not prove
+  valid occupancy, external acceptance, physical retirement or safe release.
+  The [Completion and IRQ Proof Boundary](pci-dma-retirement-analysis.md#completion-and-irq-proof-boundary)
+  adds17 distinct regressions,16 FF contracts, two16-row qualifier checks and
+  all8192 source/mask/inhibit assignments. It corrects the historical provisional
+  INTA LUT inverse: PAD_O=0, PAD_T=`G4 || !OR(source[i] && INTEN[i])`.
+  Thirteen narrow actual-FF queries have SAT bases:12 mismatch UNSAT and1
+  runtime-cut SAT, zero solver UNKNOWN. They cover set-dominant ACK, source
+  retention under masking, old-state IIMCL clear, retained C on IIMCL1,
+  repeated terminal pulses, reset/INIT and nonzero bookkeeping cuts. The SAT
+  case is not initialized reachability or remaining physical DMA. No source
+  generation tag or drain acknowledgement is established; all six release
+  obligations and stability remain Unknown. Broad deeper-bound searches should
+  stop until the exact architecture/trace/platform artifacts listed there exist.
 
 ## DMA/PnP staging
+
+The current offline FPGA phase is consolidated in the
+[final evidence index](handoffs/fpga-reverse-engineering-final-evidence.md),
+[implementation-owner handoff](handoffs/fpga-dma-implementation-owner-handoff.md)
+and [provider requests](handoffs/fpga-dma-missing-evidence.md). The inventory
+distinguishes17 Verified,8 Conditional,4 Inferred and10 Unknown findings. The
+single authoritative seven-row release/stability matrix is
+`pci-mmio-register-evidence.json::shutdown_evaluation`; every row remains Unknown.
+No current-evidence-only investigation is identified that would materially close
+those external hardware/platform gaps. General firmware-only reconstruction is
+therefore not currently justified. Installed-image identity remains Unknown;
+normal-success PFN compatibility is not IOMMU or retirement certification.
+The consolidation reran all374 FPGA/MCU cases, decoder/frame calibration and
+50/19 native architecture/PCI checks successfully;11 JSON-consumer cases were
+rerun (overlap), and six package-consistency checks passed. No new driver dry,
+WDK build or hardware execution is claimed for the documentation-only task.
 
 - The active acquisition path still uses PFN-derived DMA addresses; its
   software completion attribution and rundown are now generation-checked.
@@ -66,6 +144,17 @@
   of its PFN-based resources therefore still depends on an unverified hardware
   IRQ-to-final-memory-access ordering premise. WDM mapping release remains
   forbidden on that evidence alone.
+  The source-backed normal-success audit now covers MDL/page/descriptor free,
+  software transfer ownership, DPC handoff and later-generation reuse. Active
+  PFN cleanup allocates/releases no adapter map registers. IRQ-mask failure
+  after an observed wait and untagged late-source attribution are explicit
+  implementation-owner review items; production behavior is unchanged.
+  The defensive [review matrix](dma-lifetime-and-timeout.md#defensive-review-and-implementation-owner-decisions)
+  records source facts, unproved premises, proposed containment, tests and
+  compatibility impact. New source guards reject production idle-hook callers
+  or IRQ-to-stage release dependencies; native tests cover all seven release
+  phases and irreversible quarantine. No new production lifetime defect was
+  established. This does not resolve the legacy success exception.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

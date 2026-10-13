@@ -304,10 +304,10 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows Dry regression on 2026-10-06:
-- Debug|x64 clean driver rebuild **PASS** (0 warnings, 0 errors),
-  x64 `lecdiag` **PASS**.
-- Source/ABI contracts **35/35 PASS**.
+Current software-only Dry regression on 2026-10-11 (no WDK rebuild or hardware
+execution for this analysis; the previously established Debug|x64 driver and
+`lecdiag` build result is unchanged):
+- Source/ABI contracts **43/43 PASS**.
 - DMA descriptor layout **13/13 PASS**.
 - Asynchronous mapping ownership **17/17 PASS**.
 - Asynchronous fake-WDM SG bridge **27/27 PASS**.
@@ -315,8 +315,37 @@ Current Windows Dry regression on 2026-10-06:
   **149/149 PASS**.
 - Live PnP publication lifetime suite **38/38 PASS**.
 - Live PnP IRP/remove-lock suite **8/8 PASS**.
-- Live DMA completion-state suite **24/24 PASS**.
-- Overall **REGRESSION SUITE PASS: Dry** (**311/311** checks).
+- Live DMA completion-state suite **37/37 PASS**.
+- All eight Dry child suites **332/332 PASS**, zero failures/skips. This run invokes the child suites
+  directly without claiming a new driver build/front-end runner execution.
+
+The added normal-success source contracts record the existing poison-only free
+gate, unregister exclusions, PFN/MDL resources and completion-lock DPC handoff.
+Native tests retain the distinction between observed completion and releasable
+mapping ownership, subsequent software-generation reuse, and an untagged old
+physical source attributed to a newly active generation. They are software
+limitation checks, not hardware IRQ injection or proof that the success-policy
+exception is safe. See the canonical normal-success lifetime audit.
+
+The defensive review adds four source guards for idle-hook call sites,
+IRQ-independent staged release, ordered STOP/SURPRISE/REMOVE cleanup and absent
+SG launch/idle callers. Ten native predicate checks cover all seven completion
+phases, invalid ownership, and failed attempts to recover quarantine. These
+guards do not replace integrated race testing or a hardware retirement contract.
+Five new synthetic SMT tests protect initialization, missing memory/FF contracts,
+vacuous exclusion and bounded-result interpretation. The synthetic exclusion
+helper requires a SAT base and restores its solver stack even on assertion
+failure; inconsistent and UNKNOWN bases are rejected. No production driver or
+FPGA model behavior is changed.
+
+The complete existing FPGA/MCU suite passes **374/374** Python tests: **159
+synthetic / 215 private-firmware**, zero failures/skips. Its142 DMA tests split
+as25 synthetic,58 private configured-logic and59 private SMT, counted from
+the executed unittest classes. Decoder self-test, private frame calibration,
+50 native architecture checks and 19 PCI local equations also pass. These are
+offline validations of the existing model, not new physical PCI transactions.
+Current evidence scope, replay dependencies and release limitations are indexed
+in the [final FPGA evidence package](handoffs/fpga-reverse-engineering-final-evidence.md).
 
 `test-pnp-publication.c` compiles the actual publication, PnP parent, sync and
 adapter-stage sources against the fake WDM surface. It verifies publication
@@ -445,6 +474,11 @@ Ordinary hosted CI can run Dry. Hardware and XStream require a machine attached 
 the actual acquisition hardware.
 
 ## Current verification status
+
+The owner-run build/hardware milestones below are historical execution records,
+not current FPGA/MCU or child-suite counts. The current offline analysis total
+is374 above and in `docs/status.md`; this consolidation performs no WDK rebuild
+or hardware run. Preserve the scope of the earlier8/8 front-end result.
 
 The first owner-run Dry execution on Windows 10 / VS 2022 / WDK successfully built
 the driver and lecdiag: driver build completed with 0 warnings and 0 errors, and

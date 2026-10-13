@@ -13,7 +13,7 @@ Both original acquisition variants converge through `0x17478 → 0x171DE`:
 
 Original `0x171DE` writes BAR0 `SGTA +0x040` at `0x171EA–171ED`, `IIMTC +0x044` at `0x17204–1720A`, resets completion event at `0x1721B–17222`, enables INTEN bit 0 at `0x17228–1722C`, sets `IIMCL +0x048 = 1` at `0x1722F–17235`, launches MAMRGO (BAR1 `+0x064`) or MTTRGO (BAR1 `+0x084`) at `0x1723A–1724F`, waits up to five seconds at `0x17254–17279` and disables INTEN bit 0 at `0x17281–17285`. Timeout `0x102` becomes `STATUS_IO_TIMEOUT (0xC00000B5)` at `0x1728C–17294`.
 
-Cleanup `0x137C4` handles/acknowledges interrupts (`0x1260E`, `0x126EE`), writes BAR1 `MTTCTL +0x080 = 0`, sets BAR0 `ERRM +0x008 = 0xFFFFFFFF`, clears the software interrupt mask and synchronously sets BAR0 `INTEN +0x084 = 0`. Quiesce `0x138D4` saves/masks interrupts but does not visibly abort DMA. The MAM postlude `0x12D6A` reads `IIMST +0x04C`, writes `IIMCL=0` if bit 0 is set, and reads ERRS; it does **not** poll until a proven idle state.
+Cleanup `0x137C4` handles/acknowledges interrupts (`0x1260E`, `0x126EE`), writes BAR1 `MTTCTL +0x080 = 0`, sets BAR0 `ERRM +0x008 = 0xFFFFFFFF`, clears the software interrupt mask and requests synchronized BAR0 `INTEN +0x084 = 0`. The actual INTEN write in `0x11E46` is gated by `DAT_0001CD08 != -1`. Quiesce `0x138D4` saves/masks interrupts but does not visibly abort DMA. The MAM postlude `0x12D6A` reads `IIMST +0x04C`, writes `IIMCL=0` if bit 0 is set, and reads ERRS; it does **not** poll until a proven idle state.
 
 **No original abort/idle protocol was proved.** In particular, `MTTCTL=0`, `IIMCL=0`, `IIMST` bit 0, an IRQ, or masking INTEN must not be treated as proof of completed bus transactions. A logged timeout is not a hardware reset. Physical DMA completion's memory-ordering guarantee also remains unknown.
 
@@ -49,6 +49,90 @@ Full evidence, per-register access table,
 confidence levels, x86/x64 differences,
 and safe future verification requirements
 are kept in the focused audit.
+
+### Applicable release decision
+
+The [PCI DMA retirement analysis](pci-dma-retirement-analysis.md) now recovers
+complete SGTA/IIMTC capture alternatives, two32-bit read-word banks, full
+descriptor-pointer/master-address equations, conditional C/BE/AD selection,
+the16x32 staging store and its increment/rewind transitions, counter D-word
+equations and the done/sticky-IRQ pipeline. The named longline route is
+resolved to auxiliary BRAM, not PCI input. None establishes the
+final accepted PCI phase or bridge write retirement. PCI-SIG specifies no
+ordering relationship between sideband INTx and PCI transactions; therefore
+IRQ completion needs a hardware/platform-specific ordering premise even if
+the FPGA's terminal-descriptor event is correctly attributed.
+
+Disabling staging admission retains memory; advancing its issue pointer is
+not unique accepted-write retirement because it has an actual rewind term.
+Consequently `NeverLaunched` software cleanup remains separate from
+`DeviceActive -> CompletionObserved`. Neither completion nor timeout proves
+`IdleProved` or authorizes a new hardware-active WDM release path. The existing
+normal-success legacy PFN cleanup remains the unverified compatibility exception
+documented below, not proof that all launched resources are retained. Retain `UnknownActive -> Quarantined` ownership;
+the inactive WDM stage must not gain a launch/release path from these proofs.
+
+The current offline [FPGA/MCU partial proof](pci-fpga-firmware-analysis.md#u38-identity-and-timebase-shutdown)
+does not change this decision. Source-backed reverse-SR and a two-FPGA
+START/SACQ diagnostic now demonstrate retained local state after START=0,
+even with the modeled SACQ writer inputs held zero. MAM/MTT equality and sticky
+MAMPGO are local state/event evidence, not final descriptor or host-write
+retirement. The original single IIMST read and IIMCL clear do not acquire
+stronger meaning from the loader/image attribution. All six obligations and
+stability until explicit restart remain unproved; no production code changes
+or DMA-release permission follow from the analysis.
+
+For a transfer that **never launched**, cleanup may release its correctly owned
+resources only after launch admission is irrevocably closed for that generation
+and all software callbacks/readers that could use them are retired. This is
+software ownership proof, not a hardware idle observation. An older unknown
+transfer must not be relabeled NeverLaunched by preparing a new generation.
+
+For a transfer that **did launch**, there is currently **no verified release
+point after abort, timeout, shutdown, STOP or REMOVE**. A future release requires
+all six obligations in the single authoritative
+[`shutdown_evaluation` matrix](pci-mmio-register-evidence.json),
+a stable no-restart condition, the applicable Windows DMA completion/release
+operations, and software ISR/DPC/timer/IRP ownership rundown. An ack must be
+attributable to the affected transfer and remain valid until explicit restart;
+loss of MMIO access or cleared/reset status cannot substitute for it.
+
+The Windows obligations are additional to device stop, not a way to obtain it:
+
+- [WRITE_REGISTER_ULONG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_ulong)
+  supplies a memory barrier for CPU-issued operations. It does not document
+  completion of this FPGA's autonomous writes to host memory.
+- [KeSynchronizeExecution](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kesynchronizeexecution)
+  serializes a callback with the ISR. It does not stop an autonomous PCI engine.
+- [PutScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pput_scatter_gather_list)
+  is the adapter cleanup operation after scatter/gather I/O; it flushes adapter
+  buffers and releases map registers/list. It must not be treated as an
+  undocumented WR6k abort command. The active legacy PFN builder has no such
+  adapter mapping to release and cannot gain IOMMU safety retroactively.
+- [CancelMappedTransfer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pcancel_mapped_transfer)
+  concerns mapped **system DMA** and its transfer context/completion callback.
+  Its success is not a documented stop of this custom busmaster. Required
+  adapter flushing remains necessary after cancellation or completion.
+- [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex)
+  supplies cache coherency and applicable system-controller flushing after a
+  transfer; calling it before transfer completion can cancel the transfer or
+  produce undefined behavior. It is not an FPGA/FIFO idle poll. Do not prescribe
+  every DDI together: cleanup must match the API and adapter resources actually
+  acquired, including IRQL and callback lifetime requirements.
+  Map-register/common-buffer/adapter teardown must not precede proven device
+  retirement and applicable host completion.
+
+The focused audit also verifies unsupported legacy `IRP_MJ_SHUTDOWN`, the
+timer rather than DMA-event wait preceding family-2 MTTCTL writes, and the
+discarded INTST read during source cleanup. None supplies `IdleProved`.
+No production code or compatibility policy is changed by this analysis;
+the known successful-PFN-path exception below remains an unresolved risk,
+not certified release behavior. `UnknownActive` quarantine stays mandatory.
+
+The [implementation-owner handoff](handoffs/fpga-dma-implementation-owner-handoff.md)
+consolidates activation prerequisites and separates this research-baseline software
+audit from later implementation-branch fixes. No new hardware-idle proof or
+production behavior follows from that consolidation.
 
 ## Defensive x64 behavior staged on the draft branch
 
@@ -134,6 +218,101 @@ and before any MAM setup MMIO, so a prior timeout cannot be followed by a
 second launch from the queued request. STOP/SURPRISE/REMOVE still close the
 outer admission gate and wait for already-admitted synchronous IOCTLs before
 resource teardown.
+
+### Normal-success lifetime audit and implementation-owner handoff
+
+Source audit scope: `Acquisition.c`, `Ioctl.c`, and `DmaCompletion.c`; no
+production changes or hardware execution. The two active MTT/MAM launch paths
+share the following compatibility policy. Software exclusion is Verified;
+hardware retirement and host visibility are Unknown.
+
+| Boundary / source symbol | Actual ownership transition | Remaining premise |
+|---|---|---|
+| `LecRegisterTransfer` / `LecBuildSourceMdlChain` | User destination pages are pinned with `MmProbeAndLockPages(..., IoWriteAccess)`; transfer stays in the process-owned list | Pinned pages must remain valid for every later device write |
+| `LecBuildDescriptorTable` | Nonpaged pool plus a nonpaged-pool MDL; direct PFN-derived 32-bit table/data/chain addresses; zero/zero terminator | CPU physical addresses must be device-visible; allocation is not a DMA common buffer |
+| `LecSelectDmaTransfer` / `LecLaunchSelectedDma` | Select generation under completion lock; arm; synchronized IIMCL=1 then GO then `DeviceActive` | Synchronization excludes the ISR, not pre-existing physical IRQ sources or old DMA |
+| `LecInterruptService` bit0 | Record current-generation physical IRQ; IIMCL=0; accumulate pending status, acknowledge INTST and queue DPC | IRQ provenance is untagged; neither acknowledge nor IIMCL=0 proves retirement |
+| `LecInterruptDpc` bit0 | Under completion lock, compare selected transfer generation, consume IRQ marker, signal its event | It does not inspect PCI transactions, buffer occupancy or host visibility |
+| `LecDmaCompletionFinishWait(..., TRUE)` | `CompletionObserved` makes the normal wait successful; phase remains observed, not idle | Assumes IRQ belongs to this transfer and follows its final device memory access |
+| MTT/MAM cleanup in `Ioctl.c` | Disable INTEN bit0, deselect under completion lock; MAM also reads IIMST, conditionally clears IIMCL and reads ERRS | These operations are not a verified drain or platform ordering fence |
+| `LecUnregisterTransfer` | Under TransferMutex reject `CurrentTransfer` or `DmaUnsafeToFree`, unlink, then free outside mutex | Ordinary completed transfer has no poison flag, so no independent idle predicate is required |
+| `LecFreeTransfer` / `LecFreeMdlChain` | Free descriptor MDL, descriptor pool, unlock pinned source pages, free source MDLs and transfer | Both descriptor reads and payload writes must already be impossible; not proved |
+| Process/all-transfer cleanup | Same free/retain gate; poisoned allocations remain retained through publication ownership | Process exit or software list removal is not device retirement |
+| Later serialized acquisition | `Prepare` permits observed -> never-launched for a fresh generation; current selection can be replaced after deselect | No proof old buffered/retried activity or late physical IRQ is excluded |
+
+There are **no adapter mappings/map-register allocations to release in this
+active PFN path**. `PutScatterGatherList`, `FreeAdapterObject`, adapter flush,
+and map-register release belong to the inactive stage, not this cleanup.
+Normal unregister does not disconnect IRQs or globally flush DPCs. That is
+not by itself a transfer-pointer use-after-free: DPC event access and deselect
+use the same completion lock, the DPC does not keep that pointer after the
+critical section, and acquisition holds TransferMutex across selection/wait/
+deselect. PnP-only `LecQuiesceDeferredWork` separately disconnects ISR sources,
+removes/flushes DPCs and cancels the timer after admission closure/rundown;
+that establishes software teardown, not a hardware bus-idle certificate.
+
+Two review points must not be hidden behind a successful wait:
+
+- `FinishWait` runs before INTEN-disable cleanup. A later mask failure changes
+  the returned status but does not itself poison an already observed transfer.
+  Whether interrupt-mask failure should latch device uncertainty is an owner
+  policy decision, not evidence of a demonstrated late DMA write.
+- Generation numbers tag software observations, not FPGA transactions. A
+  delayed old physical source delivered after a later `DeviceActive` is passed
+  the new active generation by the ISR and is accepted by the tracker. The
+  native regression reproduces this API limitation without injecting an IRQ.
+
+Implementation-owner review, before broadening live DMA support:
+
+1. Decide explicitly whether to retain the legacy success exception while
+   the hardware premise is unproved, or fail closed for every launched transfer.
+   Do not silently rename `CompletionObserved` to idle.
+2. Require a per-generation release/restart certificate covering descriptor
+   stop, accepted/retried writes, staged payload and platform visibility. Keep
+   this separate from the event/DPC handoff and from merely disabling INTEN.
+3. Apply the chosen policy consistently to explicit unregister, process cleanup,
+   PnP/all-transfer cleanup, same-transfer reuse and later acquisitions; cover
+   completion followed by mask failure and delayed physical sources in review.
+4. Only after hardware/bridge obligations are established, connect WDM mappings
+   and descriptor common buffers to the same ownership gate and matching adapter
+   completion/coherency operations. Preserve all UnknownActive retention paths.
+
+The new source/native tests freeze the audit's current behavior and limitations;
+they neither endorse the compatibility exception nor prove hardware safety.
+
+### Defensive review and implementation-owner decisions
+
+This review is limited to source inspection, existing offline regressions and
+software-only tests. It adds no PCI initiator, transaction stimulus, hardware
+access or production behavior. No new production lifetime defect was established.
+The following source-level limitations are confirmed; a possible hardware failure
+is not presented as an observed defect or a proven reachable FPGA execution.
+
+| Concern / confirmed source fact | Unproved premise and potential scenario | Required owner action / regression | Legacy behavior impact |
+|---|---|---|---|
+| IRQ-mask failure: both cleanup blocks in `Ioctl.c` call `LecDmaCompletionFinishWait` before `LecCommitLegacyInterruptMask`; a later failure changes status without poisoning the observed transfer | A stale interrupt source might remain deliverable; failure alone does not demonstrate pending DMA. The mask helper reports register-resolution failures, not a read-back-verified hardware mask acknowledgement | Specify whether mask cleanup failure closes admission and retains the transfer. Add an injectable software cleanup test for success followed by mask failure in both MTT and MAM; test status, retention and next-launch rejection | Fail-closed retention would change the current compatibility path; owner decision required |
+| Untagged IRQ: `Acquisition.c:LecInterruptService` supplies the current software generation, not a hardware transaction tag | An old physical source delivered after a later active publication could be attributed to the new generation. Generation checks cannot distinguish it | Require source provenance/restart exclusion independently of software generation. Existing native test demonstrates the API limitation only, without hardware IRQ injection | Rejecting/restricting later acquisitions would change current behavior |
+| Generation reuse: `LecDmaCompletionPrepare` allows observed -> never-launched; `LecSelectDmaTransfer` increments a 64-bit generation and skips zero | Fresh software identity is not retirement of old descriptors, writes or buffered work | Keep stale-marker/consumer tests; require a release/restart contract before connecting any hardware-active mapping to this reuse path. Audit wrap policy separately from ordinary distinct-generation tests | A no-reuse-until-idle policy would change legacy success behavior |
+| MDL/descriptor lifetime: `LecFreeTransfer` frees unpoisoned descriptor pool/MDL and unlocks source pages; it does not require `IdleProved` | If completion precedes the last device access, later unregister/process/PnP cleanup could release still-accessible memory. That ordering is not proved either way | Explicitly accept or remove the legacy success exception. Apply the decision to every free path, not just explicit unregister. Existing source tests freeze the current boundary; native tests deny mapping release from observed state | Retaining every launched legacy allocation would change normal cleanup and resource consumption |
+| Transfer ownership: register/find/unregister are process/token-owned and serialized with `TransferMutex`; DPC event access and deselect share `DmaCompletionLock` | Locks protect CPU object lifetime, not physical DMA ownership or completion ordering | Preserve list ownership, completion-lock handoff and admission rundown. Add integrated mocked acquisition/unregister/process-exit scheduling tests before refactoring these paths; current source-pattern tests are not a race proof | Preserving these invariants need not change the ABI |
+| PFN success cleanup: `LecBuildDescriptorTable` uses PFN-derived addresses; the active path owns no WDM map registers to release | CPU PFNs below 4 GiB do not establish device-visible addresses, IOMMU suitability or host visibility at IRQ | Do not insert adapter cleanup into the PFN path as an apparent fix. Migrate data and descriptor addresses together only after completion/coherency and ownership contracts exist | Actual adapter migration changes address/resource handling and requires separate qualification |
+| STOP/REMOVE/UnknownActive: `Device.c` closes admission and drains IOCTLs before deferred-work/list cleanup; poisoned transfers move to independent publication ownership and survive FDO removal | Software rundown, IRQ disconnect and a PnP notification do not stop hardware. Late quarantine cannot undo an already committed no-launch free | Preserve poison-before-notification, permanent retention and late-quarantine reporting. Existing fake-DDI tests cover blocked allocation/free, retained MDLs/table/PDO, notification failure and REMOVE races; START rejects the latched unknown state | No quarantine relaxation; restart-only containment is intentionally not production recovery |
+| Future WDM release: sync/PnP release APIs are explicitly no-launch; async SG release always quarantines. Completion/idle hooks have no production caller that authorizes hardware-active mapping release | `LecDmaCompletionProveIdle` and `LecMapOwnerIdleProved` accept a caller assertion, not a hardware certificate; wiring an IRQ to either would invalidate the safety boundary | Keep activation absent. Require independently established device retirement, platform completion/coherency and full caller/callback/adapter rundown before adding a live release path. New source tests detect idle-hook call sites and IRQ-to-stage dependencies | Activation is a future behavior change, not part of this research branch |
+
+The completion-state regression now checks all seven phases, wrong/zero
+generations and null ownership. `CompletionObserved`, `DeviceActive`, arming,
+unknown and quarantined ownership cannot authorize mapping release. A later
+success or idle assertion cannot recover unknown/quarantined ownership. These
+are tests of the actual C predicates, not proofs of hardware inactivity. The
+no-launch stage's release rationale is absence of a launch capability, not
+treating an observed IRQ as idle. Source-pattern guards are regression tripwires, not a
+whole-program call-graph or concurrency proof.
+
+All six hardware obligations remain independently **Unknown**: stopped
+producer; stopped descriptor engine; no new master transactions; outstanding
+transactions terminal; internal buffers drained; host writes completed/ordered.
+Stability until explicit restart is also **Unknown**. Keep
+`CompletionObserved != IdleProved` and retain `UnknownActive` resources.
 
 ## Windows DMA-adapter migration design (not activated)
 

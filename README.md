@@ -111,6 +111,7 @@ Detailed technical explanations live outside this README.
 | XStream automation | [XStream regression testing](docs/xstream-automation-regression-testing.md) |
 | ProBus architecture | [ProBus detection and I2C architecture](docs/probus-detection-i2c-architecture.md) |
 | PCI / acquisition-board topology | [Hardware topology](docs/pci-card-acquisition-board-topology.md) |
+| Offline FPGA evidence and DMA limits | [Final evidence and implementation handoff](docs/handoffs/fpga-reverse-engineering-final-evidence.md) |
 | Dallas safety and recovery | [Dallas test plan](docs/dallas-license-memory-test-plan.md) |
 | Driver signing | [Signing and funding](docs/driver-signing-and-funding.md) |
 | Open work | [TODO](docs/TODO.md) |

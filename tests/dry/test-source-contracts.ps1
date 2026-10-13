@@ -370,6 +370,43 @@ Test-Contract "completion IRQ never directly proves idle or releases mappings" {
     $acquisitionText -match 'LecDeselectDmaTransfer'
 }
 
+Test-Contract "normal legacy free gate is poison ownership, not an independent idle proof" {
+    $free = [regex]::Match($acquisitionText, '(?s)LecFreeTransfer\s*\(.*?\n\}')
+    $free.Success -and
+    $free.Value -match 'if \(Transfer->DmaUnsafeToFree\)' -and
+    $free.Value -match 'IoFreeMdl\(Transfer->DescriptorMdl\)' -and
+    $free.Value -match 'ExFreePoolWithTag\(Transfer->DescriptorBuffer' -and
+    $free.Value -match 'LecFreeMdlChain\(Transfer->SourceMdlChain\)' -and
+    $free.Value -notmatch 'LecDmaCompletionMayReleaseMapping|LecDmaCompletionProveIdle'
+}
+
+Test-Contract "normal unregister excludes selected or poisoned transfer before free" {
+    $unregister = [regex]::Match($acquisitionText, '(?s)LecUnregisterTransfer\s*\(.*?\n\}')
+    $unregister.Success -and
+    $unregister.Value -match 'CurrentTransfer == transfer' -and
+    $unregister.Value -match 'transfer->DmaUnsafeToFree' -and
+    $unregister.Value.IndexOf('RemoveEntryList') -gt $unregister.Value.IndexOf('STATUS_DEVICE_BUSY') -and
+    $unregister.Value.IndexOf('LecFreeTransfer') -gt $unregister.Value.IndexOf('RemoveEntryList')
+}
+
+Test-Contract "source pin and descriptor allocations remain legacy PFN resources" {
+    $acquisitionText -match 'MmProbeAndLockPages\(mdl, AccessMode, IoWriteAccess\)' -and
+    $acquisitionText -match 'MmUnlockPages\(Mdl\)' -and
+    $acquisitionText -match 'MmBuildMdlForNonPagedPool\(Transfer->DescriptorMdl\)' -and
+    $acquisitionText -notmatch 'PutScatterGatherList|FreeAdapterObject|FlushAdapterBuffers|FreeMapRegisters'
+}
+
+Test-Contract "per-transfer DPC handoff stays under completion lock, global rundown is PnP-only" {
+    $dpc = [regex]::Match($acquisitionText, '(?s)VOID\s+LecInterruptDpc\s*\(.*?\n\}')
+    $deselect = [regex]::Match($acquisitionText, '(?s)LecDeselectDmaTransfer\s*\(.*?\n\}')
+    $dpc.Success -and $deselect.Success -and
+    $dpc.Value -match 'KeAcquireSpinLockAtDpcLevel\(&devExt->DmaCompletionLock\)' -and
+    $dpc.Value -match 'transfer->DmaGeneration == generation' -and
+    $deselect.Value -match 'KeAcquireSpinLock\(&DevExt->DmaCompletionLock' -and
+    $deselect.Value -match 'CurrentTransfer = NULL' -and
+    ([regex]::Matches($acquisitionText, 'KeFlushQueuedDpcs\(').Count -eq 1)
+}
+
 Test-Contract "serialized MAM launch rechecks terminal DMA admission" {
     $mam = [regex]::Match(
         $ioctlText,
@@ -535,6 +572,49 @@ Test-Contract "live PnP publication is remove-lock ordered and fail-closed" {
     $pnpPublicationText -match '(?s)InsertTailList.*?LECS65_TRANSFER_QUARANTINE_PUBLICATION.*?LecDmaPnpPublicationQuarantineParent' -and
     $acquisitionText -match '(?s)Transfer->DmaUnsafeToFree = TRUE;.*?DmaUnknownActive.*?LecSetIoctlAdmission.*?LecDmaPnpPublicationQuarantine' -and
     $ioctlText -match 'LecMarkDmaUnknownActive'
+}
+
+Test-Contract "no production caller promotes observed completion to proved hardware idle" {
+    $sources = Get-ChildItem -LiteralPath (Join-Path $repo 'driver') -Filter '*.c'
+    $calls = 0
+    foreach ($source in $sources) {
+        $text = Get-Content -LiteralPath $source.FullName -Raw
+        $calls += [regex]::Matches($text, '\bLecDmaCompletionProveIdle\s*\(').Count
+    }
+    # Exactly the function definition, with no call site in any driver C file.
+    $calls -eq 1 -and $completionText -match 'LecDmaCompletionProveIdle\('
+}
+
+Test-Contract "staged mapping cleanup has no IRQ-completion evidence dependency" {
+    ($syncText + $pnpDmaText + $scatterText + $adapterText) -notmatch
+        'LecDmaCompletionObservePhysicalIrq|LecDmaCompletionFinishWait|LecDmaCompletionProveIdle|LecDmaCompletionObserved' -and
+    $syncText -match '(?s)LecSgSyncReleaseNoLaunch\(.*?LecSgSyncCommitReleaseLocked.*?LecSgSyncFreeStage' -and
+    $pnpDmaText -match '(?s)LecDmaPnpFinishTeardownNoLaunch\(.*?Stage->UnknownActive.*?Stage->ActiveCalls != 0.*?LecSgSyncOwnerDrainNoLaunch'
+}
+
+Test-Contract "all live teardown paths close admission and drain before freeing transfer lists" {
+    foreach ($minor in @('STOP_DEVICE', 'SURPRISE_REMOVAL', 'REMOVE_DEVICE')) {
+        $pattern = '(?s)case IRP_MN_' + $minor + ':\s*(.*?)(?=\r?\n\s*case |\r?\n\s*default:)'
+        $match = [regex]::Match($deviceText, $pattern)
+        if (-not $match.Success -or $match.Groups[1].Value -notmatch
+            '(?s)LecSetIoctlAdmission\(devExt, FALSE\).*?LecDrainIoctls.*?LecQuiesceDeferredWork.*?LecReleaseAllTransfers') {
+            return $false
+        }
+    }
+    return $true
+}
+
+Test-Contract "mapping launch and idle hooks have no production callers" {
+    $sources = Get-ChildItem -LiteralPath (Join-Path $repo 'driver') -Filter '*.c'
+    foreach ($name in @('LecSgStageMarkLaunched', 'LecSgStageMarkIdleProved')) {
+        $calls = 0
+        foreach ($source in $sources) {
+            $text = Get-Content -LiteralPath $source.FullName -Raw
+            $calls += [regex]::Matches($text, ('\b' + $name + '\s*\(')).Count
+        }
+        if ($calls -ne 1) { return $false }
+    }
+    return $true
 }
 
 Test-Contract "public packed register ABI size guards are still present" {
