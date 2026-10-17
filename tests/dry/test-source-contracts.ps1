@@ -40,8 +40,9 @@ $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $driverInf = Join-Path $repo "driver\LecS65AcqDrv.inf"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
+$packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -74,6 +75,7 @@ $pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
+$packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -717,6 +719,41 @@ Test-Contract "lecwatch remains read-only and trace-only" {
     $lecwatchText -match 'LECS65_IOCTL_DEBUG_GET_TRACE' -and
     $lecwatchText -match 'is_sensitive_ioctl' -and
     $lecwatchText -notmatch 'LECS65_IOCTL_DEBUG_CLEAR_TRACE'
+}
+
+Test-Contract "package workflow is installation- and device-operation-free" {
+    $packageBuildText -notmatch '(?i)pnputil|Get-PnpDevice|DeviceIoControl|restart-device|disable-device|enable-device|add-driver' -and
+    $packageBuildText -match 'InstallAuthorized = \$false' -and
+    $packageBuildText -match 'DriverStoreChanged = \$false' -and
+    $packageBuildText -match 'PnpChanged = \$false' -and
+    $packageBuildText -match 'DeviceOpened = \$false'
+}
+
+Test-Contract "package workflow pins reviewed source and toolchain" {
+    $packageBuildText -match 'ExpectedDriverTreeCommit' -and
+    $packageBuildText -match 'merge-base --is-ancestor' -and
+    $packageBuildText -match "rev-parse', 'HEAD:driver" -and
+    $packageBuildText -match "rev-parse', 'HEAD:include" -and
+    $packageBuildText -match 'MSVC\\14\.41\.34120' -and
+    $packageBuildText -match '10\.0\.28000\.0' -and
+    $packageBuildText -match 'Current driver/include trees differ'
+}
+
+Test-Contract "package identity is explicit and output is non-overwriting" {
+    $packageBuildText -match '\[Parameter\(Mandatory=\$true\)\][\s\S]*?\[string\]\$DriverVer' -and
+    $packageBuildText -match 'OutputRoot already exists; refusing to overwrite' -and
+    $packageBuildText -notmatch 'Remove-Item' -and
+    $packageBuildText -match 'Source INF must contain exactly one DriverVer line' -and
+    $packageBuildText -match 'PackageState = if \(\$Sign\)'
+}
+
+Test-Contract "package signing is opt-in and thumbprint-bound" {
+    $packageBuildText -match '\[switch\]\$Sign' -and
+    $packageBuildText -match 'CertificateThumbprint is required with -Sign' -and
+    $packageBuildText -match "'/sha1'" -and
+    $packageBuildText -notmatch "'/n'" -and
+    $packageBuildText.Contains('Cert:\LocalMachine\My') -and
+    $packageBuildText -match 'UnsignedValidationOnly'
 }
 
 Write-Host ""
