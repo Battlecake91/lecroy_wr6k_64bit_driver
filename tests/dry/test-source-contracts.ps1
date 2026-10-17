@@ -732,8 +732,8 @@ Test-Contract "package workflow is installation- and device-operation-free" {
 Test-Contract "package workflow pins reviewed source and toolchain" {
     $packageBuildText -match 'ExpectedDriverTreeCommit' -and
     $packageBuildText -match 'merge-base --is-ancestor' -and
-    $packageBuildText -match "rev-parse', 'HEAD:driver" -and
-    $packageBuildText -match "rev-parse', 'HEAD:include" -and
+    $packageBuildText -match "rev-parse 'HEAD:driver'" -and
+    $packageBuildText -match "rev-parse 'HEAD:include'" -and
     $packageBuildText -match 'MSVC\\14\.41\.34120' -and
     $packageBuildText -match '10\.0\.28000\.0' -and
     $packageBuildText -match 'Current driver/include trees differ'

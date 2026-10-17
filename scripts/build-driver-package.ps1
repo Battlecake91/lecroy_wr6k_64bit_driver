@@ -61,6 +61,7 @@ $toolPaths = [ordered]@{
     Inf2Cat = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x86\Inf2Cat.exe'
     SignTool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
     SourceTool = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\srcsrv\srctool.exe'
+    SymChk = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\symchk.exe'
 }
 
 function Invoke-GitCapture {
@@ -103,9 +104,167 @@ function Invoke-ScriptCaptured {
 
     Write-Host ""
     Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
+    $global:LASTEXITCODE = 0
     $result = @(& $FilePath @Arguments 2>&1)
+    $invocationSucceeded = $?
+    $exitCode = $LASTEXITCODE
     $result | Tee-Object -LiteralPath $LogPath | Out-Host
+    if (-not $invocationSucceeded -or $exitCode -ne 0) {
+        throw "$Name failed with exit code $exitCode."
+    }
     return $result
+}
+
+function Assert-DriverVer {
+    param([Parameter(Mandatory=$true)][string]$Value)
+
+    if ($Value -notmatch '^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4}),([0-9]+\.){3}[0-9]+$') {
+        throw "Invalid DriverVer syntax: $Value"
+    }
+    $parts = $Value.Split(',', 2)
+    $date = [datetime]::ParseExact(
+        $parts[0], 'MM/dd/yyyy',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::None)
+    $versionParts = @($parts[1].Split('.') | ForEach-Object { [uint32]$_ })
+    if ($versionParts.Count -ne 4 -or @($versionParts | Where-Object { $_ -gt 65535 }).Count -ne 0) {
+        throw "DriverVer components must be in the range 0..65535: $Value"
+    }
+    if ($date.Date -gt (Get-Date).ToUniversalTime().Date) {
+        throw "DriverVer date is in the future in UTC: $Value"
+    }
+}
+
+function New-ExclusiveOutputRoot {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $parent = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        [System.IO.Directory]::CreateDirectory($parent) | Out-Null
+    }
+    try {
+        New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null
+    }
+    catch {
+        throw "OutputRoot already exists or could not be created exclusively: $Path"
+    }
+}
+
+function Get-CodeSigningEkuOids {
+    param([Parameter(Mandatory=$true)]$Certificate)
+
+    $extension = @($Certificate.Extensions |
+        Where-Object { $_.Oid.Value -eq '2.5.29.37' })
+    if ($extension.Count -ne 1) {
+        return @()
+    }
+    $eku = [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new(
+        $extension[0].RawData, $extension[0].Critical)
+    return @($eku.EnhancedKeyUsages | ForEach-Object { $_.Value })
+}
+
+function Assert-CertificateMetadata {
+    param(
+        [Parameter(Mandatory=$true)]$Metadata,
+        [Parameter(Mandatory=$true)][string]$ExpectedThumbprint
+    )
+
+    if ($Metadata.Thumbprint -ne $ExpectedThumbprint.ToUpperInvariant() -or
+        $Metadata.EkuOids -notcontains '1.3.6.1.5.5.7.3.3' -or
+        -not $Metadata.HasPrivateKey -or
+        -not $Metadata.ChainBuild -or
+        (Get-Date) -lt $Metadata.NotBefore -or
+        (Get-Date) -gt $Metadata.NotAfter) {
+        throw 'The selected certificate metadata is not currently usable for local code signing.'
+    }
+}
+
+function Assert-ManifestComplete {
+    param([Parameter(Mandatory=$true)]$Manifest)
+
+    $artifactNames = @($Manifest.Artifacts | ForEach-Object Name | Sort-Object)
+    $requiredArtifacts = @('LecS65AcqDrv.cat', 'LecS65AcqDrv.inf',
+        'LecS65AcqDrv.pdb', 'LecS65AcqDrv.sys')
+    if ($Manifest.Schema -ne 1 -or
+        [string]::IsNullOrWhiteSpace($Manifest.Source.WorkflowCommit) -or
+        [string]::IsNullOrWhiteSpace($Manifest.Source.DriverTree) -or
+        [string]::IsNullOrWhiteSpace($Manifest.Source.IncludeTree) -or
+        $Manifest.Build.Configurations.Count -ne 2 -or
+        $Manifest.Regression.FunctionalTestsPassed -ne 394 -or
+        $Manifest.Regression.TotalStressIterations -ne 66000 -or
+        ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
+        @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
+        $Manifest.InstallAuthorized -ne $false -or
+        $Manifest.Safety.DriverStoreChanged -ne $false -or
+        $Manifest.Safety.PnpChanged -ne $false -or
+        $Manifest.Safety.DeviceOpened -ne $false) {
+        throw 'Package manifest is incomplete or violates the offline safety contract.'
+    }
+}
+
+function Get-ReviewedSourceIdentity {
+    param(
+        [Parameter(Mandatory=$true)][string]$Repository,
+        [Parameter(Mandatory=$true)][string]$ExpectedCommit
+    )
+
+    $head = (& git -C $Repository rev-parse HEAD 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve package-workflow HEAD.' }
+    $status = (& git -C $Repository status --porcelain --untracked-files=normal 2>&1 |
+        Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect package-workflow status.' }
+    if (-not [string]::IsNullOrEmpty($status)) {
+        throw "The package worktree is not clean:`n$status"
+    }
+    & git -C $Repository merge-base --is-ancestor $ExpectedCommit HEAD
+    if ($LASTEXITCODE -ne 0) {
+        throw "Expected driver-tree commit is not an ancestor of HEAD: $ExpectedCommit"
+    }
+    $expectedDriverTree = (& git -C $Repository rev-parse "$ExpectedCommit`:driver").Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve expected driver tree.' }
+    $expectedIncludeTree = (& git -C $Repository rev-parse "$ExpectedCommit`:include").Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve expected include tree.' }
+    $currentDriverTree = (& git -C $Repository rev-parse 'HEAD:driver').Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve current driver tree.' }
+    $currentIncludeTree = (& git -C $Repository rev-parse 'HEAD:include').Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve current include tree.' }
+    if ($expectedDriverTree -ne $currentDriverTree -or
+        $expectedIncludeTree -ne $currentIncludeTree) {
+        throw 'Current driver/include trees differ from the reviewed development revision.'
+    }
+    return [pscustomobject]@{
+        Head = $head
+        DriverTree = $currentDriverTree
+        IncludeTree = $currentIncludeTree
+    }
+}
+
+function Assert-BuildPairPaths {
+    param(
+        [Parameter(Mandatory=$true)][string]$SysPath,
+        [Parameter(Mandatory=$true)][string]$PdbPath,
+        [Parameter(Mandatory=$true)][string]$Label
+    )
+
+    if (-not (Test-Path -LiteralPath $SysPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $PdbPath -PathType Leaf)) {
+        throw "Missing $Label SYS/PDB build output."
+    }
+}
+
+function Assert-SysPdbIdentity {
+    param(
+        [Parameter(Mandatory=$true)][string]$SysPath,
+        [Parameter(Mandatory=$true)][string]$PdbPath,
+        [Parameter(Mandatory=$true)][string]$SymChkPath,
+        [Parameter(Mandatory=$true)][string]$LogPath,
+        [Parameter(Mandatory=$true)][string]$Label
+    )
+
+    $null = Invoke-ExternalCaptured -Name "$Label SYS/PDB identity" `
+        -FilePath $SymChkPath `
+        -Arguments @('/v', $SysPath, '/s', (Split-Path -Parent $PdbPath)) `
+        -LogPath $LogPath
 }
 
 function Get-FileRecord {
@@ -196,37 +355,17 @@ if (-not $Sign -and -not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     throw '-CertificateThumbprint is accepted only with -Sign.'
 }
 
-$identityParts = $DriverVer.Split(',', 2)
-$driverDate = [datetime]::ParseExact(
-    $identityParts[0],
-    'MM/dd/yyyy',
-    [System.Globalization.CultureInfo]::InvariantCulture,
-    [System.Globalization.DateTimeStyles]::None)
-if ($driverDate.Date -gt (Get-Date).ToUniversalTime().Date) {
-    throw "DriverVer date is in the future in UTC: $DriverVer"
-}
+Assert-DriverVer -Value $DriverVer
 
 if (Test-Path -LiteralPath $output) {
     throw "OutputRoot already exists; refusing to overwrite it: $output"
 }
 
-$head = Invoke-GitCapture @('rev-parse', 'HEAD')
-$status = Invoke-GitCapture @('status', '--porcelain', '--untracked-files=normal')
-if (-not [string]::IsNullOrEmpty($status)) {
-    throw "The package worktree is not clean:`n$status"
-}
-& git merge-base --is-ancestor $ExpectedDriverTreeCommit HEAD
-if ($LASTEXITCODE -ne 0) {
-    throw "Expected driver-tree commit is not an ancestor of HEAD: $ExpectedDriverTreeCommit"
-}
-$expectedDriverTree = Invoke-GitCapture @('rev-parse', "$ExpectedDriverTreeCommit`:driver")
-$expectedIncludeTree = Invoke-GitCapture @('rev-parse', "$ExpectedDriverTreeCommit`:include")
-$currentDriverTree = Invoke-GitCapture @('rev-parse', 'HEAD:driver')
-$currentIncludeTree = Invoke-GitCapture @('rev-parse', 'HEAD:include')
-if ($expectedDriverTree -ne $currentDriverTree -or
-    $expectedIncludeTree -ne $currentIncludeTree) {
-    throw 'Current driver/include trees differ from the reviewed development revision.'
-}
+$sourceIdentity = Get-ReviewedSourceIdentity -Repository $repo `
+    -ExpectedCommit $ExpectedDriverTreeCommit
+$head = $sourceIdentity.Head
+$currentDriverTree = $sourceIdentity.DriverTree
+$currentIncludeTree = $sourceIdentity.IncludeTree
 
 $tools = @()
 foreach ($entry in $toolPaths.GetEnumerator()) {
@@ -240,6 +379,7 @@ if (($tools | Where-Object Name -eq 'InfVerif').ProductVersion -notlike '10.0.28
     throw 'Pinned SDK/WDK tools are not the approved 10.0.28000.0 payload.'
 }
 
+New-ExclusiveOutputRoot -Path $output
 New-Item -ItemType Directory -Path $packageDir | Out-Null
 New-Item -ItemType Directory -Path $evidenceDir | Out-Null
 Start-Transcript -LiteralPath $transcriptPath | Out-Null
@@ -331,10 +471,7 @@ try {
     foreach ($configuration in @('Debug', 'Release')) {
         $sys = Join-Path $repo "x64\$configuration\LecS65AcqDrv.sys"
         $pdb = Join-Path $repo "x64\$configuration\LecS65AcqDrv.pdb"
-        if (-not (Test-Path -LiteralPath $sys -PathType Leaf) -or
-            -not (Test-Path -LiteralPath $pdb -PathType Leaf)) {
-            throw "Missing $configuration SYS/PDB build output."
-        }
+        Assert-BuildPairPaths -SysPath $sys -PdbPath $pdb -Label $configuration
         $pe = Get-PeEvidence -Path $sys -Label $configuration
         if ([System.IO.Path]::GetFileName($pe.EmbeddedPdbPath) -ne
             [System.IO.Path]::GetFileName($pdb)) {
@@ -347,6 +484,11 @@ try {
         if (($pdbOutput -join "`n") -notmatch '[1-9][0-9]* source files are indexed') {
             throw "$configuration PDB did not report indexed source files."
         }
+        $symbolMatchLog = Join-Path $evidenceDir (
+            "pdb-{0}-identity.txt" -f $configuration.ToLowerInvariant())
+        Assert-SysPdbIdentity -SysPath $sys -PdbPath $pdb `
+            -SymChkPath $toolPaths.SymChk -LogPath $symbolMatchLog `
+            -Label $configuration
         $buildArtifacts += [ordered]@{
             Configuration = $configuration
             SYS = [ordered]@{
@@ -358,6 +500,7 @@ try {
                 Bytes = (Get-Item -LiteralPath $pdb).Length
                 SHA256 = (Get-FileHash -LiteralPath $pdb -Algorithm SHA256).Hash
                 ReadabilityLog = [System.IO.Path]::GetRelativePath($output, $pdbLog)
+                IdentityLog = [System.IO.Path]::GetRelativePath($output, $symbolMatchLog)
             }
         }
         $peEvidence[$configuration] = $pe
@@ -404,21 +547,39 @@ try {
             throw "Expected exactly one LocalMachine/My certificate for $normalizedThumbprint."
         }
         $certificate = $certificate[0]
-        $eku = @($certificate.EnhancedKeyUsageList | ForEach-Object ObjectId |
-            ForEach-Object Value)
-        if ($eku -notcontains '1.3.6.1.5.5.7.3.3' -or
-            -not $certificate.HasPrivateKey -or
-            (Get-Date) -lt $certificate.NotBefore -or
-            (Get-Date) -gt $certificate.NotAfter) {
-            throw 'The selected certificate is not currently usable for code signing.'
+        $eku = @(Get-CodeSigningEkuOids -Certificate $certificate)
+        $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+        try {
+            $chain.ChainPolicy.RevocationMode =
+                [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+            $chainBuild = $chain.Build($certificate)
+            $chainStatus = @($chain.ChainStatus | ForEach-Object {
+                $_.Status.ToString()
+            })
         }
+        finally {
+            if ($null -ne $chain) { $chain.Dispose() }
+        }
+        $certificateMetadata = [pscustomobject]@{
+            Thumbprint = $certificate.Thumbprint
+            EkuOids = $eku
+            HasPrivateKey = $certificate.HasPrivateKey
+            ChainBuild = $chainBuild
+            NotBefore = $certificate.NotBefore
+            NotAfter = $certificate.NotAfter
+        }
+        Assert-CertificateMetadata -Metadata $certificateMetadata `
+            -ExpectedThumbprint $normalizedThumbprint
         $certificateRecord = [ordered]@{
             Subject = $certificate.Subject
+            Issuer = $certificate.Issuer
             Thumbprint = $certificate.Thumbprint
             NotBeforeUtc = $certificate.NotBefore.ToUniversalTime().ToString('o')
             NotAfterUtc = $certificate.NotAfter.ToUniversalTime().ToString('o')
             EKU = $eku
             HasPrivateKey = $certificate.HasPrivateKey
+            ChainBuild = $chainBuild
+            ChainStatus = $chainStatus
         }
         $null = Invoke-ExternalCaptured -Name 'SYS signing' `
             -FilePath $toolPaths.SignTool `
@@ -537,6 +698,7 @@ try {
             SigningPolicyChanged = $false
         }
     }
+    Assert-ManifestComplete -Manifest $manifest
     $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
     $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
     Set-Content -LiteralPath $manifestHashPath `
