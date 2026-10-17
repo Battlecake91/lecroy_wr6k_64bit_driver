@@ -81,7 +81,11 @@
   5.1 and failed after builds/regressions but before staging or signing because
   that runtime lacks `System.IO.Path.GetRelativePath`. No candidate, CAT,
   manifest or signed driver artifact was produced, and the authorization must
-  not be reused. See the
+  not be reused. The workflow now uses bounded path handling compatible with
+  Windows PowerShell 5.1 and PowerShell 7. Focused path, mocked package/manifest
+  and signature-state tests pass 19/19 on each host; all 16 existing
+  fail-closed tests also pass on each host. No real signing was performed, and
+  a new explicit authorization is still required. See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).

@@ -345,6 +345,25 @@ certificate metadata, an existing output directory, a real mismatched SYS/PDB
 pair, mocked InfVerif/Inf2Cat/signing/catalog-membership failures, and an
 incomplete manifest. It never uses a certificate private key or a device.
 
+`tests/dry/test-package-workflow-compatibility.ps1` is also separate from the
+394 functional total. Run it explicitly under both supported hosts:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File .\tests\dry\test-package-workflow-compatibility.ps1
+pwsh.exe -NoProfile -NonInteractive `
+  -File .\tests\dry\test-package-workflow-compatibility.ps1
+```
+
+The suite passed 19/19 on Windows PowerShell 5.1.19041.6456 / CLR
+4.0.30319.42000 and 19/19 on PowerShell 7.6.5 / CLR 10.0.11. It reproduces the
+manifest-path stage that previously failed on Windows PowerShell 5.1 and then
+completes a mocked package-artifact and manifest round trip. It verifies path
+containment, different-drive rejection, missing-file rejection, deterministic
+paths with spaces and special characters, manifest completeness, and mocked
+signed/unsigned verification states without using a certificate or private
+key.
+
 These executions qualify both Debug and Release x64 compilation and the
 hardware-independent source/native contracts at the merged development source.
 They do **not** install or load the driver, exercise kernel scheduling, prove
