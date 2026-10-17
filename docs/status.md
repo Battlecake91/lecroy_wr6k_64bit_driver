@@ -52,19 +52,24 @@
   runtime package must therefore be built once, hash-frozen and promoted as an
   immutable set; a later rebuild is a different artifact unless deterministic
   linking is separately implemented and qualified.
-- Phase 2C now has a validated package-only workflow at `b0d3a2c`, layered on
-  the exact `cb5010a` driver/include trees. It pins SDK/WDK 10.0.28000.0 and
+- Phase 2C now has a hardened validated package-only workflow at `67a3075`,
+  layered on the exact `cb5010a` driver/include trees. It pins SDK/WDK 10.0.28000.0 and
   MSVC 14.41.34120, builds both configurations and tools, enforces the complete
   Dry/stress evidence, validates PE/PDB/INF/CAT metadata, records hashes, and
   contains no installation or device-operation path. The validated Release
-  set is intentionally unsigned and has manifest SHA-256
-  `EE4416518469A8CE52D021BF242FACD22CDCD7E0949FD3A84D39934387F8D921`.
+  Release set is intentionally unsigned, uses the proposed unapproved
+  `DriverVer=10/17/2026,0.2026.1017.1`, and has manifest SHA-256
+  `3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
   It is not an installation candidate. The owner has designated the WR6k host
   as an expendable test environment, but private-key use, signing,
   crash-control/reboot changes, installation, PnP, Verifier and acquisition
   retain separate gates. The previous `oem100.inf` package has been exported
   privately with Phase 1-matching hashes; elevated WinRE/BCD inventory and a
-  recovery rehearsal remain incomplete. See the canonical
+  recovery rehearsal remain incomplete. Sixteen negative package tests pass,
+  including an actual mismatched SYS/PDB rejection. Certificate metadata is
+  otherwise valid but `HasPrivateKey=true` conflicts with `certutil` reporting
+  a missing stored key set, so signing readiness is not established. See the
+  canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
 

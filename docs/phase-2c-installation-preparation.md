@@ -14,6 +14,10 @@ under an authorization gate were executed while preparing this document.
 - The active service remains `LecS65AcqDrv`, `Running`, `Manual`, from
   `C:\Windows\system32\drivers\LecS65AcqDrv.sys`. No service or device state
   was changed.
+- Passive driver ranking shows `oem100.inf` as installed/best-ranked with
+  `09/29/2026,0.2026.930.54` and rank `00FF0000`. Numerous older development
+  packages remain in the Driver Store. They were not deleted or changed; the
+  signed candidate must be verified as the selected package after installation.
 - Driver Verifier has flags `0x00000000` and no selected drivers.
 - Crash control is `CrashDumpEnabled=7` (Automatic Memory Dump),
   `AutoReboot=1`, `Overwrite=1`, `LogEvent=1`, with
@@ -100,10 +104,14 @@ offline preparation.
 
 ## Candidate verification gate
 
-The validated output at workflow commit `b0d3a2c` is unsigned and is not an
-installation candidate. Before any future install, require a newly created,
-owner-approved signed output and compare its manifest plus INF, CAT, SYS and
-PDB hashes. Require all of the following:
+The validated output at workflow commit `67a3075` is unsigned and is not an
+installation candidate. Its Release SYS SHA-256 is
+`7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14`
+and its manifest SHA-256 is
+`3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
+Before any future install, require a newly created, owner-approved signed output
+and compare its manifest plus INF, CAT, SYS and PDB hashes. Require all of the
+following:
 
 - exact approved `driver/` and `include/` tree IDs;
 - approved Debug/Release selection and `DriverVer` ranking;
@@ -116,6 +124,41 @@ PDB hashes. Require all of the following:
 - the old package and recovery procedure remain available.
 
 Any mismatch creates a new candidate and returns to offline validation.
+
+The proposed Release identity is `DriverVer=10/17/2026,0.2026.1017.1`.
+It is later than the installed `09/29/2026,0.2026.930.54`, uses four components
+within the Windows INF range, and does not change the public IOCTL ABI or legacy
+driver-build constant. It remains a proposal until the owner approves it.
+
+After that approval and resolution of the certificate key-container blocker,
+the exact command proposed for a separately authorized signing run is:
+
+```powershell
+.\scripts\build-driver-package.ps1 `
+  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
+  -RuntimeConfiguration Release `
+  -DriverVer '10/17/2026,0.2026.1017.1' `
+  -OutputRoot .\x64\Phase2C-SignedCandidate-20261017-1017-1 `
+  -Sign `
+  -CertificateThumbprint DBB8F215BE00ACA1D6F7D258773DBE8748387D90
+```
+
+This command has not been executed. The current certificate metadata is not a
+passed signing gate because `HasPrivateKey=true` conflicts with `certutil`'s
+missing stored-key-set report.
+
+The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
+with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive
+enumeration after the separately authorized first START must find exactly one
+present interface for the target PCI function in each class:
+
+```text
+{958695A4-693A-435E-8297-66F805D8E46A}
+{7AC34BE9-F766-4F15-9E88-854BA5E2146E}
+{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}
+{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}
+{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
+```
 
 ## Bounded first-START procedure
 
@@ -131,7 +174,7 @@ additional restart or any acquisition.
 3. From one elevated console, install only the frozen INF:
 
    ```text
-   pnputil.exe /add-driver <approved-package>\LecS65AcqDrv.inf /install
+   pnputil.exe /add-driver <approved-signed-output>\package\LecS65AcqDrv.inf /install
    ```
 
 4. Permit only the installation-triggered START. Do not issue disable, enable,
@@ -166,14 +209,17 @@ PnP matrix.
 
 ## Remaining blockers before installation
 
-1. Approve the exact runtime configuration and final `DriverVer`.
-2. Approve the exact certificate thumbprint and one private-key signing run.
-3. Produce and verify a signed immutable candidate; the current set is
+1. Approve Release x64 and the proposed
+   `DriverVer=10/17/2026,0.2026.1017.1`, or provide a replacement identity.
+2. Resolve the certificate's missing stored-key-set report without changing
+   trust, ACL or key material under this task.
+3. Approve the exact certificate thumbprint and one private-key signing run.
+4. Produce and verify a signed immutable candidate; the current set is
    intentionally unsigned.
-4. Complete elevated WinRE/BCD inventory, recovery-media copy and an actual
+5. Complete elevated WinRE/BCD inventory, recovery-media copy and an actual
    recovery-console/reinstall rehearsal.
-5. Approve and verify crash-dump/page-file changes and the required reboot.
-6. Grant a separate authorization naming the frozen hashes for one install and
+6. Approve and verify crash-dump/page-file changes and the required reboot.
+7. Grant a separate authorization naming the frozen hashes for one install and
    one initial START.
 
 Acquisition and DMA remain a separate workstream. In particular, ordinary

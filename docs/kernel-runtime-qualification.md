@@ -124,8 +124,8 @@ not currently produce the same SYS hash. Reproducibility for Phase 2C means
 that one reviewed build is hash-frozen and promoted unchanged; do not rebuild
 and assume equivalence. Bit-reproducible linking is a separate future change.
 
-Use `scripts/build-driver-package.ps1` for Stage 2. Its default unsigned mode
-was validated at workflow commit `b0d3a2c`. Do not use
+Use `scripts/build-driver-package.ps1` for Stage 2. Its hardened default
+unsigned mode was validated at workflow commit `67a3075`. Do not use
 `scripts/build-sign-load-driver.ps1`; that script
 continues from package creation into `pnputil` installation, device restart
 and `lecdiag` device access.
