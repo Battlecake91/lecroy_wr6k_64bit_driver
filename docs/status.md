@@ -57,7 +57,7 @@
   MSVC 14.41.34120, builds both configurations and tools, enforces the complete
   Dry/stress evidence, validates PE/PDB/INF/CAT metadata, records hashes, and
   contains no installation or device-operation path. The validated Release
-  Release set is intentionally unsigned, uses the proposed unapproved
+  set is intentionally unsigned, uses the proposed unapproved
   `DriverVer=10/17/2026,0.2026.1017.1`, and has manifest SHA-256
   `3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
   It is not an installation candidate. The owner has designated the WR6k host
@@ -66,9 +66,12 @@
   retain separate gates. The previous `oem100.inf` package has been exported
   privately with Phase 1-matching hashes; elevated WinRE/BCD inventory and a
   recovery rehearsal remain incomplete. Sixteen negative package tests pass,
-  including an actual mismatched SYS/PDB rejection. Certificate metadata is
-  otherwise valid but `HasPrivateKey=true` conflicts with `certutil` reporting
-  a missing stored key set, so signing readiness is not established. See the
+  including an actual mismatched SYS/PDB rejection. Read-only CNG inspection
+  proves that the old test certificate has a stale machine-key reference: its
+  named Microsoft Software KSP container returns `NTE_BAD_KEYSET`, while the
+  provider itself is present and no alternate certificate/private-key pair was
+  found. The old certificate is not signing-ready; a newly named test
+  certificate/key pair requires separate authorization. See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).

@@ -171,22 +171,41 @@ and the separately approved exact inputs.
 
 ## Current certificate-metadata gate
 
-Read-only metadata inspection of thumbprint
-`DBB8F215BE00ACA1D6F7D258773DBE8748387D90` found exactly one
-`LocalMachine\My` certificate:
+Read-only metadata and key-container inspection of thumbprint
+`DBB8F215BE00ACA1D6F7D258773DBE8748387D90` found the signing certificate in
+`LocalMachine\My`:
 
 - subject and issuer `CN=LecS65 x64 Test` (self-signed);
 - valid from `2026-09-25T17:54:22Z` through `2027-09-25T18:14:22Z`;
 - critical digital-signature key usage and code-signing EKU
   `1.3.6.1.5.5.7.3.3`;
 - successful offline local-chain construction with revocation checking disabled;
-- `HasPrivateKey=true`, indicating a certificate/key association; but
-- `certutil -store My <thumbprint>` reports that the stored key set is missing.
+- RSA 2048 public key and SHA-256/RSA certificate signature;
+- CNG provider `Microsoft Software Key Storage Provider`, machine-key flag,
+  `KeySpec=0` (`XCN_AT_NONE`) and referenced container
+  `te-aa54bed6-ed44-4a0d-a952-18db0e1422e1`;
+- `HasPrivateKey=true`, which reflects the stored `CERT_KEY_PROV_INFO` reference;
+  but
+- an exact read-only open of that container returns `NTE_BAD_KEYSET`, not access
+  denied, and provider enumeration does not contain the referenced container.
 
-The last two observations conflict. The certificate is therefore **not yet
-classified as signing-ready**. Resolving the key-container state would require
-a separately authorized private-key-use or certificate-management step. No key
-was opened, exported or used during this audit.
+The Microsoft Software KSP is installed and can enumerate other machine keys.
+No certificate with this public key and a usable private-key association exists
+in another machine or current-user store; the copies in Root, CA and Trusted
+Publishers contain only the public certificate. The `LocalMachine\My` entry
+therefore has a stale key-provider reference and is **not signing-ready**. This
+is a missing-key case, not a wrong-store, missing-provider or ACL diagnosis.
+The original key can be recovered only from an external backup or another host
+that still has that exact key pair. Re-association cannot recreate it.
+
+The preferred remediation for this disposable test environment is a new,
+distinctly named self-signed code-signing certificate and CNG key pair. Its
+creation, public-certificate trust installation and first signing use remain
+separate owner-authorized operations. Do not bind a new key to the old
+certificate or reuse its subject as the replacement identity. No key was
+created, opened, exported or used during this audit, and no store or ACL was
+changed. Detailed evidence and gated commands are recorded in the
+[missing-key diagnosis](handoffs/phase-2c-test-signing-key-diagnosis.md).
 
 ## Required Stage 2 exit evidence
 
