@@ -108,6 +108,19 @@ The elevated Windows PowerShell 5.1.19041.6456 process successfully verified:
   `te-7e799dd3-f896-4db8-b6ff-f680e0b5a7cf` through Microsoft Software Key
   Storage Provider.
 
+The elevated one-shot launcher was intended to invoke exactly this command
+after its preflight:
+
+```powershell
+& .\scripts\build-driver-package.ps1 `
+  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
+  -RuntimeConfiguration Release `
+  -DriverVer '10/17/2026,0.2026.1017.1' `
+  -OutputRoot .\x64\Phase2C-SignedCandidate-20261018-1017-1 `
+  -Sign `
+  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472
+```
+
 The attempt then failed in the external one-shot launcher before entering
 `scripts/build-driver-package.ps1`. Windows PowerShell 5.1 rejected the
 launcher's log-capture command because `Tee-Object -LiteralPath -Append` does
