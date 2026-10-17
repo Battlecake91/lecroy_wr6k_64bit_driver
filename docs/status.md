@@ -2,18 +2,16 @@
 
 ## Build and software regression
 
-- Development branch `fix/p0-irq-start-dma-gating` is at merge commit
-  `69ad853d2d48419f88be98935fdf879def417b43`. Its second parent is PR #10
-  head `fae8a50bb2b622628cd57e18723c3037698f06b5`, and the merge tree is
-  identical to that reviewed PR tree.
-- A new clean Windows worktree at that merge commit was validated by Codex on
-  2026-10-13 with SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Debug x64
-  built with 0 warnings and 0 errors; `LecS65AcqDrv.sys`, x64 `lecdiag.exe`
-  and x64 `lecwatch.exe` were generated successfully. The first Release x64
-  attempt exposed project configuration defect `LNK1295` (`/MANIFEST` with
-  `/DRIVER`). The qualification branch disables manifest generation for
-  Release as Debug already did. A subsequent clean Release x64 rebuild passed
-  with 0 warnings and 0 errors.
+- Integration commit `9c97e49c7a6f3f42485e9e6f0ccca8c3b3536dea` merges the reviewed
+  Debug/Release qualification from PR #11.
+- A clean isolated Windows worktree at that exact commit was validated on
+  2026-10-17 with SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Debug x64
+  and Release x64 each built with 0 warnings and 0 errors. The Debug SYS is
+  104,960 bytes with SHA-256
+  `00EA34C32254920068C3B14284A23A8CB7ECCDA4052563B58E5810450AAA5D42`;
+  the Release SYS is 76,288 bytes with SHA-256
+  `ACACAFD96DA0100CFC91AE03C20651ACC4748864E9AB12A030F7AA46D3FE3619`.
+  x64 `lecdiag.exe` and `lecwatch.exe` also built successfully.
 - Both Debug and Release SYS files report AMD64 machine `0x8664`, native
   subsystem, entry point `DriverEntry`, and imports limited to `ntoskrnl.exe`
   and `HAL.dll`. `DriverEntry` is the PE entry point and is not required to be
@@ -24,15 +22,16 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- The Codex-run merged-head offline check on 2026-10-13 used
-  `scripts/test-driver.ps1 -Mode Dry -SkipBuild`. Result: source/ABI 47/47,
+- The clean-worktree offline check on 2026-10-17 used
+  `scripts/test-driver.ps1 -Mode Dry -SkipBuild`. Result: source/ABI 48/48,
   layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
   plus deterministic interleavings 2/2 and native INTEN checks 49/49;
-  overall 389/389 PASS, with 5,000/5,000 DMA stress and 1,000/1,000 INTEN
-  RMW stress iterations passing. The added source contract prevents recurrence
-  of the Release manifest mismatch. An expanded run passed 50,000/50,000 DMA
+  overall 390/390 PASS, with 5,000/5,000 DMA stress and 1,000/1,000 INTEN
+  RMW stress iterations passing. Source contracts prevent recurrence of the
+  Release manifest mismatch and require the exact five-interface compatibility
+  set. An expanded run passed 50,000/50,000 DMA
   race iterations and 10,000/10,000 INTEN RMW iterations. The default and
   expanded runs therefore reproduce the established 66,000/66,000 stress
   comparison. Native C tests use `/W4 /WX`; these are software-only tests and

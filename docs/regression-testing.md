@@ -304,30 +304,26 @@ parent-allocation counters.
 `scripts/test-driver.ps1 -Mode Dry` now invokes this suite.
 A source contract ensures the live PCI code cannot invoke this stage.
 
-Current Windows offline regression on 2026-10-13 used a clean worktree at
-development merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
-The commands and results below are new Codex executions, not the earlier
-owner-reported PR #10 console evidence:
+Current Windows offline regression on 2026-10-17 used a clean isolated
+worktree at integration commit
+`9c97e49c7a6f3f42485e9e6f0ccca8c3b3536dea`:
 
 - `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
   with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**: Debug|x64
   driver **PASS**, 0 warnings, 0 errors; `LecS65AcqDrv.sys`, x64
   `lecdiag.exe` and x64 `lecwatch.exe` generated successfully.
-- The first `scripts/build-driver.ps1 -Configuration Release` run found a
-  real project defect: Release inherited `/MANIFEST` while linking with
-  `/DRIVER`, producing `LNK1295`. Release now explicitly sets
-  `GenerateManifest=false`, matching Debug, and a clean MSBuild
-  `Release|x64` rebuild passes with 0 warnings and 0 errors.
+- `scripts/build-driver.ps1 -Configuration Release`: Release|x64 driver
+  **PASS**, 0 warnings, 0 errors.
 - `dumpbin /headers /imports /exports` on both SYS files reports AMD64 machine
   `0x8664`, native subsystem, `DriverEntry` as the PE entry point, and only
   `ntoskrnl.exe` and `HAL.dll` imports. No exports are present or required.
-- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **389/389 PASS**, comprising
-  source/ABI **47/47**, descriptor layout **13/13**, mapping ownership
+- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **390/390 PASS**, comprising
+  source/ABI **48/48**, descriptor layout **13/13**, mapping ownership
   **17/17**, asynchronous SG **27/27**, synchronous v3/PnP **149/149**,
   PnP publication **38/38**, PnP IRP/remove-lock **8/8**, DMA completion
   **39/39**, deterministic interleavings **2/2**, and production INTEN helper
-  checks **49/49**. The new contract verifies the shared Debug/Release driver
-  manifest and toolset policy.
+  checks **49/49**. Source contracts verify the shared Debug/Release driver
+  manifest/toolset policy and the exact five-interface compatibility set.
 - The default run passed **5,000/5,000** DMA race iterations and
   **1,000/1,000** INTEN RMW iterations.
 - `tests/dry/test-dma-completion.ps1 -StressIterations 10000` passed

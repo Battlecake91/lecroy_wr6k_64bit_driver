@@ -37,10 +37,11 @@ $pnpPublicationSource = Join-Path $repo "driver\DmaPnpPublication.c"
 $pnpPublicationHeader = Join-Path $repo "driver\DmaPnpPublication.h"
 $pnpIrpSource = Join-Path $repo "driver\PnpIrpLifetime.c"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
+$driverInf = Join-Path $repo "driver\LecS65AcqDrv.inf"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $lecwatchSource, $lecwatchBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -71,6 +72,7 @@ $pnpPublicationText = Get-Content -LiteralPath $pnpPublicationSource -Raw
 $pnpPublicationHeaderText = Get-Content -LiteralPath $pnpPublicationHeader -Raw
 $pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
+$driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 
 $script:Checks = 0
@@ -212,6 +214,30 @@ Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" 
     $ioctlText -match 'entry\s*=\s*&g_LecLegacyRegisterList\[index\]' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x101\)' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x106\)'
+}
+
+Test-Contract "replacement publishes the exact five legacy-compatible interface classes" {
+    $interfaceBlock = [regex]::Match(
+        $driverSourceText,
+        '(?s)g_LecS65InterfaceGuids\s*\[LECS65_INTERFACE_COUNT\]\s*=\s*\{(.*?)\};')
+    if (-not $interfaceBlock.Success) {
+        return $false
+    }
+
+    $normalized = ($interfaceBlock.Groups[1].Value -replace '\s', '').ToLowerInvariant()
+    $expected = @(
+        '{0x958695a4,0x693a,0x435e,{0x82,0x97,0x66,0xf8,0x05,0xd8,0xe4,0x6a}}',
+        '{0x7ac34be9,0xf766,0x4f15,{0x9e,0x88,0x85,0x4b,0xa5,0xe2,0x14,0x6e}}',
+        '{0x8d1103b8,0x5bf4,0x4b5c,{0xb2,0x1e,0xee,0xaa,0xce,0x97,0xd4,0x18}}',
+        '{0x9007c2bc,0xedfd,0x4f2f,{0xa0,0x59,0xdf,0x11,0x31,0xcb,0x1a,0xe5}}',
+        '{0xfc5df040,0xd6cd,0x4ba0,{0xb5,0xe0,0x25,0x61,0x97,0x29,0x63,0xa2}}'
+    )
+
+    $driverText -match '(?m)^\s*#define\s+LECS65_INTERFACE_COUNT\s+5\s*$' -and
+    ([regex]::Matches($interfaceBlock.Groups[1].Value, '\{\s*0x[0-9A-Fa-f]{8}\s*,').Count -eq 5) -and
+    (@($expected | Where-Object { -not $normalized.Contains($_) }).Count -eq 0) -and
+    $driverSourceText -match '(?s)for\s*\(i\s*=\s*0;\s*i\s*<\s*LECS65_INTERFACE_COUNT;\s*\+\+i\).*?IoRegisterDeviceInterface\s*\(' -and
+    $driverInfText -notmatch '(?im)^\s*AddInterface\s*='
 }
 
 Test-Contract "START_DEVICE requires a connected IRQ before publishing device interfaces" {
