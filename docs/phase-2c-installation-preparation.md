@@ -133,9 +133,11 @@ driver-build constant. It remains a proposal until the owner approves it.
 Read-only diagnosis established that the old certificate thumbprint
 `DBB8F215BE00ACA1D6F7D258773DBE8748387D90` references a missing CNG machine
 key. It cannot be used for signing on this host and must not appear in a future
-signing command. After owner approval of a newly created replacement
-certificate, the exact command shape for a separately authorized signing run
-is:
+signing command. The separately authorized replacement certificate is
+`CN=LecS65 x64 Test Phase2C 2026-10`, thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Its CNG container and local trust
+chain are verified. The exact command for a later, separately authorized,
+elevated signing run is:
 
 ```powershell
 .\scripts\build-driver-package.ps1 `
@@ -144,12 +146,13 @@ is:
   -DriverVer '10/17/2026,0.2026.1017.1' `
   -OutputRoot .\x64\Phase2C-SignedCandidate-20261017-1017-1 `
   -Sign `
-  -CertificateThumbprint <NEW_APPROVED_CERTIFICATE_THUMBPRINT>
+  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472
 ```
 
-This command has not been executed. The new thumbprint, certificate identity,
-key-container existence, EKU, validity, trust and package identity must be
-recorded and approved first. The output directory must not already exist.
+This command has not been executed and is not authorized by the certificate
+creation approval. The output directory must not already exist. The signing
+process must have an elevated token: the non-elevated token cannot open this
+machine-key container, while an elevated read-only lookup succeeds.
 
 The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
 with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive
@@ -215,12 +218,12 @@ PnP matrix.
 
 1. Approve Release x64 and the proposed
    `DriverVer=10/17/2026,0.2026.1017.1`, or provide a replacement identity.
-2. Under a separate authorization, create a new, distinctly named test
-   certificate/key pair and install only its public certificate into the
-   required local-machine trust stores. Do not reuse or repair-bind the old
-   identity.
-3. Prove the replacement container exists, then approve its exact thumbprint
-   and one private-key signing run.
+2. Approve the verified replacement thumbprint
+   `4296FA2E355613DF0D5CE6F24D0898E00B706472` and one elevated private-key
+   signing run. Certificate creation and public trust installation are
+   complete; the old identity remains untouched.
+3. Reconfirm that the proposed signed-candidate output directory does not exist
+   immediately before the run.
 4. Produce and verify a signed immutable candidate; the current set is
    intentionally unsigned.
 5. Complete elevated WinRE/BCD inventory, recovery-media copy and an actual

@@ -207,6 +207,26 @@ created, opened, exported or used during this audit, and no store or ACL was
 changed. Detailed evidence and gated commands are recorded in the
 [missing-key diagnosis](handoffs/phase-2c-test-signing-key-diagnosis.md).
 
+The owner subsequently authorized certificate creation and public trust-store
+installation only. One replacement certificate now exists:
+
+- subject `CN=LecS65 x64 Test Phase2C 2026-10`;
+- SHA-1 thumbprint `4296FA2E355613DF0D5CE6F24D0898E00B706472`;
+- `LocalMachine\My`, Microsoft Software Key Storage Provider, RSA 2048,
+  SHA-256, non-exportable machine key;
+- exact code-signing EKU `1.3.6.1.5.5.7.3.3` and digital-signature key usage;
+- validity `2026-10-17T00:00:00+02:00` through
+  `2027-04-17T23:59:59+02:00`; and
+- one public copy in each of `LocalMachine\Root` and
+  `LocalMachine\TrustedPublisher`, with a successful offline chain build.
+
+The CNG container `te-7e799dd3-f896-4db8-b6ff-f680e0b5a7cf` opens successfully
+with an elevated token. The filtered non-elevated token receives
+`NTE_BAD_KEYSET`; therefore the separately authorized signing workflow must run
+elevated unless a future, separately approved key-ACL policy changes. No ACL was
+changed and no signing operation was performed. See the
+[replacement-certificate handoff](handoffs/phase-2c-new-test-certificate.md).
+
 ## Required Stage 2 exit evidence
 
 PASS requires all of the following:

@@ -71,7 +71,13 @@
   named Microsoft Software KSP container returns `NTE_BAD_KEYSET`, while the
   provider itself is present and no alternate certificate/private-key pair was
   found. The old certificate is not signing-ready; a newly named test
-  certificate/key pair requires separate authorization. See the
+  certificate/key pair was subsequently created under explicit authorization.
+  Replacement thumbprint `4296FA2E355613DF0D5CE6F24D0898E00B706472` has an
+  RSA-2048 non-exportable CNG machine key, exact code-signing EKU, public trust
+  copies in the local-machine Root and Trusted Publishers stores, and a
+  successful offline chain. Its container opens with an elevated token but not
+  the filtered token, so any later signing run must be separately authorized
+  and elevated. No driver artifact has been signed. See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
