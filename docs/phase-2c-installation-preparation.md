@@ -157,9 +157,21 @@ machine-key container, while an elevated read-only lookup succeeds.
 One later signing authorization was consumed by an attempted run under Windows
 PowerShell 5.1. The attempt failed before signing because that runtime lacks
 `System.IO.Path.GetRelativePath`. No signed candidate was produced. The command
-must not be retried under the existing authorization. A reviewed runtime guard
-or compatible path implementation plus a new explicit signing authorization is
-required first.
+must not be retried under the existing authorization. The workflow now uses a
+reviewed bounded relative-path implementation compatible with Windows
+PowerShell 5.1 and PowerShell 7. Focused mocked package/manifest tests and all
+existing fail-closed signing-boundary tests pass on both hosts. A new explicit
+signing authorization is still required before any retry.
+
+A second authorized attempt later completed the elevated certificate, chain
+and CNG-access preflight but stopped before invoking the repository workflow.
+Windows PowerShell 5.1 rejected the external launcher's
+`Tee-Object -LiteralPath -Append` combination as an invalid parameter set. No
+output root, package, manifest or signature was created, and the installed
+`oem100.inf` package and exported rollback hashes remained unchanged. This
+second authorization is also consumed. The launcher itself now requires
+mock-only Windows PowerShell 5.1 qualification before another separately
+authorized signing attempt.
 
 The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
 with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive
@@ -227,10 +239,12 @@ PnP matrix.
    `DriverVer=10/17/2026,0.2026.1017.1`, or provide a replacement identity.
 2. Approve the verified replacement thumbprint
    `4296FA2E355613DF0D5CE6F24D0898E00B706472` and one elevated private-key
-   signing run after the PowerShell-host incompatibility is resolved and
-   reviewed. The previous one-run authorization was consumed by a pre-signing
-   failure. Certificate creation and public trust installation are complete;
-   the old identity remains untouched.
+   signing run after the external one-shot launcher is mock-qualified on
+   Windows PowerShell 5.1. The repository workflow incompatibility is resolved
+   and qualified on Windows PowerShell 5.1 and PowerShell 7, but both previous
+   one-run authorizations were consumed by pre-signing failures. Certificate
+   creation and public trust installation are complete; the old identity
+   remains untouched.
 3. Reconfirm that the proposed signed-candidate output directory does not exist
    immediately before the run.
 4. Produce and verify a signed immutable candidate; the current set is

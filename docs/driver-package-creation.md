@@ -165,6 +165,52 @@ source identity, dirty worktree, missing tool/build output, invalid `DriverVer`,
 certificate metadata failures, existing output, mismatched SYS/PDB, mocked
 InfVerif/Inf2Cat/signing/catalog-membership failures and incomplete manifest.
 
+## Supported PowerShell hosts and path containment
+
+The package workflow supports Windows PowerShell 5.1 on .NET Framework 4.8 and
+PowerShell 7 on Windows. It must be invoked explicitly with the intended host;
+the workflow does not relaunch itself under another PowerShell runtime.
+
+The first authorized signing attempt established that
+`System.IO.Path.GetRelativePath` is unavailable in Windows PowerShell 5.1. The
+attempt stopped after build and regression evidence collection but before
+package staging or signing. No candidate was created, and that historical
+failed-attempt evidence remains in
+`docs/handoffs/phase-2c-signing-attempt.md`.
+
+All manifest-relative paths now use one Windows PowerShell 5.1-compatible,
+fail-closed implementation. It canonicalizes the artifact root and file path,
+requires both to exist with the expected directory/file types, rejects a
+different drive root, rejects sibling-prefix and parent traversal escapes, and
+emits deterministic backslash-separated relative paths. It never falls back
+to an absolute or guessed path.
+
+`tests/dry/test-package-workflow-compatibility.ps1` exercises the former
+failure point and the complete mocked artifact-record/manifest sequence. It
+uses temporary files with spaces and special characters and covers missing
+files, sibling and outside-root paths, different drives, complete and
+incomplete manifests, unsigned-state enforcement, and mocked matching and
+mismatched signer identities. No certificate store or private key is used.
+The focused suite passed 19/19 on Windows PowerShell 5.1.19041.6456 / CLR
+4.0.30319.42000 and 19/19 on PowerShell 7.6.5 / CLR 10.0.11. The existing
+16-case fail-closed suite also passed on both hosts. Static parser checks passed
+for the package workflow and its direct build/regression dependencies on both
+hosts.
+
+These compatibility results do not authorize signing. The earlier one-run
+authorization was consumed; a new owner authorization naming the exact source,
+package identity, certificate and output root is required before any real
+private-key operation.
+
+A subsequent second one-run authorization was also consumed without producing
+a signature. Its elevated external launcher successfully validated the exact
+certificate, local chain and CNG key access, but Windows PowerShell 5.1 rejected
+the launcher's `Tee-Object -LiteralPath -Append` log-capture parameter set
+before invoking this package workflow. No output root or package artifact was
+created. This was a launcher defect, not a recurrence of the workflow's
+relative-path defect. Any future launcher must be mock-tested on the selected
+PowerShell host, and real signing again requires a new explicit authorization.
+
 This validation does not approve the proposed `DriverVer`, certificate,
 private-key use or any installation. A signing run must use a new output root
 and the separately approved exact inputs.

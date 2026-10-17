@@ -179,6 +179,74 @@ function Assert-CertificateMetadata {
     }
 }
 
+function Get-ContainedRelativeFilePath {
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][string]$Path
+    )
+
+    $rootFull = [System.IO.Path]::GetFullPath($Root)
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    $rootPathRoot = [System.IO.Path]::GetPathRoot($rootFull)
+    $pathPathRoot = [System.IO.Path]::GetPathRoot($pathFull)
+    if (-not [string]::Equals($rootPathRoot, $pathPathRoot,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is on a different root than the artifact root: $pathFull"
+    }
+    if (-not (Test-Path -LiteralPath $rootFull -PathType Container)) {
+        throw "Artifact root does not exist or is not a directory: $rootFull"
+    }
+    if (-not (Test-Path -LiteralPath $pathFull -PathType Leaf)) {
+        throw "Artifact file does not exist: $pathFull"
+    }
+
+    $separator = [System.IO.Path]::DirectorySeparatorChar
+    $alternateSeparator = [System.IO.Path]::AltDirectorySeparatorChar
+    $rootPrefix = $rootFull.TrimEnd($separator, $alternateSeparator)
+    if ($rootPrefix.Length -eq 2 -and $rootPrefix[1] -eq ':') {
+        $rootPrefix += $separator
+    }
+    elseif (-not $rootPrefix.EndsWith([string]$separator)) {
+        $rootPrefix += $separator
+    }
+    if (-not $pathFull.StartsWith($rootPrefix,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Artifact file escapes the intended root: $pathFull"
+    }
+
+    $relative = $pathFull.Substring($rootPrefix.Length)
+    if ([string]::IsNullOrWhiteSpace($relative) -or
+        [System.IO.Path]::IsPathRooted($relative)) {
+        throw "Unable to derive a bounded relative artifact path: $pathFull"
+    }
+    return $relative.Replace($alternateSeparator, $separator)
+}
+
+function Assert-PackageSignatureState {
+    param(
+        [Parameter(Mandatory=$true)][bool]$SigningRequested,
+        [Parameter(Mandatory=$true)]$SysSignature,
+        [Parameter(Mandatory=$true)]$CatSignature,
+        [string]$ExpectedThumbprint
+    )
+
+    if ($SigningRequested) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedThumbprint) -or
+            $SysSignature.Status.ToString() -ne 'Valid' -or
+            $CatSignature.Status.ToString() -ne 'Valid' -or
+            $null -eq $SysSignature.SignerCertificate -or
+            $null -eq $CatSignature.SignerCertificate -or
+            $SysSignature.SignerCertificate.Thumbprint -ne $ExpectedThumbprint -or
+            $CatSignature.SignerCertificate.Thumbprint -ne $ExpectedThumbprint) {
+            throw 'Final SYS/CAT signature verification failed.'
+        }
+    }
+    elseif ($SysSignature.Status.ToString() -ne 'NotSigned' -or
+        $CatSignature.Status.ToString() -ne 'NotSigned') {
+        throw 'Unsigned validation mode produced an unexpectedly signed artifact.'
+    }
+}
+
 function Assert-ManifestComplete {
     param([Parameter(Mandatory=$true)]$Manifest)
 
@@ -268,12 +336,15 @@ function Assert-SysPdbIdentity {
 }
 
 function Get-FileRecord {
-    param([Parameter(Mandatory=$true)][string]$Path)
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Root
+    )
 
     $item = Get-Item -LiteralPath $Path
     return [ordered]@{
         Name = $item.Name
-        RelativePath = [System.IO.Path]::GetRelativePath($output, $item.FullName)
+        RelativePath = Get-ContainedRelativeFilePath -Root $Root -Path $item.FullName
         Bytes = $item.Length
         SHA256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash
         LastWriteUtc = $item.LastWriteTimeUtc.ToString('o')
@@ -344,7 +415,7 @@ function Get-PeEvidence {
         RsdsGuid = $rsds.Groups['Guid'].Value.ToUpperInvariant()
         RsdsAge = [int]$rsds.Groups['Age'].Value
         EmbeddedPdbPath = $rsds.Groups['Path'].Value.Trim()
-        DumpbinLog = [System.IO.Path]::GetRelativePath($output, $log)
+        DumpbinLog = Get-ContainedRelativeFilePath -Root $output -Path $log
     }
 }
 
@@ -458,7 +529,7 @@ try {
             }
             [ordered]@{
                 Name = $utility.Name
-                Path = [System.IO.Path]::GetRelativePath($repo, $utility.Path)
+                Path = Get-ContainedRelativeFilePath -Root $repo -Path $utility.Path
                 Bytes = (Get-Item -LiteralPath $utility.Path).Length
                 SHA256 = (Get-FileHash -LiteralPath $utility.Path -Algorithm SHA256).Hash
                 Machine = '0x8664'
@@ -499,8 +570,8 @@ try {
             PDB = [ordered]@{
                 Bytes = (Get-Item -LiteralPath $pdb).Length
                 SHA256 = (Get-FileHash -LiteralPath $pdb -Algorithm SHA256).Hash
-                ReadabilityLog = [System.IO.Path]::GetRelativePath($output, $pdbLog)
-                IdentityLog = [System.IO.Path]::GetRelativePath($output, $symbolMatchLog)
+                ReadabilityLog = Get-ContainedRelativeFilePath -Root $output -Path $pdbLog
+                IdentityLog = Get-ContainedRelativeFilePath -Root $output -Path $symbolMatchLog
             }
         }
         $peEvidence[$configuration] = $pe
@@ -539,6 +610,7 @@ try {
 
     $preSigningSysHash = (Get-FileHash -LiteralPath $packageSys -Algorithm SHA256).Hash
     $certificateRecord = $null
+    $normalizedThumbprint = $null
     if ($Sign) {
         $normalizedThumbprint = $CertificateThumbprint.ToUpperInvariant()
         $certificate = @(Get-ChildItem -LiteralPath 'Cert:\LocalMachine\My' |
@@ -611,12 +683,10 @@ try {
 
     $sysSignature = Get-AuthenticodeSignature -LiteralPath $packageSys
     $catSignature = Get-AuthenticodeSignature -LiteralPath $packageCat
+    Assert-PackageSignatureState -SigningRequested ([bool]$Sign) `
+        -SysSignature $sysSignature -CatSignature $catSignature `
+        -ExpectedThumbprint $normalizedThumbprint
     if ($Sign) {
-        if ($sysSignature.Status -ne 'Valid' -or $catSignature.Status -ne 'Valid' -or
-            $sysSignature.SignerCertificate.Thumbprint -ne $normalizedThumbprint -or
-            $catSignature.SignerCertificate.Thumbprint -ne $normalizedThumbprint) {
-            throw 'Final SYS/CAT signature verification failed.'
-        }
         $null = Invoke-ExternalCaptured -Name 'SYS Authenticode verification' `
             -FilePath $toolPaths.SignTool -Arguments @('verify', '/v', '/pa', $packageSys) `
             -LogPath (Join-Path $evidenceDir 'signtool-verify-sys.log')
@@ -627,11 +697,6 @@ try {
             -FilePath $toolPaths.SignTool `
             -Arguments @('verify', '/v', '/pa', '/c', $packageCat, $packageSys) `
             -LogPath (Join-Path $evidenceDir 'signtool-verify-membership.log')
-    }
-    else {
-        if ($sysSignature.Status -ne 'NotSigned' -or $catSignature.Status -ne 'NotSigned') {
-            throw 'Unsigned validation mode produced an unexpectedly signed artifact.'
-        }
     }
 
     $packageFiles = @(Get-ChildItem -LiteralPath $packageDir -File |
@@ -686,10 +751,10 @@ try {
         BuiltUtilities = $builtUtilities
         Tools = $tools
         Artifacts = @(
-            Get-FileRecord -Path $packageInf
-            Get-FileRecord -Path $packageCat
-            Get-FileRecord -Path $packageSys
-            Get-FileRecord -Path $evidencePdb
+            Get-FileRecord -Path $packageInf -Root $output
+            Get-FileRecord -Path $packageCat -Root $output
+            Get-FileRecord -Path $packageSys -Root $output
+            Get-FileRecord -Path $evidencePdb -Root $output
         )
         Safety = [ordered]@{
             DriverStoreChanged = $false
