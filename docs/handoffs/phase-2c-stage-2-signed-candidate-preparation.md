@@ -108,11 +108,17 @@ Thumbprint `DBB8F215BE00ACA1D6F7D258773DBE8748387D90` matches exactly one
 `LocalMachine\My` certificate. It is self-signed as `CN=LecS65 x64 Test`, has
 digital-signature usage and code-signing EKU, is valid from
 `2026-09-25T17:54:22Z` through `2027-09-25T18:14:22Z`, and builds its local
-offline chain successfully. `HasPrivateKey=true` reports an association.
+offline chain successfully. `HasPrivateKey=true` reflects its stored
+`CERT_KEY_PROV_INFO` property, not a successful key open.
 
-However, read-only `certutil -store` reports that the stored key set is missing.
-The certificate is therefore not yet classified as signing-ready. No private
-key was opened, used or exported, and no certificate or trust state changed.
+Follow-up read-only diagnosis identified CNG provider `Microsoft Software Key
+Storage Provider`, machine-key container
+`te-aa54bed6-ed44-4a0d-a952-18db0e1422e1` and `KeySpec=0`. The provider exists,
+but an exact container open returns `NTE_BAD_KEYSET`; it is not an access-denied
+result. No corresponding private-key pair exists in another relevant store.
+The certificate has a stale key reference and is not signing-ready. See the
+[dedicated diagnosis](phase-2c-test-signing-key-diagnosis.md). No private key
+was opened, used or exported, and no certificate or trust state changed.
 
 ## Installed baseline and recovery
 
@@ -140,9 +146,11 @@ excluded.
 ## Remaining risks and gates
 
 1. Owner approval or replacement of the proposed `DriverVer`.
-2. Resolution of the contradictory private-key metadata without silently
-   changing key, trust or ACL state.
-3. Separate approval for one exact-thumbprint signing run into a new directory.
+2. Separate authorization to create and trust a distinctly named replacement
+   test certificate/key pair; the old identity must not be repair-bound to a
+   new key.
+3. Separate approval for one replacement-thumbprint signing run into a new
+   directory.
 4. Hash/signature/catalog acceptance of the resulting signed set.
 5. Recovery-console and dump/page-file preparation under their own gates.
 6. A later explicit authorization naming the frozen hashes for one install and

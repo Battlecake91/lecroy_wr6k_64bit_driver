@@ -130,8 +130,12 @@ It is later than the installed `09/29/2026,0.2026.930.54`, uses four components
 within the Windows INF range, and does not change the public IOCTL ABI or legacy
 driver-build constant. It remains a proposal until the owner approves it.
 
-After that approval and resolution of the certificate key-container blocker,
-the exact command proposed for a separately authorized signing run is:
+Read-only diagnosis established that the old certificate thumbprint
+`DBB8F215BE00ACA1D6F7D258773DBE8748387D90` references a missing CNG machine
+key. It cannot be used for signing on this host and must not appear in a future
+signing command. After owner approval of a newly created replacement
+certificate, the exact command shape for a separately authorized signing run
+is:
 
 ```powershell
 .\scripts\build-driver-package.ps1 `
@@ -140,12 +144,12 @@ the exact command proposed for a separately authorized signing run is:
   -DriverVer '10/17/2026,0.2026.1017.1' `
   -OutputRoot .\x64\Phase2C-SignedCandidate-20261017-1017-1 `
   -Sign `
-  -CertificateThumbprint DBB8F215BE00ACA1D6F7D258773DBE8748387D90
+  -CertificateThumbprint <NEW_APPROVED_CERTIFICATE_THUMBPRINT>
 ```
 
-This command has not been executed. The current certificate metadata is not a
-passed signing gate because `HasPrivateKey=true` conflicts with `certutil`'s
-missing stored-key-set report.
+This command has not been executed. The new thumbprint, certificate identity,
+key-container existence, EKU, validity, trust and package identity must be
+recorded and approved first. The output directory must not already exist.
 
 The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
 with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive
@@ -211,9 +215,12 @@ PnP matrix.
 
 1. Approve Release x64 and the proposed
    `DriverVer=10/17/2026,0.2026.1017.1`, or provide a replacement identity.
-2. Resolve the certificate's missing stored-key-set report without changing
-   trust, ACL or key material under this task.
-3. Approve the exact certificate thumbprint and one private-key signing run.
+2. Under a separate authorization, create a new, distinctly named test
+   certificate/key pair and install only its public certificate into the
+   required local-machine trust stores. Do not reuse or repair-bind the old
+   identity.
+3. Prove the replacement container exists, then approve its exact thumbprint
+   and one private-key signing run.
 4. Produce and verify a signed immutable candidate; the current set is
    intentionally unsigned.
 5. Complete elevated WinRE/BCD inventory, recovery-media copy and an actual
