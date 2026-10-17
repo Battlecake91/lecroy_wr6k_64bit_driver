@@ -77,7 +77,11 @@
   copies in the local-machine Root and Trusted Publishers stores, and a
   successful offline chain. Its container opens with an elevated token but not
   the filtered token, so any later signing run must be separately authorized
-  and elevated. No driver artifact has been signed. See the
+  and elevated. The first authorized elevated attempt used Windows PowerShell
+  5.1 and failed after builds/regressions but before staging or signing because
+  that runtime lacks `System.IO.Path.GetRelativePath`. No candidate, CAT,
+  manifest or signed driver artifact was produced, and the authorization must
+  not be reused. See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).

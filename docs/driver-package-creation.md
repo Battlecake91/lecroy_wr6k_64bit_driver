@@ -227,6 +227,17 @@ elevated unless a future, separately approved key-ACL policy changes. No ACL was
 changed and no signing operation was performed. See the
 [replacement-certificate handoff](handoffs/phase-2c-new-test-certificate.md).
 
+The first owner-authorized elevated package attempt exposed a host-runtime
+precondition that the workflow did not enforce. It was launched by Windows
+PowerShell 5.1 / .NET Framework 4.8, where
+`[System.IO.Path]::GetRelativePath` is unavailable. Debug and Release builds and
+the required Dry/stress evidence completed, but the workflow then failed at its
+first relative-path manifest operation, before staging or signing the SYS.
+There is no candidate, CAT, manifest or signed artifact from that attempt. Do
+not retry until the PowerShell runtime requirement is made explicit or the
+path handling is made compatible, reviewed and separately authorized. See the
+[signing-attempt handoff](handoffs/phase-2c-signing-attempt.md).
+
 ## Required Stage 2 exit evidence
 
 PASS requires all of the following:
