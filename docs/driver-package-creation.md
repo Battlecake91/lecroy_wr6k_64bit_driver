@@ -137,32 +137,56 @@ operator without being published if they contain private paths or symbols.
 
 ## Validated unsigned invocation
 
-The offline implementation was validated with the approved development trees
-from `cb5010a4712f25de7c56d23d0d7502683542058c`, workflow commit
-`b0d3a2c933e7c0c79564dec5161e1054f04bbb6a`, Release as the staged runtime
-configuration, and the provisional non-installable identity
-`09/25/2026,0.1.0.0`:
+The hardened offline implementation was validated with the approved
+development trees from `cb5010a4712f25de7c56d23d0d7502683542058c`, workflow
+commit `67a3075b4061cca5c853551427484db336e3e370`, Release as the staged
+runtime configuration, and the proposed but unapproved identity
+`10/17/2026,0.2026.1017.1`:
 
 ```powershell
 .\scripts\build-driver-package.ps1 `
   -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
   -RuntimeConfiguration Release `
-  -DriverVer '09/25/2026,0.1.0.0' `
-  -OutputRoot .\x64\Phase2C-UnsignedValidation-b0d3a2c
+  -DriverVer '10/17/2026,0.2026.1017.1' `
+  -OutputRoot .\x64\Phase2C-UnsignedCandidatePrep-67a3075
 ```
 
 The run built Debug and Release x64 with zero warnings and errors, built both
 utilities, passed 394/394 functional contracts and 66,000/66,000 default plus
 expanded stress iterations, validated both PE/PDB pairs, passed InfVerif, and
-generated the catalog with Inf2Cat with zero errors and warnings. The manifest
-SHA-256 is
-`EE4416518469A8CE52D021BF242FACD22CDCD7E0949FD3A84D39934387F8D921`.
+generated the catalog with Inf2Cat with zero errors and warnings. `SymChk`
+proved the exact SYS/PDB identity for both configurations. The manifest SHA-256
+is `3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
 The resulting SYS and CAT are both `NotSigned`; the output state is
 `UnsignedValidationOnly` and is not an installation candidate.
 
-This validation does not approve the provisional `DriverVer`, runtime
-configuration, certificate, private-key use or any installation. A signing run
-must use a new output root and the separately approved exact inputs.
+The companion negative suite passed 16/16 rejection cases, including wrong
+source identity, dirty worktree, missing tool/build output, invalid `DriverVer`,
+certificate metadata failures, existing output, mismatched SYS/PDB, mocked
+InfVerif/Inf2Cat/signing/catalog-membership failures and incomplete manifest.
+
+This validation does not approve the proposed `DriverVer`, certificate,
+private-key use or any installation. A signing run must use a new output root
+and the separately approved exact inputs.
+
+## Current certificate-metadata gate
+
+Read-only metadata inspection of thumbprint
+`DBB8F215BE00ACA1D6F7D258773DBE8748387D90` found exactly one
+`LocalMachine\My` certificate:
+
+- subject and issuer `CN=LecS65 x64 Test` (self-signed);
+- valid from `2026-09-25T17:54:22Z` through `2027-09-25T18:14:22Z`;
+- critical digital-signature key usage and code-signing EKU
+  `1.3.6.1.5.5.7.3.3`;
+- successful offline local-chain construction with revocation checking disabled;
+- `HasPrivateKey=true`, indicating a certificate/key association; but
+- `certutil -store My <thumbprint>` reports that the stored key set is missing.
+
+The last two observations conflict. The certificate is therefore **not yet
+classified as signing-ready**. Resolving the key-container state would require
+a separately authorized private-key-use or certificate-management step. No key
+was opened, exported or used during this audit.
 
 ## Required Stage 2 exit evidence
 

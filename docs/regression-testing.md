@@ -338,6 +338,13 @@ worktree at development merge commit
   Default plus expanded runs reproduce the established **66,000/66,000**
   stress comparison.
 
+`tests/dry/test-package-workflow-negative.ps1` is a separate fail-closed suite,
+not part of the 394 functional total. Its current 16/16 cases require rejection
+of wrong/dirty source state, missing tools and build pairs, invalid identity or
+certificate metadata, an existing output directory, a real mismatched SYS/PDB
+pair, mocked InfVerif/Inf2Cat/signing/catalog-membership failures, and an
+incomplete manifest. It never uses a certificate private key or a device.
+
 These executions qualify both Debug and Release x64 compilation and the
 hardware-independent source/native contracts at the merged development source.
 They do **not** install or load the driver, exercise kernel scheduling, prove
