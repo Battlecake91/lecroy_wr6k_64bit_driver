@@ -202,6 +202,15 @@ authorization was consumed; a new owner authorization naming the exact source,
 package identity, certificate and output root is required before any real
 private-key operation.
 
+A subsequent second one-run authorization was also consumed without producing
+a signature. Its elevated external launcher successfully validated the exact
+certificate, local chain and CNG key access, but Windows PowerShell 5.1 rejected
+the launcher's `Tee-Object -LiteralPath -Append` log-capture parameter set
+before invoking this package workflow. No output root or package artifact was
+created. This was a launcher defect, not a recurrence of the workflow's
+relative-path defect. Any future launcher must be mock-tested on the selected
+PowerShell host, and real signing again requires a new explicit authorization.
+
 This validation does not approve the proposed `DriverVer`, certificate,
 private-key use or any installation. A signing run must use a new output root
 and the separately approved exact inputs.

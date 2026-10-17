@@ -85,7 +85,14 @@
   Windows PowerShell 5.1 and PowerShell 7. Focused path, mocked package/manifest
   and signature-state tests pass 19/19 on each host; all 16 existing
   fail-closed tests also pass on each host. No real signing was performed, and
-  a new explicit authorization is still required. See the
+  a later second authorization reached an elevated certificate, chain and CNG
+  access preflight but failed in the external launcher before the repository
+  workflow was invoked: Windows PowerShell 5.1 rejected
+  `Tee-Object -LiteralPath -Append` as an invalid parameter set. No output
+  root, package, manifest or signature was created. Both one-run
+  authorizations are consumed; a future attempt needs a separately tested
+  5.1-compatible launcher, a new output path and a new explicit authorization.
+  See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
