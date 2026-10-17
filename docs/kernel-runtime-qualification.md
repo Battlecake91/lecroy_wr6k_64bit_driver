@@ -1,77 +1,233 @@
-# Kernel-runtime qualification plan
+# Phase 2C kernel-runtime qualification plan
 
-This plan is for the merged PR #10 lifetime and interrupt hardening. It is a
-future execution procedure, not evidence that the driver has been installed,
-loaded, run under Driver Verifier or exercised on hardware.
+This is a future execution procedure for development merge commit
+`aba7ba35ab75cb3b1e20935806eb86376a790726`. Phase 2B did not execute any
+part of it. Passing the offline builds and Dry tests does not authorize driver
+installation, loading, device access, Driver Verifier, PnP transitions or
+hardware tests.
 
-Use only a disposable Windows x64 test system that can be reimaged and, for
-device PnP tests, disposable or otherwise recoverable WR6k-compatible test
-hardware. Never use the licensed production oscilloscope. A virtual machine
-without PCI passthrough can qualify install/uninstall failure paths but cannot
-qualify START, interrupts, DMA or physical removal.
+The six stages below are strictly ordered and independently authorized. An
+authorization for one stage does not authorize the next. Preserve the evidence
+and obtain the stated approval at every exit gate before continuing.
 
-## Safety boundary
+## Absolute safety boundary
 
-The following operations are prohibited throughout this plan:
+Use only a disposable or reliably reimageable Windows x64 test system. Any
+stage that starts the driver on PCI hardware requires disposable or otherwise
+recoverable WR6k-compatible hardware. Never use the licensed production
+oscilloscope for driver replacement, Verifier or PnP testing.
 
-- acquisition, live legacy PFN DMA, or activation of the staged WDM v3 DMA path;
-- arbitrary MMIO or register writes;
-- `SetOneRegister` (`0x0022303C`), including same-value writes, unless a later
-  owner-approved test plan explicitly authorizes one validated register;
+The following remain prohibited throughout Phase 2C:
+
+- XStream or other acquisition, legacy PFN DMA, and activation of the staged
+  WDM v3 DMA path;
+- arbitrary MMIO/register writes and `SetOneRegister` (`0x0022303C`);
 - Dallas EEPROM reads that expose licensed contents, Dallas writes/deletes,
   serial FPGA/GPIO writer `0xCFDC2130`, FPGA programming or device reset;
-- nonzero synthetic interrupt masks, forced hardware interrupts or guessed
-  IRQ/register values;
-- release of quarantined resources after `UnknownActive`; quarantine is
-  irreversible until reboot and does not prove physical DMA retirement.
+- nonzero synthetic interrupt masks, forced interrupts and guessed register
+  values;
+- releasing quarantined resources after `UnknownActive`; quarantine is
+  irreversible until reboot or image restore and is not hardware-idle proof.
 
-`CompletionObserved` is not `IdleProved`. Successful legacy PFN cleanup remains
-an unverified compatibility exception. Active PFN DMA is not generally
-IOMMU-safe, physical DMA retirement is not proven, and live WDM v3 DMA remains
-disabled.
+Driver START itself maps resources and performs the established startup probe.
+Therefore a package installation that binds to real hardware is not a passive
+metadata operation even when no user-mode device handle is opened.
 
-## 1. Freeze the test input and recovery path
+`CompletionObserved` is not `IdleProved`. Active PFN DMA is not generally
+IOMMU-safe, physical DMA retirement remains unproved, and live WDM v3 DMA must
+remain unreachable.
 
-1. Start from a fresh system image or snapshot. Record Windows build, firmware,
-   chipset, IOMMU/Memory Integrity state and PCI device instance ID. Confirm
-   local console or out-of-band access and a bootable recovery environment.
-2. Use a package built from the exact reviewed commit with SDK/WDK
-   10.0.28000.0. Record SHA-256 hashes of the INF, CAT and SYS, and retain the
-   matching PDB privately. Do not commit dumps, PDBs, certificates, EEPROM
-   contents or machine-specific traces to this public repository.
-3. Confirm the package is test-signed for this isolated host. Export the
-   current driver package and system configuration before replacement.
-4. Save the current crash-control settings, then configure a kernel dump and
-   disable automatic reboot:
+## Authorization and hardware matrix
 
-```powershell
-reg.exe export HKLM\SYSTEM\CurrentControlSet\Control\CrashControl `
-    C:\Qualification\CrashControl-before.reg /y
-$crash = 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl'
-New-ItemProperty $crash CrashDumpEnabled -PropertyType DWord -Value 2 -Force
-New-ItemProperty $crash DumpFile -PropertyType ExpandString `
-    -Value '%SystemRoot%\MEMORY.DMP' -Force
-New-ItemProperty $crash Overwrite -PropertyType DWord -Value 0 -Force
-New-ItemProperty $crash AutoReboot -PropertyType DWord -Value 0 -Force
-New-ItemProperty $crash LogEvent -PropertyType DWord -Value 1 -Force
+| Stage | Hardware | Separate owner authorization | Permitted state change |
+|---|---|---|---|
+| 1. Read-only validation | Build host and intended disposable test host; no WR6k required | Read package/system metadata and export non-sensitive evidence | None |
+| 2. Package creation/signing | Offline build/signing host; no WR6k attached or required | Use the named test certificate/private key and create signed artifacts | Files and certificate-use audit only; no Driver Store or PnP change |
+| 3. Recovery/rollback proof | Disposable test host with restorable image; WR6k not required | Snapshot/reimage operations, recovery boot, reboot and crash-control changes | Test-host configuration and reboots only |
+| 4. Initial load | Disposable test host plus recoverable WR6k-compatible PCI hardware for a real START | Driver Store installation and one initial PnP START with automatic startup MMIO | Install and initial START only |
+| 5. Five-interface verification | Same successfully started disposable host/hardware | Enumeration-only interface inspection | None beyond the already authorized loaded state |
+| 6. Verifier/PnP | Same host/hardware; hot-removal chassis only for optional surprise removal | Verifier, reboots, device handles for approved software/read-only controls, and each PnP matrix | Explicitly bounded Verifier and PnP transitions |
+
+## Stage 1 — read-only package and system validation
+
+### Preconditions
+
+- The candidate commit, branch and proposed package source are identified.
+- No candidate driver is installed, staged or loaded.
+- The owner has authorized read-only collection on the intended test host.
+
+### Procedure
+
+1. Verify a clean worktree at the exact reviewed commit. Record `git status`,
+   commit SHA, SDK/WDK/MSVC versions and the complete Dry result.
+2. Inventory the candidate INF and any existing SYS/CAT without executing or
+   trusting them. Record size, SHA-256, PE machine, subsystem, entry point and
+   imports.
+3. On the intended disposable test host, record Windows build, architecture,
+   firmware mode, Secure Boot, test-signing, hypervisor, VBS/HVCI, IOMMU,
+   Driver Verifier state and available dump storage.
+4. If a WR6k device is present, enumerate only PnP identity, current package,
+   service state and assigned resources. Do not open an interface or issue an
+   IOCTL. Preserve the existing package identity and hashes privately.
+5. Confirm that the host is disposable/restorable and is not the licensed
+   production oscilloscope.
+
+### Exit gate
+
+PASS requires an exact source identity, complete read-only inventory, no
+unexpected active Verifier state and a named recovery owner. Any ambiguity is a
+stop. Stage 1 approval does not permit signing or package creation.
+
+## Stage 2 — reproducible package creation and test signing
+
+### Preconditions
+
+- Stage 1 evidence is accepted.
+- The owner has separately authorized use of a specific test certificate and
+  its private key.
+- The build/signing host has no need for WR6k hardware.
+
+### Procedure
+
+1. Build Debug and Release x64 from the exact reviewed commit with SDK/WDK
+   10.0.28000.0. Run the complete Dry suite and expanded stress profile.
+2. Select exactly one configuration for the runtime candidate. Copy its SYS and
+   the reviewed INF into a new empty staging directory. Use an owner-approved,
+   recorded `DriverVer`; do not derive an undocumented candidate identity from
+   an unrecorded wall-clock invocation.
+3. Sign the staged SYS with the named test certificate, generate the catalog
+   with `Inf2Cat /os:10_X64`, then sign the CAT. Verify SYS and CAT with the
+   intended test-signing policy and record certificate thumbprint/expiry.
+4. Record SHA-256 for INF, CAT, signed SYS and the privately retained matching
+   PDB. Create a manifest containing the source commit, tool versions,
+   configuration, `DriverVer`, hashes and signing identity.
+5. Copy the complete immutable candidate set to write-protected or otherwise
+   controlled storage. Every later stage must use these exact hashes.
+
+The current linker embeds a build timestamp, a new CodeView GUID and an
+absolute PDB path. Identical source built in another worktree therefore does
+not currently produce the same SYS hash. Reproducibility for Phase 2C means
+that one reviewed build is hash-frozen and promoted unchanged; do not rebuild
+and assume equivalence. Bit-reproducible linking is a separate future change.
+
+Do not use `scripts/build-sign-load-driver.ps1` for Stage 2. That script
+continues from package creation into `pnputil` installation, device restart
+and `lecdiag` device access. A package-only reviewed wrapper or individually
+reviewed commands are required before Stage 2 may execute.
+
+### Exit gate
+
+PASS requires successful signature/catalog verification and a complete frozen
+manifest. No package may exist in the test host's Driver Store. Stage 2
+approval does not permit installation, loading or PnP activity.
+
+## Stage 3 — recovery and rollback verification
+
+### Preconditions
+
+- Stage 2 artifact hashes are accepted.
+- The owner has authorized snapshot/reimage operations, recovery boot, reboot
+  and crash-control changes on the disposable host.
+- The original working package and a bootable recovery environment are
+  available off-host.
+
+### Procedure
+
+1. Create and identify a fresh VM snapshot or bare-metal image. Record the
+   restore procedure, storage location and responsible operator.
+2. Export the existing driver package and current boot, code-integrity,
+   Verifier and crash-control state.
+3. Configure a kernel dump, system-managed boot-volume page file, dump
+   overwrite protection and disabled automatic reboot. Keep the exported prior
+   crash-control settings.
+4. Boot the recovery environment once, locate the Windows volume, prove access
+   to `verifier /reset` and the offline Driver Store, and return without
+   changing the installed driver.
+5. Restore the snapshot/image once and revalidate its identity. A snapshot that
+   has never been restored is not a proven rollback path.
+
+### Exit gate
+
+PASS requires a demonstrated recovery boot and successful restore. Failure or
+uncertain console access stops Phase 2C. Stage 3 approval does not permit
+candidate installation.
+
+## Stage 4 — initial driver loading without acquisition
+
+### Preconditions
+
+- Stages 1–3 passed.
+- Exact INF/CAT/SYS hashes match the Stage 2 manifest.
+- The owner has authorized one installation and initial START on disposable,
+  recoverable hardware, including the driver's automatic startup MMIO.
+- XStream and every process capable of opening the driver are stopped.
+
+### Procedure
+
+1. Confirm Driver Verifier is off. Capture a fresh pre-install event-log and
+   service/device snapshot.
+2. Install only the frozen package:
+
+```text
+pnputil /add-driver .\LecS65AcqDrv.inf /install
+pnputil /enum-devices /instanceid "<exact-device-instance-id>" /drivers
 ```
 
-Use a system-managed boot-volume page file and verify adequate free space.
-Microsoft documents `CrashDumpEnabled=2` as a kernel dump and the default file
-as `%SystemRoot%\MEMORY.DMP`; see
-[kernel memory dumps](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/kernel-memory-dump)
-and [system failure/recovery settings](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/configure-system-failure-and-recovery-options).
+3. Permit one initial START. Do not use `lecdiag`, `lecwatch`, XStream or any
+   other device-opening program.
+4. Verify the exact service/image/package identity, healthy devnode, one START,
+   no unexpected System/Code Integrity event, no dump and no automatic restart.
+5. Stop immediately on a hang, bugcheck, unexpected interrupt activity,
+   acquisition/DMA indication, signature failure or resource error. Preserve
+   evidence and restore the image rather than retrying.
 
-5. Before enabling Driver Verifier, prove the recovery route once: boot the
-   recovery environment, locate the Windows volume, and return without making
-   changes. Keep the original image/snapshot and package available off-host.
+### Exit gate
 
-## 2. Driver Verifier setup and recovery
+PASS establishes load and START only. It does not establish interface handles,
+IOCTL ABI, DMA safety or PnP teardown. Stage 4 approval does not permit opening
+the device or changing its PnP state.
 
-Run an elevated command prompt. Target only this driver; do not select all
-drivers. The standard profile includes Special Pool, IRQL checking, pool
-tracking, I/O verification, deadlock detection, DMA verification, security,
-miscellaneous and DDI compliance checks.
+## Stage 5 — five-interface runtime verification
+
+### Preconditions
+
+- Stage 4 passed and the host remains otherwise untouched.
+- The owner has authorized enumeration-only interface inspection.
+
+### Procedure
+
+1. Use an audited SetupAPI/Configuration Manager enumeration-only helper. It
+   must not call `CreateFile` or `DeviceIoControl`.
+2. For the exact WR6k PCI instance, require exactly one present symbolic-link
+   instance in each class:
+
+```text
+{958695A4-693A-435E-8297-66F805D8E46A}
+{7AC34BE9-F766-4F15-9E88-854BA5E2146E}
+{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}
+{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}
+{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}
+```
+
+3. Reject a missing class, duplicate instance, unexpected sixth class, wrong
+   device-instance association or published `\\.\ALADDINAcqDriver0` alias.
+4. Save only non-sensitive interface metadata. Do not open any returned path.
+
+### Exit gate
+
+PASS requires five classes and five total present instances for the one PCI
+function. Stage 5 approval does not permit IOCTLs, Verifier, restart, disable,
+remove or rescan.
+
+## Stage 6 — targeted Driver Verifier and controlled PnP
+
+Stage 6 needs a new explicit authorization for Verifier, reboot, approved
+device handles/software-only controls and each PnP transition group. Do not
+infer that authorization from Stages 1–5.
+
+### 6A. Targeted Verifier
+
+Target this driver only:
 
 ```text
 verifier /reset
@@ -81,152 +237,73 @@ verifier /querysettings
 shutdown /r /t 0
 ```
 
-After boot, save `verifier /query` and `verifier /querysettings` output and
-confirm that `LecS65AcqDrv.sys` is the only project driver under verification.
-Use `oneboot` so an additional reboot clears the active session unless it is
-deliberately configured again. See Microsoft's
-[Verifier command reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/verifier)
-and [driver-selection guidance](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/selecting-drivers-to-be-verified).
+After boot, confirm that `LecS65AcqDrv.sys` is the only project driver under
+verification. Save `verifier /query`, `verifier /querysettings`, System events
+and dump state. A verifier finding or boot anomaly is immediate FAIL and invokes
+the proven rollback route.
 
-Normal shutdown procedure:
+### 6B. Software/read-only lifetime checks
 
-```text
-verifier /reset
-shutdown /r /t 0
-```
+Only after separate approval, run bounded concurrent open/query/close tests and
+the documented software-only 250-ms delay control while admission closes. Do
+not run the Hardware suite by default: even its zero-mask boundary may process
+an already pending source. No acquisition, DMA, nonzero interrupt mask or
+hardware register control is allowed.
 
-If the system cannot boot, enter Windows Recovery Environment or Safe Mode,
-run `verifier /reset` from an elevated command prompt against the installed
-Windows instance, and reboot. If recovery is uncertain, restore the known-good
-image instead of repeatedly booting. Preserve any dump before rollback.
+A future pending-IRP path must prove exactly-once cancel completion and
+remove-lock release. Until an approved lower-stack fault-injection harness
+exists, pending lower PnP cancellation remains NOT RUN rather than PASS.
 
-## 3. Baseline load and read-only checks
+### 6C. Orderly PnP matrix
 
-Install the exact test-signed package only after the hash check. Use the
-package directory containing the matching INF, CAT and SYS:
+Use the exact instance ID, never a class or hardware-ID wildcard:
 
-```text
-pnputil /add-driver .\LecS65AcqDrv.inf /install
-pnputil /enum-devices /instanceid "<device-instance-id>" /drivers
-```
+1. 100 disable/enable cycles, each bounded to 30 seconds.
+2. 25 `pnputil /restart-device "<exact-device-instance-id>"` cycles.
+3. 25 orderly remove/rescan cycles, re-resolving the instance ID after every
+   scan.
 
-Confirm one successful START, the expected service/image, exactly one present
-instance in each of the five expected device-interface classes, no duplicate or
-unexpected interface class, no verifier report and no unexpected System event.
-With XStream closed, run
-the established `scripts/test-driver.ps1 -Mode Hardware` batch once. It is
-limited to the documented eleven low-impact ABI checks. Do not add
-`-IncludeErrorStatus`; that optional operation consumes the error-status latch.
-The `CFDC2400` requests in this batch contain only a zero mask but may process
-an already pending source, so stop immediately if the device is not idle.
+At every STOP/REMOVE boundary require closure of new admission, five-interface
+unpublication, remove-lock rundown, interrupt disconnect, DPC/timer drain and
+no post-unavailable hardware access. Every START must restore exactly the five
+expected interfaces and no alias.
 
-Record each command, exit code, driver trace, event-log export and verifier
-snapshot. A failure stops the phase; it is not a reason to widen the allowed
-hardware operations.
+True surprise removal is a separate optional authorization. It requires a
+hot-removal-capable disposable chassis and recoverable WR6k hardware with all
+acquisition and DMA disabled. `pnputil /remove-device` is orderly removal and
+must never be reported as surprise-removal coverage. If suitable hardware is
+unavailable, record surprise removal as NOT RUN.
 
-## 4. PnP START, STOP and REMOVE matrix
+### 6D. DMA/quarantine boundary
 
-Use the exact instance ID, never a broad class or hardware-ID filter. PnPUtil
-syntax is documented by Microsoft in the
-[PnPUtil command reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax).
+Do not launch DMA. Confirm from approved traces/counters that ordinary
+START/STOP/REMOVE never enters the WDM v3 adapter path or creates an adapter
+mapping/common buffer.
 
-1. Run 100 disable/enable cycles. Each disable must complete within 30 seconds,
-   report the device stopped, and each enable must produce exactly one healthy
-   START and interface publication.
-2. Run 25 `pnputil /restart-device "<device-instance-id>"` cycles with the same
-   30-second bound.
-3. Run 25 orderly remove/rescan cycles:
+`UnknownActive` runtime injection is NOT RUN unless a separately reviewed
+software-only hook can latch ownership before any mapping or hardware launch.
+If such a hook is later authorized, verify irreversible admission closure and
+retention through STOP/REMOVE, then restore or reboot. Never create a real
+indeterminate DMA transfer for coverage and never free quarantined ownership in
+the same boot.
 
-```text
-pnputil /remove-device "<device-instance-id>"
-pnputil /scan-devices
-```
+## Evidence, failure and rollback
 
-   Re-resolve and record the instance ID after each scan before the next cycle.
-4. Exercise true `SURPRISE_REMOVAL` only on a hot-removal-capable disposable
-   chassis with acquisition and all DMA disabled. Perform 10 physical removal /
-   rescan cycles. `pnputil /remove-device` is an orderly remove and must not be
-   reported as surprise-removal coverage. If the platform cannot generate a
-   genuine surprise removal safely, record this row as **NOT RUN**, not PASS.
+For every executed stage retain privately:
 
-At every STOP/REMOVE boundary, verify that user handles close, all five
-interfaces are unpublished, new IOCTLs are rejected, the interrupt is
-disconnected before BAR teardown, queued DPC/timer work drains, and no driver
-access occurs after the device becomes unavailable. Any timeout, verifier
-finding, bugcheck, stale
-interface, post-remove MMIO or unexplained retained ordinary resource is FAIL.
+- authorization, operator, timestamps and exact commands;
+- source commit, package manifest, hashes, PDB identity and certificate;
+- host/firmware/IOMMU configuration and exact device instance ID;
+- Verifier settings/statistics, System events and approved driver trace;
+- any untouched dump plus `!analyze -v`, `lmvm LecS65AcqDrv` and `!verifier`.
 
-## 5. Interrupt, DPC and IRP lifetime
+A hash mismatch, unexpected package, signature failure, verifier finding,
+bugcheck, hang, stale interface, resource leak, post-remove hardware access,
+unexpected DMA activity, quarantine cleanup or status mismatch is immediate
+FAIL. Stop the matrix, preserve volatile evidence and use the proven recovery
+path. Do not widen operations to diagnose a failure on the same boot.
 
-No interrupt is injected. Coverage is limited to naturally delivered idle
-interrupts and the documented zero-mask boundary in the safe ABI batch.
-
-1. Under Verifier, run 100 concurrent open/read-only-query/close loops while a
-   second controller performs the disable/enable matrix. Accept either a
-   successful query before admission closes or the documented unavailable/
-   delete-pending status after closure; reject hangs, stale success after
-   removal and inconsistent byte counts.
-2. For remove-lock rundown, issue 100 bounded 250-ms software-only delay IOCTLs
-   (`0x00222C00`, little-endian input `FA000000`, zero output) and begin an
-   orderly disable 25 ms after each request starts. The admitted request must
-   finish, STOP must wait for it, and the 30-second PnP bound must hold. This
-   native implementation deliberately omits the legacy auxiliary hardware
-   toggle, so this case must cause no MMIO.
-3. Run a qualification harness that opens the device with
-   `FILE_FLAG_OVERLAPPED`, issues only read-only or software-only controls, and
-   calls `CancelIoEx` while PnP admission is closing. The current dispatch path
-   completes DeviceControl IRPs synchronously and owns no cancel queue; a
-   request that has already completed may therefore return `ERROR_NOT_FOUND`
-   from `CancelIoEx`. Record that outcome rather than claiming cancellation.
-   Any future path that returns `STATUS_PENDING` must prove exactly-once cancel
-   completion and remove-lock release before it can pass.
-4. Repeat the pending-lower-stack START/REMOVE cases with an approved test
-   filter or fault-injection harness. Until that harness exists, runtime
-   cancellation of a pending lower PnP IRP is an open qualification gate; the
-   existing fake-lower-stack tests are not kernel proof.
-
-Pass requires zero verifier violations, deadlocks, leaked remove locks,
-double completion, completion after object deletion, post-remove ISR/DPC MMIO,
-or outstanding driver-owned timer/DPC work.
-
-## 6. DMA and quarantine gates
-
-Do not launch DMA during this qualification stage. Confirm from traces and
-debug counters that the staged WDM v3 adapter path is never entered and no
-adapter mapping or common buffer is created by ordinary START/STOP/REMOVE.
-
-`UnknownActive` may be tested only with a separately reviewed test-only hook
-that changes software ownership state before any hardware launch or mapping.
-Once latched, verify irreversible admission closure and retained lifetime
-ownership through STOP/REMOVE; then reboot or restore the image. Never attempt
-cleanup, restart or release in the same boot. Without that safe hook, record
-kernel-runtime quarantine injection as **NOT RUN**. Do not create a real
-unknown-active transfer merely for coverage.
-
-## 7. Evidence, pass/fail and rollback
-
-For every phase retain privately:
-
-- exact Git commit, package hashes, build log and PDB identity;
-- Windows/firmware/IOMMU configuration and exact device instance ID;
-- command transcript with timestamps and iteration counts;
-- Driver Verifier settings/statistics, System event log and driver trace;
-- for a bugcheck, the untouched dump plus `!analyze -v`, `lmvm LecS65AcqDrv`
-  and `!verifier` output from WinDbg.
-
-The phase passes only if every required iteration completes, all expected
-statuses and ordering checks match, no verifier or event-log defect appears,
-and no dump is generated. A verifier violation, bugcheck, hang, resource leak,
-post-remove hardware access, unexpected DMA activity, quarantine cleanup or
-status mismatch is an immediate FAIL.
-
-On failure, stop the matrix, preserve volatile evidence, run `verifier /reset`
-when the host is stable, power down, and restore the known-good image/snapshot.
-If `UnknownActive` was reached, do not unload, restart the device or free the
-transfer in the same boot. Never continue qualification on the production
-oscilloscope. A dump can contain sensitive machine data and must not be
-committed to this public repository.
-
-Passing this plan would qualify the described kernel-runtime cases only. It
-would not prove physical DMA bus-idle, IOMMU-safe PFN DMA, general hardware
-acquisition, HLK success, WHQL/WHCP certification or production deployment.
+Passing all applicable stages would qualify only the bounded kernel-runtime
+cases above. It would not prove physical DMA bus-idle, IOMMU-safe PFN DMA,
+general acquisition, HLK success, WHQL/WHCP certification or production
+deployment.

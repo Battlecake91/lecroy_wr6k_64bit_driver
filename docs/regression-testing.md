@@ -305,8 +305,8 @@ parent-allocation counters.
 A source contract ensures the live PCI code cannot invoke this stage.
 
 Current Windows offline regression on 2026-10-17 used a clean isolated
-worktree at integration commit
-`9c97e49c7a6f3f42485e9e6f0ccca8c3b3536dea`:
+worktree at development merge commit
+`aba7ba35ab75cb3b1e20935806eb86376a790726`:
 
 - `scripts/build-driver.ps1 -Configuration Debug -BuildLecdiag -BuildLecwatch`
   with SDK/WDK **10.0.28000.0** and MSVC tools **14.41.34120**: Debug|x64
@@ -317,6 +317,10 @@ worktree at integration commit
 - `dumpbin /headers /imports /exports` on both SYS files reports AMD64 machine
   `0x8664`, native subsystem, `DriverEntry` as the PE entry point, and only
   `ntoskrnl.exe` and `HAL.dll` imports. No exports are present or required.
+  Debug is 104,960 bytes with SHA-256
+  `803E3A0FA0040F644410030126F01780C503C10619B260B891143BFE46D57602`;
+  Release is 76,288 bytes with SHA-256
+  `B858D8E1F8228617138626AF6FBF3099D41E4D0C8F80ED56048886C58E16C0FE`.
 - `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **390/390 PASS**, comprising
   source/ABI **48/48**, descriptor layout **13/13**, mapping ownership
   **17/17**, asynchronous SG **27/27**, synchronous v3/PnP **149/149**,
