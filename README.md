@@ -79,11 +79,17 @@ The project targets Windows x64 and uses Visual Studio / MSBuild with the Window
 # Build driver and diagnostic utility
 .\scripts\build-driver.ps1 -BuildLecdiag
 
-# Build, test-sign and reload on the configured development scope
-.\scripts\build-sign-load-driver.ps1
+# Build, regress and stage an unsigned package without installing it
+.\scripts\build-driver-package.ps1 `
+  -ExpectedDriverTreeCommit <approved-commit> `
+  -RuntimeConfiguration Release `
+  -DriverVer 'MM/dd/yyyy,a.b.c.d' `
+  -OutputRoot <new-output-directory>
 ```
 
-Installation and setup details are documented in [build, test and install](docs/build-test-install.md).
+The package-only workflow never installs automatically; signing is a separate,
+explicitly authorized opt-in. Installation and setup details are documented in
+[build, test and install](docs/build-test-install.md).
 
 ## 🧩 Repository layout
 
@@ -108,6 +114,8 @@ Detailed technical explanations live outside this README.
 | Hardware registers | [Hardware register map](docs/hardware-register-map.md) |
 | Device interfaces | [Device interfaces](docs/device-interfaces.md) |
 | Regression strategy | [Regression testing](docs/regression-testing.md) |
+| Offline driver package | [Package creation contract](docs/driver-package-creation.md) |
+| Kernel qualification | [Phase 2C runtime plan](docs/kernel-runtime-qualification.md) |
 | XStream automation | [XStream regression testing](docs/xstream-automation-regression-testing.md) |
 | ProBus architecture | [ProBus detection and I2C architecture](docs/probus-detection-i2c-architecture.md) |
 | PCI / acquisition-board topology | [Hardware topology](docs/pci-card-acquisition-board-topology.md) |

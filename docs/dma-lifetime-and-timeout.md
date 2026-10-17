@@ -415,14 +415,14 @@ required after those contracts exist.
   after correcting Release manifest generation, a clean Release x64 rebuild
   both passed with 0 warnings and 0 errors. The SYS files are AMD64 native
   images with `DriverEntry` and only `ntoskrnl.exe`/`HAL.dll` imports.
-- **PASS (offline regression):** all Dry suites pass 389/389 functional checks.
+- **PASS (offline regression):** all Dry suites pass 394/394 functional checks.
   Default stress passes 5,000 DMA and 1,000 INTEN iterations; expanded stress
   passes 50,000 DMA and 10,000 INTEN iterations. The combined established
   comparison is 66,000/66,000. This remains software-only evidence.
 - **DEVELOPMENT STATE:** merged and offline-qualified. This is not authorization
   to install, load or deploy the driver. Future execution must follow the
-  [kernel-runtime qualification plan](kernel-runtime-qualification.md) on a
-  disposable, recoverable system.
+  [kernel-runtime qualification plan](kernel-runtime-qualification.md) under
+  its independently authorized gates.
 - **REMAINING QUALIFICATION:** validate kernel
   IRQL/interrupt-lock behavior, cancellation/rundown and legacy caller bit-0
   compatibility in a controlled environment before deployment. The predicate

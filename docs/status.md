@@ -31,13 +31,14 @@
   lifetime anchor, actual IRP/remove-lock forwarding helpers and live DMA
   completion-evidence transitions. See
   [regression testing](regression-testing.md) for the current counts.
-- The clean-worktree offline check on 2026-10-17 used
-  `scripts/test-driver.ps1 -Mode Dry -SkipBuild`. Result: source/ABI 48/48,
+- The package-workflow offline check on 2026-10-17 used
+  `scripts/test-driver.ps1 -Mode Dry -SkipBuild`. Result: source/ABI and
+  package-workflow contracts 52/52,
   layout 13/13, ownership 17/17,
   asynchronous SG 27/27, synchronous v3/PnP lifetime 149/149 and live PnP
   publication 38/38 plus IRP/remove-lock 8/8 and DMA completion 39/39;
   plus deterministic interleavings 2/2 and native INTEN checks 49/49;
-  overall 390/390 PASS, with 5,000/5,000 DMA stress and 1,000/1,000 INTEN
+  overall 394/394 PASS, with 5,000/5,000 DMA stress and 1,000/1,000 INTEN
   RMW stress iterations passing. Source contracts prevent recurrence of the
   Release manifest mismatch and require the exact five-interface compatibility
   set. An expanded run passed 50,000/50,000 DMA
@@ -51,16 +52,21 @@
   runtime package must therefore be built once, hash-frozen and promoted as an
   immutable set; a later rebuild is a different artifact unless deterministic
   linking is separately implemented and qualified.
-- Phase 2C Stage 1 completed a strictly read-only audit at `cb5010a`. The
-  required 10.0.28000.0 SDK/WDK tools, MSVC 14.41, valid source INF and local
-  test-certificate metadata are present. Existing Phase 2B SYS/PDB files match
-  their recorded hashes but are unsigned `aba7ba35` evidence; no coherent
-  exact-commit INF/CAT/signed-SYS/PDB set exists. The accessible machine is the
-  licensed production oscilloscope, not a named disposable/restorable test
-  host, and no recovery owner or restore rehearsal is established. Stage 1's
-  exit gate is therefore not met. See the
-  [Stage 1 audit](handoffs/phase-2c-stage-1-read-only-audit.md) and canonical
-  [package-only contract](driver-package-creation.md).
+- Phase 2C now has a validated package-only workflow at `b0d3a2c`, layered on
+  the exact `cb5010a` driver/include trees. It pins SDK/WDK 10.0.28000.0 and
+  MSVC 14.41.34120, builds both configurations and tools, enforces the complete
+  Dry/stress evidence, validates PE/PDB/INF/CAT metadata, records hashes, and
+  contains no installation or device-operation path. The validated Release
+  set is intentionally unsigned and has manifest SHA-256
+  `EE4416518469A8CE52D021BF242FACD22CDCD7E0949FD3A84D39934387F8D921`.
+  It is not an installation candidate. The owner has designated the WR6k host
+  as an expendable test environment, but private-key use, signing,
+  crash-control/reboot changes, installation, PnP, Verifier and acquisition
+  retain separate gates. The previous `oem100.inf` package has been exported
+  privately with Phase 1-matching hashes; elevated WinRE/BCD inventory and a
+  recovery rehearsal remain incomplete. See the canonical
+  [package contract](driver-package-creation.md) and
+  [installation preparation](phase-2c-installation-preparation.md).
 
 ## DMA/PnP staging
 
@@ -146,7 +152,7 @@
   Research PR #9 at `6bff97f` remains separate; no research merge or live WDM
   activation occurred. The merged source is offline-qualified, not deployment
   qualified. Follow the [kernel-runtime qualification plan](kernel-runtime-qualification.md)
-  only on a disposable, recoverable test system.
+  only under its independently authorized gates.
 - ISR serialization does not prove that a physically pending untagged source
   originated after GO; hardware IRQ provenance and final PCI transaction
   ordering remain unverified.

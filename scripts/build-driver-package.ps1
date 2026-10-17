@@ -1,0 +1,553 @@
+<#
+.SYNOPSIS
+  Build, regress and stage a hash-frozen WR6k driver package without installing it.
+.DESCRIPTION
+  The default mode creates an unsigned validation package. Signing is opt-in and
+  requires an exact LocalMachine certificate thumbprint. This script never
+  installs a package, changes PnP state or opens a device.
+.PARAMETER ExpectedDriverTreeCommit
+  Reviewed commit whose driver/ and include/ trees must match the current tree.
+.PARAMETER RuntimeConfiguration
+  Debug or Release binary to place in the package. Both configurations are built.
+.PARAMETER DriverVer
+  Explicit INF identity in MM/dd/yyyy,a.b.c.d form. It is never synthesized.
+.PARAMETER OutputRoot
+  New output directory. The script refuses to overwrite an existing path.
+.PARAMETER Sign
+  Opt in to SYS/CAT signing. Never use without separate owner authorization.
+.PARAMETER CertificateThumbprint
+  Exact SHA-1 thumbprint in Cert:\LocalMachine\My. Required with -Sign.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$true)]
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$ExpectedDriverTreeCommit,
+
+    [Parameter(Mandatory=$true)]
+    [ValidateSet('Debug', 'Release')]
+    [string]$RuntimeConfiguration,
+
+    [Parameter(Mandatory=$true)]
+    [ValidatePattern('^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4}),([0-9]+\.){3}[0-9]+$')]
+    [string]$DriverVer,
+
+    [Parameter(Mandatory=$true)]
+    [string]$OutputRoot,
+
+    [switch]$Sign,
+
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$CertificateThumbprint
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repo = Split-Path -Parent $PSScriptRoot
+$output = [System.IO.Path]::GetFullPath($OutputRoot)
+$packageDir = Join-Path $output 'package'
+$evidenceDir = Join-Path $output 'evidence'
+$transcriptPath = Join-Path $evidenceDir 'workflow-transcript.txt'
+$manifestPath = Join-Path $evidenceDir 'manifest.json'
+$manifestHashPath = Join-Path $evidenceDir 'manifest.sha256'
+
+$toolPaths = [ordered]@{
+    MSBuild = 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe'
+    CL = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\bin\Hostx64\x64\cl.exe'
+    LINK = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\bin\Hostx64\x64\link.exe'
+    DUMPBIN = 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.41.34120\bin\Hostx64\x64\dumpbin.exe'
+    InfVerif = 'C:\Program Files (x86)\Windows Kits\10\Tools\10.0.28000.0\x64\infverif.exe'
+    Inf2Cat = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x86\Inf2Cat.exe'
+    SignTool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
+    SourceTool = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\srcsrv\srctool.exe'
+}
+
+function Invoke-GitCapture {
+    param([Parameter(Mandatory=$true)][string[]]$Arguments)
+
+    $result = @(& git @Arguments 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git $($Arguments -join ' ') failed:`n$($result -join [Environment]::NewLine)"
+    }
+    return ($result -join "`n").Trim()
+}
+
+function Invoke-ExternalCaptured {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][string[]]$Arguments,
+        [Parameter(Mandatory=$true)][string]$LogPath,
+        [switch]$AllowPositiveExitCode
+    )
+
+    Write-Host ""
+    Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
+    $result = @(& $FilePath @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+    $result | Tee-Object -LiteralPath $LogPath | Out-Host
+    if ($exitCode -ne 0 -and -not ($AllowPositiveExitCode -and $exitCode -gt 0)) {
+        throw "$Name failed with exit code $exitCode."
+    }
+    return $result
+}
+
+function Invoke-ScriptCaptured {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][hashtable]$Arguments,
+        [Parameter(Mandatory=$true)][string]$LogPath
+    )
+
+    Write-Host ""
+    Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
+    $result = @(& $FilePath @Arguments 2>&1)
+    $result | Tee-Object -LiteralPath $LogPath | Out-Host
+    return $result
+}
+
+function Get-FileRecord {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $item = Get-Item -LiteralPath $Path
+    return [ordered]@{
+        Name = $item.Name
+        RelativePath = [System.IO.Path]::GetRelativePath($output, $item.FullName)
+        Bytes = $item.Length
+        SHA256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash
+        LastWriteUtc = $item.LastWriteTimeUtc.ToString('o')
+    }
+}
+
+function Get-ToolRecord {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required pinned tool is missing: $Path"
+    }
+    $item = Get-Item -LiteralPath $Path
+    return [ordered]@{
+        Name = $Name
+        Path = $Path
+        FileVersion = $item.VersionInfo.FileVersion
+        ProductVersion = $item.VersionInfo.ProductVersion
+        SHA256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    }
+}
+
+function Get-PeEvidence {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Label
+    )
+
+    $log = Join-Path $evidenceDir ("pe-{0}.txt" -f $Label.ToLowerInvariant())
+    $lines = Invoke-ExternalCaptured -Name "$Label PE inspection" `
+        -FilePath $toolPaths.DUMPBIN `
+        -Arguments @('/headers', '/imports', '/exports', $Path) `
+        -LogPath $log
+    $text = $lines -join "`n"
+
+    if ($text -notmatch '(?im)^\s*8664 machine \(x64\)\s*$') {
+        throw "$Label is not AMD64 machine 0x8664."
+    }
+    if ($text -notmatch '(?im)^\s*1 subsystem \(Native\)\s*$') {
+        throw "$Label is not a Native subsystem image."
+    }
+    if ($text -notmatch '(?im)entry point .*DriverEntry') {
+        throw "$Label does not resolve its entry point to DriverEntry."
+    }
+
+    $imports = @([regex]::Matches($text, '(?im)^\s+([A-Za-z0-9_.-]+\.(?:dll|exe))\s*$') |
+        ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() } |
+        Sort-Object -Unique)
+    $expectedImports = @('hal.dll', 'ntoskrnl.exe')
+    if (($imports -join ',') -ne ($expectedImports -join ',')) {
+        throw "$Label imports '$($imports -join ',')', expected only '$($expectedImports -join ',')'."
+    }
+
+    $rsds = [regex]::Match($text,
+        '(?im)Format: RSDS, \{(?<Guid>[0-9A-F-]{36})\}, (?<Age>[0-9]+), (?<Path>.+\.pdb)\s*$')
+    if (-not $rsds.Success) {
+        throw "$Label does not contain parseable RSDS/PDB metadata."
+    }
+
+    return [ordered]@{
+        Machine = '0x8664'
+        Subsystem = 'Native'
+        EntryPoint = 'DriverEntry'
+        Imports = $imports
+        RsdsGuid = $rsds.Groups['Guid'].Value.ToUpperInvariant()
+        RsdsAge = [int]$rsds.Groups['Age'].Value
+        EmbeddedPdbPath = $rsds.Groups['Path'].Value.Trim()
+        DumpbinLog = [System.IO.Path]::GetRelativePath($output, $log)
+    }
+}
+
+if ($Sign -and [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+    throw '-CertificateThumbprint is required with -Sign.'
+}
+if (-not $Sign -and -not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+    throw '-CertificateThumbprint is accepted only with -Sign.'
+}
+
+$identityParts = $DriverVer.Split(',', 2)
+$driverDate = [datetime]::ParseExact(
+    $identityParts[0],
+    'MM/dd/yyyy',
+    [System.Globalization.CultureInfo]::InvariantCulture,
+    [System.Globalization.DateTimeStyles]::None)
+if ($driverDate.Date -gt (Get-Date).ToUniversalTime().Date) {
+    throw "DriverVer date is in the future in UTC: $DriverVer"
+}
+
+if (Test-Path -LiteralPath $output) {
+    throw "OutputRoot already exists; refusing to overwrite it: $output"
+}
+
+$head = Invoke-GitCapture @('rev-parse', 'HEAD')
+$status = Invoke-GitCapture @('status', '--porcelain', '--untracked-files=normal')
+if (-not [string]::IsNullOrEmpty($status)) {
+    throw "The package worktree is not clean:`n$status"
+}
+& git merge-base --is-ancestor $ExpectedDriverTreeCommit HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw "Expected driver-tree commit is not an ancestor of HEAD: $ExpectedDriverTreeCommit"
+}
+$expectedDriverTree = Invoke-GitCapture @('rev-parse', "$ExpectedDriverTreeCommit`:driver")
+$expectedIncludeTree = Invoke-GitCapture @('rev-parse', "$ExpectedDriverTreeCommit`:include")
+$currentDriverTree = Invoke-GitCapture @('rev-parse', 'HEAD:driver')
+$currentIncludeTree = Invoke-GitCapture @('rev-parse', 'HEAD:include')
+if ($expectedDriverTree -ne $currentDriverTree -or
+    $expectedIncludeTree -ne $currentIncludeTree) {
+    throw 'Current driver/include trees differ from the reviewed development revision.'
+}
+
+$tools = @()
+foreach ($entry in $toolPaths.GetEnumerator()) {
+    $tools += Get-ToolRecord -Name $entry.Key -Path $entry.Value
+}
+if (($tools | Where-Object Name -eq 'CL').ProductVersion -notlike '14.41.34123*') {
+    throw 'Pinned CL is not the approved MSVC 14.41 toolset.'
+}
+if (($tools | Where-Object Name -eq 'InfVerif').ProductVersion -notlike '10.0.28000.2526*' -or
+    ($tools | Where-Object Name -eq 'SignTool').ProductVersion -notlike '10.0.28000.2526*') {
+    throw 'Pinned SDK/WDK tools are not the approved 10.0.28000.0 payload.'
+}
+
+New-Item -ItemType Directory -Path $packageDir | Out-Null
+New-Item -ItemType Directory -Path $evidenceDir | Out-Null
+Start-Transcript -LiteralPath $transcriptPath | Out-Null
+
+try {
+    Write-Host "Source HEAD: $head"
+    Write-Host "Reviewed driver-tree commit: $ExpectedDriverTreeCommit"
+    Write-Host "Driver tree: $currentDriverTree"
+    Write-Host "Include tree: $currentIncludeTree"
+    Write-Host "Package identity: DriverVer=$DriverVer"
+    Write-Host "Runtime configuration: $RuntimeConfiguration"
+    Write-Host ("Signing requested: {0}" -f [bool]$Sign)
+
+    $buildDriver = Join-Path $PSScriptRoot 'build-driver.ps1'
+    $dryRunner = Join-Path $PSScriptRoot 'test-driver.ps1'
+    $expandedRunner = Join-Path $repo 'tests\dry\test-dma-completion.ps1'
+    $dryLog = Join-Path $evidenceDir 'regression-dry.log'
+    $expandedLog = Join-Path $evidenceDir 'regression-expanded.log'
+
+    $null = Invoke-ScriptCaptured -Name 'Debug x64 driver and tools build' `
+        -FilePath $buildDriver `
+        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true } `
+        -LogPath (Join-Path $evidenceDir 'build-debug.log')
+    $null = Invoke-ScriptCaptured -Name 'Release x64 driver build' `
+        -FilePath $buildDriver `
+        -Arguments @{ Configuration = 'Release' } `
+        -LogPath (Join-Path $evidenceDir 'build-release.log')
+    $null = Invoke-ScriptCaptured -Name 'Complete Dry regression' `
+        -FilePath $dryRunner `
+        -Arguments @{ Mode = 'Dry'; SkipBuild = $true } `
+        -LogPath $dryLog
+    $null = Invoke-ScriptCaptured -Name 'Expanded DMA and INTEN stress' `
+        -FilePath $expandedRunner `
+        -Arguments @{ StressIterations = 10000 } `
+        -LogPath $expandedLog
+
+    $expectedRegressionEvidence = [ordered]@{
+        $transcriptPath = @(
+            'DRY REGRESSION: 52/52 passed; 0 failed.'
+            'REGRESSION SUITE PASS: Dry'
+        )
+        $dryLog = @(
+            'DMA LAYOUT: 13/13 passed; 0 failed.'
+            'DMA OWNERSHIP: 17/17 passed; 0 failed.'
+            'SG BRIDGE MOCK: 27/27 passed; 0 failed.'
+            'SG SYNC V3: 149/149 passed; 0 failed.'
+            'PNP PUBLICATION: 38/38 passed; 0 failed.'
+            'PNP IRP LIFETIME: 8/8 passed; 0 failed.'
+            'DMA COMPLETION: 39/39 passed; 0 failed.'
+            'DMA INTERLEAVINGS: 2/2 passed; 0 failed.'
+            'INTEN functional: 49 PASS, 0 FAIL, 0 SKIP'
+            'DMA STRESS TOTAL: 5000/5000 passed; 0 failed.'
+            'INTEN RMW stress: 1000/1000 iterations completed'
+        )
+        $expandedLog = @(
+            'DMA STRESS TOTAL: 50000/50000 passed; 0 failed.'
+            'INTEN RMW stress: 10000/10000 iterations completed'
+        )
+    }
+    foreach ($log in $expectedRegressionEvidence.Keys) {
+        $logText = Get-Content -LiteralPath $log -Raw
+        foreach ($expectedLine in $expectedRegressionEvidence[$log]) {
+            if (-not $logText.Contains($expectedLine)) {
+                throw "Missing expected regression evidence in $log`: $expectedLine"
+            }
+        }
+    }
+
+    $builtUtilities = @(
+        foreach ($utility in @(
+            @{ Name = 'lecdiag'; Path = (Join-Path $repo 'tools\lecdiag\build\lecdiag.exe') }
+            @{ Name = 'lecwatch'; Path = (Join-Path $repo 'tools\lecwatch\build\lecwatch.exe') }
+        )) {
+            if (-not (Test-Path -LiteralPath $utility.Path -PathType Leaf)) {
+                throw "Missing utility build output: $($utility.Path)"
+            }
+            [ordered]@{
+                Name = $utility.Name
+                Path = [System.IO.Path]::GetRelativePath($repo, $utility.Path)
+                Bytes = (Get-Item -LiteralPath $utility.Path).Length
+                SHA256 = (Get-FileHash -LiteralPath $utility.Path -Algorithm SHA256).Hash
+                Machine = '0x8664'
+            }
+        }
+    )
+
+    $buildArtifacts = @()
+    $peEvidence = [ordered]@{}
+    foreach ($configuration in @('Debug', 'Release')) {
+        $sys = Join-Path $repo "x64\$configuration\LecS65AcqDrv.sys"
+        $pdb = Join-Path $repo "x64\$configuration\LecS65AcqDrv.pdb"
+        if (-not (Test-Path -LiteralPath $sys -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $pdb -PathType Leaf)) {
+            throw "Missing $configuration SYS/PDB build output."
+        }
+        $pe = Get-PeEvidence -Path $sys -Label $configuration
+        if ([System.IO.Path]::GetFileName($pe.EmbeddedPdbPath) -ne
+            [System.IO.Path]::GetFileName($pdb)) {
+            throw "$configuration SYS does not reference the matching PDB name."
+        }
+        $pdbLog = Join-Path $evidenceDir ("pdb-{0}-sources.txt" -f $configuration.ToLowerInvariant())
+        $pdbOutput = Invoke-ExternalCaptured -Name "$configuration PDB readability" `
+            -FilePath $toolPaths.SourceTool -Arguments @('-r', $pdb) -LogPath $pdbLog `
+            -AllowPositiveExitCode
+        if (($pdbOutput -join "`n") -notmatch '[1-9][0-9]* source files are indexed') {
+            throw "$configuration PDB did not report indexed source files."
+        }
+        $buildArtifacts += [ordered]@{
+            Configuration = $configuration
+            SYS = [ordered]@{
+                Bytes = (Get-Item -LiteralPath $sys).Length
+                SHA256 = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
+                Signature = (Get-AuthenticodeSignature -LiteralPath $sys).Status.ToString()
+            }
+            PDB = [ordered]@{
+                Bytes = (Get-Item -LiteralPath $pdb).Length
+                SHA256 = (Get-FileHash -LiteralPath $pdb -Algorithm SHA256).Hash
+                ReadabilityLog = [System.IO.Path]::GetRelativePath($output, $pdbLog)
+            }
+        }
+        $peEvidence[$configuration] = $pe
+    }
+
+    $sourceInf = Join-Path $repo 'driver\LecS65AcqDrv.inf'
+    $selectedSys = Join-Path $repo "x64\$RuntimeConfiguration\LecS65AcqDrv.sys"
+    $selectedPdb = Join-Path $repo "x64\$RuntimeConfiguration\LecS65AcqDrv.pdb"
+    $packageInf = Join-Path $packageDir 'LecS65AcqDrv.inf'
+    $packageSys = Join-Path $packageDir 'LecS65AcqDrv.sys'
+    $packageCat = Join-Path $packageDir 'LecS65AcqDrv.cat'
+    $evidencePdb = Join-Path $evidenceDir 'LecS65AcqDrv.pdb'
+
+    Copy-Item -LiteralPath $selectedSys -Destination $packageSys
+    Copy-Item -LiteralPath $selectedPdb -Destination $evidencePdb
+    $infText = Get-Content -LiteralPath $sourceInf -Raw
+    if ([regex]::Matches($infText, '(?m)^DriverVer=.*$').Count -ne 1) {
+        throw 'Source INF must contain exactly one DriverVer line.'
+    }
+    $infText = [regex]::Replace(
+        $infText,
+        '(?m)^DriverVer=.*$',
+        "DriverVer=$DriverVer")
+    Set-Content -LiteralPath $packageInf -Value $infText -Encoding Ascii
+
+    if ([regex]::Matches($infText, '(?m)^CatalogFile=LecS65AcqDrv\.cat\r?$').Count -ne 1 -or
+        [regex]::Matches($infText, 'PCI\\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00').Count -ne 1 -or
+        [regex]::Matches($infText, '(?m)^StartType=3\r?$').Count -ne 1 -or
+        [regex]::Matches($infText, '(?m)^ServiceBinary=%12%\\LecS65AcqDrv\.sys\r?$').Count -ne 1) {
+        throw 'Staged INF identity/service contract changed unexpectedly.'
+    }
+
+    $null = Invoke-ExternalCaptured -Name 'Staged INF validation' `
+        -FilePath $toolPaths.InfVerif -Arguments @('/v', $packageInf) `
+        -LogPath (Join-Path $evidenceDir 'infverif-before-catalog.log')
+
+    $preSigningSysHash = (Get-FileHash -LiteralPath $packageSys -Algorithm SHA256).Hash
+    $certificateRecord = $null
+    if ($Sign) {
+        $normalizedThumbprint = $CertificateThumbprint.ToUpperInvariant()
+        $certificate = @(Get-ChildItem -LiteralPath 'Cert:\LocalMachine\My' |
+            Where-Object Thumbprint -eq $normalizedThumbprint)
+        if ($certificate.Count -ne 1) {
+            throw "Expected exactly one LocalMachine/My certificate for $normalizedThumbprint."
+        }
+        $certificate = $certificate[0]
+        $eku = @($certificate.EnhancedKeyUsageList | ForEach-Object ObjectId |
+            ForEach-Object Value)
+        if ($eku -notcontains '1.3.6.1.5.5.7.3.3' -or
+            -not $certificate.HasPrivateKey -or
+            (Get-Date) -lt $certificate.NotBefore -or
+            (Get-Date) -gt $certificate.NotAfter) {
+            throw 'The selected certificate is not currently usable for code signing.'
+        }
+        $certificateRecord = [ordered]@{
+            Subject = $certificate.Subject
+            Thumbprint = $certificate.Thumbprint
+            NotBeforeUtc = $certificate.NotBefore.ToUniversalTime().ToString('o')
+            NotAfterUtc = $certificate.NotAfter.ToUniversalTime().ToString('o')
+            EKU = $eku
+            HasPrivateKey = $certificate.HasPrivateKey
+        }
+        $null = Invoke-ExternalCaptured -Name 'SYS signing' `
+            -FilePath $toolPaths.SignTool `
+            -Arguments @('sign', '/fd', 'SHA256', '/sm', '/s', 'My', '/sha1',
+                $normalizedThumbprint, $packageSys) `
+            -LogPath (Join-Path $evidenceDir 'signtool-sign-sys.log')
+    }
+
+    $postSigningSysHash = (Get-FileHash -LiteralPath $packageSys -Algorithm SHA256).Hash
+    $null = Invoke-ExternalCaptured -Name 'Catalog generation' `
+        -FilePath $toolPaths.Inf2Cat `
+        -Arguments @("/driver:$packageDir", '/os:10_X64', '/verbose') `
+        -LogPath (Join-Path $evidenceDir 'inf2cat.log')
+    if (-not (Test-Path -LiteralPath $packageCat -PathType Leaf)) {
+        throw 'Inf2Cat completed without creating LecS65AcqDrv.cat.'
+    }
+
+    if ($Sign) {
+        $null = Invoke-ExternalCaptured -Name 'CAT signing' `
+            -FilePath $toolPaths.SignTool `
+            -Arguments @('sign', '/fd', 'SHA256', '/sm', '/s', 'My', '/sha1',
+                $normalizedThumbprint, $packageCat) `
+            -LogPath (Join-Path $evidenceDir 'signtool-sign-cat.log')
+    }
+
+    $null = Invoke-ExternalCaptured -Name 'Final INF validation' `
+        -FilePath $toolPaths.InfVerif -Arguments @('/v', $packageInf) `
+        -LogPath (Join-Path $evidenceDir 'infverif-final.log')
+
+    $sysSignature = Get-AuthenticodeSignature -LiteralPath $packageSys
+    $catSignature = Get-AuthenticodeSignature -LiteralPath $packageCat
+    if ($Sign) {
+        if ($sysSignature.Status -ne 'Valid' -or $catSignature.Status -ne 'Valid' -or
+            $sysSignature.SignerCertificate.Thumbprint -ne $normalizedThumbprint -or
+            $catSignature.SignerCertificate.Thumbprint -ne $normalizedThumbprint) {
+            throw 'Final SYS/CAT signature verification failed.'
+        }
+        $null = Invoke-ExternalCaptured -Name 'SYS Authenticode verification' `
+            -FilePath $toolPaths.SignTool -Arguments @('verify', '/v', '/pa', $packageSys) `
+            -LogPath (Join-Path $evidenceDir 'signtool-verify-sys.log')
+        $null = Invoke-ExternalCaptured -Name 'CAT Authenticode verification' `
+            -FilePath $toolPaths.SignTool -Arguments @('verify', '/v', '/pa', $packageCat) `
+            -LogPath (Join-Path $evidenceDir 'signtool-verify-cat.log')
+        $null = Invoke-ExternalCaptured -Name 'Catalog membership verification' `
+            -FilePath $toolPaths.SignTool `
+            -Arguments @('verify', '/v', '/pa', '/c', $packageCat, $packageSys) `
+            -LogPath (Join-Path $evidenceDir 'signtool-verify-membership.log')
+    }
+    else {
+        if ($sysSignature.Status -ne 'NotSigned' -or $catSignature.Status -ne 'NotSigned') {
+            throw 'Unsigned validation mode produced an unexpectedly signed artifact.'
+        }
+    }
+
+    $packageFiles = @(Get-ChildItem -LiteralPath $packageDir -File |
+        Sort-Object Name | ForEach-Object Name)
+    if (($packageFiles -join ',') -ne
+        'LecS65AcqDrv.cat,LecS65AcqDrv.inf,LecS65AcqDrv.sys') {
+        throw "Unexpected package contents: $($packageFiles -join ',')"
+    }
+
+    $manifest = [ordered]@{
+        Schema = 1
+        CreatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        PackageState = if ($Sign) { 'SignedCandidate' } else { 'UnsignedValidationOnly' }
+        InstallAuthorized = $false
+        Source = [ordered]@{
+            WorkflowCommit = $head
+            ReviewedDriverTreeCommit = $ExpectedDriverTreeCommit.ToLowerInvariant()
+            DriverTree = $currentDriverTree
+            IncludeTree = $currentIncludeTree
+        }
+        Build = [ordered]@{
+            SDK_WDK = '10.0.28000.0'
+            MSVC = '14.41.34120'
+            RuntimeConfiguration = $RuntimeConfiguration
+            Configurations = $buildArtifacts
+        }
+        Regression = [ordered]@{
+            CompleteDry = 'PASS'
+            Expanded = 'PASS'
+            FunctionalTestsPassed = 394
+            FunctionalTestsFailed = 0
+            DefaultDmaStressIterations = 5000
+            DefaultIntenStressIterations = 1000
+            ExpandedDmaStressIterations = 50000
+            ExpandedIntenStressIterations = 10000
+            TotalStressIterations = 66000
+            DryLog = 'evidence/regression-dry.log'
+            ExpandedLog = 'evidence/regression-expanded.log'
+        }
+        PackageIdentity = [ordered]@{
+            DriverVer = $DriverVer
+            HardwareId = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00'
+            Catalog = 'LecS65AcqDrv.cat'
+            Signed = [bool]$Sign
+            Certificate = $certificateRecord
+            PreSigningSysSHA256 = $preSigningSysHash
+            PostSigningSysSHA256 = $postSigningSysHash
+            SysSignatureStatus = $sysSignature.Status.ToString()
+            CatSignatureStatus = $catSignature.Status.ToString()
+        }
+        PE = $peEvidence
+        BuiltUtilities = $builtUtilities
+        Tools = $tools
+        Artifacts = @(
+            Get-FileRecord -Path $packageInf
+            Get-FileRecord -Path $packageCat
+            Get-FileRecord -Path $packageSys
+            Get-FileRecord -Path $evidencePdb
+        )
+        Safety = [ordered]@{
+            DriverStoreChanged = $false
+            PnpChanged = $false
+            DeviceOpened = $false
+            SigningPolicyChanged = $false
+        }
+    }
+    $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+    Set-Content -LiteralPath $manifestHashPath `
+        -Value ("{0} *manifest.json" -f $manifestHash) -Encoding Ascii
+
+    Write-Host ""
+    Write-Host 'PACKAGE WORKFLOW PASS' -ForegroundColor Green
+    Write-Host "  Output: $output"
+    Write-Host "  State : $($manifest.PackageState)"
+    Write-Host "  Manifest SHA256: $manifestHash"
+}
+finally {
+    try { Stop-Transcript | Out-Null } catch { }
+}
