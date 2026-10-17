@@ -321,13 +321,15 @@ worktree at development merge commit
   `803E3A0FA0040F644410030126F01780C503C10619B260B891143BFE46D57602`;
   Release is 76,288 bytes with SHA-256
   `B858D8E1F8228617138626AF6FBF3099D41E4D0C8F80ED56048886C58E16C0FE`.
-- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **390/390 PASS**, comprising
-  source/ABI **48/48**, descriptor layout **13/13**, mapping ownership
+- `scripts/test-driver.ps1 -Mode Dry -SkipBuild`: **394/394 PASS**, comprising
+  source/ABI and package-workflow **52/52**, descriptor layout **13/13**, mapping ownership
   **17/17**, asynchronous SG **27/27**, synchronous v3/PnP **149/149**,
   PnP publication **38/38**, PnP IRP/remove-lock **8/8**, DMA completion
   **39/39**, deterministic interleavings **2/2**, and production INTEN helper
   checks **49/49**. Source contracts verify the shared Debug/Release driver
-  manifest/toolset policy and the exact five-interface compatibility set.
+  manifest/toolset policy, the exact five-interface compatibility set, and the
+  package workflow's no-install, pinned-toolchain, explicit-identity,
+  no-overwrite and opt-in signing boundaries.
 - The default run passed **5,000/5,000** DMA race iterations and
   **1,000/1,000** INTEN RMW iterations.
 - `tests/dry/test-dma-completion.ps1 -StressIterations 10000` passed

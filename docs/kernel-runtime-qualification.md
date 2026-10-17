@@ -1,13 +1,15 @@
 # Phase 2C kernel-runtime qualification plan
 
 This is the execution procedure for development merge commit
-`cb5010a4712f25de7c56d23d0d7502683542058c`. Phase 2C Stage 1 completed the
-read-only source, package, toolchain, certificate-metadata and accessible-host
-audit. Its exit gate is not met because no disposable/restorable test host,
-recovery owner or rollback proof was provided. No later stage has been
-executed. Passing offline builds and Dry tests does not authorize driver
-installation, loading, device access, Driver Verifier, PnP transitions or
-hardware tests.
+`cb5010a4712f25de7c56d23d0d7502683542058c`. Phase 2C completed the read-only
+audit, implemented the package-only workflow and created a validated unsigned
+package set. The owner has designated this WR6k Windows system as an
+expendable development/test host and accepts crash, reinstallation, local-data
+loss and hardware-damage risk. This replaces the former requirement for a
+separate disposable computer; it does not authorize private-key use,
+installation, Driver Verifier, PnP transitions, device handles, acquisition or
+DMA. Those remain separate gates. No signed package has been created and no
+candidate has been installed or loaded.
 
 The six stages below are strictly ordered and independently authorized. An
 authorization for one stage does not authorize the next. Preserve the evidence
@@ -15,10 +17,9 @@ and obtain the stated approval at every exit gate before continuing.
 
 ## Absolute safety boundary
 
-Use only a disposable or reliably reimageable Windows x64 test system. Any
-stage that starts the driver on PCI hardware requires disposable or otherwise
-recoverable WR6k-compatible hardware. Never use the licensed production
-oscilloscope for driver replacement, Verifier or PnP testing.
+The owner-designated WR6k host is the Phase 2C test system. Recovery media,
+console access and the exported previous package must still be verified before
+installation; accepting loss does not make an untested rollback path valid.
 
 The following remain prohibited throughout Phase 2C:
 
@@ -44,11 +45,11 @@ remain unreachable.
 
 | Stage | Hardware | Separate owner authorization | Permitted state change |
 |---|---|---|---|
-| 1. Read-only validation | Build host and intended disposable test host; no WR6k required | Read package/system metadata and export non-sensitive evidence | None |
+| 1. Read-only validation | Build host and owner-designated WR6k test host | Read package/system metadata and export non-sensitive evidence | None |
 | 2. Package creation/signing | Offline build/signing host; no WR6k attached or required | Use the named test certificate/private key and create signed artifacts | Files and certificate-use audit only; no Driver Store or PnP change |
-| 3. Recovery/rollback proof | Disposable test host with restorable image; WR6k not required | Snapshot/reimage operations, recovery boot, reboot and crash-control changes | Test-host configuration and reboots only |
-| 4. Initial load | Disposable test host plus recoverable WR6k-compatible PCI hardware for a real START | Driver Store installation and one initial PnP START with automatic startup MMIO | Install and initial START only |
-| 5. Five-interface verification | Same successfully started disposable host/hardware | Enumeration-only interface inspection | None beyond the already authorized loaded state |
+| 3. Recovery/rollback proof | Owner-designated WR6k test host | Recovery boot, reinstall/reimage, reboot and crash-control changes | Test-host configuration and reboots only |
+| 4. Initial load | Same host and its WR6k PCI device for one real START | Driver Store installation and one initial PnP START with automatic startup MMIO | Install and initial START only |
+| 5. Five-interface verification | Same successfully started host/hardware | Enumeration-only interface inspection | None beyond the already authorized loaded state |
 | 6. Verifier/PnP | Same host/hardware; hot-removal chassis only for optional surprise removal | Verifier, reboots, device handles for approved software/read-only controls, and each PnP matrix | Explicitly bounded Verifier and PnP transitions |
 
 ## Stage 1 — read-only package and system validation
@@ -66,14 +67,14 @@ remain unreachable.
 2. Inventory the candidate INF and any existing SYS/CAT without executing or
    trusting them. Record size, SHA-256, PE machine, subsystem, entry point and
    imports.
-3. On the intended disposable test host, record Windows build, architecture,
+3. On the intended test host, record Windows build, architecture,
    firmware mode, Secure Boot, test-signing, hypervisor, VBS/HVCI, IOMMU,
    Driver Verifier state and available dump storage.
 4. If a WR6k device is present, enumerate only PnP identity, current package,
    service state and assigned resources. Do not open an interface or issue an
    IOCTL. Preserve the existing package identity and hashes privately.
-5. Confirm that the host is disposable/restorable and is not the licensed
-   production oscilloscope.
+5. Record the owner's test-host designation, accepted loss model and the
+   independently gated operations that remain unauthorized.
 
 ### Exit gate
 
@@ -81,12 +82,10 @@ PASS requires an exact source identity, complete read-only inventory, no
 unexpected active Verifier state and a named recovery owner. Any ambiguity is a
 stop. Stage 1 approval does not permit signing or package creation.
 
-The audit result and exact host/tool/package evidence are recorded in the
+The original audit result and exact host/tool/package evidence are recorded in the
 [Phase 2C Stage 1 handoff](handoffs/phase-2c-stage-1-read-only-audit.md).
-Source and toolchain identity, INF intent and certificate metadata are
-verified. The accessible host is the licensed production oscilloscope, not an
-eligible test host; recovery identity and restore proof are absent. Stage 1 is
-therefore stopped at this exit gate.
+The later owner designation makes this host eligible for controlled testing,
+but recovery boot and restore/reinstallation proof remain incomplete.
 
 ## Stage 2 — reproducible package creation and test signing
 
@@ -125,10 +124,11 @@ not currently produce the same SYS hash. Reproducibility for Phase 2C means
 that one reviewed build is hash-frozen and promoted unchanged; do not rebuild
 and assume equivalence. Bit-reproducible linking is a separate future change.
 
-Do not use `scripts/build-sign-load-driver.ps1` for Stage 2. That script
+Use `scripts/build-driver-package.ps1` for Stage 2. Its default unsigned mode
+was validated at workflow commit `b0d3a2c`. Do not use
+`scripts/build-sign-load-driver.ps1`; that script
 continues from package creation into `pnputil` installation, device restart
-and `lecdiag` device access. A package-only reviewed wrapper or individually
-reviewed commands are required before Stage 2 may execute.
+and `lecdiag` device access.
 
 ### Exit gate
 
@@ -141,8 +141,8 @@ approval does not permit installation, loading or PnP activity.
 ### Preconditions
 
 - Stage 2 artifact hashes are accepted.
-- The owner has authorized snapshot/reimage operations, recovery boot, reboot
-  and crash-control changes on the disposable host.
+- The owner has separately authorized recovery boot, reboot and crash-control
+  changes on the designated test host.
 - The original working package and a bootable recovery environment are
   available off-host.
 
@@ -173,8 +173,8 @@ candidate installation.
 
 - Stages 1–3 passed.
 - Exact INF/CAT/SYS hashes match the Stage 2 manifest.
-- The owner has authorized one installation and initial START on disposable,
-  recoverable hardware, including the driver's automatic startup MMIO.
+- The owner has separately authorized one installation and initial START on
+  the designated test host, including the driver's automatic startup MMIO.
 - XStream and every process capable of opening the driver are stopped.
 
 ### Procedure
@@ -284,7 +284,7 @@ no post-unavailable hardware access. Every START must restore exactly the five
 expected interfaces and no alias.
 
 True surprise removal is a separate optional authorization. It requires a
-hot-removal-capable disposable chassis and recoverable WR6k hardware with all
+hot-removal-capable test chassis and WR6k hardware with all
 acquisition and DMA disabled. `pnputil /remove-device` is orderly removal and
 must never be reported as surprise-removal coverage. If suitable hardware is
 unavailable, record surprise removal as NOT RUN.

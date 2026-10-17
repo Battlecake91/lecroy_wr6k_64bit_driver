@@ -55,5 +55,5 @@ same PCI function, or an interface that remains present after STOP/REMOVE.
 
 The hardware-independent source contract fixes the exact five-GUID set, count
 and driver-owned registration loop. Runtime qualification is still required to
-prove instance cardinality and publication/unpublication ordering on a
-disposable system.
+prove instance cardinality and publication/unpublication ordering under the
+independently authorized Phase 2C runtime gates.
