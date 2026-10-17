@@ -2,20 +2,26 @@
 
 ## Build and software regression
 
-- Integration commit `9c97e49c7a6f3f42485e9e6f0ccca8c3b3536dea` merges the reviewed
-  Debug/Release qualification from PR #11.
+- Development merge commit `aba7ba35ab75cb3b1e20935806eb86376a790726`
+  retains the reviewed driver tree plus the Phase 1 and Phase 2A evidence.
 - A clean isolated Windows worktree at that exact commit was validated on
   2026-10-17 with SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Debug x64
   and Release x64 each built with 0 warnings and 0 errors. The Debug SYS is
   104,960 bytes with SHA-256
-  `00EA34C32254920068C3B14284A23A8CB7ECCDA4052563B58E5810450AAA5D42`;
+  `803E3A0FA0040F644410030126F01780C503C10619B260B891143BFE46D57602`;
   the Release SYS is 76,288 bytes with SHA-256
-  `ACACAFD96DA0100CFC91AE03C20651ACC4748864E9AB12A030F7AA46D3FE3619`.
+  `B858D8E1F8228617138626AF6FBF3099D41E4D0C8F80ED56048886C58E16C0FE`.
   x64 `lecdiag.exe` and `lecwatch.exe` also built successfully.
 - Both Debug and Release SYS files report AMD64 machine `0x8664`, native
   subsystem, entry point `DriverEntry`, and imports limited to `ntoskrnl.exe`
   and `HAL.dll`. `DriverEntry` is the PE entry point and is not required to be
   an export.
+- The merge from the previously qualified `9c97e49c` tree changes only
+  documentation and the offline five-interface source contract. `driver/` and
+  `include/` are unchanged, so the public IOCTL ABI and runtime implementation
+  did not change. The exact five-interface set, absence of live WDM v3 entry,
+  irreversible `UnknownActive` handling, device-wide INTEN ownership and
+  surprise-removal hardware gates all pass their merged-head contracts.
 - The hardware-independent Dry regression covers source/ABI contracts, DMA
   descriptor layout, mapping ownership, the quarantined asynchronous SG bridge,
   the inactive synchronous v3 no-launch stage, the live PnP publication
@@ -36,6 +42,12 @@
   expanded runs therefore reproduce the established 66,000/66,000 stress
   comparison. Native C tests use `/W4 /WX`; these are software-only tests and
   do not execute kernel acquisition/rundown or prove physical DMA completion.
+- Cross-worktree comparison confirms that current linker outputs are not
+  bit-reproducible: PE timestamps, CodeView GUIDs and embedded absolute PDB
+  paths differ even when the driver source and toolchain are unchanged. A
+  runtime package must therefore be built once, hash-frozen and promoted as an
+  immutable set; a later rebuild is a different artifact unless deterministic
+  linking is separately implemented and qualified.
 
 ## DMA/PnP staging
 
