@@ -2,11 +2,14 @@
 
 ## Build and software regression
 
-- Development merge commit `aba7ba35ab75cb3b1e20935806eb86376a790726`
-  retains the reviewed driver tree plus the Phase 1 and Phase 2A evidence.
-- A clean isolated Windows worktree at that exact commit was validated on
-  2026-10-17 with SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Debug x64
-  and Release x64 each built with 0 warnings and 0 errors. The Debug SYS is
+- Development merge commit `cb5010a4712f25de7c56d23d0d7502683542058c`
+  retains the Phase 2B-qualified driver/include trees plus the Phase 1, Phase
+  2A and Phase 2B evidence.
+- A clean isolated Windows worktree at Phase 2B commit
+  `aba7ba35ab75cb3b1e20935806eb86376a790726` was validated on 2026-10-17
+  with SDK/WDK 10.0.28000.0 and MSVC tools 14.41.34120. Its driver/include
+  trees are identical to `cb5010a`. Debug x64 and Release x64 each built with
+  0 warnings and 0 errors. The Debug SYS is
   104,960 bytes with SHA-256
   `803E3A0FA0040F644410030126F01780C503C10619B260B891143BFE46D57602`;
   the Release SYS is 76,288 bytes with SHA-256
@@ -48,6 +51,16 @@
   runtime package must therefore be built once, hash-frozen and promoted as an
   immutable set; a later rebuild is a different artifact unless deterministic
   linking is separately implemented and qualified.
+- Phase 2C Stage 1 completed a strictly read-only audit at `cb5010a`. The
+  required 10.0.28000.0 SDK/WDK tools, MSVC 14.41, valid source INF and local
+  test-certificate metadata are present. Existing Phase 2B SYS/PDB files match
+  their recorded hashes but are unsigned `aba7ba35` evidence; no coherent
+  exact-commit INF/CAT/signed-SYS/PDB set exists. The accessible machine is the
+  licensed production oscilloscope, not a named disposable/restorable test
+  host, and no recovery owner or restore rehearsal is established. Stage 1's
+  exit gate is therefore not met. See the
+  [Stage 1 audit](handoffs/phase-2c-stage-1-read-only-audit.md) and canonical
+  [package-only contract](driver-package-creation.md).
 
 ## DMA/PnP staging
 

@@ -1,8 +1,11 @@
 # Phase 2C kernel-runtime qualification plan
 
-This is a future execution procedure for development merge commit
-`aba7ba35ab75cb3b1e20935806eb86376a790726`. Phase 2B did not execute any
-part of it. Passing the offline builds and Dry tests does not authorize driver
+This is the execution procedure for development merge commit
+`cb5010a4712f25de7c56d23d0d7502683542058c`. Phase 2C Stage 1 completed the
+read-only source, package, toolchain, certificate-metadata and accessible-host
+audit. Its exit gate is not met because no disposable/restorable test host,
+recovery owner or rollback proof was provided. No later stage has been
+executed. Passing offline builds and Dry tests does not authorize driver
 installation, loading, device access, Driver Verifier, PnP transitions or
 hardware tests.
 
@@ -78,7 +81,19 @@ PASS requires an exact source identity, complete read-only inventory, no
 unexpected active Verifier state and a named recovery owner. Any ambiguity is a
 stop. Stage 1 approval does not permit signing or package creation.
 
+The audit result and exact host/tool/package evidence are recorded in the
+[Phase 2C Stage 1 handoff](handoffs/phase-2c-stage-1-read-only-audit.md).
+Source and toolchain identity, INF intent and certificate metadata are
+verified. The accessible host is the licensed production oscilloscope, not an
+eligible test host; recovery identity and restore proof are absent. Stage 1 is
+therefore stopped at this exit gate.
+
 ## Stage 2 — reproducible package creation and test signing
+
+Follow the canonical
+[offline driver-package creation contract](driver-package-creation.md). It is
+the controlling fail-closed specification; the summary below does not relax
+it.
 
 ### Preconditions
 
