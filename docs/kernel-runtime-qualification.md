@@ -110,8 +110,10 @@ pnputil /add-driver .\LecS65AcqDrv.inf /install
 pnputil /enum-devices /instanceid "<device-instance-id>" /drivers
 ```
 
-Confirm one successful START, the expected service/image, one device interface,
-no verifier report and no unexpected System event. With XStream closed, run
+Confirm one successful START, the expected service/image, exactly one present
+instance in each of the five expected device-interface classes, no duplicate or
+unexpected interface class, no verifier report and no unexpected System event.
+With XStream closed, run
 the established `scripts/test-driver.ps1 -Mode Hardware` batch once. It is
 limited to the documented eleven low-impact ABI checks. Do not add
 `-IncludeErrorStatus`; that optional operation consumes the error-status latch.
@@ -147,10 +149,11 @@ pnputil /scan-devices
    reported as surprise-removal coverage. If the platform cannot generate a
    genuine surprise removal safely, record this row as **NOT RUN**, not PASS.
 
-At every STOP/REMOVE boundary, verify that user handles close, the interface is
-unpublished, new IOCTLs are rejected, the interrupt is disconnected before BAR
-teardown, queued DPC/timer work drains, and no driver access occurs after the
-device becomes unavailable. Any timeout, verifier finding, bugcheck, stale
+At every STOP/REMOVE boundary, verify that user handles close, all five
+interfaces are unpublished, new IOCTLs are rejected, the interrupt is
+disconnected before BAR teardown, queued DPC/timer work drains, and no driver
+access occurs after the device becomes unavailable. Any timeout, verifier
+finding, bugcheck, stale
 interface, post-remove MMIO or unexplained retained ordinary resource is FAIL.
 
 ## 5. Interrupt, DPC and IRP lifetime
