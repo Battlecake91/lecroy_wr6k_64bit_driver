@@ -175,3 +175,27 @@ Before the first attempt, the available alternatives were:
 
 The second attempt used the qualified second alternative; its failure was in
 the external launcher rather than the repository workflow.
+
+## Launcher qualification for a possible third attempt
+
+The external one-shot launcher has been replaced by the tracked
+`scripts/invoke-elevated-signing-workflow.ps1`. It requires an already elevated
+64-bit Windows PowerShell 5.1 token and exact absolute paths and identities. It
+does not elevate or retry itself. Child stdout and stderr use separate
+`Start-Process` redirections, avoiding both the unsupported `Tee-Object`
+parameter combination and Windows PowerShell 5.1 native-stderr ErrorRecord
+conversion. Existing output, log, sidecar or marker paths are rejected, and an
+exclusive marker makes each invocation one-shot.
+
+The final elevated mock qualification passed 24/24 on Windows PowerShell
+5.1.19041.6456 / CLR 4.0.30319.42000. All requested negative cases stopped
+safely, exact mock child exit codes propagated, failure logs were preserved,
+and no case invoked the child more than once. The unchanged package-workflow
+compatibility and fail-closed suites passed 19/19 and 16/16 respectively on
+both Windows PowerShell 5.1 and PowerShell 7.6.5. A non-elevated launcher call
+was rejected before it created any evidence or output file.
+
+No certificate store, private key, real signing tool, driver build,
+installation, PnP or hardware path was used. The launcher is qualified for
+review, but a real third attempt remains unauthorized and must use a new output
+root, run log and marker named in a new explicit owner authorization.

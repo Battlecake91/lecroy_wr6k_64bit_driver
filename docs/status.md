@@ -92,6 +92,15 @@
   root, package, manifest or signature was created. Both one-run
   authorizations are consumed; a future attempt needs a separately tested
   5.1-compatible launcher, a new output path and a new explicit authorization.
+  The launcher is now tracked as
+  `scripts/invoke-elevated-signing-workflow.ps1` and its exact elevated
+  Windows PowerShell 5.1 path passes 24/24 mock and negative checks. It uses
+  separate stdout/stderr redirection, propagates child exit codes, prevents
+  duplicate attempts, and independently validates the signed manifest and
+  hashes. Package compatibility remains 19/19 and package fail-closed coverage
+  remains 16/16 on both supported analysis hosts. The real certificate and
+  real signing/package-tool path through the launcher remains gated and
+  untested; a third explicit authorization is required.
   See the
   canonical
   [package contract](driver-package-creation.md) and

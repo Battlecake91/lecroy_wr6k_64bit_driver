@@ -211,6 +211,78 @@ created. This was a launcher defect, not a recurrence of the workflow's
 relative-path defect. Any future launcher must be mock-tested on the selected
 PowerShell host, and real signing again requires a new explicit authorization.
 
+## Elevated signing launcher
+
+The tracked production launcher is
+`scripts/invoke-elevated-signing-workflow.ps1`. The previous launchers were
+external Codex-generated scripts and were not repository-controlled. The
+second attempt failed because its Windows PowerShell 5.1 log pipeline used the
+unsupported parameter combination `Tee-Object -LiteralPath -Append` before the
+package workflow could start.
+
+Review also established a second Windows PowerShell 5.1 boundary: directly
+invoking a native child with merged redirection can convert child stderr into
+PowerShell ErrorRecords. With `$ErrorActionPreference = 'Stop'`, that can skip
+explicit child-exit-code handling. The tracked launcher therefore uses
+`Start-Process` without `-Verb RunAs` after verifying that its current token is
+already elevated. It starts the exact `$PSHOME\powershell.exe`, requires that
+host to be 64-bit Windows PowerShell 5.1, redirects stdout and stderr to
+separate new sidecars, combines both into the requested run log, and evaluates
+the process exit code directly. It never changes hosts or elevates itself.
+
+The launcher requires absolute repository, workflow, output, log and attempt
+marker paths. It verifies an exact clean Git HEAD, requires the workflow to be
+inside the repository, requires all attempt evidence paths to remain outside
+the repository, rejects an existing output or evidence path, creates an
+exclusive attempt marker before starting the child, invokes the child exactly
+once, and never retries. A log-creation failure leaves the attempt marker in
+place. After a zero child exit, the launcher independently parses the manifest,
+checks the approved source/configuration/version/thumbprint, recomputes all
+four artifact hashes, verifies package contents and the manifest hash, and
+requires all offline safety fields to remain false.
+
+The proposed production form, to be run only from an already elevated 64-bit
+Windows PowerShell 5.1 console after a new explicit authorization, is:
+
+```powershell
+& 'C:\absolute\repository\scripts\invoke-elevated-signing-workflow.ps1' `
+  -RepositoryRoot 'C:\absolute\repository' `
+  -WorkflowPath 'C:\absolute\repository\scripts\build-driver-package.ps1' `
+  -ExpectedWorkflowCommit '<approved-clean-workflow-commit>' `
+  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
+  -RuntimeConfiguration Release `
+  -DriverVer '10/17/2026,0.2026.1017.1' `
+  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472 `
+  -OutputRoot 'C:\new\nonexistent\candidate-output' `
+  -RunLog 'C:\new\nonexistent-run.log' `
+  -AttemptMarker 'C:\new\nonexistent-attempt.marker'
+```
+
+The final elevated mock qualification used Windows PowerShell 5.1.19041.6456
+on CLR 4.0.30319.42000 and passed 24/24 checks. It exercised the exact launcher
+with a temporary Git repository and a mock workflow that has the production
+workflow's parameter surface. Coverage includes argument and working-directory
+forwarding, mocked SignTool/InfVerif/Inf2Cat/Authenticode/catalog membership,
+complete manifest and artifact-hash validation, separate stdout/stderr capture,
+native exit codes, failure logs and no-retry behavior. Negative cases cover a
+non-elevated token, PowerShell 7, missing arguments/workflow/certificate
+metadata, dirty or incorrect Git state, existing output/log/marker, signing and
+verification failures, malformed manifest, unexpected child termination and
+log creation failure.
+
+Private qualification evidence retained outside the repository:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated transcript | `D1003A044D760DD28C9A43DC674AC7D1BFD42A424D95A0EC2FCDCF03C1BF5F72` |
+| Result JSON | `08F299DE973976DD30EB3A16CEC34640C2BA5374B4CAA997BBC0E993BE1F18CB` |
+
+The real certificate lookup, private-key operation, real SignTool, InfVerif,
+Inf2Cat, Authenticode and catalog-membership path through this launcher remains
+intentionally untested. Those operations require a third explicit one-run
+authorization. Launcher qualification does not authorize signing or
+installation.
+
 This validation does not approve the proposed `DriverVer`, certificate,
 private-key use or any installation. A signing run must use a new output root
 and the separately approved exact inputs.
