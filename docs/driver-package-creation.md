@@ -223,23 +223,28 @@ package workflow could start.
 Review also established a second Windows PowerShell 5.1 boundary: directly
 invoking a native child with merged redirection can convert child stderr into
 PowerShell ErrorRecords. With `$ErrorActionPreference = 'Stop'`, that can skip
-explicit child-exit-code handling. The tracked launcher therefore uses
-`Start-Process` without `-Verb RunAs` after verifying that its current token is
-already elevated. It starts the exact `$PSHOME\powershell.exe`, requires that
-host to be 64-bit Windows PowerShell 5.1, redirects stdout and stderr to
-separate new sidecars, combines both into the requested run log, and evaluates
-the process exit code directly. It never changes hosts or elevates itself.
+explicit child-exit-code handling. Native tools and the launcher child now use
+the shared `scripts/native-process.ps1` supervisor. It starts executables
+directly without a command shell, applies Windows command-line quoting to each
+argument, drains stdout and stderr independently, evaluates the actual exit
+code and writes separate plus combined logs. Diagnostic stderr is not itself a
+failure; a nonzero exit remains fatal. Every invocation is bounded. A Windows
+job object with kill-on-close contains the assigned child tree, so timeout and
+post-exit descendant cleanup cannot target unrelated processes.
 
 The launcher requires absolute repository, workflow, output, log and attempt
 marker paths. It verifies an exact clean Git HEAD, requires the workflow to be
 inside the repository, requires all attempt evidence paths to remain outside
 the repository, rejects an existing output or evidence path, creates an
 exclusive attempt marker before starting the child, invokes the child exactly
-once, and never retries. A log-creation failure leaves the attempt marker in
-place. After a zero child exit, the launcher independently parses the manifest,
-checks the approved source/configuration/version/thumbprint, recomputes all
-four artifact hashes, verifies package contents and the manifest hash, and
-requires all offline safety fields to remain false.
+once, and never retries. `Sign` and `UnsignedQualification` are explicit,
+mutually exclusive modes; the unsigned mode rejects a thumbprint and never
+passes `-Sign` to the package workflow. A log-creation failure leaves the
+attempt marker in place. After a zero child exit, the launcher independently
+parses the mode-specific manifest, checks the approved source, configuration
+and version (plus thumbprint only in signing mode), recomputes all four
+artifact hashes, verifies package contents and the manifest hash, and requires
+all offline safety fields to remain false.
 
 The proposed production form, to be run only from an already elevated 64-bit
 Windows PowerShell 5.1 console after a new explicit authorization, is:
@@ -252,6 +257,7 @@ Windows PowerShell 5.1 console after a new explicit authorization, is:
   -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
   -RuntimeConfiguration Release `
   -DriverVer '10/17/2026,0.2026.1017.1' `
+  -Mode Sign `
   -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472 `
   -OutputRoot 'C:\new\nonexistent\candidate-output' `
   -RunLog 'C:\new\nonexistent-run.log' `
@@ -336,6 +342,70 @@ PowerShell terminating error, and the launcher must be proven to return and
 preserve a final combined log when the real child fails this way. Those exact
 paths require Windows PowerShell 5.1 mock and negative coverage. Private-key
 use and installation remain separately gated.
+
+## Native-process fix and elevated unsigned qualification
+
+Commit `c8cc9dd9bfda296783a3f84e475c423b8f1695cc` resolves both defects without
+changing `driver/` or `include/`. The package workflow routes Git and every
+relevant native package tool through `Invoke-LecS65NativeProcess`; SymChk's
+normal stderr no longer becomes a PowerShell exception. The elevated launcher
+uses the same supervisor instead of `Start-Process -Wait`. A bounded wait,
+concurrent stream draining and a kill-on-close job object make success,
+nonzero exit, timeout and descendant cleanup deterministic. Existing log paths
+remain exclusive and no retry path exists.
+
+Focused compatibility tests pass 22/22 on Windows PowerShell 5.1.19041.6456 /
+CLR 4.0.30319.42000 and 22/22 on PowerShell 7.6.5 / CLR 10.0.11. Existing
+package failure contracts pass 16/16 on each host. The actual elevated
+Windows PowerShell 5.1 launcher suite passes 34/34, including diagnostic stderr
+with exit zero, child startup supervision, native nonzero exit, SymChk, missing
+PDB, InfVerif, Inf2Cat, malformed and mismatched manifests, log creation,
+timeout, exit-before-output and a surviving descendant. Every child case was
+invoked at most once. The descendant case confirmed that the assigned job tree
+was removed while unrelated processes were untouched. The mock `Sign` path
+exercised production argument construction but used no certificate or key.
+
+Private focused-test evidence:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated 34/34 transcript | `C3D068BAEE6410E2034FD2D5A3D4085DC5A27E6DB46D583FDD3B4FE1B2D88E6B` |
+| Elevated result JSON | `2A9079F5AD6288F736259BC1DB390B5F54BAC99CB33F78344E6D06747DDDB49C` |
+
+The same clean commit then completed one actual elevated
+`UnsignedQualification` run under 64-bit Windows PowerShell 5.1. It built
+Debug and Release x64 plus both utilities, passed 394/394 functional checks
+and 66,000/66,000 stress iterations, ran real SymChk successfully for both
+SYS/PDB pairs, validated the INF before and after catalog generation, and ran
+real Inf2Cat with no errors or warnings. The launcher returned exit code zero
+and independently accepted the manifest and all artifact hashes. No SignTool
+operation or certificate-store lookup occurred; the manifest certificate is
+null and SYS/CAT both report `NotSigned`.
+
+| Unsigned artifact | Bytes | SHA-256 |
+|---|---:|---|
+| INF | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | 1,194 | `F3C65BB6E058D0764A479A908790FC781475D928EED866D6B0FD30422CE39099` |
+| Release SYS | 76,288 | `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14` |
+| Matching Release PDB | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | 12,968 | `9EF8F13525EFC7C692C4F6295906477DEAF2A6FEF6CB4163B1FF2F2BAA4C3B35` |
+
+The private combined elevated log hash is
+`CD936757A5710E8B05E27BC7DC87DC7827310F3502322D25CC8DA8A7FF5790AC`;
+the attempt marker hash is
+`B028B51873AFB17E07A6F00A94F3AC25CEAFCE0B51D3E9F86F579014AD56C39F`.
+A 38-file copy under `Phase2C-UnsignedQualification-20261018-c8cc9dd` was
+verified hash-identical to the output tree.
+
+The launcher intentionally supports only same-host 64-bit Windows PowerShell
+5.1 execution. A PowerShell 7 parent supervising a Windows PowerShell child can
+propagate an incompatible `PSModulePath`; that cross-host arrangement is not a
+production path and is not qualified. The launcher never switches hosts.
+
+This unsigned qualification does not test certificate lookup, CNG key access,
+real SignTool execution, signed catalog membership or chain validation. A
+future real signing attempt still requires a new output/log/marker set and new
+explicit owner authorization. Installation remains a separate gate.
 
 ## Current certificate-metadata gate
 

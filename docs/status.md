@@ -112,9 +112,29 @@
   was terminated after evidence showed no child process or log progress for
   more than ten minutes. No package INF, CAT, SYS, PDB, manifest or signature
   exists, and the third authorization is consumed. The failure evidence is
-  retained privately. Another real attempt requires a reviewed fix, complete
-  mock qualification of the real native-stderr failure path and a new explicit
-  authorization.
+  retained privately. Commit `c8cc9dd9` now replaces native PowerShell
+  pipeline capture and `Start-Process -Wait` with one bounded shared process
+  supervisor. It independently captures stdout/stderr, uses real process exit
+  codes and assigns each child tree to a kill-on-close Windows job. Focused
+  compatibility tests pass 22/22 and package negative tests pass 16/16 on both
+  Windows PowerShell 5.1 and PowerShell 7.6.5. The elevated same-host Windows
+  PowerShell 5.1 launcher suite passes 34/34, including timeout and descendant
+  cleanup without retry or certificate access. An actual elevated unsigned run
+  at this clean commit completed real Debug/Release builds, 394/394 functional
+  checks, 66,000/66,000 stress iterations, matching Debug/Release SymChk,
+  InfVerif and Inf2Cat with no errors or warnings, deterministic launcher exit
+  and independent manifest/hash verification. Its unsigned Release artifacts
+  are INF
+  `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783`,
+  CAT `F3C65BB6E058D0764A479A908790FC781475D928EED866D6B0FD30422CE39099`,
+  SYS `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14`,
+  matching PDB
+  `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774`
+  and manifest
+  `9EF8F13525EFC7C692C4F6295906477DEAF2A6FEF6CB4163B1FF2F2BAA4C3B35`.
+  SYS and CAT remain `NotSigned`, the manifest certificate is null, no
+  SignTool log exists and no certificate or private key was accessed. Real
+  signing remains untested and requires a new explicit authorization.
   See the
   canonical
   [package contract](driver-package-creation.md) and

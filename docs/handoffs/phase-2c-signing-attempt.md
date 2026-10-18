@@ -263,3 +263,87 @@ Another real attempt requires a reviewed native-stderr capture fix, a complete
 Windows PowerShell 5.1 mock failure run that proves launcher return and final
 log preservation, a new output/log/marker set and a new explicit owner
 authorization. Installation remains separately unauthorized.
+
+## Native-process repair and unsigned end-to-end qualification
+
+Commit `c8cc9dd9bfda296783a3f84e475c423b8f1695cc` implements the required
+repair. `scripts/native-process.ps1` is now the single native-process path for
+the package tools and elevated launcher. It applies argument-by-argument
+Windows quoting, concurrently drains stdout and stderr, logs them separately,
+uses the real exit code, enforces an explicit timeout and assigns the child
+tree to a kill-on-close Windows job. The package workflow no longer exposes
+SymChk stderr to the PowerShell native pipeline. The launcher no longer uses
+`Start-Process -Wait` and has explicit `Sign` and `UnsignedQualification`
+modes. The unsigned mode rejects a certificate thumbprint and never supplies
+`-Sign` to the child.
+
+Focused results:
+
+- package compatibility: 22/22 on Windows PowerShell 5.1.19041.6456 and
+  22/22 on PowerShell 7.6.5;
+- package negative contracts: 16/16 on each host;
+- elevated same-host Windows PowerShell 5.1 launcher: 34/34;
+- source/package contracts remain 52/52; and
+- no test case retried a child.
+
+The elevated launcher suite covers signed and unsigned mock construction,
+diagnostic stderr with exit zero, child startup supervision, native nonzero
+exit, SymChk failure, missing PDB, InfVerif and Inf2Cat failures, malformed and
+mismatched manifests, log creation failure, early child exit, child timeout
+and a descendant remaining after root failure. Timeout and normal root exit
+both close the assigned job; the descendant test proves its child is gone
+without enumerating or terminating unrelated processes. The signing-mode mock
+uses the production argument construction but no certificate or key.
+
+The actual elevated unsigned invocation used the clean fix commit, reviewed
+driver/include revision `cb5010a4712f25de7c56d23d0d7502683542058c`, Release
+x64 and `DriverVer=10/17/2026,0.2026.1017.1`. It completed in 64-bit Windows
+PowerShell 5.1 with exit code zero:
+
+- Debug and Release x64 plus `lecdiag` and `lecwatch` built successfully;
+- 394/394 functional checks and 66,000/66,000 stress iterations passed;
+- real SymChk passed both generated SYS/PDB pairs;
+- real InfVerif reported the INF valid before and after CAT creation;
+- real Inf2Cat completed with no errors or warnings;
+- the launcher independently verified the manifest and all four artifact
+  hashes; and
+- the output state is `UnsignedValidationOnly`, certificate is null, SYS/CAT
+  are `NotSigned`, and no SignTool evidence file exists.
+
+| Unsigned output | Bytes | SHA-256 |
+|---|---:|---|
+| INF | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | 1,194 | `F3C65BB6E058D0764A479A908790FC781475D928EED866D6B0FD30422CE39099` |
+| Release SYS | 76,288 | `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14` |
+| Matching PDB | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | 12,968 | `9EF8F13525EFC7C692C4F6295906477DEAF2A6FEF6CB4163B1FF2F2BAA4C3B35` |
+
+Private evidence:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated launcher test transcript (34/34) | `C3D068BAEE6410E2034FD2D5A3D4085DC5A27E6DB46D583FDD3B4FE1B2D88E6B` |
+| Elevated launcher result JSON | `2A9079F5AD6288F736259BC1DB390B5F54BAC99CB33F78344E6D06747DDDB49C` |
+| Actual unsigned combined run log | `CD936757A5710E8B05E27BC7DC87DC7827310F3502322D25CC8DA8A7FF5790AC` |
+| Actual unsigned stdout sidecar | `6EE8D12A2C0E638A9D54E867065B3F2CFF544440097AD5E28782AC73E53A86FA` |
+| Actual unsigned stderr sidecar | `D0DFE3E3EE09814195FE403F1651BDC78F619B916714192EF4CE9F622335771C` |
+| Actual unsigned attempt marker | `B028B51873AFB17E07A6F00A94F3AC25CEAFCE0B51D3E9F86F579014AD56C39F` |
+
+The 38-file unsigned output was copied to the private
+`Phase2C-UnsignedQualification-20261018-c8cc9dd` backup and verified
+hash-identical. Passive post-run inspection still reports `oem100.inf` version
+`0.2026.930.54`, device problem code 0, running `LecS65AcqDrv` service and
+active SYS hash
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+
+The qualified production path is intentionally same-host Windows PowerShell
+5.1. It never switches to PowerShell 7. A PowerShell 7 parent directly
+supervising Windows PowerShell 5.1 can propagate an incompatible
+`PSModulePath`; that cross-host arrangement is outside the production command
+and remains unsupported.
+
+No real certificate lookup, private-key operation, SignTool execution, signed
+catalog membership or signed-chain validation was performed. A fourth real
+signing attempt requires a new clean commit review, new output/log/marker paths
+and new explicit owner authorization. Driver installation remains a separate
+authorization gate.
