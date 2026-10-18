@@ -62,12 +62,8 @@ separate `--no-kernel --win32` run captured an independently emitted
 This proves executable selection, user-mode capture and file logging only. It
 is explicitly not evidence that kernel capture works.
 
-The kernel path remains **not ready for an active PnP experiment** until a
-separately authorized, elevated validation loads `Dbgv.sys`, confirms the
-collector status and captures a harmless kernel message whose source can be
-identified independently. No guaranteed message source was available without
-loading a driver or causing another unauthorized system transition, so this
-gate was not bypassed.
+The initial preparation did not load the kernel component. A later, separately
+authorized validation completed successfully; its evidence is recorded below.
 
 ## Instrumented package contract
 
@@ -136,12 +132,11 @@ The installed driver was checked passively after the offline run. It remains
 service `LecS65AcqDrv` running, and loaded SYS SHA-256
 `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
 
-## Authorized-gate capture command
+## Validated kernel-capture run
 
-The next executable step is capture-path validation, not package signing or a
-PnP action. It requires explicit authorization to load the Microsoft
-Sysinternals `Dbgv.sys` component. From an already elevated 64-bit Windows
-PowerShell 5.1 console, the reviewed command shape is:
+The owner authorized exactly one temporary kernel-capture validation. From an
+elevated 64-bit Windows PowerShell 5.1 process, the run used the reviewed
+command shape below exactly once:
 
 ```powershell
 $tool = 'C:\Users\LeCroyUser\.codex\tools\sysinternals\DebugView-5.02\extracted\dbgviewcli64.exe'
@@ -157,11 +152,44 @@ if ($LASTEXITCODE -ne 0) { throw 'Kernel capture failed' }
 ```
 
 Do not use `--boot-enable`, `--log-append`, a different executable or an
-automatic retry. Record the command transcript, service/driver state before
-and after, raw-log SHA-256, local and UTC bounds and the identity of the
-independent kernel-message source. Stop if the component cannot load, status
-cannot be verified, the log is empty, the source cannot be attributed, or the
-tool identity changes.
+automatic retry. None of those alternatives was used.
+
+The child process exited zero. The configured capture duration was 300 seconds;
+the complete elevated child lifetime, including startup and shutdown, was
+301.165 seconds from `2026-10-18T15:44:11.3475787Z` through
+`2026-10-18T15:49:12.5123800Z`. The first and last captured records were at
+15:44:13.291 and 15:49:11.554 respectively.
+
+The raw 66,018-byte log contains 618 records and has SHA-256
+`B8197022B9A23DA69B92881AB3F0A12A3AFB4BDF8B810CEF562F3FBA466E69EB`.
+Every record is a `STORMINI: StorAHCI - LPM` kernel message for storage port 2.
+That prefix and subsystem identify the independent source as the Windows
+StorAHCI storage miniport. There are no prior user-mode validation markers and
+no `LecS65x64` or `PNP_STATUS:` records, as expected because the currently
+loaded LeCroy image is uninstrumented. The non-empty kernel-only stream proves
+that the temporary DebugView kernel component was functional; a user-mode
+capture cannot produce this result because the command disabled Win32 capture.
+
+No persistent `Dbgv` service was visible before the run. Read-only polling did
+not expose a durable SCM/WMI driver record while capture was active. After the
+run there is no DebugView process, matching system-driver object or Services
+registry entry, no related System or Code Integrity error, and no residual
+`Dbgv*.sys` file under the user or Windows temporary directories. The component
+therefore left no detected persistent service, binary or process state.
+
+The driver source emits the required records with `DPFLTR_IHVDRIVER_ID` and
+`DPFLTR_ERROR_LEVEL`. Level zero maps to mask bit `0x1`. The capture used
+`--verbose-kernel`; the host has no `Debug Print Filter` registry override and
+no current BCD `debug` or `bootdebug` setting. Together with the successfully
+received kernel stream, this establishes the required capture/filter
+configuration without changing a filter or boot option. The exact
+`PNP_STATUS:` marker cannot be observed end to end until the separately signed
+instrumented driver is installed; its absence in any future initial-START log
+remains a mandatory stop condition.
+
+The kernel-capture infrastructure is therefore **ready** for the later
+instrumented initial-START experiment. This conclusion authorizes neither
+private-key use nor driver replacement or PnP activity.
 
 ## Future two-step active test
 

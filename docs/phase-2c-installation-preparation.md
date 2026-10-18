@@ -147,13 +147,14 @@ Installing an instrumented image is a new driver replacement, not a logging
 toggle for the current driver. It requires a separately authorized package
 build/signing operation and a separately authorized installation.
 
-The capture tool and unsigned package are now prepared under the separate
-[kernel-trace capture contract](phase-2c-kernel-trace-capture.md). Kernel
-capture itself is not yet validated: selecting DebugView kernel capture loads
-its `Dbgv.sys` component, which was not authorized in the preparation stage.
-User-mode capture success is not accepted as kernel-capture proof. The next
-active gate is therefore a separately authorized kernel-capture readiness
-check, before signing, installation or a PnP cycle.
+The capture tool and unsigned package are prepared under the separate
+[kernel-trace capture contract](phase-2c-kernel-trace-capture.md). A later
+separately authorized DebugView run captured 618 independently attributable
+StorAHCI kernel records with Win32 capture disabled and exited zero. Its raw-log
+hash and cleanup evidence are frozen in that contract. The temporary kernel
+component left no detected process, service, registry or temporary-file state.
+Capture readiness is therefore established; signing and instrumented driver
+replacement remain separate authorization gates.
 
 #### Offline evidence
 

@@ -109,10 +109,14 @@
   qualification proposed `DriverVer=10/18/2026,0.2026.1018.1`, passed 397/397
   functional checks and 66,000/66,000 stress iterations, and produced a
   matching Release SYS/PDB pair. It was not signed or installed. Official
-  DebugView CLI 5.02 x64 was hash/signature/architecture checked and its
-  user-mode capture/log path was proven, but kernel capture remains unverified
-  because it would load `Dbgv.sys` and needs separate authorization. See the
-  [capture and package report](phase-2c-kernel-trace-capture.md).
+  DebugView CLI 5.02 x64 was hash/signature/architecture checked. One separately
+  authorized 300-second kernel-only validation then captured 618 independently
+  attributable StorAHCI messages and exited zero. The raw 66,018-byte log hash
+  is `B8197022B9A23DA69B92881AB3F0A12A3AFB4BDF8B810CEF562F3FBA466E69EB`;
+  no persistent DebugView process, service, registry entry or temporary driver
+  file remained. Kernel capture is ready, while private-key signing,
+  instrumented installation/START and a later PnP restart remain independent
+  gates. See the [capture and package report](phase-2c-kernel-trace-capture.md).
 
 ## DMA/PnP staging
 
