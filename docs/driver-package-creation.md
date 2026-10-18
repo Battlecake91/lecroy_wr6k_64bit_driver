@@ -528,6 +528,34 @@ active SYS SHA-256
 No Driver Store, PnP, service, boot-policy or certificate-store change was
 performed. Installation remains a separate explicit authorization gate.
 
+## Qualified signed instrumented Release candidate
+
+One later, separately authorized run used workflow commit
+`b13f6637e5dc8499244474ad96a9c533be914904`, the reviewed diagnostic
+driver/include basis `8dfdd69664ff5598d4708d2df8e083002bd5813b`, Release x64,
+`DriverVer=10/18/2026,0.2026.1018.1` and explicit
+`-PnpStatusDiagnostics`. Elevated CNG access, EKU and local chain validation
+passed before the versioned launcher invoked the workflow exactly once.
+
+The clean run passed 397/397 functional checks and 66,000/66,000 stress
+iterations. Manifest schema 2 records diagnostics enabled for both builds and
+the signed Release SYS contains the required `PNP_STATUS:` markers. Frozen
+hashes are INF
+`ADF7E71FBA10D0A7A99216578261CC3AA87EAF3459CFB08A456D808A9350169C`,
+CAT `2354CDE2474F01CB32C10937DBB44775980A9126FF02CE58E5BB8E3EA7836FBF`,
+signed SYS
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`,
+matching PDB
+`980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3`
+and manifest
+`216F15716C9496B476C877129853A07BAB59097444AA2D160E2812F25AA2DC69`.
+
+Independent Authenticode, local-chain, catalog-membership, INF and SYS/PDB
+checks passed. The active `oem17.inf` package and loaded SYS remained unchanged.
+See the canonical
+[kernel-trace and instrumented-package report](phase-2c-kernel-trace-capture.md)
+for the complete identity and runtime gates. Installation is not authorized.
+
 ## Required Stage 2 exit evidence
 
 PASS requires all of the following:

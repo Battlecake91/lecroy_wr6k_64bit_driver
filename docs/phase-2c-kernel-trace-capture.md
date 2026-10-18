@@ -132,6 +132,58 @@ The installed driver was checked passively after the offline run. It remains
 service `LecS65AcqDrv` running, and loaded SYS SHA-256
 `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
 
+## Signed instrumented Release candidate
+
+One separately authorized signing run completed on 2026-10-18. The versioned
+launcher at workflow commit
+`b13f6637e5dc8499244474ad96a9c533be914904` ran once under elevated 64-bit
+Windows PowerShell 5.1.19041.6456 and exited zero without retry. It required the
+reviewed driver/include basis
+`8dfdd69664ff5598d4708d2df8e083002bd5813b`, exact tree hashes
+`34ffdb81839799e323b1b4b5df2035151780dcc0` and
+`dc000daeafc7e54c2c1ffeb46444cb2e7e3d363b`, Release x64,
+`DriverVer=10/18/2026,0.2026.1018.1`, and the explicit
+`-PnpStatusDiagnostics` switch.
+
+The elevated preflight opened the non-exportable RSA-2048 CNG private key with
+the Microsoft Software Key Storage Provider, verified code-signing EKU
+`1.3.6.1.5.5.7.3.3`, and built the local chain without error. The workflow
+clean-rebuilt Debug and Release, passed 397/397 functional checks and all
+66,000/66,000 stress iterations, and signed only the selected Release SYS and
+its CAT with certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`.
+
+| Frozen artifact | Bytes | SHA-256 |
+|---|---:|---|
+| `LecS65AcqDrv.inf` | 1,247 | `ADF7E71FBA10D0A7A99216578261CC3AA87EAF3459CFB08A456D808A9350169C` |
+| `lecs65acqdrv.cat` | 2,509 | `2354CDE2474F01CB32C10937DBB44775980A9126FF02CE58E5BB8E3EA7836FBF` |
+| Signed `LecS65AcqDrv.sys` | 79,784 | `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A` |
+| Matching `LecS65AcqDrv.pdb` | 569,344 | `980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3` |
+| `manifest.json` | 14,274 | `216F15716C9496B476C877129853A07BAB59097444AA2D160E2812F25AA2DC69` |
+
+Manifest schema 2 records `PackageState=SignedCandidate`,
+`InstallAuthorized=false`, `PnpStatusDiagnostics=true`, the same true mode for
+both clean builds and diagnostic marker `PNP_STATUS:`. Independent binary
+inspection found 11 marker instances in the signed Release SYS. InfVerif and
+Inf2Cat completed without errors or warnings. Get-AuthenticodeSignature and
+SignTool independently accepted both SYS and CAT with the exact certificate;
+SignTool also verified the SYS as a member of the CAT. SymChk matched the
+signed SYS to the frozen PDB with RSDS GUID
+`242FA5CC-1D26-400A-9F79-43F7859CA4C0`, age 1.
+
+The signatures are deliberately not timestamped and validate through the
+locally trusted self-signed test certificate. They are not Microsoft
+production signatures. The immutable candidate remains in the private output
+root `Phase2C-InstrumentedSignedCandidate-20261018-1018-1-first`; it contains
+53 package/evidence files. Its external launcher log has SHA-256
+`33332BA1BA731BDC4222395FF696D5CBB10B507FF7E385EA43A63E0481357124`.
+
+Passive post-run inspection again found `oem17.inf`, version
+`0.2026.1017.1`, device status `OK`, problem code zero, a running service and
+loaded SYS SHA-256
+`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
+The signed diagnostic candidate was not staged, installed or loaded.
+
 ## Validated kernel-capture run
 
 The owner authorized exactly one temporary kernel-capture validation. From an

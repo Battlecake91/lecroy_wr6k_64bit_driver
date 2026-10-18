@@ -117,6 +117,22 @@
   file remained. Kernel capture is ready, while private-key signing,
   instrumented installation/START and a later PnP restart remain independent
   gates. See the [capture and package report](phase-2c-kernel-trace-capture.md).
+- One separately authorized elevated signing run produced the frozen
+  instrumented Release x64 candidate at workflow commit `b13f6637`. The
+  manifest records `DriverVer=10/18/2026,0.2026.1018.1`, diagnostics enabled,
+  397/397 functional checks, 66,000/66,000 stress iterations, valid local-test
+  SYS/CAT signatures and `InstallAuthorized=false`. Frozen hashes are INF
+  `ADF7E71FBA10D0A7A99216578261CC3AA87EAF3459CFB08A456D808A9350169C`,
+  CAT `2354CDE2474F01CB32C10937DBB44775980A9126FF02CE58E5BB8E3EA7836FBF`,
+  signed SYS
+  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`,
+  matching PDB
+  `980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3`
+  and manifest
+  `216F15716C9496B476C877129853A07BAB59097444AA2D160E2812F25AA2DC69`.
+  Independent marker, Authenticode, catalog-membership and SYS/PDB checks pass.
+  The active `oem17.inf` driver remains unchanged; installation/START is the
+  next separate authorization gate.
 
 ## DMA/PnP staging
 
