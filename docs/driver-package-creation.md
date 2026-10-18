@@ -10,6 +10,13 @@ mode creates an unsigned validation set and never signs or installs it. Signing
 is an explicit `-Sign` mode that additionally requires an exact certificate
 thumbprint; that mode remains behind a separate owner authorization.
 
+An instrumented PnP-status package additionally requires the explicit
+`-PnpStatusDiagnostics` switch. The workflow performs clean rebuilds, passes
+the property consistently to Debug and Release, verifies the `PNP_STATUS:`
+marker in every selected binary and records the mode in manifest schema 2.
+Omitting the switch preserves and verifies the uninstrumented default. See the
+[kernel-trace capture and instrumented-package contract](phase-2c-kernel-trace-capture.md).
+
 ## Safety boundary
 
 Stage 2 runs on an offline build/signing host and requires no WR6k hardware.

@@ -510,6 +510,15 @@ msbuild.exe .\driver\LecS65AcqDrv.vcxproj /m /t:Rebuild `
 This command only builds an unsigned offline binary. It does not authorize
 signing, package creation, installation or a PnP transition.
 
+For a complete package, use the package workflow's explicit
+`-PnpStatusDiagnostics` switch instead of relying on a file name or an
+incremental build. The workflow clean-rebuilds both configurations, verifies
+the marker state, and records the mode in manifest schema 2. The 2026-10-18
+unsigned qualification passed 397/397 functional checks and all 66,000 stress
+iterations; workflow compatibility passed 25/25 and fail-closed boundaries
+passed 16/16 on both supported PowerShell hosts. Exact identities are recorded
+in the [capture/package report](phase-2c-kernel-trace-capture.md).
+
 `test-dma-completion.c` compiles the production `DmaCompletion.c` tracker.
 It deterministically verifies an IRQ immediately before timeout, a completion
 event without IRQ evidence, pre-GO rejection, the fail-closed modeled interval

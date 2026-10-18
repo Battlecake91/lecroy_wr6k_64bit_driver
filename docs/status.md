@@ -103,6 +103,16 @@
   validated kernel-debug capture, and a separately authorized single PnP cycle.
   Recovery boot, rollback, reboot, Verifier, device handles, IOCTLs, XStream,
   acquisition and DMA remain separate gates.
+- The instrumented package path now clean-rebuilds Debug and Release with an
+  explicit diagnostics switch, verifies the `PNP_STATUS:` marker and records
+  the mode in manifest schema 2. An unsigned Windows PowerShell 5.1
+  qualification proposed `DriverVer=10/18/2026,0.2026.1018.1`, passed 397/397
+  functional checks and 66,000/66,000 stress iterations, and produced a
+  matching Release SYS/PDB pair. It was not signed or installed. Official
+  DebugView CLI 5.02 x64 was hash/signature/architecture checked and its
+  user-mode capture/log path was proven, but kernel capture remains unverified
+  because it would load `Dbgv.sys` and needs separate authorization. See the
+  [capture and package report](phase-2c-kernel-trace-capture.md).
 
 ## DMA/PnP staging
 
