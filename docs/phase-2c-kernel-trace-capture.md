@@ -270,3 +270,46 @@ Recovery uses the preserved, hash-verified `oem17.inf` package or Windows
 reinstallation. Any rollback that causes PnP activity and any reboot require
 their own authorization. XStream, device handles, IOCTLs, Driver Verifier,
 MMIO, DMA, acquisition, EEPROM and FPGA access remain outside this plan.
+
+## Instrumented installation attempt stopped before capture
+
+The owner authorized one instrumented installation and its installation-driven
+initial START on 2026-10-18. Passive preflight at
+`2026-10-18T20:24:31Z` revalidated all five frozen artifact hashes, SYS/CAT
+Authenticode, catalog membership, the diagnostic manifest, the complete
+hash-identical `oem17.inf` backup, the active production-driver identity, the
+five published interface classes, absence of acquisition clients, DebugView
+5.02 identity, and event-log bookmarks. No discrepancy was found.
+
+A local fail-closed orchestration wrapper was parsed successfully by 64-bit
+Windows PowerShell 5.1.19041.6456 before it was started once through UAC. The
+elevated host existed from `2026-10-18T20:26:28.233Z` through
+`2026-10-18T20:26:29.595Z` and returned exit code 1. It stopped before creating
+the DebugView stdout/stderr files, raw kernel log, capture-ready record,
+one-attempt marker, PnPUtil output, PnPUtil exit record or final result record.
+Consequently DebugView and its temporary driver were not started, PnPUtil was
+not invoked, the candidate was not staged or installed, and no PnP START was
+caused.
+
+The elevated console exception text was not retained by the outer UAC launcher,
+so the exact failing expression is not established. All candidate hashes and
+read-only pre-capture predicates passed again after the stop. The artifact
+boundary proves only that the failure occurred before, or while attempting,
+the DebugView process launch; it does not prove a more specific cause. No retry
+was made.
+
+The post-stop snapshot at `2026-10-18T20:27:43Z` still found `oem17.inf`,
+version `0.2026.1017.1`, device status `OK`, problem code zero, a running
+`LecS65AcqDrv` service, loaded SYS SHA-256
+`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`
+and exactly one target interface in each legacy class. `setupapi.dev.log`
+remained byte-identical at 2,529,101 bytes with SHA-256
+`A7DE28AA932026694B9F386EE74A40EE310C00496FA95E720BB77F82CFF2C938`
+and last-write time `2026-10-18T14:38:10.6162264Z`. No new target Kernel-PnP,
+Code Integrity, UserPnp or System event was found, and no DebugView process
+remained.
+
+This result supplies no new `PNP_STATUS:` data and no Event 411 attribution.
+The historical Event 411 classification therefore remains indeterminate. Any
+new capture or installation attempt requires fresh explicit authorization and
+must preserve its elevated exception text before active work begins.
