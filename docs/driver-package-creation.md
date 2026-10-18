@@ -211,9 +211,201 @@ created. This was a launcher defect, not a recurrence of the workflow's
 relative-path defect. Any future launcher must be mock-tested on the selected
 PowerShell host, and real signing again requires a new explicit authorization.
 
-This validation does not approve the proposed `DriverVer`, certificate,
-private-key use or any installation. A signing run must use a new output root
-and the separately approved exact inputs.
+## Elevated signing launcher
+
+The tracked production launcher is
+`scripts/invoke-elevated-signing-workflow.ps1`. The previous launchers were
+external Codex-generated scripts and were not repository-controlled. The
+second attempt failed because its Windows PowerShell 5.1 log pipeline used the
+unsupported parameter combination `Tee-Object -LiteralPath -Append` before the
+package workflow could start.
+
+Review also established a second Windows PowerShell 5.1 boundary: directly
+invoking a native child with merged redirection can convert child stderr into
+PowerShell ErrorRecords. With `$ErrorActionPreference = 'Stop'`, that can skip
+explicit child-exit-code handling. Native tools and the launcher child now use
+the shared `scripts/native-process.ps1` supervisor. It starts executables
+directly without a command shell, applies Windows command-line quoting to each
+argument, drains stdout and stderr independently, evaluates the actual exit
+code and writes separate plus combined logs. Diagnostic stderr is not itself a
+failure; a nonzero exit remains fatal. Every invocation is bounded. A Windows
+job object with kill-on-close contains the assigned child tree, so timeout and
+post-exit descendant cleanup cannot target unrelated processes.
+
+The launcher requires absolute repository, workflow, output, log and attempt
+marker paths. It verifies an exact clean Git HEAD, requires the workflow to be
+inside the repository, requires all attempt evidence paths to remain outside
+the repository, rejects an existing output or evidence path, creates an
+exclusive attempt marker before starting the child, invokes the child exactly
+once, and never retries. `Sign` and `UnsignedQualification` are explicit,
+mutually exclusive modes; the unsigned mode rejects a thumbprint and never
+passes `-Sign` to the package workflow. A log-creation failure leaves the
+attempt marker in place. After a zero child exit, the launcher independently
+parses the mode-specific manifest, checks the approved source, configuration
+and version (plus thumbprint only in signing mode), recomputes all four
+artifact hashes, verifies package contents and the manifest hash, and requires
+all offline safety fields to remain false.
+
+The proposed production form, to be run only from an already elevated 64-bit
+Windows PowerShell 5.1 console after a new explicit authorization, is:
+
+```powershell
+& 'C:\absolute\repository\scripts\invoke-elevated-signing-workflow.ps1' `
+  -RepositoryRoot 'C:\absolute\repository' `
+  -WorkflowPath 'C:\absolute\repository\scripts\build-driver-package.ps1' `
+  -ExpectedWorkflowCommit '<approved-clean-workflow-commit>' `
+  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
+  -RuntimeConfiguration Release `
+  -DriverVer '10/17/2026,0.2026.1017.1' `
+  -Mode Sign `
+  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472 `
+  -OutputRoot 'C:\new\nonexistent\candidate-output' `
+  -RunLog 'C:\new\nonexistent-run.log' `
+  -AttemptMarker 'C:\new\nonexistent-attempt.marker'
+```
+
+The final elevated mock qualification used Windows PowerShell 5.1.19041.6456
+on CLR 4.0.30319.42000 and passed 24/24 checks. It exercised the exact launcher
+with a temporary Git repository and a mock workflow that has the production
+workflow's parameter surface. Coverage includes argument and working-directory
+forwarding, mocked SignTool/InfVerif/Inf2Cat/Authenticode/catalog membership,
+complete manifest and artifact-hash validation, separate stdout/stderr capture,
+native exit codes, failure logs and no-retry behavior. Negative cases cover a
+non-elevated token, PowerShell 7, missing arguments/workflow/certificate
+metadata, dirty or incorrect Git state, existing output/log/marker, signing and
+verification failures, malformed manifest, unexpected child termination and
+log creation failure.
+
+Private qualification evidence retained outside the repository:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated transcript | `D1003A044D760DD28C9A43DC674AC7D1BFD42A424D95A0EC2FCDCF03C1BF5F72` |
+| Result JSON | `08F299DE973976DD30EB3A16CEC34640C2BA5374B4CAA997BBC0E993BE1F18CB` |
+
+## Third authorized signing attempt
+
+The owner authorized one production invocation at launcher commit
+`aa009667fd426a415f13fa6d38a645953912eebe`, using reviewed driver/include
+revision `cb5010a4712f25de7c56d23d0d7502683542058c`, Release x64,
+`DriverVer=10/17/2026,0.2026.1017.1` and certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Preflight verified the exact
+clean HEAD, identical reviewed driver/include trees and nonexistent output,
+log, sidecar and attempt-marker paths.
+
+The one invocation built Debug and Release x64 plus the utilities and passed
+394/394 functional checks and 66,000/66,000 required stress iterations. It
+then stopped at the first Debug SYS/PDB identity check, before creating any
+package artifact. `symchk.exe` writes its search diagnostic to stderr even on
+this normal validation path. In Windows PowerShell 5.1, the workflow's
+`@(& $FilePath @Arguments 2>&1)` expression converted that native stderr line
+to a terminating `NativeCommandError` under
+`$ErrorActionPreference = 'Stop'`. Consequently, the helper never reached its
+explicit native exit-code handling or wrote the intended identity log.
+
+The workflow transcript closed at that error. No package INF, CAT, SYS or PDB
+was staged; no certificate lookup, CNG private-key access, SignTool, InfVerif,
+Inf2Cat, Authenticode verification, catalog-membership verification or final
+manifest generation occurred. The output `package` directory is empty and
+there is no `manifest.json` or `manifest.sha256`. Therefore there are no final
+candidate hashes to report.
+
+The workflow child ended, but the launcher remained blocked without combining
+its sidecars or recording a child exit code. After more than ten minutes with
+no child process and no file progress, the remaining launcher process was
+terminated to honor the fail-on-first-error rule. No retry occurred. The empty
+combined log, stdout/stderr sidecars and exclusive attempt marker were
+preserved. A hash-identical copy of the seven partial workflow evidence files
+is retained privately under
+`Phase2C-SigningAttempt-20261018-third-failed-evidence`.
+
+| Private evidence | SHA-256 |
+|---|---|
+| Attempt marker | `3255C64BB65EE9D0A0EAF746F94FBFCA000D8A24E97C63263A0FC718D3FE07E8` |
+| Child stdout sidecar | `B38880F4321FB7634960CAB58EBCE2807D1997374CE01C18277C7EB0508CB84C` |
+| Child stderr sidecar | `409A868EF55FE550C8009E3CCBFF62865C2F931B273DE7A0BECA5979ECF56BA1` |
+| Partial workflow transcript | `768C3C8DE365EE6344B6B1946BB3207D97AA1F010C5482515326AA42D726CF8B` |
+
+Passive post-attempt verification found `oem100.inf` version
+`0.2026.930.54`, problem code 0 and the `LecS65AcqDrv` service still running.
+The active and Driver Store SYS remains
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`;
+the installed INF and CAT remain
+`C271BBA926667BEB378FDE39AA226CEAA4680AF5A21519A5F26E3A814E7C0E16`
+and `DD2941EA62DB3CAD0F0FB447DE5C8B390A142C46895EB9A7FA0035462BB8CF18`.
+No installation, Driver Store staging, PnP transition or hardware operation
+occurred.
+
+The third authorization is consumed. Before another real attempt, native-tool
+capture must be made fail-closed without treating diagnostic stderr as a
+PowerShell terminating error, and the launcher must be proven to return and
+preserve a final combined log when the real child fails this way. Those exact
+paths require Windows PowerShell 5.1 mock and negative coverage. Private-key
+use and installation remain separately gated.
+
+## Native-process fix and elevated unsigned qualification
+
+Commit `c8cc9dd9bfda296783a3f84e475c423b8f1695cc` resolves both defects without
+changing `driver/` or `include/`. The package workflow routes Git and every
+relevant native package tool through `Invoke-LecS65NativeProcess`; SymChk's
+normal stderr no longer becomes a PowerShell exception. The elevated launcher
+uses the same supervisor instead of `Start-Process -Wait`. A bounded wait,
+concurrent stream draining and a kill-on-close job object make success,
+nonzero exit, timeout and descendant cleanup deterministic. Existing log paths
+remain exclusive and no retry path exists.
+
+Focused compatibility tests pass 22/22 on Windows PowerShell 5.1.19041.6456 /
+CLR 4.0.30319.42000 and 22/22 on PowerShell 7.6.5 / CLR 10.0.11. Existing
+package failure contracts pass 16/16 on each host. The actual elevated
+Windows PowerShell 5.1 launcher suite passes 34/34, including diagnostic stderr
+with exit zero, child startup supervision, native nonzero exit, SymChk, missing
+PDB, InfVerif, Inf2Cat, malformed and mismatched manifests, log creation,
+timeout, exit-before-output and a surviving descendant. Every child case was
+invoked at most once. The descendant case confirmed that the assigned job tree
+was removed while unrelated processes were untouched. The mock `Sign` path
+exercised production argument construction but used no certificate or key.
+
+Private focused-test evidence:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated 34/34 transcript | `C3D068BAEE6410E2034FD2D5A3D4085DC5A27E6DB46D583FDD3B4FE1B2D88E6B` |
+| Elevated result JSON | `2A9079F5AD6288F736259BC1DB390B5F54BAC99CB33F78344E6D06747DDDB49C` |
+
+The same clean commit then completed one actual elevated
+`UnsignedQualification` run under 64-bit Windows PowerShell 5.1. It built
+Debug and Release x64 plus both utilities, passed 394/394 functional checks
+and 66,000/66,000 stress iterations, ran real SymChk successfully for both
+SYS/PDB pairs, validated the INF before and after catalog generation, and ran
+real Inf2Cat with no errors or warnings. The launcher returned exit code zero
+and independently accepted the manifest and all artifact hashes. No SignTool
+operation or certificate-store lookup occurred; the manifest certificate is
+null and SYS/CAT both report `NotSigned`.
+
+| Unsigned artifact | Bytes | SHA-256 |
+|---|---:|---|
+| INF | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | 1,194 | `F3C65BB6E058D0764A479A908790FC781475D928EED866D6B0FD30422CE39099` |
+| Release SYS | 76,288 | `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14` |
+| Matching Release PDB | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | 12,968 | `9EF8F13525EFC7C692C4F6295906477DEAF2A6FEF6CB4163B1FF2F2BAA4C3B35` |
+
+The private combined elevated log hash is
+`CD936757A5710E8B05E27BC7DC87DC7827310F3502322D25CC8DA8A7FF5790AC`;
+the attempt marker hash is
+`B028B51873AFB17E07A6F00A94F3AC25CEAFCE0B51D3E9F86F579014AD56C39F`.
+A 38-file copy under `Phase2C-UnsignedQualification-20261018-c8cc9dd` was
+verified hash-identical to the output tree.
+
+The launcher intentionally supports only same-host 64-bit Windows PowerShell
+5.1 execution. A PowerShell 7 parent supervising a Windows PowerShell child can
+propagate an incompatible `PSModulePath`; that cross-host arrangement is not a
+production path and is not qualified. The launcher never switches hosts.
+
+This unsigned qualification does not test certificate lookup, CNG key access,
+real SignTool execution, signed catalog membership or chain validation. A
+future real signing attempt still requires a new output/log/marker set and new
+explicit owner authorization. Installation remains a separate gate.
 
 ## Current certificate-metadata gate
 
@@ -283,6 +475,51 @@ There is no candidate, CAT, manifest or signed artifact from that attempt. Do
 not retry until the PowerShell runtime requirement is made explicit or the
 path handling is made compatible, reviewed and separately authorized. See the
 [signing-attempt handoff](handoffs/phase-2c-signing-attempt.md).
+
+## Qualified signed Release candidate
+
+The fourth separately authorized real signing attempt completed successfully
+on 2026-10-18. The clean workflow commit was
+`5cc0d7921cbf05d8730b15b2736f431113010b42`; its `driver/` and `include/`
+trees were verified equal to reviewed source revision
+`cb5010a4712f25de7c56d23d0d7502683542058c`. The versioned launcher ran once
+from elevated 64-bit Windows PowerShell 5.1.19041.6456 with Release x64,
+`DriverVer=10/17/2026,0.2026.1017.1`, SDK/WDK 10.0.28000.0 and MSVC
+14.41.34120. It returned zero and did not retry.
+
+The elevated preflight found exactly the approved certificate in
+`LocalMachine\My`, exact code-signing EKU `1.3.6.1.5.5.7.3.3`, one public copy
+in each approved trust store, a clean local chain and an accessible
+non-exportable RSA-2048 key in the Microsoft Software Key Storage Provider.
+The workflow then passed 394/394 functional tests and all 66,000/66,000 stress
+iterations, built both configurations and utilities, and signed only the
+Release package SYS and CAT with thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`.
+
+| Frozen artifact | Bytes | SHA-256 |
+|---|---:|---|
+| `LecS65AcqDrv.inf` | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| `lecs65acqdrv.cat` | 2,509 | `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091` |
+| Signed `LecS65AcqDrv.sys` | 77,736 | `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D` |
+| Matching `LecS65AcqDrv.pdb` | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| `manifest.json` | 13,975 | `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9` |
+
+Independent post-run checks recomputed every manifest artifact hash, verified
+valid Authenticode signatures on both SYS and CAT, rebuilt the local
+certificate chain, and repeated SignTool SYS, CAT and catalog-membership
+verification with zero errors. SymChk matched the frozen signed SYS to the
+frozen PDB with RSDS GUID `22FF502A-4F06-4439-AE25-F9D18FEAF62E`, age 1.
+The signatures are not timestamped and validate through the explicitly trusted
+local self-signed test certificate; this is not Microsoft production signing.
+The complete 53-file candidate tree was copied to a new private backup and all
+source/backup hashes matched. The manifest records `InstallAuthorized=false`.
+
+Passive post-run inspection still found device problem code 0,
+`oem100.inf` version `0.2026.930.54`, the `LecS65AcqDrv` service running and
+active SYS SHA-256
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+No Driver Store, PnP, service, boot-policy or certificate-store change was
+performed. Installation remains a separate explicit authorization gate.
 
 ## Required Stage 2 exit evidence
 

@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $workflow = Join-Path $repo 'scripts\build-driver-package.ps1'
+. (Join-Path $repo 'scripts\native-process.ps1')
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -19,6 +20,7 @@ if ($errors.Count -ne 0) {
 }
 
 $functionNames = @(
+    'Invoke-GitCapture'
     'Invoke-ExternalCaptured'
     'Assert-DriverVer'
     'New-ExclusiveOutputRoot'

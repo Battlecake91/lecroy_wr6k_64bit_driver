@@ -1,23 +1,41 @@
 # Phase 2C installation and recovery preparation
 
-This document is the controlled bridge between offline package creation and a
-future first driver START. It records preparation only. None of the commands
-under an authorization gate were executed while preparing this document.
+This document is the controlled bridge between offline package creation and
+runtime qualification. The first authorized installation and START completed
+on 2026-10-18; later gated commands remain unexecuted unless stated otherwise.
+
+## First installation outcome
+
+One elevated 64-bit Windows PowerShell 5.1 invocation ran PnPUtil from
+16:38:08.632 +02:00 through 16:38:10.618 +02:00 and returned zero. Windows
+published the candidate as `oem17.inf`. SetupAPI records one `Query-remove`,
+one `Start`, `Restart verified` and final `SUCCESS`. At 16:38:59 the PCI
+instance was `OK` with problem code zero, version `0.2026.1017.1`, a running
+service and the approved loaded-SYS hash. The five expected interface classes
+each had exactly one path for the target function.
+
+Kernel-PnP event 411 nevertheless recorded problem `0x15` and status
+`0xC00000BB` during the update. This is the previously classified
+removal-state event pair, not a signature failure, and it was followed inside
+the same operation by SetupAPI's verified restart and healthy live state. It
+remains a qualification finding: no further PnP transition is authorized and
+the result must not be described as an event-free START.
 
 ## Current preparation evidence
 
 - The owner designated this WR6k Windows installation as an expendable
   development/test environment and accepted crash, reinstallation, local-data
-  loss and hardware-damage risk. Private-key use, installation, Driver
+  loss and hardware-damage risk. Further private-key use, rollback, Driver
   Verifier, PnP transitions, device handles and acquisition remain separately
   authorized operations.
-- The active service remains `LecS65AcqDrv`, `Running`, `Manual`, from
-  `C:\Windows\system32\drivers\LecS65AcqDrv.sys`. No service or device state
-  was changed.
-- Passive driver ranking shows `oem100.inf` as installed/best-ranked with
-  `09/29/2026,0.2026.930.54` and rank `00FF0000`. Numerous older development
-  packages remain in the Driver Store. They were not deleted or changed; the
-  signed candidate must be verified as the selected package after installation.
+- The active service is `LecS65AcqDrv`, `Running`, `Manual`, from
+  `C:\Windows\system32\drivers\LecS65AcqDrv.sys`; that file is the approved
+  candidate SYS. The target devnode selects `oem17.inf` version
+  `0.2026.1017.1` and reports `OK`, problem code zero.
+- Numerous older development packages, including the previous `oem100.inf`,
+  remain in the Driver Store. None was deleted. The candidate's independent
+  Driver Store identity is the one directory whose INF/CAT/SYS all match the
+  frozen hashes, not merely the package currently selected by the devnode.
 - Driver Verifier has flags `0x00000000` and no selected drivers.
 - Crash control is `CrashDumpEnabled=7` (Automatic Memory Dump),
   `AutoReboot=1`, `Overwrite=1`, `LogEvent=1`, with
@@ -25,14 +43,18 @@ under an authorization gate were executed while preparing this document.
   memory, a 1,856 MiB allocated boot-volume page file and 22,305,583,104 bytes
   free on `C:`. This inventory does not prove that a kernel dump will survive
   the planned failure mode.
-- `reagentc /info` and `bcdedit /enum all` could not be read without elevation.
-  WinRE availability, boot-entry identity, recovery-console access and an
-  actual reinstall/restore rehearsal therefore remain blockers.
+- Elevated read-only `reagentc /info` and `bcdedit /enum all` now confirm WinRE
+  `Enabled` at
+  `\\?\GLOBALROOT\device\harddisk1\partition4\Recovery\WindowsRE`, a concrete
+  recovery sequence, `recoveryenabled Yes` and `testsigning Yes`. The WinRE
+  partition and system volume are on healthy physical disk 1; a second healthy
+  physical disk is present. An actual recovery boot/reinstall rehearsal and a
+  hash-verified rollback copy outside `C:` remain unproved.
 
 ## Preserved previous package
 
-The currently installed `oem100.inf` package was exported, without deletion or
-device action, to the private non-repository directory:
+The previously installed `oem100.inf` package was exported before installation,
+without deletion or device action, to the private non-repository directory:
 
 ```text
 C:\Users\LeCroyUser\.codex\driver-backups\lecroy-oem100-20261017
@@ -53,20 +75,51 @@ from that media before relying on it.
 ## Rollback command sheet
 
 Run only after separate authorization and only from an elevated console. First
-verify the recovery copy against the table above. The normal rollback command
-is:
+verify the recovery copy against the table above. Re-adding the old INF alone
+is not a reliable downgrade: [PnPUtil does not force a lower-ranked package
+onto a device](https://learn.microsoft.com/windows-hardware/drivers/devtest/pnputil-command-syntax).
+The primary normal-boot rollback is therefore to identify and remove only the
+newly published candidate package while preserving `oem100.inf`:
 
 ```powershell
-pnputil.exe /add-driver `
-  'C:\Users\LeCroyUser\.codex\driver-backups\lecroy-oem100-20261017\lecs65acqdrv.inf' `
-  /install
+$newInf = 'oem17.inf'
+if ((Get-FileHash -LiteralPath "$env:SystemRoot\INF\$newInf" `
+      -Algorithm SHA256).Hash -ne `
+    'C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783') {
+  throw "Refusing rollback: $newInf is not the frozen candidate INF"
+}
+$repositoryRoot = "$env:SystemRoot\System32\DriverStore\FileRepository"
+$matches = @(Get-ChildItem -LiteralPath $repositoryRoot -Directory `
+  -Filter 'lecs65acqdrv.inf_amd64_*' | Where-Object {
+    $inf = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.inf' |
+      Select-Object -First 1
+    $cat = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.cat' |
+      Select-Object -First 1
+    $sys = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.sys' |
+      Select-Object -First 1
+    $inf -and $cat -and $sys -and
+      (Get-FileHash -LiteralPath $inf.FullName -Algorithm SHA256).Hash -eq
+        'C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783' -and
+      (Get-FileHash -LiteralPath $cat.FullName -Algorithm SHA256).Hash -eq
+        'C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091' -and
+      (Get-FileHash -LiteralPath $sys.FullName -Algorithm SHA256).Hash -eq
+        'F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D'
+  })
+if ($matches.Count -ne 1) {
+  throw "Refusing rollback: expected one hash-identical candidate package"
+}
+pnputil.exe /delete-driver $newInf /uninstall /force
 ```
 
-That command may replace the selected package and cause a PnP transition. It
-was not executed. Do not delete either `oem100.inf` or the candidate package as
-part of first rollback; deletion is unnecessary and reduces recovery options.
-After rollback, verify the device instance, selected INF, service image and SYS
-hash before launching XStream.
+This command deletes the new candidate package, not `oem100.inf`, and may cause
+one or more PnP transitions while Windows reselects the best remaining package.
+It was not executed and must never run automatically after a failed START. If
+`oem100.inf` is unexpectedly absent after candidate removal, re-add the
+hash-verified recovery INF with `pnputil /add-driver <path> /install` under a
+new explicit authorization. After rollback, require `oem100.inf`, version
+`0.2026.930.54`, active SYS hash
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`,
+device problem code zero and a running service before any XStream launch.
 
 If Windows cannot boot normally, use the previously verified recovery path to
 reach Safe Mode or WinRE. From an elevated Safe Mode console, clear Verifier:
@@ -83,7 +136,9 @@ be guessed during a failure.
 
 ## Crash-dump and recovery gate
 
-Before installation, separately authorize and perform all of the following:
+Before higher-risk runtime qualification, separately authorize and perform the
+still-relevant recovery improvements below. The owner explicitly accepted
+their absence for the completed first installation:
 
 1. Copy the previous package and this command sheet to boot-independent media.
 2. Run elevated `reagentc.exe /info` and `bcdedit.exe /enum all`; record the
@@ -104,14 +159,27 @@ offline preparation.
 
 ## Candidate verification gate
 
-The validated output at workflow commit `67a3075` is unsigned and is not an
-installation candidate. Its Release SYS SHA-256 is
-`7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14`
-and its manifest SHA-256 is
-`3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
-Before any future install, require a newly created, owner-approved signed output
-and compare its manifest plus INF, CAT, SYS and PDB hashes. Require all of the
-following:
+Workflow commit `5cc0d7921cbf05d8730b15b2736f431113010b42` produced one
+frozen, locally test-signed Release x64 candidate from the exact reviewed
+`cb5010a4712f25de7c56d23d0d7502683542058c` driver/include trees. Its approved
+identity is `DriverVer=10/17/2026,0.2026.1017.1` and certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Before any future install,
+recompute and compare these frozen hashes:
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091` |
+| Signed SYS | `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D` |
+| Matching PDB | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9` |
+
+The signing workflow and independent post-run checks verified SYS and CAT
+Authenticode, the local test chain, catalog membership and the signed SYS/PDB
+identity. The signatures are not timestamped and rely on the explicitly trusted
+local self-signed test certificate, not Microsoft production signing.
+Installation was not authorized and did not occur. Continue to require all of
+the following:
 
 - exact approved `driver/` and `include/` tree IDs;
 - approved Debug/Release selection and `DriverVer` ranking;
@@ -125,10 +193,10 @@ following:
 
 Any mismatch creates a new candidate and returns to offline validation.
 
-The proposed Release identity is `DriverVer=10/17/2026,0.2026.1017.1`.
+The approved candidate identity is `DriverVer=10/17/2026,0.2026.1017.1`.
 It is later than the installed `09/29/2026,0.2026.930.54`, uses four components
 within the Windows INF range, and does not change the public IOCTL ABI or legacy
-driver-build constant. It remains a proposal until the owner approves it.
+driver-build constant.
 
 Read-only diagnosis established that the old certificate thumbprint
 `DBB8F215BE00ACA1D6F7D258773DBE8748387D90` references a missing CNG machine
@@ -136,42 +204,9 @@ key. It cannot be used for signing on this host and must not appear in a future
 signing command. The separately authorized replacement certificate is
 `CN=LecS65 x64 Test Phase2C 2026-10`, thumbprint
 `4296FA2E355613DF0D5CE6F24D0898E00B706472`. Its CNG container and local trust
-chain are verified. The exact command for a later, separately authorized,
-elevated signing run is:
-
-```powershell
-.\scripts\build-driver-package.ps1 `
-  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
-  -RuntimeConfiguration Release `
-  -DriverVer '10/17/2026,0.2026.1017.1' `
-  -OutputRoot .\x64\Phase2C-SignedCandidate-20261017-1017-1 `
-  -Sign `
-  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472
-```
-
-This command has not been executed and is not authorized by the certificate
-creation approval. The output directory must not already exist. The signing
-process must have an elevated token: the non-elevated token cannot open this
-machine-key container, while an elevated read-only lookup succeeds.
-
-One later signing authorization was consumed by an attempted run under Windows
-PowerShell 5.1. The attempt failed before signing because that runtime lacks
-`System.IO.Path.GetRelativePath`. No signed candidate was produced. The command
-must not be retried under the existing authorization. The workflow now uses a
-reviewed bounded relative-path implementation compatible with Windows
-PowerShell 5.1 and PowerShell 7. Focused mocked package/manifest tests and all
-existing fail-closed signing-boundary tests pass on both hosts. A new explicit
-signing authorization is still required before any retry.
-
-A second authorized attempt later completed the elevated certificate, chain
-and CNG-access preflight but stopped before invoking the repository workflow.
-Windows PowerShell 5.1 rejected the external launcher's
-`Tee-Object -LiteralPath -Append` combination as an invalid parameter set. No
-output root, package, manifest or signature was created, and the installed
-`oem100.inf` package and exported rollback hashes remained unchanged. This
-second authorization is also consumed. The launcher itself now requires
-mock-only Windows PowerShell 5.1 qualification before another separately
-authorized signing attempt.
+chain are verified. The fourth one-run authorization used this identity and is
+consumed. Do not rebuild or re-sign the candidate; any future signature run
+would create a distinct candidate and require new explicit authorization.
 
 The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
 with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive
@@ -214,6 +249,218 @@ additional restart or any acquisition.
 7. Preserve evidence and request the next authorization. Do not retry a failed
    START. Use the rollback sheet or reimage instead.
 
+### Exact first-install command
+
+The frozen private backup, not a rebuilt tree, is the installation source. In
+an already elevated 64-bit Windows PowerShell console, use exactly this working
+directory and one PnPUtil invocation:
+
+```powershell
+$evidenceRoot = `
+  'C:\Users\LeCroyUser\.codex\driver-backups\phase2c-first-install-20261018-attempt1'
+if (-not (Test-Path -LiteralPath $evidenceRoot -PathType Container)) {
+  throw "Run the pre-install evidence capture first: $evidenceRoot"
+}
+Set-Location -LiteralPath `
+  'C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-SignedCandidate-20261018-fourth-1017-1\package'
+$installOutput = & "$env:SystemRoot\System32\pnputil.exe" /add-driver `
+  '.\LecS65AcqDrv.inf' /install 2>&1
+$installExit = $LASTEXITCODE
+$installOutput | Out-String | Set-Content -LiteralPath `
+  (Join-Path $evidenceRoot 'pnputil-install.txt') -Encoding UTF8
+$installExit | Set-Content -LiteralPath `
+  (Join-Path $evidenceRoot 'pnputil-install-exit.txt') -Encoding ASCII
+$installOutput
+if ($installExit -ne 0) {
+  throw "PnPUtil stopped with exit code $installExit; do not retry"
+}
+```
+
+Do not add `/reboot`, do not run `/scan-devices`, and do not retry. Expected
+effects are a new Driver Store `oem#.inf`, replacement of the selected package
+for the existing PCI function, withdrawal of the old interfaces, a PnP
+STOP/rebind and one candidate START, replacement/loading of the service image,
+and republication of exactly one path in each of the five interface classes. A
+return value requiring reboot is a stop condition, not permission to reboot.
+
+### START hardware effects and residual risk
+
+The candidate START is not hardware-passive. Source review confirms this
+bounded sequence before interface publication:
+
+1. map three translated PCI memory resources as logical BAR0, BAR1 and BAR2;
+2. write `1` to BAR0 `START` offset `0x00C`, delay 100 microseconds and read
+   back bit 0;
+3. on success, pulse BAR2 `BUZZER` offset `0x000`, write `7` then `3` to BAR1
+   `ITMODE` offset `0x000`, with the documented delays and a second pulse;
+4. connect the translated interrupt and enable five registered interfaces.
+
+If START bit 0 is clear, the driver emits one longer buzzer pulse, fails START
+and unmaps the BARs. IRQ connection itself performs no INTEN write. The
+zero-initialized interrupt shadow causes the ISR to reject all sources until a
+later IOCTL explicitly establishes ownership; no such IOCTL is authorized in
+this stage. `LecDmaPnpStageCreate` allocates only software state. The routine
+that obtains a DMA adapter and common table, `LecDmaPnpStartNoLaunch`, has no
+production call site, so first START does not activate WDM v3 DMA. These source
+properties reduce scope but cannot exclude a bugcheck, hang, device-side
+reaction to the fixed legacy writes, interrupt anomaly or hardware damage.
+
+### Evidence capture and stop conditions
+
+Immediately before an authorized install, recapture the last record ID from
+`System`, `Microsoft-Windows-CodeIntegrity/Operational`,
+`Microsoft-Windows-UserPnp/DeviceInstall` and
+`Microsoft-Windows-Kernel-PnP/Configuration`, and copy
+`%SystemRoot%\INF\setupapi.dev.log` to a new private evidence path. After the
+single PnPUtil call, use only read-only `Get-PnpDevice`,
+`Get-PnpDeviceProperty`, `Get-CimInstance Win32_SystemDriver`, `Get-FileHash`,
+`pnputil /enum-devices ... /drivers`, `pnputil /enum-interfaces /class <GUID>`
+and `Get-WinEvent` queries. Do not open an interface.
+
+Use this new private evidence directory and pre-install capture. Refuse an
+existing directory rather than overwriting an earlier attempt:
+
+```powershell
+$evidenceRoot = `
+  'C:\Users\LeCroyUser\.codex\driver-backups\phase2c-first-install-20261018-attempt1'
+if (Test-Path -LiteralPath $evidenceRoot) {
+  throw "Evidence path already exists: $evidenceRoot"
+}
+New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+if (-not [Environment]::Is64BitProcess -or
+    -not $principal.IsInRole(
+      [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw 'Installation requires an already elevated 64-bit PowerShell process'
+}
+
+$candidateRoot = `
+  'C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-SignedCandidate-20261018-fourth-1017-1'
+$expected = [ordered]@{
+  'package\LecS65AcqDrv.inf' =
+    'C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783'
+  'package\lecs65acqdrv.cat' =
+    'C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091'
+  'package\LecS65AcqDrv.sys' =
+    'F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D'
+  'evidence\LecS65AcqDrv.pdb' =
+    '25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774'
+  'evidence\manifest.json' =
+    'CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9'
+}
+$candidateHashes = foreach ($relativePath in $expected.Keys) {
+  $path = Join-Path $candidateRoot $relativePath
+  $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+  if ($actual -ne $expected[$relativePath]) {
+    throw "Frozen candidate mismatch: $relativePath"
+  }
+  [pscustomobject]@{ RelativePath = $relativePath; SHA256 = $actual }
+}
+$candidateHashes | Format-Table -AutoSize | Out-File `
+  (Join-Path $evidenceRoot 'candidate-hashes.txt') -Encoding utf8
+
+$sys = Join-Path $candidateRoot 'package\LecS65AcqDrv.sys'
+$cat = Join-Path $candidateRoot 'package\lecs65acqdrv.cat'
+$thumbprint = '4296FA2E355613DF0D5CE6F24D0898E00B706472'
+$sysSignature = Get-AuthenticodeSignature -LiteralPath $sys
+$catSignature = Get-AuthenticodeSignature -LiteralPath $cat
+if ($sysSignature.Status -ne 'Valid' -or $catSignature.Status -ne 'Valid' -or
+    $sysSignature.SignerCertificate.Thumbprint -ne $thumbprint -or
+    $catSignature.SignerCertificate.Thumbprint -ne $thumbprint) {
+  throw 'Frozen candidate signature identity failed'
+}
+$signTool = `
+  'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe'
+& $signTool verify /pa /q /c $cat $sys
+if ($LASTEXITCODE -ne 0) { throw 'Frozen candidate CAT membership failed' }
+
+$clients = @(Get-CimInstance Win32_Process | Where-Object {
+  $_.Name -match '^(XStream|lecdiag|lecwatch|WaveStudio|ScopeExplorer)(\.exe)?$' -or
+  ($_.ExecutablePath -and $_.ExecutablePath -like 'C:\Program Files\LeCroy\*')
+})
+if ($clients.Count -ne 0) { throw 'Known acquisition client is still running' }
+verifier.exe /querysettings *> (Join-Path $evidenceRoot 'verifier-before.txt')
+if ($LASTEXITCODE -ne 0 -or
+    (Get-Content -LiteralPath (Join-Path $evidenceRoot 'verifier-before.txt') `
+      -Raw) -notmatch '0x00000000') {
+  throw 'Driver Verifier precondition failed'
+}
+
+$logs = @(
+  'System',
+  'Microsoft-Windows-CodeIntegrity/Operational',
+  'Microsoft-Windows-UserPnp/DeviceInstall',
+  'Microsoft-Windows-Kernel-PnP/Configuration'
+)
+$bookmarks = foreach ($log in $logs) {
+  $last = Get-WinEvent -LogName $log -MaxEvents 1
+  [pscustomobject]@{ Log = $log; RecordId = [long]$last.RecordId }
+}
+$bookmarks | ConvertTo-Json | Set-Content -LiteralPath `
+  (Join-Path $evidenceRoot 'event-bookmarks.json') -Encoding UTF8
+Copy-Item -LiteralPath "$env:SystemRoot\INF\setupapi.dev.log" `
+  -Destination (Join-Path $evidenceRoot 'setupapi.dev.before.log')
+```
+
+Run the exact install command in the preceding section once. Preserve its full
+console output and numeric exit code. If it returns zero, capture only passive
+post-START evidence:
+
+```powershell
+$instanceId = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0'
+Get-PnpDevice -InstanceId $instanceId | Format-List * | Out-File `
+  (Join-Path $evidenceRoot 'device.txt') -Encoding utf8
+@('DEVPKEY_Device_ProblemCode','DEVPKEY_Device_DriverInfPath',
+  'DEVPKEY_Device_DriverVersion','DEVPKEY_Device_DriverDate',
+  'DEVPKEY_Device_Service') | ForEach-Object {
+    Get-PnpDeviceProperty -InstanceId $instanceId -KeyName $_
+  } | Format-List * | Out-File `
+    (Join-Path $evidenceRoot 'device-properties.txt') -Encoding utf8
+Get-CimInstance Win32_SystemDriver -Filter "Name='LecS65AcqDrv'" |
+  Format-List * | Out-File (Join-Path $evidenceRoot 'service.txt') -Encoding utf8
+Get-FileHash -Algorithm SHA256 -LiteralPath `
+  "$env:SystemRoot\System32\drivers\LecS65AcqDrv.sys" | Format-List * |
+  Out-File (Join-Path $evidenceRoot 'loaded-sys-hash.txt') -Encoding utf8
+pnputil.exe /enum-devices /instanceid $instanceId /drivers *> `
+  (Join-Path $evidenceRoot 'device-drivers.txt')
+
+$guids = @(
+  '{958695A4-693A-435E-8297-66F805D8E46A}',
+  '{7AC34BE9-F766-4F15-9E88-854BA5E2146E}',
+  '{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}',
+  '{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}',
+  '{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}'
+)
+foreach ($guid in $guids) {
+  pnputil.exe /enum-interfaces /class $guid *> `
+    (Join-Path $evidenceRoot ("interface-{0}.txt" -f $guid.Trim('{}')))
+}
+
+$bookmarks = Get-Content -LiteralPath `
+  (Join-Path $evidenceRoot 'event-bookmarks.json') -Raw | ConvertFrom-Json
+foreach ($bookmark in $bookmarks) {
+  $safeName = $bookmark.Log -replace '[^A-Za-z0-9.-]', '_'
+  Get-WinEvent -LogName $bookmark.Log |
+    Where-Object { $_.RecordId -gt [long]$bookmark.RecordId } |
+    Sort-Object RecordId |
+    Format-List TimeCreated,RecordId,Id,ProviderName,LevelDisplayName,Message |
+    Out-File (Join-Path $evidenceRoot ("events-{0}.txt" -f $safeName)) `
+      -Encoding utf8
+}
+Copy-Item -LiteralPath "$env:SystemRoot\INF\setupapi.dev.log" `
+  -Destination (Join-Path $evidenceRoot 'setupapi.dev.after.log')
+```
+
+Stop without retry or automatic rollback on any candidate hash/signature
+mismatch, PnPUtil nonzero or reboot-required result, unexpected selected INF,
+loaded SYS hash mismatch, problem code other than zero, service not running,
+missing/duplicate interface, signature or Code Integrity error, unexpected
+extra PnP transition, START-probe failure, bugcheck, hang, interrupt storm,
+acquisition indication or new kernel error. Preserve the attempted package's
+published OEM name and all logs before proposing rollback.
+
 ## Later targeted Verifier preparation
 
 Verifier remains a later gate. After a successful first START and a separate
@@ -233,27 +480,17 @@ not add random or systematic low-resource simulation to the initial pass, and
 do not combine the first Verifier boot with acquisition, DMA or an unreviewed
 PnP matrix.
 
-## Remaining blockers before installation
+## Remaining gates after first installation
 
-1. Approve Release x64 and the proposed
-   `DriverVer=10/17/2026,0.2026.1017.1`, or provide a replacement identity.
-2. Approve the verified replacement thumbprint
-   `4296FA2E355613DF0D5CE6F24D0898E00B706472` and one elevated private-key
-   signing run after the external one-shot launcher is mock-qualified on
-   Windows PowerShell 5.1. The repository workflow incompatibility is resolved
-   and qualified on Windows PowerShell 5.1 and PowerShell 7, but both previous
-   one-run authorizations were consumed by pre-signing failures. Certificate
-   creation and public trust installation are complete; the old identity
-   remains untouched.
-3. Reconfirm that the proposed signed-candidate output directory does not exist
-   immediately before the run.
-4. Produce and verify a signed immutable candidate; the current set is
-   intentionally unsigned.
-5. Complete elevated WinRE/BCD inventory, recovery-media copy and an actual
-   recovery-console/reinstall rehearsal.
-6. Approve and verify crash-dump/page-file changes and the required reboot.
-7. Grant a separate authorization naming the frozen hashes for one install and
-   one initial START.
+1. Review the event 411 removal-state record against SetupAPI's verified
+   restart before authorizing any additional PnP transition.
+2. Keep rollback separately authorized. Identify `oem17.inf` through its
+   published INF hash and independently matched Driver Store INF/CAT/SYS set;
+   do not infer its identity solely from the currently bound device.
+3. Recovery boot, external rollback media and the automatic-dump configuration
+   remain unproved. No dump, page-file, BCD or reboot change was made.
+4. Driver Verifier, software-only/read-only IOCTL work, controlled STOP/START,
+   REMOVE, device handles, XStream, acquisition and DMA remain separate gates.
 
 Acquisition and DMA remain a separate workstream. In particular, ordinary
 kernel and PnP success must not activate the inactive WDM v3 DMA path, and

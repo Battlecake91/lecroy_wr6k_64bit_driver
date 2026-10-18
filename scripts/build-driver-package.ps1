@@ -44,6 +44,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'native-process.ps1')
+
 $repo = Split-Path -Parent $PSScriptRoot
 $output = [System.IO.Path]::GetFullPath($OutputRoot)
 $packageDir = Join-Path $output 'package'
@@ -67,11 +69,10 @@ $toolPaths = [ordered]@{
 function Invoke-GitCapture {
     param([Parameter(Mandatory=$true)][string[]]$Arguments)
 
-    $result = @(& git @Arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw "git $($Arguments -join ' ') failed:`n$($result -join [Environment]::NewLine)"
-    }
-    return ($result -join "`n").Trim()
+    $git = (Get-Command git.exe -ErrorAction Stop).Source
+    $result = Invoke-LecS65NativeProcess -Name 'Git' -FilePath $git `
+        -Arguments $Arguments -WorkingDirectory $repo -TimeoutSeconds 60
+    return $result.StdOut.Trim()
 }
 
 function Invoke-ExternalCaptured {
@@ -80,18 +81,14 @@ function Invoke-ExternalCaptured {
         [Parameter(Mandatory=$true)][string]$FilePath,
         [Parameter(Mandatory=$true)][string[]]$Arguments,
         [Parameter(Mandatory=$true)][string]$LogPath,
+        [ValidateRange(1, 86400)][int]$TimeoutSeconds = 900,
         [switch]$AllowPositiveExitCode
     )
 
-    Write-Host ""
-    Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
-    $result = @(& $FilePath @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
-    $result | Tee-Object -LiteralPath $LogPath | Out-Host
-    if ($exitCode -ne 0 -and -not ($AllowPositiveExitCode -and $exitCode -gt 0)) {
-        throw "$Name failed with exit code $exitCode."
-    }
-    return $result
+    $result = Invoke-LecS65NativeProcess -Name $Name -FilePath $FilePath `
+        -Arguments $Arguments -WorkingDirectory $repo -LogPath $LogPath `
+        -TimeoutSeconds $TimeoutSeconds -AllowPositiveExitCode:$AllowPositiveExitCode
+    return @($result.StdOut -split "`r?`n")
 }
 
 function Invoke-ScriptCaptured {
@@ -276,26 +273,22 @@ function Get-ReviewedSourceIdentity {
         [Parameter(Mandatory=$true)][string]$ExpectedCommit
     )
 
-    $head = (& git -C $Repository rev-parse HEAD 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve package-workflow HEAD.' }
-    $status = (& git -C $Repository status --porcelain --untracked-files=normal 2>&1 |
-        Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect package-workflow status.' }
+    $head = Invoke-GitCapture -Arguments @('-C', $Repository, 'rev-parse', 'HEAD')
+    $status = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'status', '--porcelain', '--untracked-files=normal')
     if (-not [string]::IsNullOrEmpty($status)) {
         throw "The package worktree is not clean:`n$status"
     }
-    & git -C $Repository merge-base --is-ancestor $ExpectedCommit HEAD
-    if ($LASTEXITCODE -ne 0) {
-        throw "Expected driver-tree commit is not an ancestor of HEAD: $ExpectedCommit"
-    }
-    $expectedDriverTree = (& git -C $Repository rev-parse "$ExpectedCommit`:driver").Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve expected driver tree.' }
-    $expectedIncludeTree = (& git -C $Repository rev-parse "$ExpectedCommit`:include").Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve expected include tree.' }
-    $currentDriverTree = (& git -C $Repository rev-parse 'HEAD:driver').Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve current driver tree.' }
-    $currentIncludeTree = (& git -C $Repository rev-parse 'HEAD:include').Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve current include tree.' }
+    $null = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'merge-base', '--is-ancestor', $ExpectedCommit, 'HEAD')
+    $expectedDriverTree = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'rev-parse', "$ExpectedCommit`:driver")
+    $expectedIncludeTree = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'rev-parse', "$ExpectedCommit`:include")
+    $currentDriverTree = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'rev-parse', 'HEAD:driver')
+    $currentIncludeTree = Invoke-GitCapture -Arguments @(
+        '-C', $Repository, 'rev-parse', 'HEAD:include')
     if ($expectedDriverTree -ne $currentDriverTree -or
         $expectedIncludeTree -ne $currentIncludeTree) {
         throw 'Current driver/include trees differ from the reviewed development revision.'
@@ -332,7 +325,7 @@ function Assert-SysPdbIdentity {
     $null = Invoke-ExternalCaptured -Name "$Label SYS/PDB identity" `
         -FilePath $SymChkPath `
         -Arguments @('/v', $SysPath, '/s', (Split-Path -Parent $PdbPath)) `
-        -LogPath $LogPath
+        -LogPath $LogPath -TimeoutSeconds 120
 }
 
 function Get-FileRecord {

@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $workflow = Join-Path $repo 'scripts\build-driver-package.ps1'
+. (Join-Path $repo 'scripts\native-process.ps1')
 $tokens = $null
 $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -162,7 +163,43 @@ try {
             -LogPath (Join-Path $evidenceDir "mock-$mockOperation.log")
     }
     Test-Condition 'mock signing and verification commands complete without key use' (
-        @(Get-ChildItem -LiteralPath $evidenceDir -Filter 'mock-*.log').Count -eq 5)
+        @(Get-ChildItem -LiteralPath $evidenceDir -Filter 'mock-*.log' |
+            Where-Object Name -notmatch '\.(stdout|stderr)\.txt$').Count -eq 5)
+
+    $nativeFixture = Join-Path $tempRoot 'native stderr ünicode.ps1'
+    Set-Content -LiteralPath $nativeFixture -Encoding UTF8 -Value @'
+param([string]$Value)
+if ($Value -cne 'space # ünicode') { exit 91 }
+Write-Output 'stdout:argument-match'
+[Console]::Error.WriteLine('diagnostic-stderr:argument-match')
+exit 0
+'@
+    $nativeLog = Join-Path $evidenceDir 'native-stderr-zero.log'
+    $nativeHost = (Get-Process -Id $PID).Path
+    $nativeResult = Invoke-LecS65NativeProcess -Name 'Native stderr zero' `
+        -FilePath $nativeHost `
+        -Arguments @('-NoProfile', '-NonInteractive', '-File', $nativeFixture,
+            '-Value', 'space # ünicode') `
+        -WorkingDirectory $tempRoot -LogPath $nativeLog -TimeoutSeconds 30
+    Test-Condition 'native stderr with exit zero is diagnostic and independently logged' (
+        $nativeResult.ExitCode -eq 0 -and
+        $nativeResult.StdOut -match 'stdout:argument-match' -and
+        $nativeResult.StdErr -match 'diagnostic-stderr:argument-match' -and
+        (Get-Content -LiteralPath ($nativeLog + '.stderr.txt') -Raw) -match
+            'diagnostic-stderr')
+
+    $startupLog = Join-Path $evidenceDir 'startup-failure.log'
+    Expect-Rejection 'native startup failure is logged and rejected' {
+        Invoke-LecS65NativeProcess -Name 'Missing native child' `
+            -FilePath (Join-Path $tempRoot 'missing-child.exe') `
+            -Arguments @() -WorkingDirectory $tempRoot -LogPath $startupLog `
+            -TimeoutSeconds 5 | Out-Null
+    }
+    Test-Condition 'startup failure preserves separate evidence logs' (
+        (Test-Path -LiteralPath $startupLog) -and
+        (Test-Path -LiteralPath ($startupLog + '.stdout.txt')) -and
+        (Get-Content -LiteralPath ($startupLog + '.stderr.txt') -Raw) -match
+            'failed to start or supervise')
 
     $workflowRelativePaths = @(
         Get-ContainedRelativeFilePath -Root $artifactRoot -Path $specialFile

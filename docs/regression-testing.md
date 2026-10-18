@@ -364,6 +364,28 @@ paths with spaces and special characters, manifest completeness, and mocked
 signed/unsigned verification states without using a certificate or private
 key.
 
+`tests/dry/test-elevated-signing-launcher.ps1` qualifies the tracked
+Windows PowerShell 5.1 launcher with an elevated token and the parameter-
+compatible mock at `tests/dry/fixtures/mock-signing-workflow.ps1`. Supply new
+external transcript/result paths and the absolute PowerShell 7 executable used
+for the wrong-host rejection check:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File .\tests\dry\test-elevated-signing-launcher.ps1 `
+  -EvidenceLog C:\absolute\new-launcher-test.log `
+  -ResultPath C:\absolute\new-launcher-test-result.json `
+  -PowerShell7Path C:\absolute\pwsh.exe
+```
+
+The final elevated run on Windows PowerShell 5.1.19041.6456 / CLR
+4.0.30319.42000 passed 24/24. A separate real non-elevated invocation was
+rejected with exit code 1 before creating output, log or marker files. No test
+accessed a certificate store or private key, and none invoked real signing,
+package tools, driver build, hardware or installation operations. The existing
+package compatibility tests remain 19/19 and fail-closed tests remain 16/16 on
+both Windows PowerShell 5.1 and PowerShell 7.6.5.
+
 These executions qualify both Debug and Release x64 compilation and the
 hardware-independent source/native contracts at the merged development source.
 They do **not** install or load the driver, exercise kernel scheduling, prove

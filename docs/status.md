@@ -52,50 +52,44 @@
   runtime package must therefore be built once, hash-frozen and promoted as an
   immutable set; a later rebuild is a different artifact unless deterministic
   linking is separately implemented and qualified.
-- Phase 2C now has a hardened validated package-only workflow at `67a3075`,
-  layered on the exact `cb5010a` driver/include trees. It pins SDK/WDK 10.0.28000.0 and
-  MSVC 14.41.34120, builds both configurations and tools, enforces the complete
-  Dry/stress evidence, validates PE/PDB/INF/CAT metadata, records hashes, and
-  contains no installation or device-operation path. The validated Release
-  set is intentionally unsigned, uses the proposed unapproved
-  `DriverVer=10/17/2026,0.2026.1017.1`, and has manifest SHA-256
-  `3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
-  It is not an installation candidate. The owner has designated the WR6k host
-  as an expendable test environment, but private-key use, signing,
-  crash-control/reboot changes, installation, PnP, Verifier and acquisition
-  retain separate gates. The previous `oem100.inf` package has been exported
-  privately with Phase 1-matching hashes; elevated WinRE/BCD inventory and a
-  recovery rehearsal remain incomplete. Sixteen negative package tests pass,
-  including an actual mismatched SYS/PDB rejection. Read-only CNG inspection
-  proves that the old test certificate has a stale machine-key reference: its
-  named Microsoft Software KSP container returns `NTE_BAD_KEYSET`, while the
-  provider itself is present and no alternate certificate/private-key pair was
-  found. The old certificate is not signing-ready; a newly named test
-  certificate/key pair was subsequently created under explicit authorization.
-  Replacement thumbprint `4296FA2E355613DF0D5CE6F24D0898E00B706472` has an
-  RSA-2048 non-exportable CNG machine key, exact code-signing EKU, public trust
-  copies in the local-machine Root and Trusted Publishers stores, and a
-  successful offline chain. Its container opens with an elevated token but not
-  the filtered token, so any later signing run must be separately authorized
-  and elevated. The first authorized elevated attempt used Windows PowerShell
-  5.1 and failed after builds/regressions but before staging or signing because
-  that runtime lacks `System.IO.Path.GetRelativePath`. No candidate, CAT,
-  manifest or signed driver artifact was produced, and the authorization must
-  not be reused. The workflow now uses bounded path handling compatible with
-  Windows PowerShell 5.1 and PowerShell 7. Focused path, mocked package/manifest
-  and signature-state tests pass 19/19 on each host; all 16 existing
-  fail-closed tests also pass on each host. No real signing was performed, and
-  a later second authorization reached an elevated certificate, chain and CNG
-  access preflight but failed in the external launcher before the repository
-  workflow was invoked: Windows PowerShell 5.1 rejected
-  `Tee-Object -LiteralPath -Append` as an invalid parameter set. No output
-  root, package, manifest or signature was created. Both one-run
-  authorizations are consumed; a future attempt needs a separately tested
-  5.1-compatible launcher, a new output path and a new explicit authorization.
+- Phase 2C now has one frozen, locally test-signed Release x64 candidate from
+  clean workflow commit `5cc0d792` and the exact reviewed `cb5010a` driver and
+  include trees. The elevated 64-bit Windows PowerShell 5.1 launcher completed
+  once without retry, using SDK/WDK 10.0.28000.0, MSVC 14.41.34120,
+  `DriverVer=10/17/2026,0.2026.1017.1` and approved certificate thumbprint
+  `4296FA2E355613DF0D5CE6F24D0898E00B706472`. Both configurations and tools
+  built, 394/394 functional checks and 66,000/66,000 stress iterations passed,
+  and InfVerif, Inf2Cat, SYS/CAT Authenticode, local chain, catalog membership
+  and signed SYS/PDB identity all verify. Frozen hashes are INF
+  `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783`,
+  CAT `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091`,
+  signed SYS
+  `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`,
+  matching PDB
+  `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774`
+  and manifest
+  `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9`.
+  A hash-identical private backup contains all 53 candidate/evidence files.
+  The single authorized first installation completed on 2026-10-18 with
+  PnPUtil exit zero and published the candidate as `oem17.inf`. Passive checks
+  find device `OK`, problem code zero, version `0.2026.1017.1`, a running
+  service and the approved loaded-SYS hash. Independent Driver Store hashes
+  match the frozen INF/CAT/SYS, and all five legacy interface classes each
+  expose exactly one path for the target PCI function.
   See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
+- The first installation used one authorized invocation with no retry. SetupAPI
+  records one `Query-remove`, one `Start`, `Restart verified` and final
+  `SUCCESS`. Kernel-PnP event 411 simultaneously records removal-state problem
+  `0x15` / status `0xC00000BB`; no Code Integrity event was added. This known
+  event class is not proof of a candidate START defect, but the result is not
+  event-free and requires review before another PnP transition. The preserved
+  `oem100.inf` export remains hash-identical, Verifier remains off and no known
+  acquisition client was running. Recovery boot, rollback, reboot, Verifier,
+  device handles, IOCTLs, XStream, acquisition and DMA remain separately
+  authorized gates.
 
 ## DMA/PnP staging
 

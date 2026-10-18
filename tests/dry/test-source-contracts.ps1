@@ -41,8 +41,9 @@ $driverInf = Join-Path $repo "driver\LecS65AcqDrv.inf"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
+$nativeProcess = Join-Path $repo "scripts\native-process.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild, $nativeProcess)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -76,6 +77,7 @@ $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
+$nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -722,18 +724,26 @@ Test-Contract "lecwatch remains read-only and trace-only" {
 }
 
 Test-Contract "package workflow is installation- and device-operation-free" {
-    $packageBuildText -notmatch '(?i)pnputil|Get-PnpDevice|DeviceIoControl|restart-device|disable-device|enable-device|add-driver' -and
+    ($packageBuildText + $nativeProcessText) -notmatch '(?i)pnputil|Get-PnpDevice|DeviceIoControl|restart-device|disable-device|enable-device|add-driver' -and
     $packageBuildText -match 'InstallAuthorized = \$false' -and
     $packageBuildText -match 'DriverStoreChanged = \$false' -and
     $packageBuildText -match 'PnpChanged = \$false' -and
-    $packageBuildText -match 'DeviceOpened = \$false'
+    $packageBuildText -match 'DeviceOpened = \$false' -and
+    $packageBuildText -match 'Invoke-LecS65NativeProcess' -and
+    [regex]::Matches($packageBuildText,
+        '@\(& \$FilePath @Arguments 2>&1\)').Count -eq 1 -and
+    $nativeProcessText -match 'RedirectStandardOutput = true' -and
+    $nativeProcessText -match 'RedirectStandardError = true' -and
+    $nativeProcessText -match 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' -and
+    $nativeProcessText -match 'WaitForExit\(timeoutMilliseconds\)' -and
+    $nativeProcessText -match 'Task\.WaitAll'
 }
 
 Test-Contract "package workflow pins reviewed source and toolchain" {
     $packageBuildText -match 'ExpectedDriverTreeCommit' -and
-    $packageBuildText -match 'merge-base --is-ancestor' -and
-    $packageBuildText -match "rev-parse 'HEAD:driver'" -and
-    $packageBuildText -match "rev-parse 'HEAD:include'" -and
+    $packageBuildText -match "'merge-base', '--is-ancestor'" -and
+    $packageBuildText -match "'rev-parse', 'HEAD:driver'" -and
+    $packageBuildText -match "'rev-parse', 'HEAD:include'" -and
     $packageBuildText -match 'MSVC\\14\.41\.34120' -and
     $packageBuildText -match '10\.0\.28000\.0' -and
     $packageBuildText -match 'Current driver/include trees differ'
