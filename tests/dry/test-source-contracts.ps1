@@ -771,6 +771,7 @@ Test-Contract "package identity is explicit and output is non-overwriting" {
     $packageBuildText -match 'PackageState = if \(\$Sign\)' -and
     $packageBuildText -match '\[switch\]\$PnpStatusDiagnostics' -and
     $packageBuildText -match 'Assert-PnpDiagnosticMarkerState' -and
+    $packageBuildText -match 'Rebuild = \$true' -and
     $packageBuildText -match "DiagnosticMarker = 'PNP_STATUS:'" -and
     $packageBuildText -match 'PnpStatusDiagnostics = \[bool\]\$PnpStatusDiagnostics'
 }

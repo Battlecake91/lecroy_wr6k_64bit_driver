@@ -288,6 +288,7 @@ function Assert-ManifestComplete {
         [string]::IsNullOrWhiteSpace($Manifest.Source.DriverTree) -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.IncludeTree) -or
         $Manifest.Build.Configurations.Count -ne 2 -or
+        $Manifest.Build.CleanRebuild -ne $true -or
         $Manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
         $configurationModes.Count -ne 1 -or
         $configurationModes[0] -ne [bool]$Manifest.Build.PnpStatusDiagnostics -or
@@ -502,11 +503,11 @@ try {
 
     $null = Invoke-ScriptCaptured -Name 'Debug x64 driver and tools build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics } `
+        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-debug.log')
     $null = Invoke-ScriptCaptured -Name 'Release x64 driver build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics } `
+        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-release.log')
     $null = Invoke-ScriptCaptured -Name 'Complete Dry regression' `
         -FilePath $dryRunner `
@@ -758,6 +759,7 @@ try {
             SDK_WDK = '10.0.28000.0'
             MSVC = '14.41.34120'
             RuntimeConfiguration = $RuntimeConfiguration
+            CleanRebuild = $true
             PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
             DiagnosticMarker = 'PNP_STATUS:'
             Configurations = $buildArtifacts

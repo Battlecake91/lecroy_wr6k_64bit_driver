@@ -261,6 +261,7 @@ exit 0
             IncludeTree = ('3' * 40)
         }
         Build = [ordered]@{
+            CleanRebuild = $true
             PnpStatusDiagnostics = $true
             DiagnosticMarker = 'PNP_STATUS:'
             Configurations = @(

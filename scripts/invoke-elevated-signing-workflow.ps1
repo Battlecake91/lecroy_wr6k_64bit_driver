@@ -159,6 +159,7 @@ function Assert-PackageManifest {
         $manifest.Source.DriverTree -notmatch '^[0-9a-fA-F]{40}$' -or
         $manifest.Source.IncludeTree -notmatch '^[0-9a-fA-F]{40}$' -or
         $manifest.Build.RuntimeConfiguration -ne $ExpectedConfiguration -or
+        $manifest.Build.CleanRebuild -ne $true -or
         $manifest.Build.Configurations.Count -ne 2 -or
         $manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
         [bool]$manifest.Build.PnpStatusDiagnostics -ne $ExpectedPnpStatusDiagnostics -or

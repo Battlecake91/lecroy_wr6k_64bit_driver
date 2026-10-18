@@ -155,6 +155,7 @@ $manifest = [ordered]@{
     }
     Build = [ordered]@{
         RuntimeConfiguration = $RuntimeConfiguration
+        CleanRebuild = $true
         PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
         DiagnosticMarker = 'PNP_STATUS:'
         Configurations = @(

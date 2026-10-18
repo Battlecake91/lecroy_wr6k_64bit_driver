@@ -3,7 +3,8 @@ param(
     [string]$Configuration = "Debug",
     [switch]$BuildLecdiag,
     [switch]$BuildLecwatch,
-    [switch]$PnpStatusDiagnostics
+    [switch]$PnpStatusDiagnostics,
+    [switch]$Rebuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,8 +38,9 @@ $msbuild = Find-MSBuild
 Write-Host "MSBuild:"
 Write-Host "  $msbuild"
 Write-Host "Building $Configuration | x64..."
+$target = if ($Rebuild) { 'Rebuild' } else { 'Build' }
 
-& $msbuild $solution /m /t:Build "/p:Configuration=$Configuration" `
+& $msbuild $solution /m "/t:$target" "/p:Configuration=$Configuration" `
     "/p:Platform=x64" `
     ("/p:LecPnpStatusDiagnostics={0}" -f $PnpStatusDiagnostics.IsPresent.ToString().ToLowerInvariant()) `
     /nologo
