@@ -104,14 +104,27 @@ offline preparation.
 
 ## Candidate verification gate
 
-The validated output at workflow commit `67a3075` is unsigned and is not an
-installation candidate. Its Release SYS SHA-256 is
-`7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14`
-and its manifest SHA-256 is
-`3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
-Before any future install, require a newly created, owner-approved signed output
-and compare its manifest plus INF, CAT, SYS and PDB hashes. Require all of the
-following:
+Workflow commit `5cc0d7921cbf05d8730b15b2736f431113010b42` produced one
+frozen, locally test-signed Release x64 candidate from the exact reviewed
+`cb5010a4712f25de7c56d23d0d7502683542058c` driver/include trees. Its approved
+identity is `DriverVer=10/17/2026,0.2026.1017.1` and certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Before any future install,
+recompute and compare these frozen hashes:
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091` |
+| Signed SYS | `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D` |
+| Matching PDB | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9` |
+
+The signing workflow and independent post-run checks verified SYS and CAT
+Authenticode, the local test chain, catalog membership and the signed SYS/PDB
+identity. The signatures are not timestamped and rely on the explicitly trusted
+local self-signed test certificate, not Microsoft production signing.
+Installation was not authorized and did not occur. Continue to require all of
+the following:
 
 - exact approved `driver/` and `include/` tree IDs;
 - approved Debug/Release selection and `DriverVer` ranking;
@@ -125,10 +138,10 @@ following:
 
 Any mismatch creates a new candidate and returns to offline validation.
 
-The proposed Release identity is `DriverVer=10/17/2026,0.2026.1017.1`.
+The approved candidate identity is `DriverVer=10/17/2026,0.2026.1017.1`.
 It is later than the installed `09/29/2026,0.2026.930.54`, uses four components
 within the Windows INF range, and does not change the public IOCTL ABI or legacy
-driver-build constant. It remains a proposal until the owner approves it.
+driver-build constant.
 
 Read-only diagnosis established that the old certificate thumbprint
 `DBB8F215BE00ACA1D6F7D258773DBE8748387D90` references a missing CNG machine
@@ -136,42 +149,9 @@ key. It cannot be used for signing on this host and must not appear in a future
 signing command. The separately authorized replacement certificate is
 `CN=LecS65 x64 Test Phase2C 2026-10`, thumbprint
 `4296FA2E355613DF0D5CE6F24D0898E00B706472`. Its CNG container and local trust
-chain are verified. The exact command for a later, separately authorized,
-elevated signing run is:
-
-```powershell
-.\scripts\build-driver-package.ps1 `
-  -ExpectedDriverTreeCommit cb5010a4712f25de7c56d23d0d7502683542058c `
-  -RuntimeConfiguration Release `
-  -DriverVer '10/17/2026,0.2026.1017.1' `
-  -OutputRoot .\x64\Phase2C-SignedCandidate-20261017-1017-1 `
-  -Sign `
-  -CertificateThumbprint 4296FA2E355613DF0D5CE6F24D0898E00B706472
-```
-
-This command has not been executed and is not authorized by the certificate
-creation approval. The output directory must not already exist. The signing
-process must have an elevated token: the non-elevated token cannot open this
-machine-key container, while an elevated read-only lookup succeeds.
-
-One later signing authorization was consumed by an attempted run under Windows
-PowerShell 5.1. The attempt failed before signing because that runtime lacks
-`System.IO.Path.GetRelativePath`. No signed candidate was produced. The command
-must not be retried under the existing authorization. The workflow now uses a
-reviewed bounded relative-path implementation compatible with Windows
-PowerShell 5.1 and PowerShell 7. Focused mocked package/manifest tests and all
-existing fail-closed signing-boundary tests pass on both hosts. A new explicit
-signing authorization is still required before any retry.
-
-A second authorized attempt later completed the elevated certificate, chain
-and CNG-access preflight but stopped before invoking the repository workflow.
-Windows PowerShell 5.1 rejected the external launcher's
-`Tee-Object -LiteralPath -Append` combination as an invalid parameter set. No
-output root, package, manifest or signature was created, and the installed
-`oem100.inf` package and exported rollback hashes remained unchanged. This
-second authorization is also consumed. The launcher itself now requires
-mock-only Windows PowerShell 5.1 qualification before another separately
-authorized signing attempt.
+chain are verified. The fourth one-run authorization used this identity and is
+consumed. Do not rebuild or re-sign the candidate; any future signature run
+would create a distinct candidate and require new explicit authorization.
 
 The expected runtime service is `LecS65AcqDrv`, demand-start (`StartType=3`),
 with image `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys`. Passive

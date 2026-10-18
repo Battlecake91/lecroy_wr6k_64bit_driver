@@ -476,6 +476,51 @@ not retry until the PowerShell runtime requirement is made explicit or the
 path handling is made compatible, reviewed and separately authorized. See the
 [signing-attempt handoff](handoffs/phase-2c-signing-attempt.md).
 
+## Qualified signed Release candidate
+
+The fourth separately authorized real signing attempt completed successfully
+on 2026-10-18. The clean workflow commit was
+`5cc0d7921cbf05d8730b15b2736f431113010b42`; its `driver/` and `include/`
+trees were verified equal to reviewed source revision
+`cb5010a4712f25de7c56d23d0d7502683542058c`. The versioned launcher ran once
+from elevated 64-bit Windows PowerShell 5.1.19041.6456 with Release x64,
+`DriverVer=10/17/2026,0.2026.1017.1`, SDK/WDK 10.0.28000.0 and MSVC
+14.41.34120. It returned zero and did not retry.
+
+The elevated preflight found exactly the approved certificate in
+`LocalMachine\My`, exact code-signing EKU `1.3.6.1.5.5.7.3.3`, one public copy
+in each approved trust store, a clean local chain and an accessible
+non-exportable RSA-2048 key in the Microsoft Software Key Storage Provider.
+The workflow then passed 394/394 functional tests and all 66,000/66,000 stress
+iterations, built both configurations and utilities, and signed only the
+Release package SYS and CAT with thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`.
+
+| Frozen artifact | Bytes | SHA-256 |
+|---|---:|---|
+| `LecS65AcqDrv.inf` | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| `lecs65acqdrv.cat` | 2,509 | `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091` |
+| Signed `LecS65AcqDrv.sys` | 77,736 | `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D` |
+| Matching `LecS65AcqDrv.pdb` | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| `manifest.json` | 13,975 | `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9` |
+
+Independent post-run checks recomputed every manifest artifact hash, verified
+valid Authenticode signatures on both SYS and CAT, rebuilt the local
+certificate chain, and repeated SignTool SYS, CAT and catalog-membership
+verification with zero errors. SymChk matched the frozen signed SYS to the
+frozen PDB with RSDS GUID `22FF502A-4F06-4439-AE25-F9D18FEAF62E`, age 1.
+The signatures are not timestamped and validate through the explicitly trusted
+local self-signed test certificate; this is not Microsoft production signing.
+The complete 53-file candidate tree was copied to a new private backup and all
+source/backup hashes matched. The manifest records `InstallAuthorized=false`.
+
+Passive post-run inspection still found device problem code 0,
+`oem100.inf` version `0.2026.930.54`, the `LecS65AcqDrv` service running and
+active SYS SHA-256
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+No Driver Store, PnP, service, boot-policy or certificate-store change was
+performed. Installation remains a separate explicit authorization gate.
+
 ## Required Stage 2 exit evidence
 
 PASS requires all of the following:

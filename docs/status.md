@@ -52,89 +52,30 @@
   runtime package must therefore be built once, hash-frozen and promoted as an
   immutable set; a later rebuild is a different artifact unless deterministic
   linking is separately implemented and qualified.
-- Phase 2C now has a hardened validated package-only workflow at `67a3075`,
-  layered on the exact `cb5010a` driver/include trees. It pins SDK/WDK 10.0.28000.0 and
-  MSVC 14.41.34120, builds both configurations and tools, enforces the complete
-  Dry/stress evidence, validates PE/PDB/INF/CAT metadata, records hashes, and
-  contains no installation or device-operation path. The validated Release
-  set is intentionally unsigned, uses the proposed unapproved
-  `DriverVer=10/17/2026,0.2026.1017.1`, and has manifest SHA-256
-  `3C748D04269F831D28CA836121F1B6C42B5999A3E675797B17CBFF7211A70821`.
-  It is not an installation candidate. The owner has designated the WR6k host
-  as an expendable test environment, but private-key use, signing,
-  crash-control/reboot changes, installation, PnP, Verifier and acquisition
-  retain separate gates. The previous `oem100.inf` package has been exported
-  privately with Phase 1-matching hashes; elevated WinRE/BCD inventory and a
-  recovery rehearsal remain incomplete. Sixteen negative package tests pass,
-  including an actual mismatched SYS/PDB rejection. Read-only CNG inspection
-  proves that the old test certificate has a stale machine-key reference: its
-  named Microsoft Software KSP container returns `NTE_BAD_KEYSET`, while the
-  provider itself is present and no alternate certificate/private-key pair was
-  found. The old certificate is not signing-ready; a newly named test
-  certificate/key pair was subsequently created under explicit authorization.
-  Replacement thumbprint `4296FA2E355613DF0D5CE6F24D0898E00B706472` has an
-  RSA-2048 non-exportable CNG machine key, exact code-signing EKU, public trust
-  copies in the local-machine Root and Trusted Publishers stores, and a
-  successful offline chain. Its container opens with an elevated token but not
-  the filtered token, so any later signing run must be separately authorized
-  and elevated. The first authorized elevated attempt used Windows PowerShell
-  5.1 and failed after builds/regressions but before staging or signing because
-  that runtime lacks `System.IO.Path.GetRelativePath`. No candidate, CAT,
-  manifest or signed driver artifact was produced, and the authorization must
-  not be reused. The workflow now uses bounded path handling compatible with
-  Windows PowerShell 5.1 and PowerShell 7. Focused path, mocked package/manifest
-  and signature-state tests pass 19/19 on each host; all 16 existing
-  fail-closed tests also pass on each host. No real signing was performed, and
-  a later second authorization reached an elevated certificate, chain and CNG
-  access preflight but failed in the external launcher before the repository
-  workflow was invoked: Windows PowerShell 5.1 rejected
-  `Tee-Object -LiteralPath -Append` as an invalid parameter set. No output
-  root, package, manifest or signature was created. Both one-run
-  authorizations are consumed; a future attempt needs a separately tested
-  5.1-compatible launcher, a new output path and a new explicit authorization.
-  The launcher is now tracked as
-  `scripts/invoke-elevated-signing-workflow.ps1` and its exact elevated
-  Windows PowerShell 5.1 path passes 24/24 mock and negative checks. It uses
-  separate stdout/stderr redirection, propagates child exit codes, prevents
-  duplicate attempts, and independently validates the signed manifest and
-  hashes. Package compatibility remains 19/19 and package fail-closed coverage
-  remains 16/16 on both supported analysis hosts. A third one-run
-  authorization exercised the exact tracked launcher at commit `aa009667`.
-  Both driver configurations, utilities and all required offline regressions
-  completed successfully: 394/394 functional checks and 66,000/66,000 stress
-  iterations. The workflow then failed at the first Debug SYS/PDB `symchk`
-  check. `symchk` wrote its normal search diagnostic to stderr; Windows
-  PowerShell 5.1 converted it to a terminating `NativeCommandError` because
-  the workflow used merged native output under
-  `$ErrorActionPreference = 'Stop'`. The child ended before package staging,
-  certificate lookup, private-key use, SignTool, InfVerif, Inf2Cat or manifest
-  generation. The launcher did not regain control after the child ended and
-  was terminated after evidence showed no child process or log progress for
-  more than ten minutes. No package INF, CAT, SYS, PDB, manifest or signature
-  exists, and the third authorization is consumed. The failure evidence is
-  retained privately. Commit `c8cc9dd9` now replaces native PowerShell
-  pipeline capture and `Start-Process -Wait` with one bounded shared process
-  supervisor. It independently captures stdout/stderr, uses real process exit
-  codes and assigns each child tree to a kill-on-close Windows job. Focused
-  compatibility tests pass 22/22 and package negative tests pass 16/16 on both
-  Windows PowerShell 5.1 and PowerShell 7.6.5. The elevated same-host Windows
-  PowerShell 5.1 launcher suite passes 34/34, including timeout and descendant
-  cleanup without retry or certificate access. An actual elevated unsigned run
-  at this clean commit completed real Debug/Release builds, 394/394 functional
-  checks, 66,000/66,000 stress iterations, matching Debug/Release SymChk,
-  InfVerif and Inf2Cat with no errors or warnings, deterministic launcher exit
-  and independent manifest/hash verification. Its unsigned Release artifacts
-  are INF
+- Phase 2C now has one frozen, locally test-signed Release x64 candidate from
+  clean workflow commit `5cc0d792` and the exact reviewed `cb5010a` driver and
+  include trees. The elevated 64-bit Windows PowerShell 5.1 launcher completed
+  once without retry, using SDK/WDK 10.0.28000.0, MSVC 14.41.34120,
+  `DriverVer=10/17/2026,0.2026.1017.1` and approved certificate thumbprint
+  `4296FA2E355613DF0D5CE6F24D0898E00B706472`. Both configurations and tools
+  built, 394/394 functional checks and 66,000/66,000 stress iterations passed,
+  and InfVerif, Inf2Cat, SYS/CAT Authenticode, local chain, catalog membership
+  and signed SYS/PDB identity all verify. Frozen hashes are INF
   `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783`,
-  CAT `F3C65BB6E058D0764A479A908790FC781475D928EED866D6B0FD30422CE39099`,
-  SYS `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14`,
+  CAT `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091`,
+  signed SYS
+  `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`,
   matching PDB
   `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774`
   and manifest
-  `9EF8F13525EFC7C692C4F6295906477DEAF2A6FEF6CB4163B1FF2F2BAA4C3B35`.
-  SYS and CAT remain `NotSigned`, the manifest certificate is null, no
-  SignTool log exists and no certificate or private key was accessed. Real
-  signing remains untested and requires a new explicit authorization.
+  `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9`.
+  A hash-identical private backup contains all 53 candidate/evidence files.
+  Passive verification still finds healthy `oem100.inf` version
+  `0.2026.930.54`, the service running and the previous active SYS hash
+  `4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+  No package was staged or installed. Crash-control/reboot work, recovery
+  rehearsal, installation, PnP, Verifier and acquisition remain separately
+  authorized gates.
   See the
   canonical
   [package contract](driver-package-creation.md) and

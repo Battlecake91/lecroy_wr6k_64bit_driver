@@ -347,3 +347,61 @@ catalog membership or signed-chain validation was performed. A fourth real
 signing attempt requires a new clean commit review, new output/log/marker paths
 and new explicit owner authorization. Driver installation remains a separate
 authorization gate.
+
+## Fourth attempt: signed candidate produced
+
+The owner separately authorized one run at workflow commit
+`5cc0d7921cbf05d8730b15b2736f431113010b42`, reviewed driver/include revision
+`cb5010a4712f25de7c56d23d0d7502683542058c`, Release x64 and
+`DriverVer=10/17/2026,0.2026.1017.1`. All output, combined-log, stdout, stderr
+and attempt-marker paths were new. The elevated preflight passed on 64-bit
+Windows PowerShell 5.1.19041.6456 and confirmed the exact subject, thumbprint,
+code-signing EKU, clean local chain, Microsoft Software Key Storage Provider,
+expected machine-key container, RSA-2048 size and successful non-exporting key
+open. No store or ACL was changed.
+
+The versioned launcher ran exactly once in `Sign` mode and returned zero. It
+built Debug and Release x64 plus both utilities, passed 394/394 functional
+checks and 66,000/66,000 stress iterations, and signed only the intended
+Release SYS and CAT. InfVerif and Inf2Cat passed. SignTool verified SYS, CAT and
+catalog membership with no warnings or errors. Authenticode reports `Valid`
+for both files with signer thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`; the local chain builds without
+status entries. The signatures are not timestamped and use the explicitly
+trusted local self-signed test chain, not Microsoft production signing. SymChk
+verifies the frozen signed SYS against the frozen PDB
+with RSDS GUID `22FF502A-4F06-4439-AE25-F9D18FEAF62E`, age 1.
+
+| Frozen artifact | Bytes | SHA-256 |
+|---|---:|---|
+| INF | 1,247 | `C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783` |
+| CAT | 2,509 | `C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091` |
+| Signed SYS | 77,736 | `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D` |
+| Matching PDB | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` |
+| Manifest | 13,975 | `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9` |
+
+The first auxiliary post-run SymChk command used malformed `/s;path` syntax
+and returned usage exit 1 without changing any file. Repeating the read-only
+identity check with documented `/s path` syntax returned zero and reported
+`PDB Matched: TRUE`. This was a verification-command error, not a package or
+workflow failure and did not invoke signing again.
+
+Private execution evidence:
+
+| Evidence | SHA-256 |
+|---|---|
+| Elevated certificate/key preflight | `3B19C31003B18D95C2B92119B6DB45A4A23C3DF25D6C82D62ACD6DC878C68EE7` |
+| Combined run log | `52A02D3F8CD48F1BF1A7398A811E0A3AE35E1A9976C882F0EA38D4C0BFAD8D5B` |
+| Child stdout sidecar | `8D2FDAB45DD80459DA321FFCD1E7548D74768D6493A8FCFCF211A1A9D2DB6A45` |
+| Child stderr sidecar | `D0DFE3E3EE09814195FE403F1651BDC78F619B916714192EF4CE9F622335771C` |
+| Attempt marker | `2966258023447E277454DC4D03318584714394E673E557CBF4BEA824FB3ED541` |
+
+All 53 files in the candidate tree were copied to the new private
+`Phase2C-SignedCandidate-20261018-fourth-1017-1` backup and verified
+hash-identical. Passive post-run inspection found device status `OK`, problem
+code 0, `oem100.inf` version `0.2026.930.54`, the `LecS65AcqDrv` service still
+running and active SYS SHA-256
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+No package was staged or installed and no PnP or service transition occurred.
+The fourth signing authorization is consumed. First installation remains a
+new, separate authorization gate.
