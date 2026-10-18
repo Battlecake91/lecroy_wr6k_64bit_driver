@@ -291,12 +291,15 @@ Consequently DebugView and its temporary driver were not started, PnPUtil was
 not invoked, the candidate was not staged or installed, and no PnP START was
 caused.
 
-The elevated console exception text was not retained by the outer UAC launcher,
-so the exact failing expression is not established. All candidate hashes and
-read-only pre-capture predicates passed again after the stop. The artifact
-boundary proves only that the failure occurred before, or while attempting,
-the DebugView process launch; it does not prove a more specific cause. No retry
-was made.
+The elevated console exception text was not retained by the outer UAC launcher.
+A later elevated reproduction, with the DebugView child replaced by a harmless
+mock, preserved the missing exception and established the exact stop point. The
+process inventory rejected `LecTouchScreenCtrl.exe` because its executable path
+is under `C:\Program Files (x86)\LeCroy\XStream`. The wrapper expression
+`ExecutablePath -match 'LeCroy.*XStream'` classified every helper in that
+directory as an acquisition client. The touchscreen controller is not one of
+the blocked acquisition executables. The exception was therefore thrown before
+the DebugView `Start-Process` statement. No retry was made.
 
 The post-stop snapshot at `2026-10-18T20:27:43Z` still found `oem17.inf`,
 version `0.2026.1017.1`, device status `OK`, problem code zero, a running
@@ -313,3 +316,84 @@ This result supplies no new `PNP_STATUS:` data and no Event 411 attribution.
 The historical Event 411 classification therefore remains indeterminate. Any
 new capture or installation attempt requires fresh explicit authorization and
 must preserve its elevated exception text before active work begins.
+
+## Versioned diagnostic launcher
+
+Implementation commit `4ef961154d9a90183728ac522380c1c789605a0b`
+adds `scripts/invoke-diagnostic-capture-install.ps1` (SHA-256
+`49F7A75F2683C876BBB834A823417770213AB093343FC88CBD4D19B04128E349`).
+It must run in an already elevated 64-bit Windows PowerShell 5.1 host and never
+elevates or retries itself. Exact executable-name matching replaces the unsafe
+directory regex; `LecTouchScreenCtrl.exe` is no longer treated as acquisition.
+
+The modes have disjoint gates:
+
+- `Preflight` rejects every active authorization switch. It validates the clean
+  launcher revision, frozen manifest and artifact hashes, diagnostic package
+  identity, SYS/CAT Authenticode, pinned DebugView identity and current driver
+  state. It cannot start DebugView or PnPUtil.
+- `CaptureQualification` requires an authorization identifier and
+  `-AuthorizeKernelCapture`, forbids installation authorization, creates an
+  exclusive capture marker, then starts only the pinned capture executable.
+- `InstallWithCapture` requires the same capture gate plus
+  `-AuthorizeInstallation`, a pinned PnPUtil hash and an exclusive installation
+  marker. PnPUtil is reachable only after the new raw log exists and capture is
+  still running. It is invoked at most once.
+
+Every evidence root is non-overwriting. `launcher.stdout.txt`,
+`launcher.stderr.txt`, `launcher.exception.txt` and `result.json` are created
+before dependency loading or passive validation. Active modes additionally
+reserve `capture-attempt.marker`, `capture-child.log` with independent stream
+files, `capture-ready.json` and the raw `kernel-capture.log`;
+`InstallWithCapture` also reserves `install-attempt.marker` and
+`install-child.log` with independent stream files. The native process runner
+uses a bounded Windows job object. Timeout or launcher failure closes only that
+child tree, and no automatic retry or rollback exists.
+
+The elevated Windows PowerShell 5.1 mock suite passed 18/18 checks. It covered
+successful preflight, capture-only and capture/install paths; non-elevated
+rejection; early terminating exceptions; DebugView start failure; missing
+readiness; unexpected capture exit; timeout; nonzero PnPUtil exit; log failure;
+package, tool and revision mismatches; existing markers; invocation counts; and
+orphan cleanup. Source contracts passed 54/54. The successful elevated test
+transcript SHA-256 is
+`7144C916D87EBE035C0CA9FDB87992DECCE67AB47A7D8D340498D12253AB9EAC`.
+
+Real `Preflight` against the frozen candidate completed at
+`2026-10-18T20:45:03.5662606Z` with exit code zero. Its result records
+`CaptureInvocations=0` and `InstallInvocations=0`; result SHA-256 is
+`D959DEA7485B87ABA1B6BB5BCF9C331C2BE8CD69FF5346988B1F4F94736A575A`.
+No DebugView process, kernel capture component, PnPUtil invocation, Driver Store
+operation or PnP transition occurred.
+
+The next active command is `CaptureQualification`, not installation. It must be
+run from a clean worktree checked out at the separately approved launcher
+commit. The proposed attempt identity and new evidence directory below are not
+authorizations; they become usable only if the owner approves this exact run:
+
+```powershell
+& 'C:\Users\LeCroyUser\.codex\worktrees\phase2c-instrumented-package\lecroy_wr6k_64bit_driver\scripts\invoke-diagnostic-capture-install.ps1' `
+  -Mode CaptureQualification `
+  -RepositoryRoot 'C:\Users\LeCroyUser\.codex\worktrees\phase2c-instrumented-package\lecroy_wr6k_64bit_driver' `
+  -ExpectedLauncherCommit '4ef961154d9a90183728ac522380c1c789605a0b' `
+  -PackageRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-InstrumentedSignedCandidate-20261018-1018-1-first' `
+  -ExpectedManifestHash '216F15716C9496B476C877129853A07BAB59097444AA2D160E2812F25AA2DC69' `
+  -ExpectedPackageWorkflowCommit 'b13f6637e5dc8499244474ad96a9c533be914904' `
+  -ExpectedDriverSourceCommit '8dfdd69664ff5598d4708d2df8e083002bd5813b' `
+  -ExpectedDriverTree '34ffdb81839799e323b1b4b5df2035151780dcc0' `
+  -ExpectedIncludeTree 'dc000daeafc7e54c2c1ffeb46444cb2e7e3d363b' `
+  -ExpectedDriverVer '10/18/2026,0.2026.1018.1' `
+  -ExpectedCertificateThumbprint '4296FA2E355613DF0D5CE6F24D0898E00B706472' `
+  -ExpectedInfHash 'ADF7E71FBA10D0A7A99216578261CC3AA87EAF3459CFB08A456D808A9350169C' `
+  -ExpectedCatHash '2354CDE2474F01CB32C10937DBB44775980A9126FF02CE58E5BB8E3EA7836FBF' `
+  -ExpectedSysHash '8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A' `
+  -ExpectedPdbHash '980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3' `
+  -DebugViewPath 'C:\Users\LeCroyUser\.codex\tools\sysinternals\DebugView-5.02\extracted\dbgviewcli64.exe' `
+  -ExpectedDebugViewHash '7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B' `
+  -EvidenceRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-DiagnosticCaptureQualification-20261018-attempt1' `
+  -AuthorizationId 'phase2c-capture-qualification-20261018-attempt1' `
+  -AuthorizeKernelCapture
+```
+
+This command is proposed only. Running it still requires a new explicit owner
+authorization. `InstallWithCapture` remains a later, independent gate.

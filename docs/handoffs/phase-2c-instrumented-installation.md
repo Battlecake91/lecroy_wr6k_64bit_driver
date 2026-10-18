@@ -37,10 +37,12 @@ record or final result record. Therefore:
 - no installation-driven PnP START occurred; and
 - no `PNP_STATUS:` records were generated.
 
-The outer UAC launcher did not retain the elevated console exception. The
-available evidence bounds the failure to the wrapper before, or at, DebugView
-process launch, but does not identify the exact expression. Read-only
-revalidation found all pre-capture predicates still passing. No retry was made.
+The outer UAC launcher did not retain the elevated console exception. A later
+elevated reproduction using a harmless capture mock recovered the exact error:
+the process inventory rejected `LecTouchScreenCtrl.exe`. Its path contains
+`LeCroy\XStream`, and the one-off wrapper used the over-broad expression
+`ExecutablePath -match 'LeCroy.*XStream'`. The failure therefore occurred in
+the process inventory before the DebugView start statement. No retry was made.
 
 ## Verified unchanged state
 
@@ -55,10 +57,13 @@ UserPnp or System event was found.
 
 ## Next authorization boundary
 
-Event 411 remains unattributed because no diagnostic START occurred. Any new
-kernel capture or installation requires fresh explicit authorization. Before
-such authorization is exercised, the elevated launcher must preserve its own
-terminating exception and process exit evidence without changing the reviewed
-capture or installation command sequence. No PnP transition, rollback,
-restart, reboot, device handle, IOCTL, MMIO, DMA, acquisition, EEPROM or FPGA
-operation is authorized by this handoff.
+Event 411 remains unattributed because no diagnostic START occurred. Versioned
+launcher commit `4ef961154d9a90183728ac522380c1c789605a0b` replaces the
+one-off wrapper, uses exact blocked executable names, creates launcher output,
+error, exception and result evidence before validation, and separates passive
+preflight, capture-only and capture/install gates. Elevated Windows PowerShell
+5.1 mocks passed 18/18, source contracts passed 54/54, and real passive
+preflight passed with zero capture and installation invocations. Any new
+kernel capture or installation still requires fresh explicit authorization.
+No PnP transition, rollback, restart, reboot, device handle, IOCTL, MMIO, DMA,
+acquisition, EEPROM or FPGA operation is authorized by this handoff.

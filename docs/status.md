@@ -135,12 +135,19 @@
   code 1 before DebugView created any capture evidence and before its
   fail-closed attempt marker or PnPUtil records existed. PnPUtil was not
   invoked, no package was staged, no START occurred and no retry was made. The
-  outer UAC launcher did not retain the elevated exception, so the exact
-  pre-capture failure remains unknown. Passive post-stop checks retained
+  outer UAC launcher did not retain the elevated exception. A later elevated
+  mock reproduction established the exact cause: its broad executable-path
+  regex rejected the non-acquisition `LecTouchScreenCtrl.exe` helper because
+  that helper resides below `LeCroy\XStream`. Passive post-stop checks retained
   `oem17.inf`, device `OK`, problem code zero, the production SYS hash, the
   running service, five published interfaces and a byte-identical SetupAPI log;
   no new relevant event was found. Event 411 therefore remains indeterminate.
-  Any further capture or instrumented installation requires fresh explicit
+  Versioned launcher commit `4ef9611` now uses exact blocked executable names,
+  persists exception evidence before child startup, bounds child trees and
+  separates `Preflight`, `CaptureQualification` and `InstallWithCapture`.
+  Elevated Windows PowerShell 5.1 mocks pass 18/18, source contracts pass 54/54
+  and real passive preflight passes with zero capture/install invocations. Any
+  further capture or instrumented installation requires fresh explicit
   authorization. See the
   [instrumented-installation handoff](handoffs/phase-2c-instrumented-installation.md).
 
