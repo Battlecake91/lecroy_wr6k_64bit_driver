@@ -77,6 +77,7 @@ function Invoke-LauncherCase {
         [string]$LogOverride,
         [string]$HostOverride,
         [switch]$LogInsideRepository,
+        [bool]$Diagnostics = $true,
         [int]$ChildTimeoutSeconds = 30
     )
 
@@ -124,6 +125,9 @@ function Invoke-LauncherCase {
             '-AttemptMarker', $marker,
             '-ChildTimeoutSeconds', $ChildTimeoutSeconds
         )
+        if ($Diagnostics) {
+            $arguments += '-PnpStatusDiagnostics'
+        }
         if ($Mode -eq 'Sign' -and -not $OmitThumbprint) {
             $arguments += @('-CertificateThumbprint', ('A' * 40))
         }
@@ -170,7 +174,8 @@ try {
         $successLog -match 'MOCK WORKFLOW START' -and
         $successLog.Contains("MOCK WORKING DIRECTORY: $($success.Fixture)") -and
         $successLog -match 'configuration=Release' -and
-        $successLog -match 'driverver=10/17/2026,0.2026.1017.1')
+        $successLog -match 'driverver=10/17/2026,0.2026.1017.1' -and
+        $successLog -match 'diagnostics=True')
     Add-Result 'mock signing and package tools execute in order' (
         $successLog -match '(?s)InfVerif before catalog.*SignTool sign SYS.*Inf2Cat catalog generation.*SignTool sign CAT.*InfVerif final')
     Add-Result 'mock SYS CAT and membership verification is preserved' (
@@ -180,6 +185,14 @@ try {
     Add-Result 'complete manifest and hash are accepted' (
         (Test-Path -LiteralPath (Join-Path $success.Output 'evidence\manifest.json')) -and
         $successLog -match 'MOCK WORKFLOW PASS')
+    $successManifest = Get-Content -LiteralPath `
+        (Join-Path $success.Output 'evidence\manifest.json') -Raw | ConvertFrom-Json
+    Add-Result 'instrumented mode is explicit in the accepted manifest' (
+        $successManifest.Schema -eq 2 -and
+        $successManifest.Build.PnpStatusDiagnostics -eq $true -and
+        @($successManifest.Build.Configurations | Where-Object {
+            $_.PnpStatusDiagnostics -ne $true
+        }).Count -eq 0)
     Add-Result 'attempt marker and combined child log are preserved' (
         (Test-Path -LiteralPath $success.Marker) -and
         (Test-Path -LiteralPath $success.Log) -and
@@ -199,6 +212,17 @@ try {
     Add-Result 'unsigned path executes package tools without mock SignTool' (
         $unsignedLog -match '(?s)InfVerif before catalog.*Inf2Cat catalog generation.*InfVerif final' -and
         $unsignedLog -notmatch 'SignTool sign')
+
+    $defaultMode = Invoke-LauncherCase -Name 'default-mode-success' `
+        -Mode UnsignedQualification -Diagnostics $false
+    $defaultManifest = Get-Content -LiteralPath `
+        (Join-Path $defaultMode.Output 'evidence\manifest.json') -Raw | ConvertFrom-Json
+    Add-Result 'default launcher path preserves uninstrumented package identity' (
+        $defaultMode.ExitCode -eq 0 -and
+        $defaultManifest.Build.PnpStatusDiagnostics -eq $false -and
+        @($defaultManifest.Build.Configurations | Where-Object {
+            $_.PnpStatusDiagnostics -ne $false
+        }).Count -eq 0)
 
     $stderrSuccess = Invoke-LauncherCase -Name 'stderr-success' `
         -Mode UnsignedQualification -Scenario NativeToolStderrZero

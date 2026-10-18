@@ -768,7 +768,11 @@ Test-Contract "package identity is explicit and output is non-overwriting" {
     $packageBuildText -match 'OutputRoot already exists; refusing to overwrite' -and
     $packageBuildText -notmatch 'Remove-Item' -and
     $packageBuildText -match 'Source INF must contain exactly one DriverVer line' -and
-    $packageBuildText -match 'PackageState = if \(\$Sign\)'
+    $packageBuildText -match 'PackageState = if \(\$Sign\)' -and
+    $packageBuildText -match '\[switch\]\$PnpStatusDiagnostics' -and
+    $packageBuildText -match 'Assert-PnpDiagnosticMarkerState' -and
+    $packageBuildText -match "DiagnosticMarker = 'PNP_STATUS:'" -and
+    $packageBuildText -match 'PnpStatusDiagnostics = \[bool\]\$PnpStatusDiagnostics'
 }
 
 Test-Contract "package signing is opt-in and thumbprint-bound" {

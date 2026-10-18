@@ -6,6 +6,7 @@ param(
     [ValidateSet('Debug', 'Release')][string]$RuntimeConfiguration,
     [Parameter(Mandatory=$true)][string]$DriverVer,
     [Parameter(Mandatory=$true)][string]$OutputRoot,
+    [switch]$PnpStatusDiagnostics,
     [switch]$Sign,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint
 )
@@ -46,7 +47,7 @@ if ($scenario -eq 'DescendantAlive') {
 
 Write-Output "MOCK WORKFLOW START scenario=$scenario"
 Write-Output "MOCK WORKING DIRECTORY: $((Get-Location).Path)"
-Write-Output "MOCK ARGUMENTS: configuration=$RuntimeConfiguration driverver=$DriverVer signed=$([bool]$Sign) thumbprint=$CertificateThumbprint"
+Write-Output "MOCK ARGUMENTS: configuration=$RuntimeConfiguration driverver=$DriverVer diagnostics=$([bool]$PnpStatusDiagnostics) signed=$([bool]$Sign) thumbprint=$CertificateThumbprint"
 if ($Sign -and [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     throw 'Mock signing requires an explicit thumbprint.'
 }
@@ -143,7 +144,7 @@ $artifacts = @($artifactPaths | ForEach-Object {
     }
 })
 $manifest = [ordered]@{
-    Schema = 1
+    Schema = 2
     PackageState = if ($Sign) { 'SignedCandidate' } else { 'UnsignedValidationOnly' }
     InstallAuthorized = $false
     Source = [ordered]@{
@@ -154,15 +155,17 @@ $manifest = [ordered]@{
     }
     Build = [ordered]@{
         RuntimeConfiguration = $RuntimeConfiguration
+        PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
+        DiagnosticMarker = 'PNP_STATUS:'
         Configurations = @(
-            [ordered]@{ Configuration = 'Debug' }
-            [ordered]@{ Configuration = 'Release' }
+            [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics }
+            [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics }
         )
     }
     Regression = [ordered]@{
         CompleteDry = 'PASS'
         Expanded = 'PASS'
-        FunctionalTestsPassed = 394
+        FunctionalTestsPassed = 397
         FunctionalTestsFailed = 0
         TotalStressIterations = 66000
     }
