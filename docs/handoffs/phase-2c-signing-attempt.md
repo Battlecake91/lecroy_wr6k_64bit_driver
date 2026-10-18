@@ -217,6 +217,17 @@ checks, for 394/394 total. Default stress passed 5,000/5,000 DMA and
 1,000/1,000 INTEN iterations; expanded stress passed 50,000/50,000 DMA and
 10,000/10,000 INTEN iterations, for 66,000/66,000 total.
 
+The build outputs existed only in the repository build directories and were
+never promoted into the package. Their hashes are evidence of this attempt,
+not signed-candidate hashes:
+
+| Build output | Bytes | SHA-256 | Signature state |
+|---|---:|---|---|
+| Debug SYS | 104,960 | `7B2CAB2C74D67510ABE1A9079420851B8334504371ECA9EA939DF6BBD6360B3A` | NotSigned |
+| Debug PDB | 561,152 | `4A80D5CF2D931EAA7822E63D49A42861BB8FC5003818A6E963C9E0475B3B15E6` | N/A |
+| Release SYS | 76,288 | `7BD0FDD9A02B24CEF4531D514846A0DAAE59C9BCDBC915EB307F756AB1ECFF14` | NotSigned |
+| Release PDB | 569,344 | `25B08D57D53C8584CF1076639599A03D112126A66131F7637218210E69B31774` | N/A |
+
 The workflow then terminated at `Debug SYS/PDB identity`. `symchk.exe` wrote
 its normal search message to stderr, which the Windows PowerShell 5.1 merged
 capture expression converted into a terminating `NativeCommandError` under
