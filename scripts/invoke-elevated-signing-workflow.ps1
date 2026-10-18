@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-  Invoke one authorized signing workflow from an elevated Windows PowerShell 5.1 host.
+  Invoke one bounded package workflow from an elevated Windows PowerShell 5.1 host.
 .DESCRIPTION
   This launcher performs one child-process invocation, captures every child
-  output stream, validates the resulting signed-package manifest and never
-  retries. It does not elevate itself, select a certificate or change system
+  output stream, validates the resulting package manifest and never retries.
+  Signing and unsigned qualification are explicit, mutually exclusive modes.
+  The launcher does not elevate itself, select a certificate or change system
   configuration.
 #>
 [CmdletBinding()]
@@ -21,16 +22,20 @@ param(
     [ValidatePattern('^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4}),([0-9]+\.){3}[0-9]+$')]
     [string]$DriverVer,
     [Parameter(Mandatory=$true)]
+    [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
     [Parameter(Mandatory=$true)][string]$OutputRoot,
     [Parameter(Mandatory=$true)][string]$RunLog,
-    [Parameter(Mandatory=$true)][string]$AttemptMarker
+    [Parameter(Mandatory=$true)][string]$AttemptMarker,
+    [ValidateRange(1, 86400)][int]$ChildTimeoutSeconds = 3600
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $log = $null
 $logCreated = $false
+
+. (Join-Path $PSScriptRoot 'native-process.ps1')
 
 function Get-AbsolutePath {
     param(
@@ -81,14 +86,28 @@ function New-ExclusiveTextFile {
     }
 }
 
-function Assert-SignedManifest {
+function Invoke-LauncherGit {
+    param(
+        [Parameter(Mandatory=$true)][string]$Repository,
+        [Parameter(Mandatory=$true)][string[]]$Arguments
+    )
+
+    $git = (Get-Command git.exe -ErrorAction Stop).Source
+    $result = Invoke-LecS65NativeProcess -Name 'Launcher Git preflight' `
+        -FilePath $git -Arguments (@('-C', $Repository) + $Arguments) `
+        -WorkingDirectory $Repository -TimeoutSeconds 60
+    return $result.StdOut.Trim()
+}
+
+function Assert-PackageManifest {
     param(
         [Parameter(Mandatory=$true)][string]$Root,
         [Parameter(Mandatory=$true)][string]$ExpectedCommit,
         [Parameter(Mandatory=$true)][string]$ExpectedSourceCommit,
         [Parameter(Mandatory=$true)][string]$ExpectedConfiguration,
         [Parameter(Mandatory=$true)][string]$ExpectedDriverVer,
-        [Parameter(Mandatory=$true)][string]$ExpectedThumbprint
+        [Parameter(Mandatory=$true)][bool]$ExpectedSigned,
+        [string]$ExpectedThumbprint
     )
 
     $manifestPath = Join-Path $Root 'evidence\manifest.json'
@@ -107,8 +126,29 @@ function Assert-SignedManifest {
     $requiredNames = @('LecS65AcqDrv.cat', 'LecS65AcqDrv.inf',
         'LecS65AcqDrv.pdb', 'LecS65AcqDrv.sys')
     $artifactNames = @($manifest.Artifacts | ForEach-Object Name | Sort-Object)
+    $expectedState = if ($ExpectedSigned) {
+        'SignedCandidate'
+    }
+    else {
+        'UnsignedValidationOnly'
+    }
+    $identityValid = if ($ExpectedSigned) {
+        -not [string]::IsNullOrWhiteSpace($ExpectedThumbprint) -and
+        $manifest.PackageIdentity.Signed -eq $true -and
+        $null -ne $manifest.PackageIdentity.Certificate -and
+        $manifest.PackageIdentity.Certificate.Thumbprint -eq $ExpectedThumbprint -and
+        $manifest.PackageIdentity.SysSignatureStatus -eq 'Valid' -and
+        $manifest.PackageIdentity.CatSignatureStatus -eq 'Valid'
+    }
+    else {
+        $manifest.PackageIdentity.Signed -eq $false -and
+        $null -eq $manifest.PackageIdentity.Certificate -and
+        $manifest.PackageIdentity.SysSignatureStatus -eq 'NotSigned' -and
+        $manifest.PackageIdentity.CatSignatureStatus -eq 'NotSigned'
+    }
+
     if ($manifest.Schema -ne 1 -or
-        $manifest.PackageState -ne 'SignedCandidate' -or
+        $manifest.PackageState -ne $expectedState -or
         $manifest.InstallAuthorized -ne $false -or
         $manifest.Source.WorkflowCommit -ne $ExpectedCommit -or
         $manifest.Source.ReviewedDriverTreeCommit -ne $ExpectedSourceCommit -or
@@ -122,16 +162,13 @@ function Assert-SignedManifest {
         $manifest.Regression.FunctionalTestsFailed -ne 0 -or
         $manifest.Regression.TotalStressIterations -ne 66000 -or
         $manifest.PackageIdentity.DriverVer -ne $ExpectedDriverVer -or
-        $manifest.PackageIdentity.Signed -ne $true -or
-        $manifest.PackageIdentity.Certificate.Thumbprint -ne $ExpectedThumbprint -or
-        $manifest.PackageIdentity.SysSignatureStatus -ne 'Valid' -or
-        $manifest.PackageIdentity.CatSignatureStatus -ne 'Valid' -or
+        -not $identityValid -or
         ($artifactNames -join ',') -ne ($requiredNames -join ',') -or
         $manifest.Safety.DriverStoreChanged -ne $false -or
         $manifest.Safety.PnpChanged -ne $false -or
         $manifest.Safety.DeviceOpened -ne $false -or
         $manifest.Safety.SigningPolicyChanged -ne $false) {
-        throw 'Signed package manifest violates the launcher contract.'
+        throw 'Package manifest violates the launcher contract.'
     }
 
     foreach ($artifact in $manifest.Artifacts) {
@@ -179,6 +216,14 @@ try {
     if (-not [Environment]::Is64BitProcess) {
         throw 'The signing launcher requires 64-bit Windows PowerShell.'
     }
+    if ($Mode -eq 'Sign' -and
+        [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        throw 'CertificateThumbprint is required in Sign mode.'
+    }
+    if ($Mode -eq 'UnsignedQualification' -and
+        -not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+        throw 'CertificateThumbprint is forbidden in UnsignedQualification mode.'
+    }
 
     $repository = Get-AbsolutePath -Path $RepositoryRoot -Label 'RepositoryRoot'
     $workflow = Get-AbsolutePath -Path $WorkflowPath -Label 'WorkflowPath'
@@ -212,11 +257,10 @@ try {
         }
     }
 
-    $head = (& git -C $repository rev-parse HEAD 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve repository HEAD.' }
-    $status = (& git -C $repository status --porcelain --untracked-files=normal 2>&1 |
-        Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect repository status.' }
+    $head = Invoke-LauncherGit -Repository $repository `
+        -Arguments @('rev-parse', 'HEAD')
+    $status = Invoke-LauncherGit -Repository $repository `
+        -Arguments @('status', '--porcelain', '--untracked-files=normal')
     if ($head -ne $ExpectedWorkflowCommit.ToLowerInvariant()) {
         throw "Workflow commit mismatch: expected $ExpectedWorkflowCommit, got $head"
     }
@@ -225,32 +269,25 @@ try {
     }
 
     $markerText = @(
-        'Authorized signing attempt marker'
+        'Authorized package-workflow attempt marker'
         "CreatedUtc=$([DateTime]::UtcNow.ToString('o'))"
         "WorkflowCommit=$head"
+        "Mode=$Mode"
         "OutputRoot=$output"
-        "CertificateThumbprint=$($CertificateThumbprint.ToUpperInvariant())"
     ) -join "`r`n"
+    if ($Mode -eq 'Sign') {
+        $markerText += "`r`nCertificateThumbprint=$($CertificateThumbprint.ToUpperInvariant())"
+    }
     New-ExclusiveTextFile -Path $marker -Text ($markerText + "`r`n")
-    try {
-        New-ExclusiveTextFile -Path $log -Text ''
-        $logCreated = $true
-    }
-    catch {
-        throw "Unable to create the exclusive run log after marking the attempt: $($_.Exception.Message)"
-    }
 
     $childPowerShell = Join-Path $PSHOME 'powershell.exe'
-    if (-not (Test-Path -LiteralPath $childPowerShell -PathType Leaf)) {
-        throw "Current-host child PowerShell is missing: $childPowerShell"
-    }
     $childArguments = @(
         '-NoProfile'
         '-NonInteractive'
         '-ExecutionPolicy'
         'Bypass'
         '-File'
-        ('"{0}"' -f $workflow)
+        $workflow
         '-ExpectedDriverTreeCommit'
         $ExpectedDriverTreeCommit
         '-RuntimeConfiguration'
@@ -258,48 +295,42 @@ try {
         '-DriverVer'
         $DriverVer
         '-OutputRoot'
-        ('"{0}"' -f $output)
-        '-Sign'
-        '-CertificateThumbprint'
-        $CertificateThumbprint.ToUpperInvariant()
+        $output
     )
+    if ($Mode -eq 'Sign') {
+        $childArguments += @(
+            '-Sign'
+            '-CertificateThumbprint'
+            $CertificateThumbprint.ToUpperInvariant()
+        )
+    }
 
-    $childProcess = Start-Process -FilePath $childPowerShell `
-        -ArgumentList $childArguments -WorkingDirectory $repository `
-        -NoNewWindow -Wait -PassThru `
-        -RedirectStandardOutput $stdoutLog `
-        -RedirectStandardError $stderrLog
-    $childExitCode = $childProcess.ExitCode
-    $stdoutText = Get-Content -LiteralPath $stdoutLog -Raw
-    $stderrText = Get-Content -LiteralPath $stderrLog -Raw
-    Add-Content -LiteralPath $log -Encoding UTF8 -Value @(
-        '=== CHILD STDOUT ==='
-        $stdoutText
-        '=== CHILD STDERR ==='
-        $stderrText
-        "=== CHILD EXIT CODE: $childExitCode ==="
-    )
-    if (-not [string]::IsNullOrEmpty($stdoutText)) {
-        Write-Host $stdoutText
-    }
-    if (-not [string]::IsNullOrEmpty($stderrText)) {
-        [Console]::Error.WriteLine($stderrText)
-    }
+    $logCreated = $true
+    $childResult = Invoke-LecS65NativeProcess `
+        -Name "$Mode package workflow" -FilePath $childPowerShell `
+        -Arguments $childArguments -WorkingDirectory $repository `
+        -LogPath $log -TimeoutSeconds $ChildTimeoutSeconds `
+        -ReturnOnNonZeroExit
+    $childExitCode = $childResult.ExitCode
     if ($childExitCode -ne 0) {
         [Console]::Error.WriteLine(
-            "Signing workflow child exited with code $childExitCode. No retry was attempted.")
+            "Package workflow child exited with code $childExitCode. No retry was attempted.")
         exit $childExitCode
     }
 
-    Assert-SignedManifest -Root $output `
+    Assert-PackageManifest -Root $output `
         -ExpectedCommit $ExpectedWorkflowCommit.ToLowerInvariant() `
         -ExpectedSourceCommit $ExpectedDriverTreeCommit.ToLowerInvariant() `
         -ExpectedConfiguration $RuntimeConfiguration `
         -ExpectedDriverVer $DriverVer `
-        -ExpectedThumbprint $CertificateThumbprint.ToUpperInvariant()
+        -ExpectedSigned ($Mode -eq 'Sign') `
+        -ExpectedThumbprint $(if ($Mode -eq 'Sign') {
+            $CertificateThumbprint.ToUpperInvariant()
+        } else { $null })
     Add-Content -LiteralPath $log -Encoding UTF8 `
-        -Value 'ELEVATED SIGNING LAUNCHER PASS: manifest and frozen artifact hashes verified.'
-    Write-Host 'ELEVATED SIGNING LAUNCHER PASS' -ForegroundColor Green
+        -Value ("ELEVATED PACKAGE LAUNCHER PASS ({0}): manifest and frozen artifact hashes verified." -f $Mode)
+    Write-Host ("ELEVATED PACKAGE LAUNCHER PASS ({0})" -f $Mode) `
+        -ForegroundColor Green
     exit 0
 }
 catch {

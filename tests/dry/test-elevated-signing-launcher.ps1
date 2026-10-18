@@ -69,13 +69,15 @@ function Invoke-LauncherCase {
     param(
         [string]$Name,
         [string]$Scenario = 'Success',
+        [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode = 'Sign',
         [scriptblock]$Mutate,
         [switch]$OmitThumbprint,
         [string]$ExpectedCommitOverride,
         [string]$WorkflowOverride,
         [string]$LogOverride,
         [string]$HostOverride,
-        [switch]$LogInsideRepository
+        [switch]$LogInsideRepository,
+        [int]$ChildTimeoutSeconds = 30
     )
 
     $fixture = New-Fixture -Name $Name
@@ -88,6 +90,7 @@ function Invoke-LauncherCase {
         $log = Join-Path $fixture 'launcher.log'
     }
     $counter = Join-Path $fixture 'invocations.txt'
+    $descendantPid = Join-Path $tempRoot ("$Name-descendant.pid")
     if ($null -ne $Mutate) { & $Mutate $fixture $output $log $marker }
     if (-not [string]::IsNullOrWhiteSpace($ExpectedCommitOverride)) {
         $head = $ExpectedCommitOverride
@@ -101,8 +104,10 @@ function Invoke-LauncherCase {
 
     $oldScenario = $env:LECS65_MOCK_SCENARIO
     $oldCounter = $env:LECS65_MOCK_COUNTER
+    $oldDescendantPid = $env:LECS65_MOCK_DESCENDANT_PID
     $env:LECS65_MOCK_SCENARIO = $Scenario
     $env:LECS65_MOCK_COUNTER = $counter
+    $env:LECS65_MOCK_DESCENDANT_PID = $descendantPid
     try {
         $arguments = @(
             '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
@@ -113,11 +118,13 @@ function Invoke-LauncherCase {
             '-ExpectedDriverTreeCommit', ('C' * 40),
             '-RuntimeConfiguration', 'Release',
             '-DriverVer', '10/17/2026,0.2026.1017.1',
+            '-Mode', $Mode,
             '-OutputRoot', $output,
             '-RunLog', $log,
-            '-AttemptMarker', $marker
+            '-AttemptMarker', $marker,
+            '-ChildTimeoutSeconds', $ChildTimeoutSeconds
         )
-        if (-not $OmitThumbprint) {
+        if ($Mode -eq 'Sign' -and -not $OmitThumbprint) {
             $arguments += @('-CertificateThumbprint', ('A' * 40))
         }
         $launchHost = if ([string]::IsNullOrWhiteSpace($HostOverride)) {
@@ -137,6 +144,7 @@ function Invoke-LauncherCase {
     finally {
         $env:LECS65_MOCK_SCENARIO = $oldScenario
         $env:LECS65_MOCK_COUNTER = $oldCounter
+        $env:LECS65_MOCK_DESCENDANT_PID = $oldDescendantPid
     }
     $invocations = if (Test-Path -LiteralPath $counter) {
         @(Get-Content -LiteralPath $counter).Count
@@ -149,6 +157,7 @@ function Invoke-LauncherCase {
         Log = $log
         Marker = $marker
         Invocations = $invocations
+        DescendantPid = $descendantPid
     }
 }
 
@@ -173,7 +182,30 @@ try {
         $successLog -match 'MOCK WORKFLOW PASS')
     Add-Result 'attempt marker and combined child log are preserved' (
         (Test-Path -LiteralPath $success.Marker) -and
-        (Test-Path -LiteralPath $success.Log))
+        (Test-Path -LiteralPath $success.Log) -and
+        (Test-Path -LiteralPath ($success.Log + '.stdout.txt')) -and
+        (Test-Path -LiteralPath ($success.Log + '.stderr.txt')))
+
+    $unsigned = Invoke-LauncherCase -Name 'unsigned-success' `
+        -Mode UnsignedQualification
+    $unsignedLog = Get-Content -LiteralPath $unsigned.Log -Raw
+    $unsignedManifest = Get-Content -LiteralPath `
+        (Join-Path $unsigned.Output 'evidence\manifest.json') -Raw | ConvertFrom-Json
+    Add-Result 'complete elevated unsigned path succeeds without certificate input' (
+        $unsigned.ExitCode -eq 0 -and $unsigned.Invocations -eq 1 -and
+        $unsignedManifest.PackageState -eq 'UnsignedValidationOnly' -and
+        $unsignedManifest.PackageIdentity.Signed -eq $false -and
+        $null -eq $unsignedManifest.PackageIdentity.Certificate)
+    Add-Result 'unsigned path executes package tools without mock SignTool' (
+        $unsignedLog -match '(?s)InfVerif before catalog.*Inf2Cat catalog generation.*InfVerif final' -and
+        $unsignedLog -notmatch 'SignTool sign')
+
+    $stderrSuccess = Invoke-LauncherCase -Name 'stderr-success' `
+        -Mode UnsignedQualification -Scenario NativeToolStderrZero
+    $stderrSuccessLog = Get-Content -LiteralPath $stderrSuccess.Log -Raw
+    Add-Result 'diagnostic stderr with exit code zero remains successful' (
+        $stderrSuccess.ExitCode -eq 0 -and
+        $stderrSuccessLog -match 'diagnostic stderr with exit code zero')
 
     $invalidArgs = Invoke-LauncherCase -Name 'invalid-arguments' -OmitThumbprint
     Add-Result 'invalid PowerShell arguments stop before invocation' (
@@ -230,6 +262,9 @@ try {
         $internalLog.ExitCode -ne 0 -and $internalLog.Invocations -eq 0)
 
     foreach ($failure in @(
+        @{ Name = 'native-tool-failure'; Scenario = 'NativeToolFailure'; Code = 77; Text = 'native tool nonzero exit' }
+        @{ Name = 'symchk-failure'; Scenario = 'SymChkFailure'; Code = 78; Text = 'SymChk failure' }
+        @{ Name = 'missing-pdb'; Scenario = 'MissingPdb'; Code = 79; Text = 'missing PDB' }
         @{ Name = 'signing-tool-failure'; Scenario = 'SigningToolFailure'; Code = 74; Text = 'SignTool signing failure' }
         @{ Name = 'missing-certificate'; Scenario = 'MissingCertificateMetadata'; Code = 72; Text = 'certificate metadata is missing' }
         @{ Name = 'infverif-failure'; Scenario = 'InfVerifFailure'; Code = 73; Text = 'InfVerif failure' }
@@ -249,6 +284,38 @@ try {
     Add-Result 'malformed manifest fails after one child invocation' (
         $malformed.ExitCode -ne 0 -and $malformed.Invocations -eq 1 -and
         (Test-Path -LiteralPath $malformed.Log))
+
+    $mismatch = Invoke-LauncherCase -Name 'manifest-mismatch' `
+        -Mode UnsignedQualification -Scenario 'ManifestMismatch'
+    Add-Result 'manifest hash mismatch fails after one child invocation' (
+        $mismatch.ExitCode -ne 0 -and $mismatch.Invocations -eq 1 -and
+        (Get-Content -LiteralPath $mismatch.Log -Raw) -match 'LAUNCHER FAILURE')
+
+    $earlyExit = Invoke-LauncherCase -Name 'child-exits-before-output' `
+        -Mode UnsignedQualification -Scenario ChildExitBeforeLogs
+    Add-Result 'child exit before workflow output terminates and preserves empty logs' (
+        $earlyExit.ExitCode -eq 80 -and $earlyExit.Invocations -eq 1 -and
+        (Test-Path -LiteralPath $earlyExit.Log) -and
+        (Test-Path -LiteralPath ($earlyExit.Log + '.stdout.txt')) -and
+        (Test-Path -LiteralPath ($earlyExit.Log + '.stderr.txt')))
+
+    $timeout = Invoke-LauncherCase -Name 'child-timeout' `
+        -Mode UnsignedQualification -Scenario ChildTimeout `
+        -ChildTimeoutSeconds 1
+    Add-Result 'child timeout terminates without retry and preserves evidence' (
+        $timeout.ExitCode -ne 0 -and $timeout.Invocations -eq 1 -and
+        (Get-Content -LiteralPath $timeout.Log -Raw) -match 'PROCESS TIMEOUT')
+
+    $descendant = Invoke-LauncherCase -Name 'descendant-cleanup' `
+        -Mode UnsignedQualification -Scenario DescendantAlive
+    $descendantId = if (Test-Path -LiteralPath $descendant.DescendantPid) {
+        [int](Get-Content -LiteralPath $descendant.DescendantPid -Raw)
+    } else { 0 }
+    Start-Sleep -Milliseconds 250
+    Add-Result 'descendant is killed with only the assigned child job' (
+        $descendant.ExitCode -eq 81 -and $descendant.Invocations -eq 1 -and
+        $descendantId -gt 0 -and
+        $null -eq (Get-Process -Id $descendantId -ErrorAction SilentlyContinue))
 
     $logFailure = Invoke-LauncherCase -Name 'log-write-failure-case' `
         -LogOverride (Join-Path $tempRoot 'invalid:name.log')
