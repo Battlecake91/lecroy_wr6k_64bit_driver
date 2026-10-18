@@ -53,15 +53,26 @@ Passive post-install checks at 16:38:59 +02:00 established:
 - the preserved `oem100.inf` export remains hash-identical, known acquisition
   clients remain absent and Driver Verifier remains off.
 
-The new event interval contains no Code Integrity event. Kernel-PnP event 400
-records configuration by `oem17.inf`, while event 411 records problem `0x15`
-and status `0xC00000BB` during the same update. This pair is consistent with
-the already documented removal-state event class: `CM_PROB_WILL_BE_REMOVED`
-and `STATUS_NOT_SUPPORTED` can be recorded during package churn and do not by
-themselves attribute a failure to this driver's START path. The event is not
-discarded as harmless: SetupAPI's later `Restart verified`/`SUCCESS` and the
-healthy live state establish recovery within the single authorized operation,
-but a clean event-free START has not been demonstrated.
+The new event interval contains no Code Integrity event and no driver-related
+Service Control Manager event. Kernel-PnP event 400 at 16:38:09.9077719
+records configuration by `oem17.inf`; event 411 at 16:38:09.9371050 records
+problem `0x15` (`CM_PROB_WILL_BE_REMOVED`) and status `0xC00000BB`
+(`STATUS_NOT_SUPPORTED`). No event 410 occurred in the interval. SetupAPI
+entered `Restarting Devices` at 16:38:09.913, lists `Query-remove`, `Start` and
+`Restart verified` in that textual order, exits the block at 16:38:10.601 and
+closes the section with `SUCCESS` at 16:38:10.616. The individual three lines
+have no timestamps, so their exact ordering relative to event 411 is not
+directly proved.
+
+Source review finds no explicit `STATUS_NOT_SUPPORTED` return in QUERY_REMOVE,
+CANCEL_REMOVE, STOP or START. QUERY_REMOVE/CANCEL_REMOVE and final STOP status
+are forwarded from the lower stack. START can pass through a lower-stack
+failure or a status from `IoConnectInterrupt`; its explicitly authored local
+failures use other status values. Interface-enable failures cannot produce a
+failed START. The retained evidence therefore cannot attribute
+`STATUS_NOT_SUPPORTED` to the replacement, Windows/PnP or the lower PCI stack.
+The classification is **indeterminate, requiring additional targeted
+evidence**, not harmless and not a confirmed driver defect.
 
 Private evidence is preserved under
 `phase2c-first-install-20261018-attempt1`. It includes the exact PnPUtil output,
@@ -116,9 +127,10 @@ no WDM v3 DMA. No IOCTL is authorized for this stage.
 
 ## Next authorization boundary
 
-The first-install authorization is consumed. The event 411/removal-state
-correlation and final healthy state must be reviewed before any additional PnP
-transition. Rollback, reboot, Driver Verifier, device handles, IOCTLs,
+The first-install authorization is consumed. Any additional PnP transition
+requires a separately approved debug-capture plan that can distinguish lower
+START, local START and interrupt-connect results. Rollback, reboot, Driver
+Verifier, device handles, IOCTLs,
 acquisition and DMA each remain outside this result and require an explicit new
 authorization. The rollback procedure must identify `oem17.inf` by its
 published INF and hash-identical FileRepository contents, not merely by the
