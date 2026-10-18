@@ -1,23 +1,41 @@
 # Phase 2C installation and recovery preparation
 
-This document is the controlled bridge between offline package creation and a
-future first driver START. It records preparation only. None of the commands
-under an authorization gate were executed while preparing this document.
+This document is the controlled bridge between offline package creation and
+runtime qualification. The first authorized installation and START completed
+on 2026-10-18; later gated commands remain unexecuted unless stated otherwise.
+
+## First installation outcome
+
+One elevated 64-bit Windows PowerShell 5.1 invocation ran PnPUtil from
+16:38:08.632 +02:00 through 16:38:10.618 +02:00 and returned zero. Windows
+published the candidate as `oem17.inf`. SetupAPI records one `Query-remove`,
+one `Start`, `Restart verified` and final `SUCCESS`. At 16:38:59 the PCI
+instance was `OK` with problem code zero, version `0.2026.1017.1`, a running
+service and the approved loaded-SYS hash. The five expected interface classes
+each had exactly one path for the target function.
+
+Kernel-PnP event 411 nevertheless recorded problem `0x15` and status
+`0xC00000BB` during the update. This is the previously classified
+removal-state event pair, not a signature failure, and it was followed inside
+the same operation by SetupAPI's verified restart and healthy live state. It
+remains a qualification finding: no further PnP transition is authorized and
+the result must not be described as an event-free START.
 
 ## Current preparation evidence
 
 - The owner designated this WR6k Windows installation as an expendable
   development/test environment and accepted crash, reinstallation, local-data
-  loss and hardware-damage risk. Private-key use, installation, Driver
+  loss and hardware-damage risk. Further private-key use, rollback, Driver
   Verifier, PnP transitions, device handles and acquisition remain separately
   authorized operations.
-- The active service remains `LecS65AcqDrv`, `Running`, `Manual`, from
-  `C:\Windows\system32\drivers\LecS65AcqDrv.sys`. No service or device state
-  was changed.
-- Passive driver ranking shows `oem100.inf` as installed/best-ranked with
-  `09/29/2026,0.2026.930.54` and rank `00FF0000`. Numerous older development
-  packages remain in the Driver Store. They were not deleted or changed; the
-  signed candidate must be verified as the selected package after installation.
+- The active service is `LecS65AcqDrv`, `Running`, `Manual`, from
+  `C:\Windows\system32\drivers\LecS65AcqDrv.sys`; that file is the approved
+  candidate SYS. The target devnode selects `oem17.inf` version
+  `0.2026.1017.1` and reports `OK`, problem code zero.
+- Numerous older development packages, including the previous `oem100.inf`,
+  remain in the Driver Store. None was deleted. The candidate's independent
+  Driver Store identity is the one directory whose INF/CAT/SYS all match the
+  frozen hashes, not merely the package currently selected by the devnode.
 - Driver Verifier has flags `0x00000000` and no selected drivers.
 - Crash control is `CrashDumpEnabled=7` (Automatic Memory Dump),
   `AutoReboot=1`, `Overwrite=1`, `LogEvent=1`, with
@@ -35,8 +53,8 @@ under an authorization gate were executed while preparing this document.
 
 ## Preserved previous package
 
-The currently installed `oem100.inf` package was exported, without deletion or
-device action, to the private non-repository directory:
+The previously installed `oem100.inf` package was exported before installation,
+without deletion or device action, to the private non-repository directory:
 
 ```text
 C:\Users\LeCroyUser\.codex\driver-backups\lecroy-oem100-20261017
@@ -64,16 +82,31 @@ The primary normal-boot rollback is therefore to identify and remove only the
 newly published candidate package while preserving `oem100.inf`:
 
 ```powershell
-$instanceId = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0'
-$newInf = (Get-PnpDeviceProperty -InstanceId $instanceId `
-  -KeyName 'DEVPKEY_Device_DriverInfPath').Data
-if ($newInf -notmatch '^oem\d+\.inf$' -or $newInf -eq 'oem100.inf') {
-  throw "Refusing rollback with unexpected selected INF: $newInf"
-}
+$newInf = 'oem17.inf'
 if ((Get-FileHash -LiteralPath "$env:SystemRoot\INF\$newInf" `
       -Algorithm SHA256).Hash -ne `
     'C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783') {
   throw "Refusing rollback: $newInf is not the frozen candidate INF"
+}
+$repositoryRoot = "$env:SystemRoot\System32\DriverStore\FileRepository"
+$matches = @(Get-ChildItem -LiteralPath $repositoryRoot -Directory `
+  -Filter 'lecs65acqdrv.inf_amd64_*' | Where-Object {
+    $inf = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.inf' |
+      Select-Object -First 1
+    $cat = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.cat' |
+      Select-Object -First 1
+    $sys = Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.sys' |
+      Select-Object -First 1
+    $inf -and $cat -and $sys -and
+      (Get-FileHash -LiteralPath $inf.FullName -Algorithm SHA256).Hash -eq
+        'C2355D1E6E78C7ECEE6D3A2BE23F64441C08667FDBF94569FBD49D6083670783' -and
+      (Get-FileHash -LiteralPath $cat.FullName -Algorithm SHA256).Hash -eq
+        'C904CCDA2A7591435F8CFB79C6728D4A44229676CBA31E21EB1353264173C091' -and
+      (Get-FileHash -LiteralPath $sys.FullName -Algorithm SHA256).Hash -eq
+        'F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D'
+  })
+if ($matches.Count -ne 1) {
+  throw "Refusing rollback: expected one hash-identical candidate package"
 }
 pnputil.exe /delete-driver $newInf /uninstall /force
 ```
@@ -103,7 +136,9 @@ be guessed during a failure.
 
 ## Crash-dump and recovery gate
 
-Before installation, separately authorize and perform all of the following:
+Before higher-risk runtime qualification, separately authorize and perform the
+still-relevant recovery improvements below. The owner explicitly accepted
+their absence for the completed first installation:
 
 1. Copy the previous package and this command sheet to boot-independent media.
 2. Run elevated `reagentc.exe /info` and `bcdedit.exe /enum all`; record the
@@ -445,21 +480,17 @@ not add random or systematic low-resource simulation to the initial pass, and
 do not combine the first Verifier boot with acquisition, DMA or an unreviewed
 PnP matrix.
 
-## Remaining blockers before installation
+## Remaining gates after first installation
 
-1. Decide whether enabled/configured WinRE plus the separate physical disk is
-   sufficient for this expendable host despite no recovery boot rehearsal and
-   no verified rollback copy outside `C:`. Copying one is not part of the
-   passive preflight.
-2. Decide whether the existing automatic-dump configuration (`AutoReboot=1`
-   and an unproved 1,856 MiB boot-volume page file) is acceptable. No dump,
-   page-file, BCD or reboot change was authorized or made.
-3. Immediately before installation, repeat the frozen hash/signature checks,
-   known-client process check, Verifier check and event bookmarks. Stop if any
-   value changed.
-4. Grant a separate authorization naming the frozen hashes for exactly one
-   PnPUtil install and the installation-triggered initial START, explicitly
-   acknowledging the fixed START/ITMODE/BUZZER MMIO sequence above.
+1. Review the event 411 removal-state record against SetupAPI's verified
+   restart before authorizing any additional PnP transition.
+2. Keep rollback separately authorized. Identify `oem17.inf` through its
+   published INF hash and independently matched Driver Store INF/CAT/SYS set;
+   do not infer its identity solely from the currently bound device.
+3. Recovery boot, external rollback media and the automatic-dump configuration
+   remain unproved. No dump, page-file, BCD or reboot change was made.
+4. Driver Verifier, software-only/read-only IOCTL work, controlled STOP/START,
+   REMOVE, device handles, XStream, acquisition and DMA remain separate gates.
 
 Acquisition and DMA remain a separate workstream. In particular, ordinary
 kernel and PnP success must not activate the inactive WDM v3 DMA path, and

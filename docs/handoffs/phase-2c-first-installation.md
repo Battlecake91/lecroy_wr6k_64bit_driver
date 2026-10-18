@@ -1,8 +1,9 @@
 # Phase 2C first-installation handoff
 
-This handoff records the completed passive gate for the first controlled
-installation. No package was staged or installed and no PnP transition, device
-handle, IOCTL, reboot or hardware access was performed.
+This handoff records the completed first controlled installation and its
+passive post-install inspection. The one authorized PnPUtil invocation was
+performed on 2026-10-18. No retry, rollback, reboot, Verifier action, device
+handle, IOCTL, acquisition action or additional PnP command was performed.
 
 ## Frozen candidate
 
@@ -26,6 +27,48 @@ SYS/CAT Authenticode, signer identity, local chain and CAT membership passed on
 2026-10-18. The signatures are locally trusted test signatures, not Microsoft
 production signatures.
 
+## First installation result
+
+The elevated 64-bit Windows PowerShell 5.1 process invoked PnPUtil exactly once
+from 2026-10-18 16:38:08.632 +02:00 through 16:38:10.618 +02:00. PnPUtil
+returned zero, imported the package as `oem17.inf` and reported installation on
+the expected PCI instance. SetupAPI independently records the hash-matched
+FileRepository directory
+`lecs65acqdrv.inf_amd64_85c8e6ef975083de`, one `Query-remove`, one `Start`,
+`Restart verified`, and final section status `SUCCESS`.
+
+Passive post-install checks at 16:38:59 +02:00 established:
+
+- selected INF `oem17.inf`, version `0.2026.1017.1`, device `OK`, problem code
+  zero;
+- service `LecS65AcqDrv` is `Running` and demand-start;
+- `%SystemRoot%\INF\oem17.inf` and the matching Driver Store INF/CAT/SYS have
+  the frozen candidate hashes;
+- the loaded `%SystemRoot%\System32\drivers\LecS65AcqDrv.sys` has SHA-256
+  `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`,
+  valid Authenticode status and signer thumbprint
+  `4296FA2E355613DF0D5CE6F24D0898E00B706472`;
+- each of the five legacy interface classes exposes exactly one path for the
+  expected PCI instance; and
+- the preserved `oem100.inf` export remains hash-identical, known acquisition
+  clients remain absent and Driver Verifier remains off.
+
+The new event interval contains no Code Integrity event. Kernel-PnP event 400
+records configuration by `oem17.inf`, while event 411 records problem `0x15`
+and status `0xC00000BB` during the same update. This pair is consistent with
+the already documented removal-state event class: `CM_PROB_WILL_BE_REMOVED`
+and `STATUS_NOT_SUPPORTED` can be recorded during package churn and do not by
+themselves attribute a failure to this driver's START path. The event is not
+discarded as harmless: SetupAPI's later `Restart verified`/`SUCCESS` and the
+healthy live state establish recovery within the single authorized operation,
+but a clean event-free START has not been demonstrated.
+
+Private evidence is preserved under
+`phase2c-first-install-20261018-attempt1`. It includes the exact PnPUtil output,
+timestamps, before/after SetupAPI logs, event bookmarks and new-event extracts,
+device/service properties, interface enumeration and independent Driver Store
+file hashes.
+
 ## Pre-install live baseline
 
 - PCI instance
@@ -43,9 +86,8 @@ production signatures.
   not physical proof of DMA bus-idle and no device handle was opened.
 - PnPUtil found one interface path for the target PCI function in each of the
   five required interface classes.
-- Preflight event record IDs were System 4820, Code Integrity 7934, UserPnp
-  DeviceInstall 281 and Kernel-PnP Configuration 464. These are evidence only;
-  recapture fresh bookmarks immediately before an authorized install.
+- Immediate pre-install event record IDs were System 4828, Code Integrity
+  8018, UserPnp DeviceInstall 281 and Kernel-PnP Configuration 464.
 
 The exported `oem100.inf` rollback directory is complete and hash-identical:
 
@@ -72,12 +114,12 @@ ownership until an IOCTL changes it. The production START path has no call to
 `LecDmaPnpStartNoLaunch`, so it creates no DMA adapter/common table and launches
 no WDM v3 DMA. No IOCTL is authorized for this stage.
 
-## Authorization boundary
+## Next authorization boundary
 
-The exact install command, corrected rollback procedure, evidence commands and
-stop conditions are canonical in
-`docs/phase-2c-installation-preparation.md`. A separate owner authorization
-must name this frozen candidate and approve exactly one PnPUtil install plus its
-installation-triggered initial START. It must also acknowledge the fixed
-START/ITMODE/BUZZER writes and decide whether the untested recovery boot,
-same-system-volume rollback copy and current crash-dump policy are acceptable.
+The first-install authorization is consumed. The event 411/removal-state
+correlation and final healthy state must be reviewed before any additional PnP
+transition. Rollback, reboot, Driver Verifier, device handles, IOCTLs,
+acquisition and DMA each remain outside this result and require an explicit new
+authorization. The rollback procedure must identify `oem17.inf` by its
+published INF and hash-identical FileRepository contents, not merely by the
+currently bound devnode.

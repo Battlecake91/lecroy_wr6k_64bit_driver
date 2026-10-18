@@ -70,28 +70,26 @@
   and manifest
   `CB58D910A02EA02E982D986C6761EB844DE7D0A63CF36FFE2D0CE5268BF17CA9`.
   A hash-identical private backup contains all 53 candidate/evidence files.
-  Passive verification still finds healthy `oem100.inf` version
-  `0.2026.930.54`, the service running and the previous active SYS hash
-  `4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
-  No package was staged or installed. Crash-control/reboot work, recovery
-  rehearsal, installation, PnP, Verifier and acquisition remain separately
-  authorized gates.
+  The single authorized first installation completed on 2026-10-18 with
+  PnPUtil exit zero and published the candidate as `oem17.inf`. Passive checks
+  find device `OK`, problem code zero, version `0.2026.1017.1`, a running
+  service and the approved loaded-SYS hash. Independent Driver Store hashes
+  match the frozen INF/CAT/SYS, and all five legacy interface classes each
+  expose exactly one path for the target PCI function.
   See the
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
-- The passive first-installation gate now verifies the frozen candidate and
-  rollback hashes, local signature chain and catalog membership, current
-  `oem100.inf`/service/device identity, zero Verifier flags, absence of known
-  acquisition clients, five existing interface paths, enabled WinRE with a
-  concrete BCD recovery sequence, test-signing and two healthy physical disks.
-  Source review confirms initial START performs fixed BAR0 START, BAR2 buzzer
-  and BAR1 ITMODE writes before IRQ/interface publication. It performs no INTEN
-  write and has no production path into WDM v3 DMA-adapter allocation. The
-  recovery environment has not been boot-tested, the verified rollback copy is
-  still on `C:`, and the current automatic-dump policy remains unproved for a
-  kernel failure. Installation and its one initial START remain unexecuted and
-  require a new explicit authorization acknowledging these residual risks.
+- The first installation used one authorized invocation with no retry. SetupAPI
+  records one `Query-remove`, one `Start`, `Restart verified` and final
+  `SUCCESS`. Kernel-PnP event 411 simultaneously records removal-state problem
+  `0x15` / status `0xC00000BB`; no Code Integrity event was added. This known
+  event class is not proof of a candidate START defect, but the result is not
+  event-free and requires review before another PnP transition. The preserved
+  `oem100.inf` export remains hash-identical, Verifier remains off and no known
+  acquisition client was running. Recovery boot, rollback, reboot, Verifier,
+  device handles, IOCTLs, XStream, acquisition and DMA remain separately
+  authorized gates.
 
 ## DMA/PnP staging
 
