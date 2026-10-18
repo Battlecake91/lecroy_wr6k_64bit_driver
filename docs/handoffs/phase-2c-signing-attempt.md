@@ -199,3 +199,56 @@ No certificate store, private key, real signing tool, driver build,
 installation, PnP or hardware path was used. The launcher is qualified for
 review, but a real third attempt remains unauthorized and must use a new output
 root, run log and marker named in a new explicit owner authorization.
+
+## Third authorized attempt: native stderr failure before signing
+
+The owner authorized exactly one invocation with launcher commit
+`aa009667fd426a415f13fa6d38a645953912eebe`, driver/include revision
+`cb5010a4712f25de7c56d23d0d7502683542058c`, Release x64,
+`DriverVer=10/17/2026,0.2026.1017.1` and certificate
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. The preflight found the exact
+clean HEAD, matching reviewed trees and no existing output, log, sidecar or
+marker path. The launcher was invoked once from an elevated 64-bit Windows
+PowerShell 5.1 process. No retry was attempted.
+
+Debug and Release x64 builds and both utilities completed. The complete Dry
+run passed 52/52 package/source contracts plus 342/342 native functional
+checks, for 394/394 total. Default stress passed 5,000/5,000 DMA and
+1,000/1,000 INTEN iterations; expanded stress passed 50,000/50,000 DMA and
+10,000/10,000 INTEN iterations, for 66,000/66,000 total.
+
+The workflow then terminated at `Debug SYS/PDB identity`. `symchk.exe` wrote
+its normal search message to stderr, which the Windows PowerShell 5.1 merged
+capture expression converted into a terminating `NativeCommandError` under
+`$ErrorActionPreference = 'Stop'`. This occurred before package staging and
+before any certificate or private-key operation. The launcher remained blocked
+after its child had ended and did not create a combined exit record. After
+more than ten minutes with no child process and no log progress, only the
+remaining launcher process was terminated. The one-run authorization is
+consumed.
+
+No package INF, CAT, SYS or PDB exists. No CAT, signature, catalog membership
+or manifest was created, so final candidate hashes are not available. Private
+failure evidence is retained with these hashes:
+
+| Evidence | SHA-256 |
+|---|---|
+| Attempt marker | `3255C64BB65EE9D0A0EAF746F94FBFCA000D8A24E97C63263A0FC718D3FE07E8` |
+| Empty combined run log | `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` |
+| Child stdout sidecar | `B38880F4321FB7634960CAB58EBCE2807D1997374CE01C18277C7EB0508CB84C` |
+| Child stderr sidecar | `409A868EF55FE550C8009E3CCBFF62865C2F931B273DE7A0BECA5979ECF56BA1` |
+| Partial workflow transcript | `768C3C8DE365EE6344B6B1946BB3207D97AA1F010C5482515326AA42D726CF8B` |
+
+The seven partial workflow evidence files were copied to the private
+`Phase2C-SigningAttempt-20261018-third-failed-evidence` directory and verified
+hash-identical. Passive post-attempt inspection confirmed that the device is
+still `OK` with problem code 0, uses `oem100.inf` version `0.2026.930.54`, and
+the service remains running. The installed INF/CAT/SYS hashes remain
+`C271BBA926667BEB378FDE39AA226CEAA4680AF5A21519A5F26E3A814E7C0E16`,
+`DD2941EA62DB3CAD0F0FB447DE5C8B390A142C46895EB9A7FA0035462BB8CF18`
+and `4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`.
+
+Another real attempt requires a reviewed native-stderr capture fix, a complete
+Windows PowerShell 5.1 mock failure run that proves launcher return and final
+log preservation, a new output/log/marker set and a new explicit owner
+authorization. Installation remains separately unauthorized.

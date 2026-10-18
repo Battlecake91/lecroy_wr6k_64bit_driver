@@ -277,15 +277,65 @@ Private qualification evidence retained outside the repository:
 | Elevated transcript | `D1003A044D760DD28C9A43DC674AC7D1BFD42A424D95A0EC2FCDCF03C1BF5F72` |
 | Result JSON | `08F299DE973976DD30EB3A16CEC34640C2BA5374B4CAA997BBC0E993BE1F18CB` |
 
-The real certificate lookup, private-key operation, real SignTool, InfVerif,
-Inf2Cat, Authenticode and catalog-membership path through this launcher remains
-intentionally untested. Those operations require a third explicit one-run
-authorization. Launcher qualification does not authorize signing or
-installation.
+## Third authorized signing attempt
 
-This validation does not approve the proposed `DriverVer`, certificate,
-private-key use or any installation. A signing run must use a new output root
-and the separately approved exact inputs.
+The owner authorized one production invocation at launcher commit
+`aa009667fd426a415f13fa6d38a645953912eebe`, using reviewed driver/include
+revision `cb5010a4712f25de7c56d23d0d7502683542058c`, Release x64,
+`DriverVer=10/17/2026,0.2026.1017.1` and certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Preflight verified the exact
+clean HEAD, identical reviewed driver/include trees and nonexistent output,
+log, sidecar and attempt-marker paths.
+
+The one invocation built Debug and Release x64 plus the utilities and passed
+394/394 functional checks and 66,000/66,000 required stress iterations. It
+then stopped at the first Debug SYS/PDB identity check, before creating any
+package artifact. `symchk.exe` writes its search diagnostic to stderr even on
+this normal validation path. In Windows PowerShell 5.1, the workflow's
+`@(& $FilePath @Arguments 2>&1)` expression converted that native stderr line
+to a terminating `NativeCommandError` under
+`$ErrorActionPreference = 'Stop'`. Consequently, the helper never reached its
+explicit native exit-code handling or wrote the intended identity log.
+
+The workflow transcript closed at that error. No package INF, CAT, SYS or PDB
+was staged; no certificate lookup, CNG private-key access, SignTool, InfVerif,
+Inf2Cat, Authenticode verification, catalog-membership verification or final
+manifest generation occurred. The output `package` directory is empty and
+there is no `manifest.json` or `manifest.sha256`. Therefore there are no final
+candidate hashes to report.
+
+The workflow child ended, but the launcher remained blocked without combining
+its sidecars or recording a child exit code. After more than ten minutes with
+no child process and no file progress, the remaining launcher process was
+terminated to honor the fail-on-first-error rule. No retry occurred. The empty
+combined log, stdout/stderr sidecars and exclusive attempt marker were
+preserved. A hash-identical copy of the seven partial workflow evidence files
+is retained privately under
+`Phase2C-SigningAttempt-20261018-third-failed-evidence`.
+
+| Private evidence | SHA-256 |
+|---|---|
+| Attempt marker | `3255C64BB65EE9D0A0EAF746F94FBFCA000D8A24E97C63263A0FC718D3FE07E8` |
+| Child stdout sidecar | `B38880F4321FB7634960CAB58EBCE2807D1997374CE01C18277C7EB0508CB84C` |
+| Child stderr sidecar | `409A868EF55FE550C8009E3CCBFF62865C2F931B273DE7A0BECA5979ECF56BA1` |
+| Partial workflow transcript | `768C3C8DE365EE6344B6B1946BB3207D97AA1F010C5482515326AA42D726CF8B` |
+
+Passive post-attempt verification found `oem100.inf` version
+`0.2026.930.54`, problem code 0 and the `LecS65AcqDrv` service still running.
+The active and Driver Store SYS remains
+`4EB0BA4165F38D7FB9C539A2A0ACA060647D47BBBF3293DA99A7CFB5F583B687`;
+the installed INF and CAT remain
+`C271BBA926667BEB378FDE39AA226CEAA4680AF5A21519A5F26E3A814E7C0E16`
+and `DD2941EA62DB3CAD0F0FB447DE5C8B390A142C46895EB9A7FA0035462BB8CF18`.
+No installation, Driver Store staging, PnP transition or hardware operation
+occurred.
+
+The third authorization is consumed. Before another real attempt, native-tool
+capture must be made fail-closed without treating diagnostic stderr as a
+PowerShell terminating error, and the launcher must be proven to return and
+preserve a final combined log when the real child fails this way. Those exact
+paths require Windows PowerShell 5.1 mock and negative coverage. Private-key
+use and installation remain separately gated.
 
 ## Current certificate-metadata gate
 

@@ -98,9 +98,23 @@
   separate stdout/stderr redirection, propagates child exit codes, prevents
   duplicate attempts, and independently validates the signed manifest and
   hashes. Package compatibility remains 19/19 and package fail-closed coverage
-  remains 16/16 on both supported analysis hosts. The real certificate and
-  real signing/package-tool path through the launcher remains gated and
-  untested; a third explicit authorization is required.
+  remains 16/16 on both supported analysis hosts. A third one-run
+  authorization exercised the exact tracked launcher at commit `aa009667`.
+  Both driver configurations, utilities and all required offline regressions
+  completed successfully: 394/394 functional checks and 66,000/66,000 stress
+  iterations. The workflow then failed at the first Debug SYS/PDB `symchk`
+  check. `symchk` wrote its normal search diagnostic to stderr; Windows
+  PowerShell 5.1 converted it to a terminating `NativeCommandError` because
+  the workflow used merged native output under
+  `$ErrorActionPreference = 'Stop'`. The child ended before package staging,
+  certificate lookup, private-key use, SignTool, InfVerif, Inf2Cat or manifest
+  generation. The launcher did not regain control after the child ended and
+  was terminated after evidence showed no child process or log progress for
+  more than ten minutes. No package INF, CAT, SYS, PDB, manifest or signature
+  exists, and the third authorization is consumed. The failure evidence is
+  retained privately. Another real attempt requires a reviewed fix, complete
+  mock qualification of the real native-stderr failure path and a new explicit
+  authorization.
   See the
   canonical
   [package contract](driver-package-creation.md) and
