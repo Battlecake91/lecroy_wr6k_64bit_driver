@@ -89,11 +89,18 @@
   Source review finds no explicit `STATUS_NOT_SUPPORTED` return in the relevant
   replacement PnP paths, but START can propagate that status from the lower
   stack or `IoConnectInterrupt`. Without the contemporaneous kernel debug
-  stream, attribution is indeterminate. A later passive snapshot still finds
-  `oem17.inf`, version `0.2026.1017.1`, device `OK`, problem code zero, the
-  approved loaded SYS, a running service and one target interface in each of
-  the five classes, with no later target PnP or kernel error. The next PnP
-  transition requires a separately authorized status-focused debug capture.
+  stream, attribution remains indeterminate. A default-off, compile-time PnP
+  status diagnostic now records lower dispatch/completion, local START,
+  interrupt connection, five interface publications and final status without
+  changing their behavior. Default and instrumented Debug/Release x64 builds
+  pass; focused status/remove-lock tests pass 10/10 and applicable source/ABI
+  contracts pass 53/53. The installed driver was not changed. A later passive
+  snapshot still finds `oem17.inf`, version `0.2026.1017.1`, device `OK`,
+  problem code zero, the approved loaded SYS, a running service and one target
+  interface in each of the five classes, with no later target PnP or kernel
+  error. The next PnP
+  transition requires a separately signed and installed diagnostic package,
+  validated kernel-debug capture, and a separately authorized single PnP cycle.
   Recovery boot, rollback, reboot, Verifier, device handles, IOCTLs, XStream,
   acquisition and DMA remain separate gates.
 

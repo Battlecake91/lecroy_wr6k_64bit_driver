@@ -252,7 +252,21 @@ Test-Contract "START_DEVICE requires a connected IRQ before publishing device in
     $startMatch.Groups[1].Value -match 'irqStatus = LecConnectInterrupt\(devExt\)' -and
     $startMatch.Groups[1].Value -match 'status = irqStatus' -and
     $startMatch.Groups[1].Value -match 'LecUnmapBars\(devExt\)' -and
-    $startMatch.Groups[1].Value -match '(?s)else\s*\{\s*devExt->Started = TRUE;\s*LecSetIoctlAdmission\(devExt, TRUE\);\s*LecEnableInterfaces\(devExt\)'
+    $startMatch.Groups[1].Value -match '(?s)else\s*\{\s*devExt->Started = TRUE;\s*LecSetIoctlAdmission\(devExt, TRUE\);\s*LecEnableInterfaces\(devExt, Irp\)'
+}
+
+Test-Contract "PnP status diagnostics are opt-in and cover every attribution boundary" {
+    $driverProjectText -match '<LecPnpStatusDiagnostics Condition=.*?>false</LecPnpStatusDiagnostics>' -and
+    $driverProjectText -match 'Condition="''\$\(LecPnpStatusDiagnostics\)''==''true''"' -and
+    $driverProjectText -match 'LECS65_PNP_STATUS_DIAGNOSTICS=1' -and
+    $pnpIrpText -match 'stage=lower-wait dispatch=' -and
+    $pnpIrpText -match 'stage=lower-complete final=' -and
+    $pnpIrpText -match 'stage=lower-dispatch returned=' -and
+    $deviceText -match 'stage=local-start source=resources status=' -and
+    $deviceText -match 'stage=interrupt-connect status=' -and
+    $deviceText -match 'stage=final status=' -and
+    $deviceText -match 'stage=interface-enable index=' -and
+    $pnpIrpText -notmatch 'WRITE_REGISTER_|READ_REGISTER_|DeviceIoControl|IoBuildDeviceIoControlRequest'
 }
 
 Test-Contract "both native DMA launch paths reject absent interrupts" {

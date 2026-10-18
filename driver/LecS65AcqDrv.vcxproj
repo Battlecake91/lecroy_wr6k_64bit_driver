@@ -48,6 +48,7 @@
     <TargetExt>.sys</TargetExt>
     <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)x64\$(Configuration)\obj\</IntDir>
+    <LecPnpStatusDiagnostics Condition="'$(LecPnpStatusDiagnostics)'==''">false</LecPnpStatusDiagnostics>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -103,6 +104,12 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(LecPnpStatusDiagnostics)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>LECS65_PNP_STATUS_DIAGNOSTICS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 

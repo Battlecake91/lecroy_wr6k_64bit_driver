@@ -344,6 +344,14 @@ DRIVER_DISPATCH LecS65PassThrough;
 VOID LecS65Unload(_In_ PDRIVER_OBJECT DriverObject);
 
 VOID LecTrace(_In_z_ _Printf_format_string_ PCSTR Format, ...);
+#ifndef LECS65_PNP_STATUS_DIAGNOSTICS
+#define LECS65_PNP_STATUS_DIAGNOSTICS 0
+#endif
+#if LECS65_PNP_STATUS_DIAGNOSTICS
+#define LecPnpStatusTrace(...) LecTrace(__VA_ARGS__)
+#else
+#define LecPnpStatusTrace(...) ((void)0)
+#endif
 VOID LecHexDump(_In_reads_bytes_opt_(Length) const UCHAR* Buffer, _In_ ULONG Length);
 VOID LecUnmapBars(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 BOOLEAN LecEnterIoctl(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);

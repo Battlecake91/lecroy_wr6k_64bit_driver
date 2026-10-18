@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include "pnp-irp-mock.h"
 
@@ -18,6 +19,28 @@ static volatile LONG ioCalls;
 static volatile LONG powerCalls;
 static volatile LONG completionCalls;
 static volatile LONG completionResult;
+static CRITICAL_SECTION traceLock;
+static char traceBuffer[8192];
+
+VOID TestLecPnpStatusTrace(PCSTR format, ...)
+{
+    va_list args;
+    size_t used;
+
+    EnterCriticalSection(&traceLock);
+    used = strlen(traceBuffer);
+    if (used < sizeof(traceBuffer) - 1) {
+        va_start(args, format);
+        (void)vsnprintf_s(
+            traceBuffer + used,
+            sizeof(traceBuffer) - used,
+            _TRUNCATE,
+            format,
+            args);
+        va_end(args);
+    }
+    LeaveCriticalSection(&traceLock);
+}
 
 static void check(const char* label, int condition)
 {
@@ -106,6 +129,7 @@ static void resetFixture(
 {
     memset(devExt, 0, sizeof(*devExt));
     memset(irp, 0, sizeof(*irp));
+    memset(traceBuffer, 0, sizeof(traceBuffer));
     devExt->LowerDeviceObject = devExt;
     devExt->RemoveLock.Outstanding = 1;
     lowerStatus = status;
@@ -117,6 +141,8 @@ static void resetFixture(
     powerCalls = 0;
     completionCalls = 0;
     completionResult = STATUS_UNSUCCESSFUL;
+    irp->Stack.MajorFunction = IRP_MJ_PNP;
+    irp->Stack.MinorFunction = 0x01;
 }
 
 int main(void)
@@ -128,6 +154,7 @@ int main(void)
     NTSTATUS status;
 
     (void)setvbuf(stdout, NULL, _IONBF, 0);
+    InitializeCriticalSection(&traceLock);
     lowerEntered = CreateEvent(NULL, TRUE, FALSE, NULL);
     lowerContinue = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (lowerEntered == NULL || lowerContinue == NULL) {
@@ -148,7 +175,9 @@ int main(void)
     check("error completion still balances the remove lock",
         status == STATUS_UNSUCCESSFUL && completionCalls == 1 &&
         devExt.RemoveLock.Outstanding == 0 &&
-        devExt.RemoveLock.ReleaseCalls == 1);
+        devExt.RemoveLock.ReleaseCalls == 1 &&
+        strstr(traceBuffer,
+            "stage=lower-complete final=0xC0000001") != NULL);
 
     resetFixture(&devExt, &irp, STATUS_SUCCESS, LowerSynchronous);
     status = LecForwardLockedIrp(&devExt, &irp, TRUE);
@@ -205,8 +234,36 @@ int main(void)
         devExt.RemoveLock.Outstanding == 1 &&
         devExt.RemoveLock.ReleaseCalls == 0);
 
+    resetFixture(&devExt, &irp, STATUS_NOT_SUPPORTED, LowerSynchronous);
+    status = LecForwardAndWait(&devExt, &irp);
+    check("synchronous lower STATUS_NOT_SUPPORTED is attributed exactly",
+        status == STATUS_NOT_SUPPORTED &&
+        strstr(traceBuffer,
+            "stage=lower-wait dispatch=0xC00000BB final=0xC00000BB") != NULL);
+
+    resetFixture(&devExt, &irp, STATUS_NOT_SUPPORTED, LowerPending);
+    call.DevExt = &devExt;
+    call.Irp = &irp;
+    call.Status = STATUS_UNSUCCESSFUL;
+    caller = CreateThread(NULL, 0, forwardAndWaitWorker, &call, 0, NULL);
+    if (!waitForHandle(lowerEntered, "pending not-supported dispatch")) {
+        return 1;
+    }
+    SetEvent(lowerContinue);
+    if (!waitForHandle(caller, "pending not-supported caller") ||
+        !waitForHandle(lowerWorker, "pending not-supported completion")) {
+        return 1;
+    }
+    CloseHandle(caller);
+    CloseHandle(lowerWorker);
+    check("pending lower STATUS_NOT_SUPPORTED is attributed exactly",
+        call.Status == STATUS_NOT_SUPPORTED &&
+        strstr(traceBuffer,
+            "stage=lower-wait dispatch=0x00000103 final=0xC00000BB") != NULL);
+
     CloseHandle(lowerEntered);
     CloseHandle(lowerContinue);
+    DeleteCriticalSection(&traceLock);
     printf("PNP IRP LIFETIME: %u/%u passed; %u failed.\n",
         passed, passed + failed, failed);
     return failed == 0 ? 0 : 1;

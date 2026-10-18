@@ -488,7 +488,27 @@ forwarding releases its remove lock exactly once in the completion routine,
 marks a propagated pending IRP and never releases early. The START/REMOVE
 forward-and-wait helper instead returns `STATUS_MORE_PROCESSING_REQUIRED` from
 its completion routine, waits for pending completion and retains both IRP and
-remove-lock ownership for its caller.
+remove-lock ownership for its caller. The Phase 2C status-attribution extension
+passes 10/10, including synchronous and pending lower-stack
+`STATUS_NOT_SUPPORTED` injection. It also verifies the exact structured
+`lower-dispatch`, `lower-complete` and `lower-wait` diagnostics without invoking
+a private key, device interface or hardware operation. The corresponding
+source/ABI contract run passes 53/53.
+
+PnP status instrumentation is disabled by default. Build an offline diagnostic
+binary only with the explicit MSBuild property below; omitting the property
+retains the uninstrumented production path:
+
+```powershell
+msbuild.exe .\driver\LecS65AcqDrv.vcxproj /m /t:Rebuild `
+  /p:Configuration=Release /p:Platform=x64 `
+  /p:WindowsTargetPlatformVersion=10.0.28000.0 `
+  /p:VCToolsVersion=14.41.34120 `
+  /p:LecPnpStatusDiagnostics=true
+```
+
+This command only builds an unsigned offline binary. It does not authorize
+signing, package creation, installation or a PnP transition.
 
 `test-dma-completion.c` compiles the production `DmaCompletion.c` tracker.
 It deterministically verifies an IRQ immediately before timeout, a completion
