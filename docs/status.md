@@ -82,14 +82,20 @@
   [installation preparation](phase-2c-installation-preparation.md).
 - The first installation used one authorized invocation with no retry. SetupAPI
   records one `Query-remove`, one `Start`, `Restart verified` and final
-  `SUCCESS`. Kernel-PnP event 411 simultaneously records removal-state problem
-  `0x15` / status `0xC00000BB`; no Code Integrity event was added. This known
-  event class is not proof of a candidate START defect, but the result is not
-  event-free and requires review before another PnP transition. The preserved
-  `oem100.inf` export remains hash-identical, Verifier remains off and no known
-  acquisition client was running. Recovery boot, rollback, reboot, Verifier,
-  device handles, IOCTLs, XStream, acquisition and DMA remain separately
-  authorized gates.
+  `SUCCESS`. In the same restart interval, Kernel-PnP event 411 records
+  removal-state problem `0x15` / status `0xC00000BB`; no event 410, Code
+  Integrity error or
+  driver-related Service Control Manager event occurred in the interval.
+  Source review finds no explicit `STATUS_NOT_SUPPORTED` return in the relevant
+  replacement PnP paths, but START can propagate that status from the lower
+  stack or `IoConnectInterrupt`. Without the contemporaneous kernel debug
+  stream, attribution is indeterminate. A later passive snapshot still finds
+  `oem17.inf`, version `0.2026.1017.1`, device `OK`, problem code zero, the
+  approved loaded SYS, a running service and one target interface in each of
+  the five classes, with no later target PnP or kernel error. The next PnP
+  transition requires a separately authorized status-focused debug capture.
+  Recovery boot, rollback, reboot, Verifier, device handles, IOCTLs, XStream,
+  acquisition and DMA remain separate gates.
 
 ## DMA/PnP staging
 

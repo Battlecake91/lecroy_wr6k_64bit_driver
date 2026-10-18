@@ -15,11 +15,107 @@ service and the approved loaded-SYS hash. The five expected interface classes
 each had exactly one path for the target function.
 
 Kernel-PnP event 411 nevertheless recorded problem `0x15` and status
-`0xC00000BB` during the update. This is the previously classified
-removal-state event pair, not a signature failure, and it was followed inside
-the same operation by SetupAPI's verified restart and healthy live state. It
-remains a qualification finding: no further PnP transition is authorized and
-the result must not be described as an event-free START.
+`0xC00000BB` during the update. These values map to a removal-state problem and
+`STATUS_NOT_SUPPORTED`, not a signature failure, and the event was followed
+inside the same operation by SetupAPI's verified restart and healthy live
+state. Its origin remains indeterminate: no further PnP transition is
+authorized and the result must not be described as an event-free START.
+
+### Event 411 passive analysis
+
+The retained clocks and record identifiers establish this timeline for device
+instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`:
+
+| Time (2026-10-18, UTC+02:00) | Direct evidence |
+|---|---|
+| 16:38:08.6324511 | The one elevated PnPUtil process started. |
+| 16:38:09.9077719 | Kernel-PnP event 400, record 465, recorded successful configuration selection of `oem17.inf`. |
+| 16:38:09.908 | SetupAPI completed device configuration and retained device status `0x0180200a`. |
+| 16:38:09.913 | SetupAPI entered its `Restarting Devices` block. Its following un-timestamped lines are `Query-remove`, `Start`, then `Restart verified`, in that textual order. |
+| 16:38:09.9371050 | Kernel-PnP event 411, record 466, recorded problem `0x15` and status `0xC00000BB`. |
+| 16:38:10.601 | SetupAPI left `Restarting Devices`; the next entries report success from Configure Device and Core Device Install. |
+| 16:38:10.616 | SetupAPI closed the device-update section with `SUCCESS`. |
+| 16:38:10.6182255 | PnPUtil exited with code zero. |
+
+The Windows 10.0.28000.0 headers identify `0x15` as
+`CM_PROB_WILL_BE_REMOVED` and `0xC00000BB` as `STATUS_NOT_SUPPORTED`. There was
+no event 410 in the installation interval. There was no driver-related Service
+Control Manager event, and no new Code Integrity event. SetupAPI proves the
+logged operation order, but its individual `Query-remove`, `Start` and
+`Restart verified` lines have no timestamps. Consequently, the retained data
+does not prove where event 411 falls between those individual calls, nor does
+it reveal which stack component supplied `STATUS_NOT_SUPPORTED`. No assumption
+about undocumented event-generation or SetupAPI buffering is used to close
+that gap.
+
+Source review at the installed driver revision establishes:
+
+- `IRP_MN_QUERY_REMOVE_DEVICE` and `IRP_MN_CANCEL_REMOVE_DEVICE` take the
+  default PnP path. `LecForwardLockedIrp` forwards them unchanged and releases
+  the remove lock from completion; it does not synthesize a status.
+- `IRP_MN_STOP_DEVICE` closes IOCTL admission, disables interfaces, drains
+  admitted synchronous IOCTLs, quiesces interrupt/DPC/timer work, releases
+  transfer/event state and unmaps BARs before forwarding. Its returned status
+  is the lower-stack status.
+- `IRP_MN_START_DEVICE` first returns the exact result of
+  `LecForwardAndWait` when the lower stack fails. After lower-stack success,
+  locally authored failures are `STATUS_DEVICE_NOT_READY`,
+  `STATUS_DEVICE_CONFIGURATION_ERROR`, `STATUS_INSUFFICIENT_RESOURCES` or
+  `STATUS_UNSUCCESSFUL`; none is `STATUS_NOT_SUPPORTED`.
+- START passes through the status returned by `IoConnectInterrupt`. Thus the
+  replacement has no explicit `STATUS_NOT_SUPPORTED` branch, but it could
+  still return that value indirectly if the lower stack or that kernel API
+  supplied it. The retained logs contain no driver debug output that
+  distinguishes these cases.
+- Interface-enable failures are logged per interface but do not fail START.
+  STOP, surprise removal and removal withdraw enabled interfaces; interrupt
+  teardown disconnects the ISR and clears its software shadows.
+- A remove-lock acquisition failure is completed immediately with that status.
+  No device handle or IOCTL existed during installation, and the evidence gives
+  no IOCTL-admission path a role in event 411.
+
+The focused hardware-independent PnP forwarding test passed 8/8 on 2026-10-18.
+It confirms balanced completion/remove-lock behavior and preservation of
+synchronous and pending lower-stack statuses. It does not attribute the live
+event.
+
+A read-only runtime snapshot at 16:53:12 +02:00 confirmed `oem17.inf`, version
+`0.2026.1017.1`, device `OK`, problem code zero, service `Running`, valid
+loaded-SYS signature and SHA-256
+`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
+Exactly one Driver Store directory matched all frozen INF/CAT/SYS hashes, and
+each of the five interface classes still exposed exactly one target path.
+There was no later target Kernel-PnP event after record 466 and no later target
+System or Code Integrity warning/error. This snapshot used metadata only and
+opened no interface.
+
+The private evidence references are
+`phase2c-first-install-20261018-attempt1/install-result.json`,
+`setupapi.dev.before.log`, `setupapi.dev.after.log`,
+`event-bookmarks-before.json`, the four new-event extracts,
+`postinstall-summary.json`, `interfaces-summary.json` and
+`driver-store-file-hashes.json`. Raw host logs remain outside the public
+repository.
+
+**Classification: indeterminate, requiring additional targeted evidence.**
+Confidence is high that event 411 was a transient part of the package-update
+restart rather than a persistent devnode failure: SetupAPI completed the same
+restart successfully and all later snapshots are healthy. Confidence is also
+high that the replacement does not explicitly manufacture
+`STATUS_NOT_SUPPORTED`. Attribution to Windows/PnP, the lower PCI stack or an
+indirect kernel call remains unproved, so the event is not classified as
+harmless or as a confirmed driver defect.
+
+The smallest next runtime gate is one separately authorized controlled PnP
+cycle with acquisition closed and Driver Verifier off, while capturing the
+existing `[LecS65x64]` kernel debug stream, exact event XML and SetupAPI log
+boundaries. The trace must establish whether START reaches BAR setup, startup
+probe, IRQ connection and all five interface enables, and correlate that path
+with any repeated event 411. If existing trace points cannot disambiguate the
+final lower/local/IRQ status, add only status-focused PnP tracing to a new
+offline-built candidate before considering that test. Do not use IOCTLs or
+acquisition as part of this gate.
 
 ## Current preparation evidence
 
@@ -482,8 +578,9 @@ PnP matrix.
 
 ## Remaining gates after first installation
 
-1. Review the event 411 removal-state record against SetupAPI's verified
-   restart before authorizing any additional PnP transition.
+1. Event 411 remains indeterminate. Before authorizing any additional PnP
+   transition, approve an exact debug-capture plan that can distinguish lower
+   START status, local START status and IRQ-connect status.
 2. Keep rollback separately authorized. Identify `oem17.inf` through its
    published INF hash and independently matched Driver Store INF/CAT/SYS set;
    do not infer its identity solely from the currently bound device.
