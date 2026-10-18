@@ -42,8 +42,9 @@ $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 $nativeProcess = Join-Path $repo "scripts\native-process.ps1"
+$diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild, $nativeProcess)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -78,6 +79,7 @@ $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
+$diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -783,6 +785,17 @@ Test-Contract "package signing is opt-in and thumbprint-bound" {
     $packageBuildText -notmatch "'/n'" -and
     $packageBuildText.Contains('Cert:\LocalMachine\My') -and
     $packageBuildText -match 'UnsignedValidationOnly'
+}
+
+Test-Contract "diagnostic launcher keeps capture and installation explicitly gated" {
+    $diagnosticLauncherText -match "ValidateSet\('Preflight', 'CaptureQualification', 'InstallWithCapture'\)" -and
+    $diagnosticLauncherText -match '\[switch\]\$AuthorizeKernelCapture' -and
+    $diagnosticLauncherText -match '\[switch\]\$AuthorizeInstallation' -and
+    $diagnosticLauncherText -match 'Preflight forbids active authorization switches' -and
+    $diagnosticLauncherText -match 'CAPTURE READY' -and
+    $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
+    $diagnosticLauncherText -match 'no retry was attempted' -and
+    $diagnosticLauncherText -notmatch 'restart-device|scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
 }
 
 Write-Host ""
