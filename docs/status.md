@@ -80,6 +80,18 @@
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
+- The passive first-installation gate now verifies the frozen candidate and
+  rollback hashes, local signature chain and catalog membership, current
+  `oem100.inf`/service/device identity, zero Verifier flags, absence of known
+  acquisition clients, five existing interface paths, enabled WinRE with a
+  concrete BCD recovery sequence, test-signing and two healthy physical disks.
+  Source review confirms initial START performs fixed BAR0 START, BAR2 buzzer
+  and BAR1 ITMODE writes before IRQ/interface publication. It performs no INTEN
+  write and has no production path into WDM v3 DMA-adapter allocation. The
+  recovery environment has not been boot-tested, the verified rollback copy is
+  still on `C:`, and the current automatic-dump policy remains unproved for a
+  kernel failure. Installation and its one initial START remain unexecuted and
+  require a new explicit authorization acknowledging these residual risks.
 
 ## DMA/PnP staging
 
