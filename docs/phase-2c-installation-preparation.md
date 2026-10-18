@@ -75,10 +75,11 @@ Source review at the installed driver revision establishes:
   No device handle or IOCTL existed during installation, and the evidence gives
   no IOCTL-admission path a role in event 411.
 
-The focused hardware-independent PnP forwarding test passed 8/8 on 2026-10-18.
-It confirms balanced completion/remove-lock behavior and preservation of
-synchronous and pending lower-stack statuses. It does not attribute the live
-event.
+The original focused hardware-independent PnP forwarding test passed 8/8 on
+2026-10-18. The diagnostic-preparation revision expands it to 10/10 by injecting
+both synchronous and pending `STATUS_NOT_SUPPORTED` results. The added cases
+confirm exact status preservation and the diagnostic attribution described
+below. Neither result attributes the historical live event retrospectively.
 
 A read-only runtime snapshot at 16:53:12 +02:00 confirmed `oem17.inf`, version
 `0.2026.1017.1`, device `OK`, problem code zero, service `Running`, valid
@@ -107,15 +108,121 @@ high that the replacement does not explicitly manufacture
 indirect kernel call remains unproved, so the event is not classified as
 harmless or as a confirmed driver defect.
 
-The smallest next runtime gate is one separately authorized controlled PnP
-cycle with acquisition closed and Driver Verifier off, while capturing the
-existing `[LecS65x64]` kernel debug stream, exact event XML and SetupAPI log
-boundaries. The trace must establish whether START reaches BAR setup, startup
-probe, IRQ connection and all five interface enables, and correlate that path
-with any repeated event 411. If existing trace points cannot disambiguate the
-final lower/local/IRQ status, add only status-focused PnP tracing to a new
-offline-built candidate before considering that test. Do not use IOCTLs or
-acquisition as part of this gate.
+The installed Release driver has useful `[LecS65x64]` messages for the incoming
+PnP minor function, START resource/probe processing, IRQ connection and each
+interface enable. Those messages cannot identify the lower dispatch/completion
+status, the exact local START status or the final returned status. They also
+cannot be recovered retrospectively because no kernel-debug listener captured
+the installation. Therefore the installed image cannot meet the attribution
+gate without replacement.
+
+### Opt-in PnP status diagnostics
+
+The diagnostic-preparation revision adds a compile-time-only
+`LecPnpStatusDiagnostics` MSBuild property. Its default is `false`; an
+instrumented build requires the explicit property
+`/p:LecPnpStatusDiagnostics=true`. The default binaries contain no
+`PNP_STATUS:` strings. The instrumented binary emits narrowly scoped records
+through the existing `LecTrace`/`vDbgPrintEx` mechanism. Every record includes
+the IRP address, PnP minor function and an attribution stage:
+
+- `enter` and `remove-lock` identify dispatch entry or pre-dispatch rejection;
+- `lower-dispatch` and `lower-complete` distinguish the immediate lower-driver
+  return from the eventual `Irp->IoStatus.Status` for forwarded
+  QUERY_REMOVE, CANCEL_REMOVE and STOP requests;
+- `lower-wait` and `lower-final` record the lower START/REMOVE dispatch value
+  and the value retained after a pending completion;
+- `local-start` distinguishes the DMA-quarantine gate from resource parsing,
+  BAR mapping and startup-probe handling;
+- `interrupt-connect` records the exact `IoConnectInterrupt` result;
+- `interface-enable` records each of the five `IoSetDeviceInterfaceState`
+  results; and
+- `final` records the status completed by locally owned START/REMOVE IRPs.
+
+The trace points do not change any status, wait, allocation, lock, IOCTL,
+MMIO, IRQ, DMA or interface ordering. No trace is added to an ISR or DPC. The
+default build retains the original direct forwarding expression, and both
+default and instrumented Debug/Release x64 configurations build independently.
+Installing an instrumented image is a new driver replacement, not a logging
+toggle for the current driver. It requires a separately authorized package
+build/signing operation and a separately authorized installation.
+
+#### Offline evidence
+
+The four isolated builds used SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. All
+reported AMD64 machine `0x8664`, Native subsystem, `DriverEntry` and the
+expected `ntoskrnl.exe` import. The SHA-256 values are evidence for these
+unsigned, non-deployment build outputs only:
+
+| Mode | Configuration | SYS SHA-256 | PDB SHA-256 |
+|---|---|---|---|
+| default | Debug x64 | `ED32C79AEFA9A7A9CBA16EE3AEA9E7840E1251AE8E3A4E028B63AF60C9FDE74D` | `D0919AC0DC4FDEBDBA05B1C35E2FFCF6E85BE3C3064DF84AF6EB8BD80392EC90` |
+| default | Release x64 | `04EF959DEF6D96B3D1744D9F0C710ED939F0E78AA6E3CE61561DBC7E764EB4AD` | `DF36FDAF8F8F84CD51769C661CB6E55238B1EA068D8239250DA452A0B60F7646` |
+| instrumented | Debug x64 | `9CD420775E47BB9E38E86A11A90F840C0661811686042D9CCE031FAEE387AAA9` | `EB464E33FF8B05064EAA62A9163FA21FE58F2A2D346A6E694C61729D7FDBA547` |
+| instrumented | Release x64 | `88B1C38387CE0344335DC4364819406457014ACD3EE285DE09D39525F53E7C6A` | `3A0F069CCF20B94FD4EE4BBF0C06434B6FCA46B87F7123AA5EFD28C21261EB8A` |
+
+The focused forwarding/remove-lock suite passes 10/10 and all applicable
+source, public-ABI, interface, package-safety and hardware-sequencing contracts
+pass 53/53. The source diff does not change a public header, IOCTL definition,
+resource parser, interrupt implementation, DMA path or MMIO operation. The
+66,000-iteration DMA/INTEN stress suite was not repeated because none of the
+code it exercises changed.
+
+### Proposed single-cycle attribution test
+
+This is a plan, not an authorization or a record of execution.
+
+1. Produce one signed Release x64 package from the reviewed diagnostic commit
+   with `LecPnpStatusDiagnostics=true`. Freeze its source revision, package
+   identity, certificate, SYS/PDB/INF/CAT hashes and complete manifest. This
+   requires explicit private-key/signing authorization.
+2. Before replacement, confirm the current `oem17.inf` device is `OK`, problem
+   code zero, service `Running`, loaded SYS hash
+   `F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`,
+   Driver Verifier off, five interfaces present, no acquisition running and
+   XStream closed. Preserve the current package and independently verified
+   rollback copy.
+3. Install the frozen instrumented package under a separate one-install/START
+   authorization. Stop if package identity, signature, binding, START, device
+   status, interface count or event inspection differs from the approved
+   expectation. Do not combine installation with the diagnostic PnP cycle.
+4. Before the later cycle, place and hash a reviewed kernel-debug capture tool.
+   Start Microsoft Sysinternals DebugView elevated, enable kernel capture and
+   verbose kernel output, clear its display, confirm that a harmless existing
+   driver debug message can be captured, and begin saving to a new log. Tool
+   placement and capture configuration must be validated before consuming the
+   one-cycle authorization; DebugView is not currently installed on this host.
+5. Record UTC/local start markers, SetupAPI log size, event-record bookmarks,
+   devnode/service metadata and the five interface paths. From the same
+   elevated 64-bit Windows PowerShell session, execute exactly once:
+
+   ```powershell
+   $instance = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0'
+   & "$env:SystemRoot\System32\pnputil.exe" /restart-device $instance
+   if ($LASTEXITCODE -ne 0) { throw "PnP restart failed; do not retry" }
+   ```
+
+6. Stop capture without another PnP action. Save the raw debug log, SetupAPI
+   delta and complete XML for new Kernel-PnP, Code Integrity, System and SCM
+   events. Correlate one IRP address at a time. A repeated `0xC00000BB` is
+   lower-stack-originated if it first appears in `lower-complete`/`lower-wait`;
+   local-resource-originated if `lower-final` succeeds and `local-start` first
+   reports it; or interrupt-originated if both preceding stages succeed and
+   `interrupt-connect` first reports it. Interface publication is independently
+   visible in five indexed `interface-enable` records.
+
+Stop immediately, without retry or automatic rollback, on a bugcheck/hang,
+unexpected extra PnP cycle, nonzero PnPUtil result, signature/Code Integrity
+failure, absent or malformed diagnostic stages, non-successful START stage,
+fewer or more than five successful interface records, persistent devnode
+problem, interrupt storm, or any acquisition/DMA activity. Recovery is the already documented
+WinRE/known-package rollback or reinstallation procedure and requires its own
+authorization if it causes another PnP transition or reboot.
+
+Separate owner approvals remain required for private-key use/signing, the
+instrumented driver replacement and first START, the one explicit PnP restart,
+and any rollback/reboot. Driver Verifier, device handles, IOCTLs, acquisition,
+DMA, arbitrary MMIO, firmware and EEPROM operations are outside this test.
 
 ## Current preparation evidence
 

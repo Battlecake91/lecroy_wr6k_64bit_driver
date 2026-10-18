@@ -383,10 +383,13 @@ LecHandleStartDevice(
 static
 VOID
 LecEnableInterfaces(
-    _Inout_ PLECS65_DEVICE_EXTENSION DevExt
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ PIRP TraceIrp
     )
 {
     ULONG i;
+
+    UNREFERENCED_PARAMETER(TraceIrp);
 
     for (i = 0; i < LECS65_INTERFACE_COUNT; ++i) {
         NTSTATUS status;
@@ -396,6 +399,12 @@ LecEnableInterfaces(
         }
 
         status = IoSetDeviceInterfaceState(&DevExt->InterfaceLink[i], TRUE);
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=interface-enable index=%lu status=0x%08X\n",
+            TraceIrp,
+            IRP_MN_START_DEVICE,
+            i,
+            (ULONG)status);
         if (NT_SUCCESS(status)) {
             DevExt->InterfaceEnabled[i] = TRUE;
             LecTrace("interface[%lu] enabled: %wZ\n",
@@ -442,6 +451,11 @@ LecS65Pnp(
      */
     status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
     if (!NT_SUCCESS(status)) {
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=remove-lock final=0x%08X\n",
+            Irp,
+            stack->MinorFunction,
+            (ULONG)status);
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -449,10 +463,19 @@ LecS65Pnp(
     }
 
     LecTrace("PNP: minor=0x%02X\n", stack->MinorFunction);
+    LecPnpStatusTrace(
+        "PNP_STATUS: irp=%p minor=0x%02X stage=enter\n",
+        Irp,
+        stack->MinorFunction);
 
     switch (stack->MinorFunction) {
     case IRP_MN_START_DEVICE:
         status = LecForwardAndWait(devExt, Irp);
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=lower-final status=0x%08X\n",
+            Irp,
+            stack->MinorFunction,
+            (ULONG)status);
         if (NT_SUCCESS(status)) {
             /*
              * A timed-out bus master may still own pinned descriptor/user
@@ -462,11 +485,21 @@ LecS65Pnp(
             if (InterlockedCompareExchange(
                     &devExt->DmaUnknownActive, 0, 0) != 0) {
                 status = STATUS_DEVICE_NOT_READY;
+                LecPnpStatusTrace(
+                    "PNP_STATUS: irp=%p minor=0x%02X stage=local-start source=dma-quarantine status=0x%08X\n",
+                    Irp,
+                    stack->MinorFunction,
+                    (ULONG)status);
             }
             else {
                 status = LecHandleStartDevice(
                     devExt,
                     stack->Parameters.StartDevice.AllocatedResourcesTranslated);
+                LecPnpStatusTrace(
+                    "PNP_STATUS: irp=%p minor=0x%02X stage=local-start source=resources status=0x%08X\n",
+                    Irp,
+                    stack->MinorFunction,
+                    (ULONG)status);
             }
 
             if (NT_SUCCESS(status)) {
@@ -479,6 +512,11 @@ LecS65Pnp(
                  * hardware operations through the normal interface.
                  */
                 irqStatus = LecConnectInterrupt(devExt);
+                LecPnpStatusTrace(
+                    "PNP_STATUS: irp=%p minor=0x%02X stage=interrupt-connect status=0x%08X\n",
+                    Irp,
+                    stack->MinorFunction,
+                    (ULONG)irqStatus);
                 if (!NT_SUCCESS(irqStatus)) {
                     LecTrace(
                         "START_DEVICE: IRQ unavailable, rejecting start: 0x%08X\n",
@@ -492,11 +530,16 @@ LecS65Pnp(
                 else {
                     devExt->Started = TRUE;
                     LecSetIoctlAdmission(devExt, TRUE);
-                    LecEnableInterfaces(devExt);
+                    LecEnableInterfaces(devExt, Irp);
                 }
             }
         }
 
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=final status=0x%08X\n",
+            Irp,
+            stack->MinorFunction,
+            (ULONG)status);
         Irp->IoStatus.Status = status;
         IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -550,6 +593,11 @@ LecS65Pnp(
          * down the attachment. LecForwardAndWait retains the IRP for us.
          */
         status = LecForwardAndWait(devExt, Irp);
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=lower-final status=0x%08X\n",
+            Irp,
+            stack->MinorFunction,
+            (ULONG)status);
         IoReleaseRemoveLockAndWait(&devExt->RemoveLock, Irp);
 
         /*
@@ -594,6 +642,11 @@ LecS65Pnp(
         }
 
         IoDetachDevice(devExt->LowerDeviceObject);
+        LecPnpStatusTrace(
+            "PNP_STATUS: irp=%p minor=0x%02X stage=final status=0x%08X\n",
+            Irp,
+            stack->MinorFunction,
+            (ULONG)status);
         Irp->IoStatus.Status = status;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         IoDeleteDevice(DeviceObject);

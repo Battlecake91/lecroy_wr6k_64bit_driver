@@ -24,6 +24,9 @@
 #ifndef STATUS_UNSUCCESSFUL
 #define STATUS_UNSUCCESSFUL ((NTSTATUS)0xC0000001L)
 #endif
+#ifndef STATUS_NOT_SUPPORTED
+#define STATUS_NOT_SUPPORTED ((NTSTATUS)0xC00000BBL)
+#endif
 #ifndef STATUS_MORE_PROCESSING_REQUIRED
 #define STATUS_MORE_PROCESSING_REQUIRED ((NTSTATUS)0xC0000016L)
 #endif
@@ -39,6 +42,13 @@
 #define KernelMode 0
 #define IO_NO_INCREMENT 0
 #endif
+#ifndef IRP_MJ_PNP
+#define IRP_MJ_PNP 0x1b
+#endif
+
+#define LECS65_PNP_STATUS_DIAGNOSTICS 1
+VOID TestLecPnpStatusTrace(PCSTR Format, ...);
+#define LecPnpStatusTrace(...) TestLecPnpStatusTrace(__VA_ARGS__)
 
 typedef PVOID PDEVICE_OBJECT;
 typedef struct _FAKE_KEVENT {
@@ -54,6 +64,10 @@ typedef NTSTATUS (*PIO_COMPLETION_ROUTINE)(
     PDEVICE_OBJECT DeviceObject,
     struct _FAKE_IRP* Irp,
     PVOID Context);
+typedef struct _IO_STACK_LOCATION {
+    UCHAR MajorFunction;
+    UCHAR MinorFunction;
+} IO_STACK_LOCATION, *PIO_STACK_LOCATION;
 typedef struct _FAKE_IRP {
     struct {
         NTSTATUS Status;
@@ -64,6 +78,7 @@ typedef struct _FAKE_IRP {
     ULONG StackCopies;
     PIO_COMPLETION_ROUTINE CompletionRoutine;
     PVOID CompletionContext;
+    IO_STACK_LOCATION Stack;
 } IRP, *PIRP;
 typedef struct _LECS65_DEVICE_EXTENSION {
     PDEVICE_OBJECT LowerDeviceObject;
@@ -134,6 +149,11 @@ static __inline VOID IoSetCompletionRoutine(
 static __inline VOID IoMarkIrpPending(PIRP Irp)
 {
     Irp->MarkedPending = TRUE;
+}
+
+static __inline PIO_STACK_LOCATION IoGetCurrentIrpStackLocation(PIRP Irp)
+{
+    return &Irp->Stack;
 }
 
 static __inline VOID IoReleaseRemoveLock(
