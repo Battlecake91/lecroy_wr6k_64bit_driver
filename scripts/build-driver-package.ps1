@@ -13,6 +13,9 @@
   Explicit INF identity in MM/dd/yyyy,a.b.c.d form. It is never synthesized.
 .PARAMETER OutputRoot
   New output directory. The script refuses to overwrite an existing path.
+.PARAMETER PnpStatusDiagnostics
+  Build both configurations with the reviewed PnP status diagnostics enabled
+  and require the selected SYS to contain the diagnostic marker.
 .PARAMETER Sign
   Opt in to SYS/CAT signing. Never use without separate owner authorization.
 .PARAMETER CertificateThumbprint
@@ -34,6 +37,8 @@ param(
 
     [Parameter(Mandatory=$true)]
     [string]$OutputRoot,
+
+    [switch]$PnpStatusDiagnostics,
 
     [switch]$Sign,
 
@@ -129,6 +134,32 @@ function Assert-DriverVer {
     }
     if ($date.Date -gt (Get-Date).ToUniversalTime().Date) {
         throw "DriverVer date is in the future in UTC: $Value"
+    }
+}
+
+function Test-AsciiMarker {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Marker
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Marker inspection target is missing: $Path"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+    return $text.Contains($Marker)
+}
+
+function Assert-PnpDiagnosticMarkerState {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][bool]$ExpectedEnabled
+    )
+
+    $present = Test-AsciiMarker -Path $Path -Marker 'PNP_STATUS:'
+    if ($present -ne $ExpectedEnabled) {
+        throw "PnP diagnostic marker state mismatch for $Path; expected enabled=$ExpectedEnabled, found marker=$present."
     }
 }
 
@@ -250,12 +281,18 @@ function Assert-ManifestComplete {
     $artifactNames = @($Manifest.Artifacts | ForEach-Object Name | Sort-Object)
     $requiredArtifacts = @('LecS65AcqDrv.cat', 'LecS65AcqDrv.inf',
         'LecS65AcqDrv.pdb', 'LecS65AcqDrv.sys')
-    if ($Manifest.Schema -ne 1 -or
+    $configurationModes = @($Manifest.Build.Configurations |
+        ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
+    if ($Manifest.Schema -ne 2 -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.WorkflowCommit) -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.DriverTree) -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.IncludeTree) -or
         $Manifest.Build.Configurations.Count -ne 2 -or
-        $Manifest.Regression.FunctionalTestsPassed -ne 394 -or
+        $Manifest.Build.CleanRebuild -ne $true -or
+        $Manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
+        $configurationModes.Count -ne 1 -or
+        $configurationModes[0] -ne [bool]$Manifest.Build.PnpStatusDiagnostics -or
+        $Manifest.Regression.FunctionalTestsPassed -ne 397 -or
         $Manifest.Regression.TotalStressIterations -ne 66000 -or
         ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
         @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
@@ -455,6 +492,7 @@ try {
     Write-Host "Include tree: $currentIncludeTree"
     Write-Host "Package identity: DriverVer=$DriverVer"
     Write-Host "Runtime configuration: $RuntimeConfiguration"
+    Write-Host ("PnP status diagnostics: {0}" -f [bool]$PnpStatusDiagnostics)
     Write-Host ("Signing requested: {0}" -f [bool]$Sign)
 
     $buildDriver = Join-Path $PSScriptRoot 'build-driver.ps1'
@@ -465,11 +503,11 @@ try {
 
     $null = Invoke-ScriptCaptured -Name 'Debug x64 driver and tools build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true } `
+        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-debug.log')
     $null = Invoke-ScriptCaptured -Name 'Release x64 driver build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Release' } `
+        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-release.log')
     $null = Invoke-ScriptCaptured -Name 'Complete Dry regression' `
         -FilePath $dryRunner `
@@ -482,7 +520,7 @@ try {
 
     $expectedRegressionEvidence = [ordered]@{
         $transcriptPath = @(
-            'DRY REGRESSION: 52/52 passed; 0 failed.'
+            'DRY REGRESSION: 53/53 passed; 0 failed.'
             'REGRESSION SUITE PASS: Dry'
         )
         $dryLog = @(
@@ -491,7 +529,7 @@ try {
             'SG BRIDGE MOCK: 27/27 passed; 0 failed.'
             'SG SYNC V3: 149/149 passed; 0 failed.'
             'PNP PUBLICATION: 38/38 passed; 0 failed.'
-            'PNP IRP LIFETIME: 8/8 passed; 0 failed.'
+            'PNP IRP LIFETIME: 10/10 passed; 0 failed.'
             'DMA COMPLETION: 39/39 passed; 0 failed.'
             'DMA INTERLEAVINGS: 2/2 passed; 0 failed.'
             'INTEN functional: 49 PASS, 0 FAIL, 0 SKIP'
@@ -536,6 +574,8 @@ try {
         $sys = Join-Path $repo "x64\$configuration\LecS65AcqDrv.sys"
         $pdb = Join-Path $repo "x64\$configuration\LecS65AcqDrv.pdb"
         Assert-BuildPairPaths -SysPath $sys -PdbPath $pdb -Label $configuration
+        Assert-PnpDiagnosticMarkerState -Path $sys `
+            -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
         $pe = Get-PeEvidence -Path $sys -Label $configuration
         if ([System.IO.Path]::GetFileName($pe.EmbeddedPdbPath) -ne
             [System.IO.Path]::GetFileName($pdb)) {
@@ -555,6 +595,7 @@ try {
             -Label $configuration
         $buildArtifacts += [ordered]@{
             Configuration = $configuration
+            PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
             SYS = [ordered]@{
                 Bytes = (Get-Item -LiteralPath $sys).Length
                 SHA256 = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
@@ -580,6 +621,8 @@ try {
 
     Copy-Item -LiteralPath $selectedSys -Destination $packageSys
     Copy-Item -LiteralPath $selectedPdb -Destination $evidencePdb
+    Assert-PnpDiagnosticMarkerState -Path $packageSys `
+        -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
     $infText = Get-Content -LiteralPath $sourceInf -Raw
     if ([regex]::Matches($infText, '(?m)^DriverVer=.*$').Count -ne 1) {
         throw 'Source INF must contain exactly one DriverVer line.'
@@ -676,6 +719,8 @@ try {
 
     $sysSignature = Get-AuthenticodeSignature -LiteralPath $packageSys
     $catSignature = Get-AuthenticodeSignature -LiteralPath $packageCat
+    Assert-PnpDiagnosticMarkerState -Path $packageSys `
+        -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
     Assert-PackageSignatureState -SigningRequested ([bool]$Sign) `
         -SysSignature $sysSignature -CatSignature $catSignature `
         -ExpectedThumbprint $normalizedThumbprint
@@ -700,7 +745,7 @@ try {
     }
 
     $manifest = [ordered]@{
-        Schema = 1
+        Schema = 2
         CreatedUtc = (Get-Date).ToUniversalTime().ToString('o')
         PackageState = if ($Sign) { 'SignedCandidate' } else { 'UnsignedValidationOnly' }
         InstallAuthorized = $false
@@ -714,12 +759,15 @@ try {
             SDK_WDK = '10.0.28000.0'
             MSVC = '14.41.34120'
             RuntimeConfiguration = $RuntimeConfiguration
+            CleanRebuild = $true
+            PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
+            DiagnosticMarker = 'PNP_STATUS:'
             Configurations = $buildArtifacts
         }
         Regression = [ordered]@{
             CompleteDry = 'PASS'
             Expanded = 'PASS'
-            FunctionalTestsPassed = 394
+            FunctionalTestsPassed = 397
             FunctionalTestsFailed = 0
             DefaultDmaStressIterations = 5000
             DefaultIntenStressIterations = 1000

@@ -19,6 +19,8 @@ $functionNames = @(
     'Invoke-ExternalCaptured'
     'Get-ContainedRelativeFilePath'
     'Get-FileRecord'
+    'Test-AsciiMarker'
+    'Assert-PnpDiagnosticMarkerState'
     'Assert-ManifestComplete'
     'Assert-PackageSignatureState'
 )
@@ -91,6 +93,14 @@ try {
 
     $specialFile = Join-Path $utilityDir 'lec diag #1.exe'
     Set-Content -LiteralPath $specialFile -Value 'mock utility' -Encoding Ascii
+    Assert-PnpDiagnosticMarkerState -Path $specialFile -ExpectedEnabled $false
+    $diagnosticFile = Join-Path $utilityDir 'diagnostic.sys'
+    Set-Content -LiteralPath $diagnosticFile -Value 'binary PNP_STATUS: marker' -Encoding Ascii
+    Assert-PnpDiagnosticMarkerState -Path $diagnosticFile -ExpectedEnabled $true
+    Test-Condition 'diagnostic marker state is checked from binary content' $true
+    Expect-Rejection 'ambiguous diagnostic marker state is rejected' {
+        Assert-PnpDiagnosticMarkerState -Path $specialFile -ExpectedEnabled $true
+    }
     $relative = Get-ContainedRelativeFilePath -Root $artifactRoot -Path $specialFile
     Test-Condition 'spaces and special characters have a deterministic relative path' (
         $relative -eq 'tools\utility [x64]\lec diag #1.exe')
@@ -244,20 +254,23 @@ exit 0
         Get-FileRecord -Path $_ -Root $artifactRoot
     })
     $manifest = [ordered]@{
-        Schema = 1
+        Schema = 2
         Source = [ordered]@{
             WorkflowCommit = ('1' * 40)
             DriverTree = ('2' * 40)
             IncludeTree = ('3' * 40)
         }
         Build = [ordered]@{
+            CleanRebuild = $true
+            PnpStatusDiagnostics = $true
+            DiagnosticMarker = 'PNP_STATUS:'
             Configurations = @(
-                [ordered]@{ Configuration = 'Debug' }
-                [ordered]@{ Configuration = 'Release' }
+                [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = $true }
+                [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = $true }
             )
         }
         Regression = [ordered]@{
-            FunctionalTestsPassed = 394
+            FunctionalTestsPassed = 397
             TotalStressIterations = 66000
         }
         Artifacts = $artifacts
@@ -287,6 +300,12 @@ exit 0
     $incomplete.Artifacts = @($roundTrip.Artifacts | Select-Object -First 3)
     Expect-Rejection 'incomplete artifact manifests are rejected' {
         Assert-ManifestComplete -Manifest $incomplete
+    }
+
+    $ambiguous = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $ambiguous.Build.Configurations[1].PnpStatusDiagnostics = $false
+    Expect-Rejection 'mixed diagnostic build modes are rejected' {
+        Assert-ManifestComplete -Manifest $ambiguous
     }
 
     $workflowText = Get-Content -LiteralPath $workflow -Raw

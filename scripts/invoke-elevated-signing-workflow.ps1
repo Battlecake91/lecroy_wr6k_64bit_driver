@@ -21,6 +21,7 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidatePattern('^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4}),([0-9]+\.){3}[0-9]+$')]
     [string]$DriverVer,
+    [switch]$PnpStatusDiagnostics,
     [Parameter(Mandatory=$true)]
     [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
@@ -106,6 +107,7 @@ function Assert-PackageManifest {
         [Parameter(Mandatory=$true)][string]$ExpectedSourceCommit,
         [Parameter(Mandatory=$true)][string]$ExpectedConfiguration,
         [Parameter(Mandatory=$true)][string]$ExpectedDriverVer,
+        [Parameter(Mandatory=$true)][bool]$ExpectedPnpStatusDiagnostics,
         [Parameter(Mandatory=$true)][bool]$ExpectedSigned,
         [string]$ExpectedThumbprint
     )
@@ -147,7 +149,9 @@ function Assert-PackageManifest {
         $manifest.PackageIdentity.CatSignatureStatus -eq 'NotSigned'
     }
 
-    if ($manifest.Schema -ne 1 -or
+    $configurationModes = @($manifest.Build.Configurations |
+        ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
+    if ($manifest.Schema -ne 2 -or
         $manifest.PackageState -ne $expectedState -or
         $manifest.InstallAuthorized -ne $false -or
         $manifest.Source.WorkflowCommit -ne $ExpectedCommit -or
@@ -155,10 +159,15 @@ function Assert-PackageManifest {
         $manifest.Source.DriverTree -notmatch '^[0-9a-fA-F]{40}$' -or
         $manifest.Source.IncludeTree -notmatch '^[0-9a-fA-F]{40}$' -or
         $manifest.Build.RuntimeConfiguration -ne $ExpectedConfiguration -or
+        $manifest.Build.CleanRebuild -ne $true -or
         $manifest.Build.Configurations.Count -ne 2 -or
+        $manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
+        [bool]$manifest.Build.PnpStatusDiagnostics -ne $ExpectedPnpStatusDiagnostics -or
+        $configurationModes.Count -ne 1 -or
+        $configurationModes[0] -ne $ExpectedPnpStatusDiagnostics -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
-        $manifest.Regression.FunctionalTestsPassed -ne 394 -or
+        $manifest.Regression.FunctionalTestsPassed -ne 397 -or
         $manifest.Regression.FunctionalTestsFailed -ne 0 -or
         $manifest.Regression.TotalStressIterations -ne 66000 -or
         $manifest.PackageIdentity.DriverVer -ne $ExpectedDriverVer -or
@@ -273,6 +282,7 @@ try {
         "CreatedUtc=$([DateTime]::UtcNow.ToString('o'))"
         "WorkflowCommit=$head"
         "Mode=$Mode"
+        "PnpStatusDiagnostics=$([bool]$PnpStatusDiagnostics)"
         "OutputRoot=$output"
     ) -join "`r`n"
     if ($Mode -eq 'Sign') {
@@ -297,6 +307,9 @@ try {
         '-OutputRoot'
         $output
     )
+    if ($PnpStatusDiagnostics) {
+        $childArguments += '-PnpStatusDiagnostics'
+    }
     if ($Mode -eq 'Sign') {
         $childArguments += @(
             '-Sign'
@@ -323,6 +336,7 @@ try {
         -ExpectedSourceCommit $ExpectedDriverTreeCommit.ToLowerInvariant() `
         -ExpectedConfiguration $RuntimeConfiguration `
         -ExpectedDriverVer $DriverVer `
+        -ExpectedPnpStatusDiagnostics ([bool]$PnpStatusDiagnostics) `
         -ExpectedSigned ($Mode -eq 'Sign') `
         -ExpectedThumbprint $(if ($Mode -eq 'Sign') {
             $CertificateThumbprint.ToUpperInvariant()

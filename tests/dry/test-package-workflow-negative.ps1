@@ -160,9 +160,9 @@ try {
     }
 
     $incompleteManifest = [pscustomobject]@{
-        Schema = 1
+        Schema = 2
         Source = [pscustomobject]@{ WorkflowCommit = ''; DriverTree = ''; IncludeTree = '' }
-        Build = [pscustomobject]@{ Configurations = @() }
+        Build = [pscustomobject]@{ PnpStatusDiagnostics = $false; Configurations = @() }
         Regression = [pscustomobject]@{ FunctionalTestsPassed = 0; TotalStressIterations = 0 }
         Artifacts = @()
         InstallAuthorized = $false

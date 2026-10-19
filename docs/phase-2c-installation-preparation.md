@@ -147,6 +147,15 @@ Installing an instrumented image is a new driver replacement, not a logging
 toggle for the current driver. It requires a separately authorized package
 build/signing operation and a separately authorized installation.
 
+The capture tool and unsigned package are prepared under the separate
+[kernel-trace capture contract](phase-2c-kernel-trace-capture.md). A later
+separately authorized DebugView run captured 618 independently attributable
+StorAHCI kernel records with Win32 capture disabled and exited zero. Its raw-log
+hash and cleanup evidence are frozen in that contract. The temporary kernel
+component left no detected process, service, registry or temporary-file state.
+Capture readiness is therefore established; signing and instrumented driver
+replacement remain separate authorization gates.
+
 #### Offline evidence
 
 The four isolated builds used SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. All
@@ -186,12 +195,11 @@ This is a plan, not an authorization or a record of execution.
    authorization. Stop if package identity, signature, binding, START, device
    status, interface count or event inspection differs from the approved
    expectation. Do not combine installation with the diagnostic PnP cycle.
-4. Before the later cycle, place and hash a reviewed kernel-debug capture tool.
-   Start Microsoft Sysinternals DebugView elevated, enable kernel capture and
-   verbose kernel output, clear its display, confirm that a harmless existing
-   driver debug message can be captured, and begin saving to a new log. Tool
-   placement and capture configuration must be validated before consuming the
-   one-cycle authorization; DebugView is not currently installed on this host.
+4. Before the later cycle, verify the reviewed DebugView CLI hash and start it
+   elevated with kernel and verbose-kernel capture into a new log. Its kernel
+   component load requires separate authorization. Confirm an independently
+   attributable harmless kernel message before consuming the one-cycle
+   authorization. An empty log or user-mode-only marker is not proof.
 5. Record UTC/local start markers, SetupAPI log size, event-record bookmarks,
    devnode/service metadata and the five interface paths. From the same
    elevated 64-bit Windows PowerShell session, execute exactly once:

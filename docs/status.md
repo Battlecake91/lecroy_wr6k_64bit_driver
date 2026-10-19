@@ -80,29 +80,42 @@
   canonical
   [package contract](driver-package-creation.md) and
   [installation preparation](phase-2c-installation-preparation.md).
-- The first installation used one authorized invocation with no retry. SetupAPI
-  records one `Query-remove`, one `Start`, `Restart verified` and final
-  `SUCCESS`. In the same restart interval, Kernel-PnP event 411 records
-  removal-state problem `0x15` / status `0xC00000BB`; no event 410, Code
-  Integrity error or
-  driver-related Service Control Manager event occurred in the interval.
-  Source review finds no explicit `STATUS_NOT_SUPPORTED` return in the relevant
-  replacement PnP paths, but START can propagate that status from the lower
-  stack or `IoConnectInterrupt`. Without the contemporaneous kernel debug
-  stream, attribution remains indeterminate. A default-off, compile-time PnP
-  status diagnostic now records lower dispatch/completion, local START,
-  interrupt connection, five interface publications and final status without
-  changing their behavior. Default and instrumented Debug/Release x64 builds
-  pass; focused status/remove-lock tests pass 10/10 and applicable source/ABI
-  contracts pass 53/53. The installed driver was not changed. A later passive
-  snapshot still finds `oem17.inf`, version `0.2026.1017.1`, device `OK`,
-  problem code zero, the approved loaded SYS, a running service and one target
-  interface in each of the five classes, with no later target PnP or kernel
-  error. The next PnP
-  transition requires a separately signed and installed diagnostic package,
-  validated kernel-debug capture, and a separately authorized single PnP cycle.
-  Recovery boot, rollback, reboot, Verifier, device handles, IOCTLs, XStream,
-  acquisition and DMA remain separate gates.
+- The frozen instrumented Release x64 package has
+  `DriverVer=10/18/2026,0.2026.1018.1`, `PnpStatusDiagnostics=true`, signed SYS
+  SHA-256
+  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`
+  and matching PDB SHA-256
+  `980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3`.
+  Its offline qualification passed 397/397 functional checks and
+  66,000/66,000 stress iterations. The versioned Windows PowerShell 5.1
+  launcher passed 18/18 elevated mock scenarios and source contracts 54/54.
+- Kernel Runtime Qualification Batch 1 ran `InstallWithCapture` exactly once
+  on 2026-10-19. Launcher, DebugView and PnPUtil exited zero; PnPUtil published
+  `oem101.inf`. The active version is `0.2026.1018.1`, the device is `OK` with
+  problem code zero, `LecS65AcqDrv` is running, the loaded SYS matches the
+  frozen hash above, and each of the five legacy interface classes exposes
+  exactly one target path. Driver Store INF/CAT/SYS hashes also match the
+  frozen package. No DebugView process or temporary `DBGV` component remained.
+- The 73,498-byte kernel log has SHA-256
+  `D14DAC42D6CEBED65313DE8A265E10B80D52CB57A33C0F79A888F625257948A4`
+  and contains 32 `PNP_STATUS:` records. New-driver lower START, local START,
+  `IoConnectInterrupt`, all five interface-enable calls and final START all
+  report success. Event 411 (`0x15` / `0xC00000BB`) occurred after the old
+  driver completed REMOVE/unload and about 27 ms before the replacement
+  driver's `DriverEntry`/AddDevice began. It is therefore a verified
+  installation/PnP intermediate state rather than a status returned by the new
+  driver's START, interrupt connection or interface publication. The exact
+  Windows component that supplied the event status remains indeterminate.
+  No target Code Integrity, SCM or System error occurred. See the
+  [capture report](phase-2c-kernel-trace-capture.md) and
+  [runtime qualification plan](kernel-runtime-qualification.md).
+- Offline post-install contracts pass: source/ABI 54/54, PnP/remove-lock
+  10/10, interface publication 38/38, DMA completion 39/39, interleavings 2/2,
+  DMA stress 5,000/5,000, INTEN functional 49/49, INTEN stress 1,000/1,000 and
+  DMA ownership 17/17. No reproducible source defect was found, so no driver
+  source or signed package change was made. Device handles, IOCTLs, later PnP
+  transitions, Verifier, reboot, XStream, acquisition and DMA remain separate
+  gates. See the [IOCTL safety classification](ioctl-runtime-safety.md).
 
 ## DMA/PnP staging
 

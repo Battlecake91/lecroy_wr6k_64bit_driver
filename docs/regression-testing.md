@@ -510,6 +510,15 @@ msbuild.exe .\driver\LecS65AcqDrv.vcxproj /m /t:Rebuild `
 This command only builds an unsigned offline binary. It does not authorize
 signing, package creation, installation or a PnP transition.
 
+For a complete package, use the package workflow's explicit
+`-PnpStatusDiagnostics` switch instead of relying on a file name or an
+incremental build. The workflow clean-rebuilds both configurations, verifies
+the marker state, and records the mode in manifest schema 2. The 2026-10-18
+unsigned qualification passed 397/397 functional checks and all 66,000 stress
+iterations; workflow compatibility passed 25/25 and fail-closed boundaries
+passed 16/16 on both supported PowerShell hosts. Exact identities are recorded
+in the [capture/package report](phase-2c-kernel-trace-capture.md).
+
 `test-dma-completion.c` compiles the production `DmaCompletion.c` tracker.
 It deterministically verifies an IRQ immediately before timeout, a completion
 event without IRQ evidence, pre-GO rejection, the fail-closed modeled interval
@@ -754,6 +763,30 @@ hierarchy rather than repeatedly probing the unsupported direct alias.
 
 This corrected collection-based PowerShell path has not yet received the
 owner's runtime result.
+
+## Kernel Runtime Qualification Batch 1 focused offline checks
+
+After the one authorized instrumented installation, no driver source was
+changed. The focused hardware-independent suites were rerun against diagnostic
+HEAD `cc44c2984c57bb9acf47bf18e33b1bc8afc69cfe`:
+
+| Suite | Result |
+|---|---:|
+| Source and ABI contracts | 54/54 PASS |
+| PnP IRP/remove-lock lifetime | 10/10 PASS |
+| PnP interface publication | 38/38 PASS |
+| DMA completion contracts | 39/39 PASS |
+| Deterministic completion interleavings | 2/2 PASS |
+| Default DMA stress | 5,000/5,000 PASS |
+| Native INTEN functional checks | 49/49 PASS |
+| Default INTEN RMW stress | 1,000/1,000 PASS |
+| DMA ownership contracts | 17/17 PASS |
+
+These tests are software-only. They support the source review of admission,
+remove-lock, interface, IRQ/DPC/timer and quarantine lifetimes; they do not
+prove physical DMA retirement or hardware bus idle. No reproducible defect was
+found, so no source patch, driver rebuild or expanded stress rerun was
+justified.
 
 
 ## Read-only XStream COM object scanner
