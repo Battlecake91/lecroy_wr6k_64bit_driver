@@ -116,6 +116,18 @@
   source or signed package change was made. Device handles, IOCTLs, later PnP
   transitions, Verifier, reboot, XStream, acquisition and DMA remain separate
   gates. See the [IOCTL safety classification](ioctl-runtime-safety.md).
+- Kernel Runtime Qualification Batch 2 passed four authorized R0 commands once:
+  build `1002`, debug stats version `1`, BAR lengths
+  `0x200 / 0x40000 / 0x200`, and trace version `3`. The fifth command was not
+  launched because the bounded PowerShell runner rejected its required empty
+  raw-input argument during parameter binding. Commands 6–9 were not attempted,
+  R1 remained gated and no retry occurred. Pre/post device state was identical
+  and no event was recorded in the exact test interval. The runner now supports
+  explicit empty arguments; PowerShell 5.1 and 7 mocks each pass 26/26.
+  Source/safety contracts now pass 57/57, PnP/remove-lock 10/10, publication
+  38/38 and ownership 17/17. Driver sources and the installed image are
+  unchanged. Remaining R0 commands and conditional R1 reads need a new owner
+  authorization.
 
 ## DMA/PnP staging
 

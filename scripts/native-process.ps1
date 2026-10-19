@@ -261,7 +261,7 @@ function Invoke-LecS65NativeProcess {
     param(
         [Parameter(Mandatory=$true)][string]$Name,
         [Parameter(Mandatory=$true)][string]$FilePath,
-        [Parameter(Mandatory=$true)][AllowEmptyCollection()][string[]]$Arguments,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Arguments,
         [string]$WorkingDirectory = (Get-Location).Path,
         [string]$LogPath,
         [ValidateRange(1, 86400)][int]$TimeoutSeconds = 900,

@@ -144,3 +144,41 @@ device problem, service-state change, missing or duplicate interface, new
 driver-related kernel event, capture of an unapproved IOCTL, or any sign of
 acquisition, DMA, interrupt storm, or hardware-state change. Do not retry and
 do not perform automatic rollback.
+
+## Kernel Runtime Qualification Batch 2 result
+
+Batch 2 used x64 `lecdiag.exe` SHA-256
+`824F089EBED1D4C5EC0337CBE18F05489D2B062476AD5C1723333869B299A8DD`
+and a five-second job-object timeout for each authorized command. Passive
+preflight confirmed `oem101.inf`, version `0.2026.1018.1`, the approved loaded
+SYS, device `OK`, problem code zero, a running service, five single enabled
+interfaces, no acquisition client, and hash-identical rollback artifacts.
+
+The first four R0 commands ran once and passed:
+
+| Command | Request / response | Exit | Observed result |
+|---|---|---:|---|
+| `lecdiag build` | input 0; output capacity 4; returned 4 | 0 | build `1002` |
+| `lecdiag stats` | input 0; output capacity/ABI result 48; the utility does not print `bytesReturned` | 0 | structure version `1`, build `1002`, unknown IOCTL count `0` |
+| `lecdiag bars` | input 0; output capacity 72; returned 72 | 0 | lengths `0x200 / 0x40000 / 0x200`; bulk `0x40000` |
+| `lecdiag trace` | input 0; output capacity 118,800; returned 118,800 | 0 | trace version `3`, one preexisting build-query record |
+
+The fifth authorized command was not started. PowerShell rejected the explicit
+empty raw-input argument while binding `Invoke-LecS65NativeProcess` because its
+`string[] Arguments` parameter allowed an empty collection but not an empty
+string element. No fifth IOCTL reached the driver. Tests 6–9 were not attempted,
+and the conditional R1 gate did not become effective. No retry was made.
+
+The bounded-process helper now declares both `AllowEmptyCollection` and
+`AllowEmptyString`. A focused mock proves byte-for-byte positional preservation
+of `before`, an empty argument and `after` under Windows PowerShell 5.1 and
+PowerShell 7; both compatibility runs pass 26/26. This is an offline workflow
+fix only. It does not renew the consumed runtime authorization.
+
+The post-stop state is identical to preflight and the exact test interval has
+no Kernel-PnP, Code Integrity or System event. Remaining R0 commands 5–9, and
+then the two conditional R1 commands, require a new explicit authorization.
+The private evidence-manifest SHA-256 is
+`78D3C40B85F1885A0B9AC20EA1859A65BC5E5599675C775E5DB763E40259652A`;
+the R0 result-record SHA-256 is
+`B14326835689C647D57A698509A7EA9AC0654E6ED6EB9BAF409D57FC42A28F90`.

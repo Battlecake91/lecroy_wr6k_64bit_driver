@@ -275,6 +275,61 @@ records in the interval are not LeCroy-driver evidence.
 The complete IOCTL side-effect review and the separately gated first runtime
 commands are in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
 
+## Kernel Runtime Qualification Batch 2 result
+
+Batch 2 preflight at `2026-10-19T18:04:14Z` reconfirmed `oem101.inf`, the
+approved loaded SYS, problem-free device, running service, five enabled
+interfaces, closed acquisition clients and intact rollback set. The selected
+x64 `lecdiag.exe` SHA-256 is
+`824F089EBED1D4C5EC0337CBE18F05489D2B062476AD5C1723333869B299A8DD`.
+
+R0 commands `build`, `stats`, `bars` and `trace` passed once. They established
+build `1002`, debug structure version `1`, zero unknown IOCTLs, BAR lengths
+`0x200 / 0x40000 / 0x200`, trace version `3` and the expected response sizes.
+Before the fifth command could start, the PowerShell native runner rejected the
+required empty raw-input argument at parameter binding. No fifth IOCTL was
+issued, commands 6–9 were not attempted and R1 was skipped. No retry occurred.
+
+Post-stop checks retained the complete baseline and found no event in the exact
+R0 interval. The runner now explicitly permits an empty string array element;
+focused Windows PowerShell 5.1 and PowerShell 7 mocks each pass 26/26. This
+offline fix does not authorize another live attempt.
+
+### Lifetime-analysis result
+
+- CREATE, CLOSE, DEVICE_CONTROL, PnP and power dispatches retain balanced
+  remove-lock ownership. DEVICE_CONTROL is synchronous and releases IOCTL
+  admission before its remove lock and completion.
+- STOP, SURPRISE_REMOVE and REMOVE close admission, withdraw interfaces, drain
+  admitted IOCTLs, quiesce IRQ/DPC/timer activity, release event and transfer
+  ownership, and only then unmap BARs. REMOVE waits for lower-stack completion
+  and remove-lock rundown before detaching/deleting the FDO.
+- Event replacement references the new object before publication, swaps under
+  the DPC-shared spin lock and dereferences the old object afterward. PnP
+  teardown detaches all five event objects only after deferred work is quiet.
+- `UnknownActive` remains irreversible. Publication/rundown tests retain
+  mapping and MDL ownership through REMOVE rather than freeing it without
+  hardware-idle proof.
+- DEVICE_CONTROL has no pending/cancelable IOCTL. Pending lower-PnP forwarding
+  is unit-tested; targeted cancellation and cancel-routine races remain NOT RUN.
+- Event registrations are FDO-global, not per file object. Object lifetime is
+  safe, but replacement ownership between concurrent clients remains a legacy
+  semantic risk without native concurrency fault injection.
+- CLOSE releases every DMA registration owned by the calling process whenever
+  any handle from that process closes. It therefore does not implement the
+  comment's “last process close” semantics for multiple concurrent handles.
+  Correcting this confirmed lifetime limitation requires reviewed per-file or
+  per-process ownership design and is not a safe minimal patch while DMA is
+  unqualified.
+- Interface-enable failure is logged but does not fail START or roll back
+  already enabled classes. The live START published all five; partial-
+  publication failure handling remains a source gap before repeated PnP tests.
+
+New contracts cover balanced CREATE/CLOSE ownership, event-object lifetime and
+empty native arguments. Results are source/safety 57/57, PnP IRP lifetime
+10/10, publication 38/38 and DMA ownership 17/17. No driver implementation
+changed, so driver builds and DMA/INTEN stress reruns were not justified.
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved
@@ -283,13 +338,13 @@ infer that authorization from Stages 1–5.
 
 ### 6A. Bounded metadata and ABI requests
 
-The smallest next gate is the exact R0 batch documented in
-[Runtime IOCTL safety classification](ioctl-runtime-safety.md). It requires a
-new owner authorization for the listed device handles and IOCTLs. Run one
-command at a time with a five-second job-object timeout, no PnP transition and
-no Verifier. Capture pre/post device, service, interface and kernel-event
-snapshots. Do not include Dallas, event registration, register write,
-interrupt, acquisition or DMA controls.
+The smallest next gate is a new authorization for the five R0 commands that did
+not run in Batch 2: the two no-ops, two four-byte size queries and zero-delay
+request documented in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
+Run each once with the corrected, qualified runner and a five-second timeout,
+no PnP transition and no Verifier. Preserve the four already passed results;
+do not repeat them merely to obtain a single transcript. Capture pre/post
+device, service, interface and kernel-event snapshots.
 
 After R0 passes, authorize R1 separately: the bounded PCI-configuration query
 and reviewed START-register read. Stop on any timeout, unexpected length/value,
@@ -323,26 +378,53 @@ orderly removal and must never be reported as surprise-removal coverage.
 
 ### 6D. Targeted Verifier
 
-Target this driver only:
+The first one-boot pass should exclude DMA Verification and every resource-
+fault injection option. Target only the exact image with flags `0x0002093B`:
+Special Pool, Force IRQL Checking, Pool Tracking, I/O Verification, Deadlock
+Detection, Security Checks, Miscellaneous Checks and DDI Compliance Checking.
 
 ```text
 verifier /reset
-verifier /standard /driver LecS65AcqDrv.sys
+verifier /flags 0x0002093B /driver LecS65AcqDrv.sys
 verifier /bootmode oneboot
 verifier /querysettings
 shutdown /r /t 0
 ```
 
-After boot, confirm that `LecS65AcqDrv.sys` is the only project driver under
-verification. Save `verifier /query`, `verifier /querysettings`, System events
-and dump state. A verifier finding or boot anomaly is immediate FAIL and invokes
-the proven rollback route.
+These commands are prepared, not executed. Configuration, one-boot mode and
+reboot each require explicit authorization. `/all`, random/systematic low-
+resource simulation, Force Pending I/O Requests, IRP Logging, DMA Verification
+and Code Integrity Checks are excluded from the first pass. DMA Verification
+does not itself launch DMA, but would mix DMA-API findings into the initial
+non-DMA lifetime baseline.
 
-Verifier activation, its one-boot setting and the reboot each require explicit
-authorization. Run the R0 lifetime batch first under Verifier; do not combine
-the first Verifier boot with a PnP cycle. Recovery requires console/WinRE access,
-`verifier /reset`, the preserved rollback package and separately authorized
-reboot or package replacement.
+Selected risks are deliberate. Special Pool can expose overruns under memory
+pressure; Force IRQL can bugcheck pageable or wrong-IRQL access; I/O and DDI
+verification can bugcheck malformed forwarding/completion; Deadlock Detection
+tracks lock order; Pool Tracking reports leaks; Security and Miscellaneous
+Checks enforce handle, buffer and other kernel contracts. Any finding, hang or
+unexpected selected driver is FAIL.
+
+Read-only readiness remains incomplete: flags are zero and no driver is
+selected; `CrashDumpEnabled=7`, dump path is `C:\Windows\MEMORY.DMP`,
+`AutoReboot=1`, physical memory is 8,458,924,032 bytes, the boot-volume page
+file is 1,664 MiB, `C:` has about 23.9 GB free and no current `MEMORY.DMP`
+exists. This does not prove that a useful kernel dump will survive a verifier
+bugcheck. Before activation, separately authorize a recovery rehearsal, verify
+page-file/dump sufficiency and decide whether to set `AutoReboot=0`.
+
+Recovery commands remain:
+
+```text
+verifier.exe /reset
+verifier.exe /querysettings
+shutdown.exe /r /t 0
+```
+
+After boot, require `LecS65AcqDrv.sys` to be the only selected project driver.
+Save `verifier /query`, `/querysettings`, System events and any untouched dump.
+Run only a separately authorized R0 metadata batch; do not combine the first
+Verifier boot with PnP, R1 MMIO reads, acquisition or DMA.
 
 ### 6E. Limited cancellation and teardown
 
@@ -366,6 +448,59 @@ If such a hook is later authorized, verify irreversible admission closure and
 retention through STOP/REMOVE, then restore or reboot. Never create a real
 indeterminate DMA transfer for coverage and never free quarantined ownership in
 the same boot.
+
+## Prepared single PnP restart experiment
+
+This plan is not authorized for execution. It targets only `oem101.inf`,
+version `0.2026.1018.1`, loaded SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`
+and instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39fd0a79&0&08F0`.
+
+1. Create a new exclusive evidence root and record device, service, five-
+   interface, SetupAPI and event bookmarks. Require no open driver handle,
+   acquisition client, Verifier setting or existing DebugView process.
+2. Revalidate DebugView CLI 5.02 x64 SHA-256
+   `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`
+   and PnPUtil SHA-256
+   `CFE15658F1F4AB0E19465A15738B7FDB4BE947CDA4F2AA8B1C1B995CF50CBDDB`.
+3. Start one bounded kernel-only capture:
+
+   ```text
+   dbgviewcli64.exe --kernel --verbose-kernel --no-win32 --clock-ms --format text --duration 300 --max-lines 100000 --log <new-raw-log> --no-banner
+   ```
+
+   Require the collector to remain live, the raw log to exist and an exclusive
+   `capture-ready.json` record before PnPUtil is reachable. Require one
+   independently attributable kernel record within the readiness window;
+   otherwise stop without restart.
+4. Start a read-only interface metadata watcher, then invoke once:
+
+   ```text
+   pnputil.exe /restart-device "PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39fd0a79&0&08F0"
+   ```
+
+5. Expect STOP entry/lower forwarding, five successful interface-disable
+   records, IRQ disconnect and no post-quiescence hardware access. Then require
+   START entry, lower dispatch/completion/final success, local resource success,
+   interrupt-connect success, five indexed interface-enable successes and final
+   success. Metadata must observe withdrawal and restoration to exactly five
+   enabled instances.
+6. Correlate UTC trace times with SetupAPI, Kernel-PnP, Code Integrity, SCM and
+   System events. Record PnPUtil exit, problem code, service, loaded SYS,
+   interface counts and SHA-256 for every evidence file.
+
+Admission closure, drain and remove-lock balance are source-backed but lack a
+dedicated runtime marker in the installed image. A clean restart supports but
+does not directly prove those internal boundaries. Do not hold an IOCTL open
+across this first cycle.
+
+Stop without retry or automatic rollback on missing capture readiness,
+collector exit, PnPUtil nonzero, reboot request, unexpected minor/status,
+missing disable/enable record, IRQ error, persistent device problem,
+service/image change, interface mismatch, kernel error, bugcheck, hang,
+interrupt storm, acquisition or DMA indication. Recovery, rollback and reboot
+each require their own authorization.
 
 ## Evidence, failure and rollback
 

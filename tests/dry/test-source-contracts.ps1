@@ -318,6 +318,28 @@ Test-Contract "IOCTL admission counter releases at dispatch completion" {
     $driverSourceText -match 'KeWaitForSingleObject\(\s*&DevExt->IoIdleEvent'
 }
 
+Test-Contract "create and close keep remove-lock and IOCTL-admission ownership balanced" {
+    $create = [regex]::Match($driverSourceText,
+        '(?s)LecS65Create\s*\(.*?(?=NTSTATUS\s+LecS65Close)')
+    $close = [regex]::Match($driverSourceText,
+        '(?s)LecS65Close\s*\(.*?\n\}')
+    $create.Success -and $close.Success -and
+    $create.Value -match '(?s)IoAcquireRemoveLock.*?IoReleaseRemoveLock.*?IoCompleteRequest' -and
+    $close.Value -match '(?s)IoAcquireRemoveLock.*?LecEnterIoctl.*?LecReleaseTransfersForProcess.*?LecLeaveIoctl.*?IoReleaseRemoveLock.*?IoCompleteRequest'
+}
+
+Test-Contract "legacy event replacement and teardown retain exact object lifetime" {
+    $capture = [regex]::Match($ioctlText,
+        '(?s)LecCaptureLegacyEvent\s*\(.*?\n\}')
+    $release = [regex]::Match($deviceText,
+        '(?s)LecReleaseLegacyEvents\s*\(.*?\n\}')
+    $capture.Success -and $release.Success -and
+    $capture.Value -match '(?s)ObReferenceObjectByHandle.*?EVENT_MODIFY_STATE.*?KeAcquireSpinLock.*?oldEvent = \*Slot.*?\*Slot = eventObject.*?KeReleaseSpinLock.*?ObDereferenceObject\(oldEvent\)' -and
+    $release.Value -match '(?s)KeAcquireSpinLock.*?LegacyEvent0 = NULL.*?LegacyEvent4 = NULL.*?KeReleaseSpinLock.*?ObDereferenceObject' -and
+    ([regex]::Matches($deviceText,
+        '(?s)LecQuiesceDeferredWork\(.*?LecReleaseLegacyEvents').Count -ge 3)
+}
+
 Test-Contract "PnP remove is drained before deleting device" {
     $remove = [regex]::Match(
         $deviceText,
@@ -753,6 +775,11 @@ Test-Contract "package workflow is installation- and device-operation-free" {
     $nativeProcessText -match 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' -and
     $nativeProcessText -match 'WaitForExit\(timeoutMilliseconds\)' -and
     $nativeProcessText -match 'Task\.WaitAll'
+}
+
+Test-Contract "native process runner admits and quotes explicit empty arguments" {
+    $nativeProcessText -match '\[AllowEmptyCollection\(\)\]\[AllowEmptyString\(\)\]\[string\[\]\]\$Arguments' -and
+    $nativeProcessText -match 'if \(value\.Length == 0\)\s*return "\\"\\"";'
 }
 
 Test-Contract "package workflow pins reviewed source and toolchain" {

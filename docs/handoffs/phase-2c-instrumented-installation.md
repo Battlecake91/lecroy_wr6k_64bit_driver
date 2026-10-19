@@ -39,17 +39,31 @@ a verified installation/PnP intermediate state, not a failure returned by the
 new driver's START. The exact internal Windows/PnP source of status
 `0xC00000BB` remains indeterminate.
 
-Focused offline contracts pass: source/ABI 54/54, PnP/remove-lock 10/10,
-publication 38/38, DMA completion 39/39, interleavings 2/2, DMA stress
-5,000/5,000, INTEN 49/49 plus 1,000/1,000 stress, and ownership 17/17. No
-reproducible source defect was identified and the signed package was not
-rebuilt.
+Kernel Runtime Qualification Batch 2 privately retained its runtime evidence at
+`C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-KernelRuntimeBatch2-R0R1-20261019-attempt1`.
+The first four R0 commands passed once. The fifth did not reach `lecdiag` or the
+driver because the PowerShell runner rejected its required empty argument.
+Commands 6–9 were not attempted, R1 was skipped and no retry occurred. The
+post-stop state remained identical to the current runtime state above.
+
+The runner compatibility defect is fixed offline and mock-tested under Windows
+PowerShell 5.1 and PowerShell 7. Current focused contracts pass: source/safety
+57/57, PnP/remove-lock 10/10, publication 38/38 and ownership 17/17. Driver
+sources and the signed package were not rebuilt.
+
+Source review also established two deferred lifetime gaps: CLOSE releases all
+DMA registrations for the process on every handle close rather than a proven
+last-process-handle boundary, and partial interface-enable failure does not
+fail START. Neither affected the R0 run, and neither has been deployed or
+changed in this workstream.
 
 ## Next boundary
 
 No further PnP transition, reboot, Verifier activation, device handle, IOCTL,
 XStream, acquisition or DMA operation is authorized. The smallest next gate is
-one explicitly authorized, bounded R0 metadata-only IOCTL batch as specified in
-[`../ioctl-runtime-safety.md`](../ioctl-runtime-safety.md). A single captured
-PnP restart and targeted one-boot Driver Verifier are later independent gates.
+one explicit authorization for only the five unexecuted R0 commands in
+[`../ioctl-runtime-safety.md`](../ioctl-runtime-safety.md), followed
+conditionally by the two R1 reads. The four passed commands should not be
+repeated merely to rebuild one transcript. A single captured PnP restart and
+targeted one-boot Verifier configuration remain later independent gates.
 Rollback or package replacement also requires separate authorization.

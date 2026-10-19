@@ -788,6 +788,32 @@ prove physical DMA retirement or hardware bus idle. No reproducible defect was
 found, so no source patch, driver rebuild or expanded stress rerun was
 justified.
 
+## Kernel Runtime Qualification Batch 2 focused checks
+
+The live R0 sequence exposed an offline native-runner parameter-binding defect
+before its fifth command started: a `string[]` parameter admitted an empty
+collection but rejected the required empty string element. The runner now uses
+both `AllowEmptyCollection` and `AllowEmptyString`; the existing C# quoting
+layer already encodes an empty argument as `""`.
+
+`test-package-workflow-compatibility.ps1` now launches a three-argument fixture
+and requires the middle empty argument to retain its exact position. Results:
+
+| Suite | Result |
+|---|---:|
+| Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
+| Package workflow compatibility, PowerShell 7.6.5 | 26/26 PASS |
+| Source and safety contracts | 57/57 PASS |
+| PnP IRP/remove-lock lifetime | 10/10 PASS |
+| PnP interface publication | 38/38 PASS |
+| DMA ownership | 17/17 PASS |
+
+New source contracts specifically cover balanced CREATE/CLOSE remove-lock and
+IOCTL-admission ownership, legacy event-object replacement/teardown, and empty
+native arguments. The change affects only the offline process runner and tests;
+driver implementation code did not change. DMA/INTEN stress and driver rebuilds
+were therefore not repeated.
+
 
 ## Read-only XStream COM object scanner
 
