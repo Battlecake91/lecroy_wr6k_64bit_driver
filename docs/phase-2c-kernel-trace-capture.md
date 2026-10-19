@@ -443,3 +443,86 @@ package, rollback, process and current-device preflight checks must pass. The
 mode must start and verify capture before invoking PnPUtil, must not retry, and
 must stop on the first capture, signature, package, installation or PnP
 failure.
+
+## Kernel Runtime Qualification Batch 1
+
+The owner subsequently authorized one `InstallWithCapture` execution. A clean
+worktree was temporarily checked out at the exact launcher implementation
+commit `4ef961154d9a90183728ac522380c1c789605a0b`; the launcher SHA-256 remained
+`49F7A75F2683C876BBB834A823417770213AB093343FC88CBD4D19B04128E349`.
+The system PnPUtil SHA-256 was pinned as
+`CFE15658F1F4AB0E19465A15738B7FDB4BE947CDA4F2AA8B1C1B995CF50CBDDB`.
+All frozen package, signature, catalog, PDB, rollback, device, interface and
+process preconditions passed before active work.
+
+The elevated Windows PowerShell 5.1 launcher ran exactly once from
+`2026-10-19T16:53:29.2283759Z` through
+`2026-10-19T16:58:32.8669865Z`. `result.json` reports `PASS`, one capture
+invocation and one installation invocation. Launcher and PnPUtil exit codes
+were zero. PnPUtil published `oem101.inf` and installed it for the exact WR6k
+PCI function. No retry or rollback occurred.
+
+| Evidence | SHA-256 |
+|---|---|
+| Raw `kernel-capture.log` | `D14DAC42D6CEBED65313DE8A265E10B80D52CB57A33C0F79A888F625257948A4` |
+| Launcher `result.json` | `5C9B186BF86DC3B2CB4FF0B4C3EB9AEE16D98D1A080C9A141EDF618831D39437` |
+| PnPUtil install log | `3F8617C5FD5522BAAE5FC6AB141A44E75DFE33486A1C235A963A8B203FFD738D` |
+| Capture-ready record | `6A5DC21958D5E4D1E91391C79A42F2D61B88C6DF393907B4665F6CC9EB31EA00` |
+| Final private evidence manifest | `C50F5578F5FF822BB0A1A7D15084A956A18ABDBD21407BC861DAF3339BE6BA8F` |
+| SetupAPI appended interval | `C225D62259A3E579282C7B21079161C9BC3807F75A71E5D851CFA77F4A44A3B4` |
+
+The raw log is 73,498 bytes with 691 records: 84 LecS65 records, including 32
+`PNP_STATUS:` records, plus 607 independently attributable StorAHCI records.
+The launcher stderr and exception logs are empty. After capture, no DebugView
+process, `DBGV` driver instance, service key or temporary driver file remained.
+
+### PnP and Event 411 correlation
+
+The old driver received PnP minors `0x07`, `0x01` (QUERY_REMOVE) and `0x02`
+(REMOVE) at `16:53:33.872Z`. It disabled all five interfaces, disconnected the
+interrupt, completed teardown with zero retained transfers, unmapped resources
+and unloaded by `16:53:33.873Z`.
+
+Kernel-PnP Event 400 was recorded at
+`2026-10-19T16:53:33.8422476Z`. Event 411 was recorded at
+`2026-10-19T16:53:33.8741035Z` with problem `0x15` and status
+`0xC00000BB`. The replacement driver's `DriverEntry`/AddDevice did not begin
+until `16:53:33.901Z`. Event 411 therefore falls after old-driver removal and
+before any new-driver PnP dispatch.
+
+The new driver later recorded lower-stack `STATUS_NOT_SUPPORTED` for
+QUERY_LEGACY_BUS_INFORMATION, two QUERY_INTERFACE requests and
+QUERY_DEVICE_RELATIONS. Those statuses are **VERIFIED lower-stack-originated**,
+but their timestamps are later than Event 411 and they cannot be its source.
+The new START is fully attributed: lower completion/final, local START,
+`IoConnectInterrupt`, five indexed interface-enable calls and final returned
+status are all `STATUS_SUCCESS`. There is no driver-originated START failure or
+interrupt-connection failure.
+
+Event 411 is classified as a **VERIFIED intermediate installation/PnP state**.
+This classification is based on the trace ordering, not merely on the final
+healthy device. The internal Windows/PnP component that emitted the event's
+`0xC00000BB` remains **INDETERMINATE**. The earlier, uninstrumented Event 411 is
+strongly consistent with the same installation sequence, but its exact source
+was not directly traced and remains separately unproved.
+
+SetupAPI records best-driver selection, package configuration, one
+query-remove, one device restart, `Start`, `Restart verified` and final
+`SUCCESS`. The package configuration noted that devices using the driver
+required restart; this was the single installation-induced device restart, not
+an operating-system reboot request. No target Code Integrity, Service Control
+Manager or System error occurred. Code Integrity records for Bonjour
+`mdnsNSP.dll` in the interval are unrelated.
+
+### Final runtime state and next gate
+
+The target is bound to `oem101.inf`, version `0.2026.1018.1`, with device
+status `OK`, problem code zero and a running `LecS65AcqDrv` service. The loaded
+SYS and Driver Store INF/CAT/SYS match the frozen candidate; each of the five
+legacy interface classes has exactly one enabled path for the PCI function.
+No acquisition application is running.
+
+No additional PnP transition, device handle or IOCTL was used. The smallest
+next authorization is the bounded R0 metadata-only batch in
+[Runtime IOCTL safety classification](ioctl-runtime-safety.md). A controlled
+PnP restart and Driver Verifier remain later, separately authorized gates.

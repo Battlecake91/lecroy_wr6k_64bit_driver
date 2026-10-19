@@ -1,5 +1,9 @@
 # IOCTL map
 
+For the current x64 dispatch safety classification and the separately gated
+bounded runtime commands, see
+[Runtime IOCTL safety classification](ioctl-runtime-safety.md).
+
 ## DMA-related safety policy (draft x64 branch)
 
 The original `CFDC2400` software-pending dispatcher can inject INTST bit 0

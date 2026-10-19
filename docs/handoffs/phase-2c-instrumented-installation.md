@@ -1,82 +1,55 @@
 # Phase 2C instrumented-installation handoff
 
-This handoff records the failed pre-capture execution on 2026-10-18 and the
-separately authorized successful capture qualification on 2026-10-19. Neither
-execution installed or replaced the LeCroy driver.
+Kernel Runtime Qualification Batch 1 completed the separately authorized
+instrumented installation on 2026-10-19. This handoff records only the current
+transfer state; detailed evidence and analysis are canonical in
+[`../phase-2c-kernel-trace-capture.md`](../phase-2c-kernel-trace-capture.md) and
+[`../kernel-runtime-qualification.md`](../kernel-runtime-qualification.md).
 
-## Approved candidate
+## Current runtime state
 
-The approved private package is Release x64,
-`DriverVer=10/18/2026,0.2026.1018.1`, with
-`PnpStatusDiagnostics=true` and local test-signing certificate thumbprint
-`4296FA2E355613DF0D5CE6F24D0898E00B706472`.
+- bound INF: `oem101.inf`;
+- driver version: `0.2026.1018.1`;
+- loaded SYS SHA-256:
+  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`;
+- device status: `OK`, problem code zero;
+- service: `LecS65AcqDrv`, running;
+- interfaces: exactly one enabled target path in each of the five legacy
+  classes;
+- acquisition clients: not running;
+- DebugView/`DBGV`: absent after the completed capture.
 
-| Artifact | SHA-256 |
-|---|---|
-| INF | `ADF7E71FBA10D0A7A99216578261CC3AA87EAF3459CFB08A456D808A9350169C` |
-| CAT | `2354CDE2474F01CB32C10937DBB44775980A9126FF02CE58E5BB8E3EA7836FBF` |
-| Signed SYS | `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A` |
-| Matching PDB | `980161BC328FFB5214B2FA76C03B59ADA22473446DA0AE3C77F970FE0B5202A3` |
-| Manifest | `216F15716C9496B476C877129853A07BAB59097444AA2D160E2812F25AA2DC69` |
+The private evidence root is
+`C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-KernelRuntimeBatch1-InstallWithCapture-20261019-attempt1`.
+Do not commit its raw traces or host-specific material to this public
+repository. Its final evidence-manifest SHA-256 is
+`C50F5578F5FF822BB0A1A7D15084A956A18ABDBD21407BC861DAF3339BE6BA8F`.
 
-The passive preflight reconfirmed these hashes, signatures, catalog membership,
-manifest identity, rollback package, active driver, interface publication,
-closed acquisition applications, DebugView identity and event bookmarks.
+## Established result
 
-## Execution result
+The launcher ran once, reported `PASS`, and recorded one capture invocation and
+one PnPUtil invocation. The raw kernel log SHA-256 is
+`D14DAC42D6CEBED65313DE8A265E10B80D52CB57A33C0F79A888F625257948A4`.
+The new START's lower, local, interrupt-connect, all five interface-enable and
+final statuses were successful.
 
-An elevated 64-bit Windows PowerShell 5.1.19041.6456 host ran once from
-`2026-10-18T20:26:28.233Z` to `2026-10-18T20:26:29.595Z` and exited with code
-1. It created none of the gated active evidence files: no DebugView output,
-kernel log, capture-ready record, attempt marker, PnPUtil output, PnPUtil exit
-record or final result record. Therefore:
+Event 411 at `2026-10-19T16:53:33.8741035Z` occurred after the old driver
+completed REMOVE/unload and before the new driver's first entry/dispatch. It is
+a verified installation/PnP intermediate state, not a failure returned by the
+new driver's START. The exact internal Windows/PnP source of status
+`0xC00000BB` remains indeterminate.
 
-- DebugView and `Dbgv.sys` were not started;
-- `pnputil /add-driver ... /install` was not invoked;
-- the instrumented candidate was not staged, installed or loaded;
-- no installation-driven PnP START occurred; and
-- no `PNP_STATUS:` records were generated.
+Focused offline contracts pass: source/ABI 54/54, PnP/remove-lock 10/10,
+publication 38/38, DMA completion 39/39, interleavings 2/2, DMA stress
+5,000/5,000, INTEN 49/49 plus 1,000/1,000 stress, and ownership 17/17. No
+reproducible source defect was identified and the signed package was not
+rebuilt.
 
-The outer UAC launcher did not retain the elevated console exception. A later
-elevated reproduction using a harmless capture mock recovered the exact error:
-the process inventory rejected `LecTouchScreenCtrl.exe`. Its path contains
-`LeCroy\XStream`, and the one-off wrapper used the over-broad expression
-`ExecutablePath -match 'LeCroy.*XStream'`. The failure therefore occurred in
-the process inventory before the DebugView start statement. No retry was made.
+## Next boundary
 
-## Verified unchanged state
-
-At `2026-10-18T20:27:43Z`, the PCI device remained `OK` with problem code zero,
-bound to `oem17.inf` version `0.2026.1017.1`; the service remained running and
-the loaded SYS hash remained
-`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
-Each of the five legacy interface classes still exposed exactly one path for
-the target function. The SetupAPI device-install log retained its preflight
-length, last-write time and SHA-256, and no new relevant PnP, Code Integrity,
-UserPnp or System event was found.
-
-## Next authorization boundary
-
-Event 411 remains unattributed because no diagnostic START has occurred.
-Versioned launcher commit `4ef961154d9a90183728ac522380c1c789605a0b`
-completed the separately authorized `CaptureQualification` run once from
-`2026-10-19T16:27:35.0281130Z` through
-`2026-10-19T16:32:37.4560270Z`. Launcher and capture-child exit codes were zero,
-and the result records one capture invocation and zero installation
-invocations. The raw log contains 908 kernel records, including 861
-independently attributable `STORMINI: StorAHCI` messages, and has SHA-256
-`75C7DC09F0700908CD1C183EC7D76513224A88905FE4A838B7CDF7C36C241182`.
-This establishes the kernel-message capture path without relying on an empty
-log or user-mode messages.
-
-No DebugView process, `DBGV` system-driver instance or service registry key
-remained afterward. The device stayed `OK`, problem-free and bound to
-`oem17.inf` version `0.2026.1017.1`; the running production SYS retained SHA-256
-`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
-
-The next active gate is one separately authorized `InstallWithCapture` run. It
-requires a new evidence root and authorization identifier, a pinned local
-PnPUtil hash and renewed passive validation of package, rollback, process and
-device state. No installation, PnP transition, rollback, restart, reboot,
-device handle, IOCTL, MMIO, DMA, acquisition, EEPROM or FPGA operation is
-authorized by this handoff.
+No further PnP transition, reboot, Verifier activation, device handle, IOCTL,
+XStream, acquisition or DMA operation is authorized. The smallest next gate is
+one explicitly authorized, bounded R0 metadata-only IOCTL batch as specified in
+[`../ioctl-runtime-safety.md`](../ioctl-runtime-safety.md). A single captured
+PnP restart and targeted one-boot Driver Verifier are later independent gates.
+Rollback or package replacement also requires separate authorization.

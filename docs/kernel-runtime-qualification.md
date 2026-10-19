@@ -1,15 +1,14 @@
 # Phase 2C kernel-runtime qualification plan
 
-This is the execution procedure for development merge commit
-`cb5010a4712f25de7c56d23d0d7502683542058c`. Phase 2C completed the read-only
-audit, implemented the package-only workflow and created a validated unsigned
-package set. The owner has designated this WR6k Windows system as an
-expendable development/test host and accepts crash, reinstallation, local-data
-loss and hardware-damage risk. This replaces the former requirement for a
-separate disposable computer; it does not authorize private-key use,
-installation, Driver Verifier, PnP transitions, device handles, acquisition or
-DMA. Those remain separate gates. No signed package has been created and no
-candidate has been installed or loaded.
+This is the execution procedure for the Phase 2C WR6k test host. Kernel Runtime
+Qualification Batch 1 installed the frozen instrumented candidate once and
+completed its installation-induced START. The current package is `oem101.inf`,
+version `0.2026.1018.1`, with loaded SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`.
+The device is problem-free, the service is running, and the five compatibility
+interfaces are present. This established load, START and diagnostic status
+attribution only. Driver Verifier, any later PnP transition, device handles,
+IOCTLs, acquisition and DMA remain separate authorization gates.
 
 The six stages below are strictly ordered and independently authorized. An
 authorization for one stage does not authorize the next. Preserve the evidence
@@ -234,13 +233,95 @@ PASS requires five classes and five total present instances for the one PCI
 function. Stage 5 approval does not permit IOCTLs, Verifier, restart, disable,
 remove or rescan.
 
+## Kernel Runtime Qualification Batch 1 result
+
+The authorized `InstallWithCapture` operation ran exactly once on 2026-10-19
+from `2026-10-19T16:53:29.2283759Z` through
+`2026-10-19T16:58:32.8669865Z`. The elevated Windows PowerShell 5.1 launcher,
+capture child and PnPUtil all exited zero. PnPUtil published `oem101.inf` and
+bound it to the exact PCI function. There was one capture invocation, one
+installation invocation, no retry and no rollback.
+
+The 73,498-byte raw kernel log has SHA-256
+`D14DAC42D6CEBED65313DE8A265E10B80D52CB57A33C0F79A888F625257948A4`.
+It contains 691 records, including 32 `PNP_STATUS:` records from the
+instrumented driver. The new START recorded lower-stack completion and final
+status `STATUS_SUCCESS`, local START `STATUS_SUCCESS`, interrupt connection
+`STATUS_SUCCESS`, five successful indexed interface-enable operations and
+final START `STATUS_SUCCESS`.
+
+Kernel-PnP Event 400 was recorded at
+`2026-10-19T16:53:33.8422476Z`. Event 411 followed at
+`2026-10-19T16:53:33.8741035Z` with problem `0x15` and status
+`0xC00000BB`. The old driver had already received query-remove/remove, disabled
+all interfaces, disconnected its interrupt, completed teardown and unloaded by
+`16:53:33.873Z`. The replacement driver's `DriverEntry`/AddDevice and first PnP
+dispatch did not begin until `16:53:33.901Z`. Event 411 is therefore a
+**VERIFIED intermediate installation/PnP state**, not a status returned by the
+new replacement driver's START, interface publication or interrupt connection.
+The exact Windows component that supplied the event's `0xC00000BB` remains
+indeterminate. Later `STATUS_NOT_SUPPORTED` records are verified lower-stack
+responses to query requests, but they occurred after Event 411 and cannot be
+its source.
+
+SetupAPI completed the single device restart and overall installation with
+`SUCCESS`. No target Code Integrity, Service Control Manager or System error
+was found. The final device is `OK`, problem code zero, the service is running,
+the Driver Store INF/CAT/SYS match the frozen package, and each of the five
+interface classes exposes exactly one target path. DebugView and its temporary
+`DBGV` component were absent afterward. The unrelated Bonjour Code Integrity
+records in the interval are not LeCroy-driver evidence.
+
+The complete IOCTL side-effect review and the separately gated first runtime
+commands are in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved
 device handles/software-only controls and each PnP transition group. Do not
 infer that authorization from Stages 1–5.
 
-### 6A. Targeted Verifier
+### 6A. Bounded metadata and ABI requests
+
+The smallest next gate is the exact R0 batch documented in
+[Runtime IOCTL safety classification](ioctl-runtime-safety.md). It requires a
+new owner authorization for the listed device handles and IOCTLs. Run one
+command at a time with a five-second job-object timeout, no PnP transition and
+no Verifier. Capture pre/post device, service, interface and kernel-event
+snapshots. Do not include Dallas, event registration, register write,
+interrupt, acquisition or DMA controls.
+
+After R0 passes, authorize R1 separately: the bounded PCI-configuration query
+and reviewed START-register read. Stop on any timeout, unexpected length/value,
+device problem, service/interface change or new target kernel error.
+
+### 6B. Software lifetime checks
+
+After a separate approval, exercise bounded open/query/close lifetime using R0
+only. Run serially first, then a small fixed concurrency count. Cancellation
+must be limited to the supervised user-mode process tree; no PnP state change
+may occur while requests are open. Event-handle replacement, trace/stat clears
+and all R2/R3 requests remain excluded.
+
+A future pending-IRP path must prove exactly-once cancel completion and
+remove-lock release. Until an approved lower-stack fault-injection harness
+exists, pending lower PnP cancellation remains NOT RUN rather than PASS.
+
+### 6C. One controlled STOP/START
+
+Only after the handle tests close cleanly, authorize one exact-instance
+`pnputil /restart-device` operation under a fresh verified kernel capture. No
+device handle may remain open. Require STOP admission closure, five-interface
+withdrawal, remove-lock/IOCTL drain, IRQ disconnect, DPC/timer quiescence and
+no unavailable-state MMIO. START must again report lower/local/interrupt/final
+success and republish exactly five interfaces. Stop without retry or automatic
+rollback on any mismatch.
+
+Disable/enable, remove/rescan and true surprise removal are later independent
+matrices. Do not begin with repeated cycles. `pnputil /remove-device` is an
+orderly removal and must never be reported as surprise-removal coverage.
+
+### 6D. Targeted Verifier
 
 Target this driver only:
 
@@ -257,39 +338,23 @@ verification. Save `verifier /query`, `verifier /querysettings`, System events
 and dump state. A verifier finding or boot anomaly is immediate FAIL and invokes
 the proven rollback route.
 
-### 6B. Software/read-only lifetime checks
+Verifier activation, its one-boot setting and the reboot each require explicit
+authorization. Run the R0 lifetime batch first under Verifier; do not combine
+the first Verifier boot with a PnP cycle. Recovery requires console/WinRE access,
+`verifier /reset`, the preserved rollback package and separately authorized
+reboot or package replacement.
 
-Only after separate approval, run bounded concurrent open/query/close tests and
-the documented software-only 250-ms delay control while admission closes. Do
-not run the Hardware suite by default: even its zero-mask boundary may process
-an already pending source. No acquisition, DMA, nonzero interrupt mask or
-hardware register control is allowed.
+### 6E. Limited cancellation and teardown
 
-A future pending-IRP path must prove exactly-once cancel completion and
-remove-lock release. Until an approved lower-stack fault-injection harness
-exists, pending lower PnP cancellation remains NOT RUN rather than PASS.
+After the first clean Verifier boot, repeat only the bounded R0 open/query/close
+matrix. A later separately authorized single restart may test teardown with no
+open requests. Cancellation with requests deliberately held across STOP is not
+authorized until a reviewed software-only pending-request harness exists.
 
-### 6C. Orderly PnP matrix
+True surprise removal requires a hot-removal-capable chassis and its own risk
+review. If unavailable, record it as NOT RUN.
 
-Use the exact instance ID, never a class or hardware-ID wildcard:
-
-1. 100 disable/enable cycles, each bounded to 30 seconds.
-2. 25 `pnputil /restart-device "<exact-device-instance-id>"` cycles.
-3. 25 orderly remove/rescan cycles, re-resolving the instance ID after every
-   scan.
-
-At every STOP/REMOVE boundary require closure of new admission, five-interface
-unpublication, remove-lock rundown, interrupt disconnect, DPC/timer drain and
-no post-unavailable hardware access. Every START must restore exactly the five
-expected interfaces and no alias.
-
-True surprise removal is a separate optional authorization. It requires a
-hot-removal-capable test chassis and WR6k hardware with all
-acquisition and DMA disabled. `pnputil /remove-device` is orderly removal and
-must never be reported as surprise-removal coverage. If suitable hardware is
-unavailable, record surprise removal as NOT RUN.
-
-### 6D. DMA/quarantine boundary
+### 6F. DMA/quarantine boundary
 
 Do not launch DMA. Confirm from approved traces/counters that ordinary
 START/STOP/REMOVE never enters the WDM v3 adapter path or creates an adapter
