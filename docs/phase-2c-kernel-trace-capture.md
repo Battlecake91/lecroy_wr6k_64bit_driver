@@ -366,10 +366,11 @@ Real `Preflight` against the frozen candidate completed at
 No DebugView process, kernel capture component, PnPUtil invocation, Driver Store
 operation or PnP transition occurred.
 
-The next active command is `CaptureQualification`, not installation. It must be
-run from a clean worktree checked out at the separately approved launcher
-commit. The proposed attempt identity and new evidence directory below are not
-authorizations; they become usable only if the owner approves this exact run:
+The first real `CaptureQualification` run was separately authorized and was
+executed exactly once from an elevated 64-bit Windows PowerShell 5.1 host on
+2026-10-19. The command below is retained as the exact executed command; its
+authorization identifier and evidence root are consumed and must never be
+reused:
 
 ```powershell
 & 'C:\Users\LeCroyUser\.codex\worktrees\phase2c-instrumented-package\lecroy_wr6k_64bit_driver\scripts\invoke-diagnostic-capture-install.ps1' `
@@ -395,5 +396,50 @@ authorizations; they become usable only if the owner approves this exact run:
   -AuthorizeKernelCapture
 ```
 
-This command is proposed only. Running it still requires a new explicit owner
-authorization. `InstallWithCapture` remains a later, independent gate.
+The launcher began at `2026-10-19T16:27:35.0281130Z`, declared capture ready at
+`2026-10-19T16:27:37.3008418Z`, reached the configured 300-second duration
+limit, and completed at `2026-10-19T16:32:37.4560270Z`. Launcher and capture
+child exit codes were both zero. `result.json` records `Status=PASS`,
+`CaptureInvocations=1` and `InstallInvocations=0`. Its SHA-256 is
+`477B8B8B74CF502F84C0E4A1CDDA7FEFA462838C4E01A633128D0EE5BF6D835E`.
+The launcher stderr and exception logs are empty. The capture child's stderr
+contains only DebugView's expected duration-limit and capture-stopped notices.
+
+| Evidence file | Bytes | SHA-256 |
+|---|---:|---|
+| `capture-attempt.marker` | 269 | `FCAD7756C7C7B4C54C79C650270054493503677A53403F6FE59C4BC5ECF0A50D` |
+| `capture-child.log` | 96,887 | `F684A109FD101D0756299D7FC489D96BA62ED6A78B50C6C66533970F926E6D52` |
+| `capture-child.log.stdout.txt` | 96,750 | `87F6D8448B40A8DDE0927BE3F1AC6B26A5156F3CD828A53E505F5F9ECBC940CC` |
+| `capture-child.log.stderr.txt` | 62 | `61BAE908A8009EDCCC3AB4788E753D101569E4BFB72CD960E12F5C494FAC9A7C` |
+| `capture-ready.json` | 307 | `C39CF2E15CBAB715EBD10D84D8A2033BB1D6283558EC8AB85D0667A7BA396A2D` |
+| `kernel-capture.log` | 95,733 | `75C7DC09F0700908CD1C183EC7D76513224A88905FE4A838B7CDF7C36C241182` |
+| `launcher.stdout.txt` | 168 | `FA72B6869D2E0C7BB18FA2AE1D7BF4C71FD168312C04B285D2828B05A2E63C5E` |
+| `launcher.stderr.txt` | 0 | `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` |
+| `launcher.exception.txt` | 0 | `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` |
+| `result.json` | 292 | `477B8B8B74CF502F84C0E4A1CDDA7FEFA462838C4E01A633128D0EE5BF6D835E` |
+
+The 95,733-byte raw kernel log has SHA-256
+`75C7DC09F0700908CD1C183EC7D76513224A88905FE4A838B7CDF7C36C241182`.
+It contains 908 records: 861 independently attributable
+`STORMINI: StorAHCI` messages and 47 `KTM` messages. Win32 capture was disabled,
+so these records prove that the selected DebugView path received kernel debug
+output; an empty or user-mode-only log was not accepted. The first record is at
+16:27:37.682 and the last at 16:32:36.595. No PnP operation was performed and,
+as expected, this capture-only run contains no instrumented-driver
+`PNP_STATUS:` record.
+
+After completion no DebugView process, `DBGV` system-driver instance or
+`HKLM\SYSTEM\CurrentControlSet\Services\DBGV` key remained. The LeCroy device
+remained `OK` with problem code zero, bound to `oem17.inf` version
+`0.2026.1017.1`; `LecS65AcqDrv` remained running and the loaded SYS SHA-256
+remained
+`F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D`.
+
+Kernel-capture readiness is therefore verified. `InstallWithCapture` remains a
+separate active gate. Before it can run, the owner must approve one exact
+installation attempt, a new non-existing evidence root and authorization ID
+must be selected, the installed `pnputil.exe` SHA-256 must be pinned, and all
+package, rollback, process and current-device preflight checks must pass. The
+mode must start and verify capture before invoking PnPUtil, must not retry, and
+must stop on the first capture, signature, package, installation or PnP
+failure.

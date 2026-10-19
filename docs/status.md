@@ -142,13 +142,20 @@
   `oem17.inf`, device `OK`, problem code zero, the production SYS hash, the
   running service, five published interfaces and a byte-identical SetupAPI log;
   no new relevant event was found. Event 411 therefore remains indeterminate.
-  Versioned launcher commit `4ef9611` now uses exact blocked executable names,
+  Versioned launcher commit `4ef9611` uses exact blocked executable names,
   persists exception evidence before child startup, bounds child trees and
   separates `Preflight`, `CaptureQualification` and `InstallWithCapture`.
   Elevated Windows PowerShell 5.1 mocks pass 18/18, source contracts pass 54/54
-  and real passive preflight passes with zero capture/install invocations. Any
-  further capture or instrumented installation requires fresh explicit
-  authorization. See the
+  and real passive preflight passes. The separately authorized real
+  `CaptureQualification` run then passed once with launcher and child exit code
+  zero, one capture invocation and no installation invocation. Its 300-second
+  raw log contains 908 kernel records (861 attributable to `STORMINI: StorAHCI`
+  and 47 to `KTM`) and has SHA-256
+  `75C7DC09F0700908CD1C183EC7D76513224A88905FE4A838B7CDF7C36C241182`.
+  DebugView and its temporary `DBGV` component were absent afterward, while
+  `oem17.inf`, device status, service state and the production SYS hash remained
+  unchanged. Kernel capture is qualified; an instrumented installation remains
+  separately authorization-gated. See the
   [instrumented-installation handoff](handoffs/phase-2c-instrumented-installation.md).
 
 ## DMA/PnP staging
