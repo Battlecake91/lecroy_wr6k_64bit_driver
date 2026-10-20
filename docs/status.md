@@ -127,8 +127,21 @@
   zero-length raw input offline; rebuilt x64 SHA-256 is
   `ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
   Source/safety contracts pass 59/59 and the event/interface lifetime audit
-  model passes 6/6. No driver source or installed image changed. Any remaining
-  R0/R1 execution needs a new authorization bound to the rebuilt utility.
+  model passes 19/19. No driver source or installed image changed.
+- Kernel Runtime Qualification Batch 2C proved the complete PowerShell 5.1 to
+  native argument parser to IOCTL-buffer path with a mock Win32 boundary:
+  all nine R0 command forms, both R1 command forms and five malformed-input
+  cases passed 16/16 without opening the real device. The live gate then
+  stopped before opening any device handle. A reboot outside this test had
+  left `oem101.inf` selected but the device at problem code 52, the service
+  stopped, all five interfaces disabled and the PCI location changed from the
+  authorized 4:1.0 baseline to 5:1.0. Code Integrity event 3004 rejected the
+  otherwise hash-identical signed SYS and Kernel-PnP event 219 recorded the
+  failed load. R0-5 through R0-9 and both R1 reads were therefore **NOT RUN**.
+  No retry, repair, PnP action or hardware request occurred. The precise boot
+  policy that caused the local test signature rejection remains unproven.
+  Restoring a healthy approved baseline, and then any new runtime IOCTL batch,
+  are separate future authorization gates.
 
 ## DMA/PnP staging
 

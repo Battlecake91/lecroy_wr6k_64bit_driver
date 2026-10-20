@@ -97,6 +97,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-pnp-irp-lifetime.ps1")
     }
 
+    Invoke-Step "lecdiag command-chain mock tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-lecdiag-command-chain.ps1")
+    }
+
     Invoke-Step "Legacy event and interface lifetime audit (no hardware)" {
         & (Join-Path $repo "tests\dry\test-runtime-lifetime-audit.ps1")
     }

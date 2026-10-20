@@ -210,3 +210,28 @@ source contracts pass 59/59. This hash has never been used for a live request.
 The next runtime authorization must name it explicitly. Private evidence is
 retained outside the public repository; final evidence-manifest SHA-256 is
 `3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.
+
+## Kernel Runtime Qualification Batch 2C stopped preflight
+
+The exact production `lecdiag.c` was compiled behind a fake Win32 device
+boundary and invoked through the production Windows PowerShell 5.1 process
+runner. All nine R0 and both R1 command shapes reached the expected mocked
+IOCTL with exact input/output lengths. The matrix also proved preservation of
+an explicit empty argument, four zero input bytes for `00000000`, the two
+four-byte outputs, R1 PCI structure size 84, both START-register calls and
+failure-before-`DeviceIoControl` for five malformed cases. Result: 16/16 PASS.
+
+The following live preflight did not meet the approved baseline. At
+`2026-10-20T18:02:18.1588646Z` the selected package was still `oem101.inf`,
+version `0.2026.1018.1`, and the installed SYS file retained SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`.
+The device nevertheless reported problem code 52, the service was stopped,
+the five interface instances were disabled, and enumeration reported BDF
+5:1.0 rather than the authorized 4:1.0 baseline. System evidence records a
+successful intervening boot, Code Integrity event 3004 for
+`LecS65AcqDrv.sys`, and Kernel-PnP event 219 for the failed service load.
+
+The gate therefore stopped before any device path was opened. R0-5 through
+R0-9 and both conditional R1 commands are NOT RUN. The event evidence proves
+the Code Integrity rejection; it does not by itself prove which boot-policy
+setting caused it. No repair, retry, PnP action or IOCTL is part of this result.

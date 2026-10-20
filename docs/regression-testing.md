@@ -823,15 +823,26 @@ and avoids a zero-byte allocation. The rebuilt x64 utility has SHA-256
 `ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
 
 `test-runtime-lifetime-audit.ps1` is part of Dry mode. Its native model covers
-event-reference survival after user handle close, both serialized DPC/event
-replacement orderings, teardown detach-before-dereference and an injected
-single interface-enable failure. Source contracts bind those modeled orderings
-to the corresponding production paths.
+event-reference survival after user handle close, serialized DPC/event
+replacement orderings, close and teardown races; first, middle, last and
+multiple interface-enable failures plus idempotent partial teardown; and the
+proposed per-process DMA open-reference rule, including final-close retirement
+and `UnknownActive` retention. Source contracts bind existing event/interface
+ordering to production. The DMA portion is a design characterization, not a
+claim that the current driver implements the proposed open-reference state.
+
+`test-lecdiag-command-chain.ps1` compiles the exact production `lecdiag.c`
+behind a fake Win32 device boundary and invokes it with the production native
+process runner. It verifies all nine R0 and both R1 argument/IOCTL shapes plus
+five negative cases under Windows PowerShell 5.1. Optional `-EvidenceRoot`
+preserves the mock executable, separate runner logs and a result record in a
+new, non-overwriting directory.
 
 | Suite | Result |
 |---|---:|
 | Source and safety contracts | 59/59 PASS |
-| Runtime event/interface lifetime audit | 6/6 PASS |
+| lecdiag R0/R1 command-chain mock | 16/16 PASS |
+| Runtime event/interface/DMA lifetime audit | 19/19 PASS |
 | Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
 | PnP IRP/remove-lock lifetime | 10/10 PASS |
 | PnP interface publication | 38/38 PASS |

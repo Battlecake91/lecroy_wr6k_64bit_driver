@@ -947,13 +947,24 @@ quarantine; it is a lifetime and compatibility gap for idle registrations.
 The source comment describes cleanup on the last process close, but no
 per-process open count or per-file ownership exists. Changing token ownership
 to file objects would prevent cross-handle use and may break the legacy ABI.
-Adding a process-open table would preserve process sharing but adds allocation,
-CREATE-failure, CLOSE, STOP and REMOVE rundown states that are not currently
-modeled. Neither design is sufficiently established for a minimal production
-patch while physical DMA remains inactive and unqualified. The required next
-step is an offline per-process-count design with allocation-failure and
-CREATE/CLOSE/REMOVE interleavings, followed by driver builds and full ownership
-stress before any deployment proposal.
+The narrow ABI-compatible behavior is a per-process open-reference table.
+CREATE must record the originating process identity on the file object and
+increment that process entry; CLOSE must decrement that recorded identity and
+retire inactive registrations only at the last reference. CLEANUP alone must
+not retire process-shared registrations. STOP, surprise removal and REMOVE
+must still release only registrations proven inactive; `UnknownActive`
+mappings remain quarantined. A 19/19 deterministic characterization model now
+covers first/final CLOSE, CLEANUP, PnP teardown and quarantine alongside the
+event/interface cases.
+
+This model is not a production patch. A safe implementation also needs
+transactional CREATE rollback, nonpaged per-file/process state, synchronization
+with concurrent registration and close, process-context-independent CLOSE and
+remove-time rundown. Moving the release call mechanically from CLOSE to
+CLEANUP or switching to file-object ownership would either remain unsafe or
+change the legacy sharing ABI. Driver source remains unchanged until those
+ownership rules are implemented and reviewed together; builds and ownership
+stress then precede any deployment proposal.
 
 ## Remaining P0 work, no shortcuts
 

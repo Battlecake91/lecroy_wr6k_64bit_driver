@@ -357,16 +357,22 @@ The independent lifetime audit reached these classifications:
   is proven safe enough for a minimal production patch while DMA is inactive.
 - Interface enable remains continue-on-error. A one-failure fault model proves
   that it can leave four published classes and still permit START to continue.
-  The all-five runtime START succeeded, so compatibility impact of failing START
-  is not established. Production behavior remains unchanged pending an explicit
-  compatibility decision and direct fault injection.
+  Expanded first, middle, last and multiple-failure models plus STOP/REMOVE
+  teardown all pass. The original image proves four registrations and passive
+  XStream evidence proves the fifth endpoint is required, but neither proves
+  the original driver's response to an enable failure. Failing START or rolling
+  back successful classes could therefore change compatibility. Production
+  behavior remains unchanged pending direct lower-stack fault injection and an
+  explicit compatibility decision.
 - Event slots are intentionally FDO-global. Registration references the new
   object before publication, swaps under the DPC-shared lock and dereferences
   the old object after the swap. Handle close does not stale the referenced
-  object. A 6/6 host interleaving model covers handle close, both DPC/replacement
-  orderings, teardown and partial interface activation. Concurrent clients can
-  replace each other's notification target; this is an ABI semantic risk, not
-  an object-lifetime defect established by current evidence.
+  object. A 19/19 host model covers multiple handles, both serialized
+  DPC/replacement orderings, DPC during close, STOP/REMOVE during replacement,
+  partial interface activation and the DMA ownership design cases. Concurrent
+  clients can replace each other's notification target; device-global slots
+  match the recovered device-object storage and are therefore intentional
+  legacy semantics, not a demonstrated object-lifetime defect.
 - DEVICE_CONTROL completes synchronously and contains no pending/cancel path.
   Adding one solely for Verifier would create new ABI/lifetime behavior rather
   than fix a demonstrated defect. Pending lower-PnP forwarding remains covered
@@ -375,6 +381,31 @@ The independent lifetime audit reached these classifications:
 No driver source changed, so driver rebuilds and DMA/INTEN stress reruns were
 not warranted. The private final evidence-manifest SHA-256 is
 `3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.
+
+### Batch 2C offline proof and live stop
+
+The production PowerShell 5.1 runner and exact `lecdiag.c` parser completed a
+fake-device end-to-end matrix before any live operation. All nine R0 command
+forms, both R1 forms and five malformed inputs passed 16/16. Exact mocked
+request codes and lengths included the explicit zero-length inputs, four zero
+delay bytes, the 84-byte PCI output and both START-register reads.
+
+The live preflight then failed closed. A successful host boot outside this
+test was followed by Code Integrity event 3004 rejecting
+`LecS65AcqDrv.sys` and Kernel-PnP event 219 recording the failed driver load.
+The package identity and SYS file hash remained correct, but the device was at
+problem code 52, `LecS65AcqDrv` was stopped, all five interfaces were disabled
+and PCI enumeration reported 5:1.0 instead of the authorized 4:1.0 baseline.
+No device handle was opened and none of R0-5 through R0-9 or R1 executed.
+
+This evidence proves a post-boot Code Integrity load rejection, not its exact
+boot-policy cause. Any action that changes boot configuration, loads/restarts
+the driver or otherwise restores PnP state requires a new explicit approval.
+Only after a healthy baseline is re-established can a separately authorized
+R0/R1 batch be considered; prior authorization was not used to bypass the
+failed gate. Private evidence remains outside the public repository; its final
+manifest SHA-256 is
+`AD1732D26E8D8C114A165FD7E661C8B0D3C5A4EDC8A76451940A220DCF4F722A`.
 
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 

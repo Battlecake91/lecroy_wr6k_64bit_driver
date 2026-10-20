@@ -346,7 +346,10 @@ Test-Contract "legacy event and interface audit models match production ordering
     $auditModel = Get-Content -LiteralPath (Join-Path $PSScriptRoot "test-runtime-lifetime-audit.c") -Raw
     $auditModel -match 'reference-before-publish' -and
     $auditModel -match 'DPC signaling while the production LegacyEventLock is held' -and
-    $auditModel -match 'current continue-on-error policy leaves partial publication' -and
+    $auditModel -match 'middle interface failure preserves current continue-on-error policy' -and
+    $auditModel -match 'partial publication teardown is idempotent' -and
+    $auditModel -match 'first same-process CLOSE preserves inactive DMA registration' -and
+    $auditModel -match 'UnknownActive remains quarantined while physical bus-idle is unproven' -and
     $deviceText -match '(?s)IoSetDeviceInterfaceState\(&DevExt->InterfaceLink\[i\], TRUE\).*?if \(NT_SUCCESS\(status\)\).*?InterfaceEnabled\[i\] = TRUE.*?else.*?enable failed' -and
     $ioctlText -match '(?s)ObReferenceObjectByHandle.*?KeAcquireSpinLock\(&DevExt->LegacyEventLock.*?\*Slot = eventObject.*?KeReleaseSpinLock.*?ObDereferenceObject\(oldEvent\)'
 }
