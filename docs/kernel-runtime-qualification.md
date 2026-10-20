@@ -330,6 +330,52 @@ empty native arguments. Results are source/safety 57/57, PnP IRP lifetime
 10/10, publication 38/38 and DMA ownership 17/17. No driver implementation
 changed, so driver builds and DMA/INTEN stress reruns were not justified.
 
+### Batch 2B stopped result and lifetime follow-up
+
+Batch 2B attempted only the next authorized R0 command. The process runner
+preserved the empty positional argument, but the reviewed `lecdiag` binary
+opened the interface and rejected an empty hex payload in user mode. Exit code
+2 occurred before `DeviceIoControl`; commands 6–9 and R1 were not run. The
+post-stop device state matched the baseline and the exact 29.3-second interval
+contained no System, Kernel-PnP or Code Integrity event.
+
+The defect was in the diagnostic utility rather than the driver or process
+runner. The offline fix accepts a zero-length payload deterministically and
+initializes both output fields before returning. The rebuilt x64 utility hash is
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
+It has not been used against the device. Source contracts pass 59/59; a new
+hardware authorization must bind to this hash.
+
+The independent lifetime audit reached these classifications:
+
+- Process identity is part of every transfer token lookup, but CLOSE has no
+  file-object or per-process open-count state. The first close from a process
+  can therefore free that process's idle registrations while another handle in
+  the same process remains open. This contradicts the source comment's
+  last-process-close claim. A per-file ownership change would alter the legacy
+  sharing ABI; a per-process count needs new allocation/rundown state. Neither
+  is proven safe enough for a minimal production patch while DMA is inactive.
+- Interface enable remains continue-on-error. A one-failure fault model proves
+  that it can leave four published classes and still permit START to continue.
+  The all-five runtime START succeeded, so compatibility impact of failing START
+  is not established. Production behavior remains unchanged pending an explicit
+  compatibility decision and direct fault injection.
+- Event slots are intentionally FDO-global. Registration references the new
+  object before publication, swaps under the DPC-shared lock and dereferences
+  the old object after the swap. Handle close does not stale the referenced
+  object. A 6/6 host interleaving model covers handle close, both DPC/replacement
+  orderings, teardown and partial interface activation. Concurrent clients can
+  replace each other's notification target; this is an ABI semantic risk, not
+  an object-lifetime defect established by current evidence.
+- DEVICE_CONTROL completes synchronously and contains no pending/cancel path.
+  Adding one solely for Verifier would create new ABI/lifetime behavior rather
+  than fix a demonstrated defect. Pending lower-PnP forwarding remains covered
+  separately.
+
+No driver source changed, so driver rebuilds and DMA/INTEN stress reruns were
+not warranted. The private final evidence-manifest SHA-256 is
+`3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved

@@ -934,6 +934,27 @@ software implementation releases that never-launched allocation through the
 same required primitive; actual HAL/IOMMU behavior, chained-MDL handling and
 teardown ordering remain unverified until controlled kernel tests are possible.
 
+### Process-close ownership boundary
+
+Legacy registered transfers are keyed by opaque token plus process identity.
+The current CLOSE path nevertheless calls `LecReleaseTransfersForProcess` on
+every file-object close from that process. With two open handles in one process,
+closing either handle can therefore unlink and free every idle registration
+that the other handle can still address. Selected and `DmaUnsafeToFree`
+transfers remain protected, so this is not a route around the active-DMA
+quarantine; it is a lifetime and compatibility gap for idle registrations.
+
+The source comment describes cleanup on the last process close, but no
+per-process open count or per-file ownership exists. Changing token ownership
+to file objects would prevent cross-handle use and may break the legacy ABI.
+Adding a process-open table would preserve process sharing but adds allocation,
+CREATE-failure, CLOSE, STOP and REMOVE rundown states that are not currently
+modeled. Neither design is sufficiently established for a minimal production
+patch while physical DMA remains inactive and unqualified. The required next
+step is an offline per-process-count design with allocation-failure and
+CREATE/CLOSE/REMOVE interleavings, followed by driver builds and full ownership
+stress before any deployment proposal.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.

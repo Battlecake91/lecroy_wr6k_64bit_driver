@@ -39,17 +39,20 @@ a verified installation/PnP intermediate state, not a failure returned by the
 new driver's START. The exact internal Windows/PnP source of status
 `0xC00000BB` remains indeterminate.
 
-Kernel Runtime Qualification Batch 2 privately retained its runtime evidence at
-`C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-KernelRuntimeBatch2-R0R1-20261019-attempt1`.
-The first four R0 commands passed once. The fifth did not reach `lecdiag` or the
-driver because the PowerShell runner rejected its required empty argument.
-Commands 6–9 were not attempted, R1 was skipped and no retry occurred. The
-post-stop state remained identical to the current runtime state above.
+Kernel Runtime Qualification Batch 2 passed its first four R0 commands once.
+Batch 2B then attempted command 5 once with the corrected runner. `lecdiag`
+opened the approved interface but rejected its explicit zero-length hex input
+and exited 2 before `DeviceIoControl`. Commands 6–9 and R1 were skipped; no
+retry occurred. The exact interval had no System, Kernel-PnP or Code Integrity
+event, and the post-stop state remains identical to the current runtime state
+above.
 
-The runner compatibility defect is fixed offline and mock-tested under Windows
-PowerShell 5.1 and PowerShell 7. Current focused contracts pass: source/safety
-57/57, PnP/remove-lock 10/10, publication 38/38 and ownership 17/17. Driver
-sources and the signed package were not rebuilt.
+The utility parser now accepts zero-length raw input offline. Rebuilt x64
+`lecdiag.exe` SHA-256 is
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`;
+it has not issued a live request. Focused contracts pass: source/safety 59/59,
+event/interface lifetime audit 6/6, PnP/remove-lock 10/10, publication 38/38
+and ownership 17/17. Driver sources and the installed package were not changed.
 
 Source review also established two deferred lifetime gaps: CLOSE releases all
 DMA registrations for the process on every handle close rather than a proven
@@ -61,9 +64,8 @@ changed in this workstream.
 
 No further PnP transition, reboot, Verifier activation, device handle, IOCTL,
 XStream, acquisition or DMA operation is authorized. The smallest next gate is
-one explicit authorization for only the five unexecuted R0 commands in
-[`../ioctl-runtime-safety.md`](../ioctl-runtime-safety.md), followed
-conditionally by the two R1 reads. The four passed commands should not be
-repeated merely to rebuild one transcript. A single captured PnP restart and
-targeted one-boot Verifier configuration remain later independent gates.
-Rollback or package replacement also requires separate authorization.
+one explicit authorization for only R0 commands 5–9 using the rebuilt utility
+hash above, followed conditionally by the two R1 reads. The four passed commands
+must not be repeated merely to rebuild one transcript. A single captured PnP
+restart and targeted one-boot Verifier configuration remain later independent
+gates. Rollback or package replacement also requires separate authorization.

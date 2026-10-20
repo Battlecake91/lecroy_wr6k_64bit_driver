@@ -1212,6 +1212,13 @@ static int parse_hex_bytes(
         return 1;
     }
 
+    *bytesOut = NULL;
+    *lengthOut = 0;
+
+    if (text[0] == '\0') {
+        return 0;
+    }
+
     for (i = 0; text[i] != '\0'; ++i) {
         if (hex_nibble(text[i]) >= 0) {
             ++digits;

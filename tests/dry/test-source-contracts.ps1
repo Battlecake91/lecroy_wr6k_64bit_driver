@@ -39,12 +39,13 @@ $pnpIrpSource = Join-Path $repo "driver\PnpIrpLifetime.c"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $driverInf = Join-Path $repo "driver\LecS65AcqDrv.inf"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
+$lecdiagSource = Join-Path $repo "tools\lecdiag\lecdiag.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 $nativeProcess = Join-Path $repo "scripts\native-process.ps1"
 $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -77,6 +78,7 @@ $pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
+$lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 $diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
@@ -338,6 +340,15 @@ Test-Contract "legacy event replacement and teardown retain exact object lifetim
     $release.Value -match '(?s)KeAcquireSpinLock.*?LegacyEvent0 = NULL.*?LegacyEvent4 = NULL.*?KeReleaseSpinLock.*?ObDereferenceObject' -and
     ([regex]::Matches($deviceText,
         '(?s)LecQuiesceDeferredWork\(.*?LecReleaseLegacyEvents').Count -ge 3)
+}
+
+Test-Contract "legacy event and interface audit models match production ordering" {
+    $auditModel = Get-Content -LiteralPath (Join-Path $PSScriptRoot "test-runtime-lifetime-audit.c") -Raw
+    $auditModel -match 'reference-before-publish' -and
+    $auditModel -match 'DPC signaling while the production LegacyEventLock is held' -and
+    $auditModel -match 'current continue-on-error policy leaves partial publication' -and
+    $deviceText -match '(?s)IoSetDeviceInterfaceState\(&DevExt->InterfaceLink\[i\], TRUE\).*?if \(NT_SUCCESS\(status\)\).*?InterfaceEnabled\[i\] = TRUE.*?else.*?enable failed' -and
+    $ioctlText -match '(?s)ObReferenceObjectByHandle.*?KeAcquireSpinLock\(&DevExt->LegacyEventLock.*?\*Slot = eventObject.*?KeReleaseSpinLock.*?ObDereferenceObject\(oldEvent\)'
 }
 
 Test-Contract "PnP remove is drained before deleting device" {
@@ -780,6 +791,13 @@ Test-Contract "package workflow is installation- and device-operation-free" {
 Test-Contract "native process runner admits and quotes explicit empty arguments" {
     $nativeProcessText -match '\[AllowEmptyCollection\(\)\]\[AllowEmptyString\(\)\]\[string\[\]\]\$Arguments' -and
     $nativeProcessText -match 'if \(value\.Length == 0\)\s*return "\\"\\"";'
+}
+
+Test-Contract "lecdiag raw IOCTL parser accepts an explicit zero-length input" {
+    $lecdiagText -match '\*bytesOut\s*=\s*NULL\s*;' -and
+    $lecdiagText -match '\*lengthOut\s*=\s*0\s*;' -and
+    $lecdiagText -match "(?s)if\s*\(text\[0\]\s*==\s*'\\0'\)\s*\{\s*return\s+0\s*;\s*\}" -and
+    $lecdiagText -match 'digits\s*==\s*0\s*\|\|'
 }
 
 Test-Contract "package workflow pins reviewed source and toolchain" {

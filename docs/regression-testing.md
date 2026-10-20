@@ -814,6 +814,32 @@ native arguments. The change affects only the offline process runner and tests;
 driver implementation code did not change. DMA/INTEN stress and driver rebuilds
 were therefore not repeated.
 
+## Kernel Runtime Qualification Batch 2B focused checks
+
+The corrected runner reached `lecdiag`, which then rejected the authorized
+zero-length raw payload before issuing an IOCTL. `parse_hex_bytes` now treats an
+explicit empty string as a valid zero-byte input, initializes its two outputs
+and avoids a zero-byte allocation. The rebuilt x64 utility has SHA-256
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
+
+`test-runtime-lifetime-audit.ps1` is part of Dry mode. Its native model covers
+event-reference survival after user handle close, both serialized DPC/event
+replacement orderings, teardown detach-before-dereference and an injected
+single interface-enable failure. Source contracts bind those modeled orderings
+to the corresponding production paths.
+
+| Suite | Result |
+|---|---:|
+| Source and safety contracts | 59/59 PASS |
+| Runtime event/interface lifetime audit | 6/6 PASS |
+| Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
+| PnP IRP/remove-lock lifetime | 10/10 PASS |
+| PnP interface publication | 38/38 PASS |
+| DMA ownership | 17/17 PASS |
+
+Only the user-mode utility, tests and documentation changed. No driver build,
+DMA/INTEN stress rerun, signing, installation or live retry was performed.
+
 
 ## Read-only XStream COM object scanner
 

@@ -97,6 +97,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-pnp-irp-lifetime.ps1")
     }
 
+    Invoke-Step "Legacy event and interface lifetime audit (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-runtime-lifetime-audit.ps1")
+    }
+
     Invoke-Step "Live DMA completion-state tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-completion.ps1")
     }

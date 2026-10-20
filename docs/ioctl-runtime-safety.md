@@ -182,3 +182,31 @@ The private evidence-manifest SHA-256 is
 `78D3C40B85F1885A0B9AC20EA1859A65BC5E5599675C775E5DB763E40259652A`;
 the R0 result-record SHA-256 is
 `B14326835689C647D57A698509A7EA9AC0654E6ED6EB9BAF409D57FC42A28F90`.
+
+## Kernel Runtime Qualification Batch 2B result
+
+Batch 2B authorized commands 5–9 and conditionally the two R1 reads. Preflight
+again proved `oem101.inf`, version `0.2026.1018.1`, the approved loaded SYS,
+problem code zero, a running service, five single enabled interfaces, closed
+acquisition clients and the hash-identical `oem100.inf` rollback export. The
+corrected runner passed its Windows PowerShell 5.1 compatibility suite 26/26.
+
+Command 5 ran once with the reviewed argument vector. `lecdiag` opened the
+approved interface and then exited 2 with `invalid input hex`; source inspection
+proved that `parse_hex_bytes` rejected `digits == 0`. It did not call
+`DeviceIoControl`, so no command-5 IOCTL reached the driver. The stop rule
+therefore prohibited commands 6–9 and both R1 reads. No retry occurred.
+
+The exact UTC interval from `2026-10-20T16:52:32.1040864Z` through
+`2026-10-20T16:53:01.3960437Z` contains no System, Kernel-PnP or Code Integrity
+event. INF, version, problem code, service, loaded SYS and all five interface
+counts are identical before and after the stopped attempt.
+
+The offline utility correction initializes an empty result and accepts an
+explicit zero-length string without allocation. The rebuilt x64 utility has
+SHA-256
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`;
+source contracts pass 59/59. This hash has never been used for a live request.
+The next runtime authorization must name it explicitly. Private evidence is
+retained outside the public repository; final evidence-manifest SHA-256 is
+`3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.

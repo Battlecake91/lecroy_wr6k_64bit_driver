@@ -116,18 +116,19 @@
   source or signed package change was made. Device handles, IOCTLs, later PnP
   transitions, Verifier, reboot, XStream, acquisition and DMA remain separate
   gates. See the [IOCTL safety classification](ioctl-runtime-safety.md).
-- Kernel Runtime Qualification Batch 2 passed four authorized R0 commands once:
+- Kernel Runtime Qualification Batch 2 established four passing R0 commands:
   build `1002`, debug stats version `1`, BAR lengths
-  `0x200 / 0x40000 / 0x200`, and trace version `3`. The fifth command was not
-  launched because the bounded PowerShell runner rejected its required empty
-  raw-input argument during parameter binding. Commands 6–9 were not attempted,
-  R1 remained gated and no retry occurred. Pre/post device state was identical
-  and no event was recorded in the exact test interval. The runner now supports
-  explicit empty arguments; PowerShell 5.1 and 7 mocks each pass 26/26.
-  Source/safety contracts now pass 57/57, PnP/remove-lock 10/10, publication
-  38/38 and ownership 17/17. Driver sources and the installed image are
-  unchanged. Remaining R0 commands and conditional R1 reads need a new owner
-  authorization.
+  `0x200 / 0x40000 / 0x200`, and trace version `3`. Batch 2B then attempted the
+  fifth command once. The corrected runner preserved the empty argument, but
+  `lecdiag` rejected zero hex digits before `DeviceIoControl` and exited 2.
+  Commands 6–9 and both R1 reads were not run. The exact interval contained no
+  System, Kernel-PnP or Code Integrity event; the device, service, loaded SYS
+  and five interfaces remained unchanged. `lecdiag` now accepts explicit
+  zero-length raw input offline; rebuilt x64 SHA-256 is
+  `ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
+  Source/safety contracts pass 59/59 and the event/interface lifetime audit
+  model passes 6/6. No driver source or installed image changed. Any remaining
+  R0/R1 execution needs a new authorization bound to the rebuilt utility.
 
 ## DMA/PnP staging
 
