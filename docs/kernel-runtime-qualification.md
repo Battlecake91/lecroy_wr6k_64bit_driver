@@ -398,9 +398,15 @@ problem code 52, `LecS65AcqDrv` was stopped, all five interfaces were disabled
 and PCI enumeration reported 5:1.0 instead of the authorized 4:1.0 baseline.
 No device handle was opened and none of R0-5 through R0-9 or R1 executed.
 
-This evidence proves a post-boot Code Integrity load rejection, not its exact
-boot-policy cause. Any action that changes boot configuration, loads/restarts
-the driver or otherwise restores PnP state requires a new explicit approval.
+The follow-up elevated read-only signing audit established the boot-policy
+cause. The active `{current}` EFI/BCD loader contains no `testsigning` element,
+whereas retained pre-install evidence recorded `testsigning Yes` on the prior
+boot path. Code Integrity and Kernel-PnP recorded `0xC0000428`; package hashes,
+local Authenticode, local chain and catalog membership remain valid. Secure
+Boot, VBS, HVCI and WDAC are inactive. See
+[Code 52 signing recovery](code52-signing-recovery.md). Any action that changes
+boot configuration, reboots, loads/restarts the driver or otherwise restores
+PnP state requires a new explicit approval.
 Only after a healthy baseline is re-established can a separately authorized
 R0/R1 batch be considered; prior authorization was not used to bypass the
 failed gate. Private evidence remains outside the public repository; its final
@@ -415,7 +421,13 @@ infer that authorization from Stages 1–5.
 
 ### 6A. Bounded metadata and ABI requests
 
-The smallest next gate is a new authorization for the five R0 commands that did
+Before any runtime authorization, run `scripts/test-runtime-baseline.ps1`.
+Selection must match the exact full hardware ID and instance ID. BDF/location
+is recorded only as mutable topology evidence; a changed value fails pending
+explicit acknowledgement but never selects a different device.
+
+The smallest runtime gate after a healthy passive baseline is a new
+authorization for the five R0 commands that did
 not run in Batch 2: the two no-ops, two four-byte size queries and zero-delay
 request documented in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
 Run each once with the corrected, qualified runner and a five-second timeout,

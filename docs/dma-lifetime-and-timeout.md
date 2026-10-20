@@ -955,7 +955,12 @@ not retire process-shared registrations. STOP, surprise removal and REMOVE
 must still release only registrations proven inactive; `UnknownActive`
 mappings remain quarantined. A 19/19 deterministic characterization model now
 covers first/final CLOSE, CLEANUP, PnP teardown and quarantine alongside the
-event/interface cases.
+event/interface cases. A separate 22/22 process/file-object model expands the
+proposed rule to transactional CREATE rollback, explicit file association,
+two handles in one process, independent processes, both serialized
+registration/CLOSE outcomes, duplicate CLOSE, surprise removal and
+CREATE/removal ordering. It retains `UnknownActive` after final CLOSE and
+teardown because no tested software event proves physical DMA retirement.
 
 This model is not a production patch. A safe implementation also needs
 transactional CREATE rollback, nonpaged per-file/process state, synchronization

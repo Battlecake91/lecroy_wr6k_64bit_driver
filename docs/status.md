@@ -138,10 +138,27 @@
   authorized 4:1.0 baseline to 5:1.0. Code Integrity event 3004 rejected the
   otherwise hash-identical signed SYS and Kernel-PnP event 219 recorded the
   failed load. R0-5 through R0-9 and both R1 reads were therefore **NOT RUN**.
-  No retry, repair, PnP action or hardware request occurred. The precise boot
-  policy that caused the local test signature rejection remains unproven.
+  No retry, repair, PnP action or hardware request occurred. A subsequent
+  elevated read-only audit established that the active EFI/BCD loader entry
+  has no `testsigning` element. The unchanged locally test-signed image was
+  rejected with `0xC0000428`; Secure Boot, VBS, HVCI and WDAC are not active
+  blockers. The same stable device instance was enumerated at 5:1.0, so BDF is
+  mutable topology evidence rather than device identity. See
+  [Code 52 signing recovery](code52-signing-recovery.md).
   Restoring a healthy approved baseline, and then any new runtime IOCTL batch,
   are separate future authorization gates.
+- The passive Code 52 collector completed with evidence-manifest SHA-256
+  `9544E8EDA2ED225404C112E6E4FBBF7DEAFF2A6960E1823422184E987A8464D8`.
+  The prepared recovery is one explicit `bcdedit /set {current} testsigning on`
+  change plus one reboot, neither executed. `scripts/test-runtime-baseline.ps1`
+  now gates future batches on the exact full hardware/instance identity and
+  treats PCI location changes as separately acknowledged evidence. Its six
+  Windows PowerShell 5.1 mock cases pass 6/6.
+- The current offline Dry run passes 469/469 functional/model checks plus
+  5,000/5,000 DMA and 1,000/1,000 INTEN stress iterations. This includes
+  62/62 source/safety contracts and the new 22/22 process/file-object DMA
+  lifetime model. No driver source changed, so no driver rebuild, signing or
+  expanded stress rerun was warranted.
 
 ## DMA/PnP staging
 

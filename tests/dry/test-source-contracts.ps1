@@ -44,8 +44,11 @@ $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 $nativeProcess = Join-Path $repo "scripts\native-process.ps1"
 $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install.ps1"
+$code52Collector = Join-Path $repo "scripts\collect-code52-signing-diagnostics.ps1"
+$runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
+$processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -78,6 +81,9 @@ $pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
+$code52CollectorText = Get-Content -LiteralPath $code52Collector -Raw
+$runtimeBaselineText = Get-Content -LiteralPath $runtimeBaseline -Raw
+$processDmaModelText = Get-Content -LiteralPath $processDmaModel -Raw
 $lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
@@ -844,6 +850,31 @@ Test-Contract "diagnostic launcher keeps capture and installation explicitly gat
     $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
     $diagnosticLauncherText -notmatch 'restart-device|scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
+}
+
+Test-Contract "Code 52 collector is read-only and fail-closed" {
+    $code52CollectorText -match "(?s)bcdedit\.exe.*?@\('/enum','\{current\}'\)" -and
+    $code52CollectorText -match "(?s)pnputil\.exe.*?@\('/enum-devices'" -and
+    $code52CollectorText -match 'OutputRoot already exists' -and
+    $code52CollectorText -notmatch "(?i)@\('/set'|@\('/deletevalue'|/add-driver|/delete-driver|Import-Certificate|Set-Acl|DeviceIoControl|restart-device|disable-device|enable-device"
+}
+
+Test-Contract "runtime baseline uses stable identity and treats BDF as evidence" {
+    $runtimeBaselineText -match "SelectionBasis = 'ExactHardwareIdAndInstanceId'" -and
+    $runtimeBaselineText -match "BdfPolicy = 'EvidenceOnlyNeverSelectionKey'" -and
+    $runtimeBaselineText -match 'Expected exactly one present device with hardware ID' -and
+    $runtimeBaselineText -match 'Stable instance ID mismatch' -and
+    $runtimeBaselineText -match 'AcknowledgeLocationChange' -and
+    $runtimeBaselineText -notmatch 'DeviceIoControl|CreateFile|pnputil.*?/add-driver|restart-device|disable-device|enable-device'
+}
+
+Test-Contract "process DMA model covers file association and irreversible quarantine" {
+    $processDmaModelText -match 'CREATE process-allocation failure rolls back without association' -and
+    $processDmaModelText -match 'Association, never caller context, owns CLOSE' -and
+    $processDmaModelText -match 'first-CLOSE-before-register ordering accepts remaining handle' -and
+    $processDmaModelText -match 'surprise removal closes CREATE admission' -and
+    $processDmaModelText -match 'UnknownActive remains quarantined without physical idle proof' -and
+    $processDmaModelText -match 'CREATE serialized after removal is rejected without association'
 }
 
 Write-Host ""

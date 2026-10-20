@@ -233,5 +233,9 @@ successful intervening boot, Code Integrity event 3004 for
 
 The gate therefore stopped before any device path was opened. R0-5 through
 R0-9 and both conditional R1 commands are NOT RUN. The event evidence proves
-the Code Integrity rejection; it does not by itself prove which boot-policy
-setting caused it. No repair, retry, PnP action or IOCTL is part of this result.
+the Code Integrity rejection. A later elevated read-only audit proved that the
+active EFI/BCD `{current}` entry lacks `testsigning`; `0xC0000428` is therefore
+attributed to the absent Test Mode boot element, not package drift. No repair,
+retry, PnP action or IOCTL is part of this result. Future batches must use the
+exact stable hardware/instance identity gate in `scripts/test-runtime-baseline.ps1`;
+BDF changes require review but are never a device-selection key.

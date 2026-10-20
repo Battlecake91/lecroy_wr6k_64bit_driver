@@ -105,6 +105,14 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-runtime-lifetime-audit.ps1")
     }
 
+    Invoke-Step "Process and file-object DMA lifetime model (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-process-dma-lifetime.ps1")
+    }
+
+    Invoke-Step "Stable runtime identity baseline mocks (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-runtime-baseline.ps1")
+    }
+
     Invoke-Step "Live DMA completion-state tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-completion.ps1")
     }

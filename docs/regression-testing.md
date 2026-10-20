@@ -843,6 +843,8 @@ new, non-overwriting directory.
 | Source and safety contracts | 59/59 PASS |
 | lecdiag R0/R1 command-chain mock | 16/16 PASS |
 | Runtime event/interface/DMA lifetime audit | 19/19 PASS |
+| Process/file-object DMA lifetime model | 22/22 PASS |
+| Stable runtime identity baseline mocks (Windows PowerShell 5.1) | 6/6 PASS |
 | Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
 | PnP IRP/remove-lock lifetime | 10/10 PASS |
 | PnP interface publication | 38/38 PASS |
@@ -850,6 +852,14 @@ new, non-overwriting directory.
 
 Only the user-mode utility, tests and documentation changed. No driver build,
 DMA/INTEN stress rerun, signing, installation or live retry was performed.
+
+The 2026-10-20 signing-recovery qualification then ran the complete Dry suite
+without rebuilding the unchanged driver. It passed 469/469 functional/model
+checks, 5,000/5,000 default DMA stress iterations and 1,000/1,000 default
+INTEN stress iterations. The total includes 62/62 source/safety contracts,
+22/22 process/file-object DMA lifetime cases and 6/6 Windows PowerShell 5.1
+stable-identity mocks. Expanded stress was not repeated because neither driver
+code nor the stressed DMA/INTEN implementation changed.
 
 
 ## Read-only XStream COM object scanner
