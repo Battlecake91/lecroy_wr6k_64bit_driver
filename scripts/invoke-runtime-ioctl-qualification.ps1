@@ -14,6 +14,8 @@ param(
     [string]$Mode,
     [Parameter(Mandatory=$true)][string]$EvidenceRoot,
     [switch]$OwnerAuthorized,
+    [ValidateSet('All','Batch3Remaining')]
+    [string]$CommandSet = 'All',
     [string]$MockStatePath,
     [string]$MockExecutablePath,
     [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$MockExecutableSha256,
@@ -62,6 +64,10 @@ $commands = @(
         MockCalls=@('ioctl=0x00223044 input=0 output=4 input-hex=',
             'ioctl=0xCFDC21C0 input=5 output=4 input-hex=0000000000') }
 )
+$selectedCommands = if ($CommandSet -eq 'Batch3Remaining') {
+    @($commands | Where-Object { $_.Name -in @(
+        'r0-8-register-size','r0-9-delay-zero','r1-pci','r1-start-register') })
+} else { @($commands) }
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 
 function Write-ExclusiveText([string]$Path, [AllowEmptyString()][string]$Text) {
@@ -356,6 +362,9 @@ if ($Mode -ne 'OfflineMock') {
 if ($Mode -eq 'RunAuthorized' -and -not $OwnerAuthorized) {
     throw 'RunAuthorized requires OwnerAuthorized.'
 }
+if ($CommandSet -eq 'Batch3Remaining' -and $Mode -eq 'Preflight') {
+    throw 'Preflight does not accept an active command selection.'
+}
 if ($Mode -eq 'OfflineMock') {
     foreach ($value in @($MockStatePath,$MockExecutablePath,$MockExecutableSha256)) {
         if ([string]::IsNullOrWhiteSpace($value)) { throw 'OfflineMock requires state, executable and hash.' }
@@ -384,7 +393,8 @@ try {
         Mode=$Mode; StartedUtc=$script:startedUtc.ToString('o'); GitHead=$head
         GitDirty=@($dirty); PowerShell=$PSVersionTable.PSVersion.ToString()
         Executable=$executable; ExecutableSha256=$executableHash
-        ApprovedCommands=@($commands | ForEach-Object {
+        CommandSet=$CommandSet
+        ApprovedCommands=@($selectedCommands | ForEach-Object {
             [ordered]@{ Name=$_.Name; Phase=$_.Phase; Arguments=@($_.Args) }
         })
     })
@@ -393,11 +403,11 @@ try {
         $outcome = 'PASS'
     } else {
         $outputs = [ordered]@{}
-        foreach ($command in @($commands | Where-Object Phase -eq 'R0')) {
+        foreach ($command in @($selectedCommands | Where-Object Phase -eq 'R0')) {
             $outputs[$command.Name] = Invoke-ApprovedCommand $command $executable $executableHash
         }
         Write-StateCheck 'post-r0' $executableHash | Out-Null
-        foreach ($command in @($commands | Where-Object Phase -eq 'R1')) {
+        foreach ($command in @($selectedCommands | Where-Object Phase -eq 'R1')) {
             $outputs[$command.Name] = Invoke-ApprovedCommand $command $executable $executableHash
         }
         $pci = [regex]::Match($outputs['r1-pci'], '(?im)^BDF:\s+([0-9]+:[0-9]+\.[0-9]+)\s*$')
@@ -415,7 +425,9 @@ try {
         })
         Write-StateCheck 'post-r1' $executableHash | Out-Null
         $attempts = @(Get-ChildItem $EvidenceRoot -Filter '*.attempted')
-        if ($attempts.Count -ne 7) { throw "Expected seven attempt markers; found $($attempts.Count)." }
+        if ($attempts.Count -ne $selectedCommands.Count) {
+            throw "Expected $($selectedCommands.Count) attempt markers; found $($attempts.Count)."
+        }
         $outcome = 'PASS'
     }
 } catch {

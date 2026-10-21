@@ -92,7 +92,8 @@ function Invoke-HarnessCase {
     param(
         [string]$Name, [object]$State, [int]$ExpectedExit,
         [int]$ExpectedAttempts, [object]$Scenario = $null,
-        [bool]$Bom = $false, [string]$HashOverride
+        [bool]$Bom = $false, [string]$HashOverride,
+        [ValidateSet('All','Batch3Remaining')][string]$CommandSet = 'All'
     )
     $statePath = Join-Path $root ($Name + '-state.json')
     $scenarioPath = Join-Path $root ($Name + '-scenario.json')
@@ -101,7 +102,8 @@ function Invoke-HarnessCase {
     $arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$harness,
         '-Mode','OfflineMock','-EvidenceRoot',$evidence,'-MockStatePath',$statePath,
         '-MockExecutablePath',$mockExe,'-MockExecutableSha256',
-        $(if ($HashOverride) { $HashOverride } else { $script:mockHash }))
+        $(if ($HashOverride) { $HashOverride } else { $script:mockHash }),
+        '-CommandSet',$CommandSet)
     if ($null -ne $Scenario) {
         Write-JsonEncoding $scenarioPath $Scenario $false
         $arguments += @('-MockScenarioPath',$scenarioPath)
@@ -152,6 +154,28 @@ try {
     }
     Test-Case 'BDF 4:1.0 passes with unchanged identity' {
         [void](Invoke-HarnessCase 'pass-bdf4' (New-MockState -Location 'PCI bus 4, device 1, function 0') 0 7)
+    }
+    Test-Case 'Batch 3 resume runs only R0-8, R0-9 and conditional R1' {
+        $result = Invoke-HarnessCase 'batch3-resume' (New-MockState -Location 'GERMAN') `
+            0 4 $null $false $null 'Batch3Remaining'
+        $context = Get-Content (Join-Path $result.Evidence 'context.json') -Raw | ConvertFrom-Json
+        $names = @($context.ApprovedCommands | ForEach-Object Name)
+        if (($names -join ',') -ne 'r0-8-register-size,r0-9-delay-zero,r1-pci,r1-start-register') {
+            throw "unexpected Batch 3 allowlist: $($names -join ',')"
+        }
+        $calls = @(Get-ChildItem $result.Evidence -Filter '*.stdout.txt' | ForEach-Object {
+            Get-Content $_.FullName | Where-Object { $_ -like 'MOCK_DEVICE_IO_CONTROL *' }
+        })
+        if ($calls.Count -ne 5) { throw "Batch 3 mock IOCTL calls=$($calls.Count), expected=5" }
+        if (@($calls | Where-Object { $_ -match '0x00222400|0xCFDC2184|0x00223004' }).Count -ne 0) {
+            throw 'Batch 3 resume repeated a completed R0 command'
+        }
+    }
+    Test-Case 'Batch 3 R0-8 failure blocks R0-9 and both R1 commands' {
+        $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
+            Name='r0-8-register-size';Type='Fail';Ioctl='00223040'})}
+        [void](Invoke-HarnessCase 'batch3-r0-fail' (New-MockState) 1 1 $scenario `
+            $false $null 'Batch3Remaining')
     }
     Test-Case 'changed PCI instance ID fails before commands' {
         [void](Invoke-HarnessCase 'bad-instance' (New-MockState -InstanceId 'PCI\WRONG') 1 0)
