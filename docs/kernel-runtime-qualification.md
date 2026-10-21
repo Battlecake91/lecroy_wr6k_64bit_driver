@@ -275,6 +275,251 @@ records in the interval are not LeCroy-driver evidence.
 The complete IOCTL side-effect review and the separately gated first runtime
 commands are in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
 
+## Kernel Runtime Qualification Batch 2 result
+
+Batch 2 preflight at `2026-10-19T18:04:14Z` reconfirmed `oem101.inf`, the
+approved loaded SYS, problem-free device, running service, five enabled
+interfaces, closed acquisition clients and intact rollback set. The selected
+x64 `lecdiag.exe` SHA-256 is
+`824F089EBED1D4C5EC0337CBE18F05489D2B062476AD5C1723333869B299A8DD`.
+
+R0 commands `build`, `stats`, `bars` and `trace` passed once. They established
+build `1002`, debug structure version `1`, zero unknown IOCTLs, BAR lengths
+`0x200 / 0x40000 / 0x200`, trace version `3` and the expected response sizes.
+Before the fifth command could start, the PowerShell native runner rejected the
+required empty raw-input argument at parameter binding. No fifth IOCTL was
+issued, commands 6–9 were not attempted and R1 was skipped. No retry occurred.
+
+Post-stop checks retained the complete baseline and found no event in the exact
+R0 interval. The runner now explicitly permits an empty string array element;
+focused Windows PowerShell 5.1 and PowerShell 7 mocks each pass 26/26. This
+offline fix does not authorize another live attempt.
+
+### Lifetime-analysis result
+
+- CREATE, CLOSE, DEVICE_CONTROL, PnP and power dispatches retain balanced
+  remove-lock ownership. DEVICE_CONTROL is synchronous and releases IOCTL
+  admission before its remove lock and completion.
+- STOP, SURPRISE_REMOVE and REMOVE close admission, withdraw interfaces, drain
+  admitted IOCTLs, quiesce IRQ/DPC/timer activity, release event and transfer
+  ownership, and only then unmap BARs. REMOVE waits for lower-stack completion
+  and remove-lock rundown before detaching/deleting the FDO.
+- Event replacement references the new object before publication, swaps under
+  the DPC-shared spin lock and dereferences the old object afterward. PnP
+  teardown detaches all five event objects only after deferred work is quiet.
+- `UnknownActive` remains irreversible. Publication/rundown tests retain
+  mapping and MDL ownership through REMOVE rather than freeing it without
+  hardware-idle proof.
+- DEVICE_CONTROL has no pending/cancelable IOCTL. Pending lower-PnP forwarding
+  is unit-tested; targeted cancellation and cancel-routine races remain NOT RUN.
+- Event registrations are FDO-global, not per file object. Object lifetime is
+  safe, but replacement ownership between concurrent clients remains a legacy
+  semantic risk without native concurrency fault injection.
+- CLOSE releases every DMA registration owned by the calling process whenever
+  any handle from that process closes. It therefore does not implement the
+  comment's “last process close” semantics for multiple concurrent handles.
+  Correcting this confirmed lifetime limitation requires reviewed per-file or
+  per-process ownership design and is not a safe minimal patch while DMA is
+  unqualified.
+- Interface-enable failure is logged but does not fail START or roll back
+  already enabled classes. The live START published all five; partial-
+  publication failure handling remains a source gap before repeated PnP tests.
+
+New contracts cover balanced CREATE/CLOSE ownership, event-object lifetime and
+empty native arguments. Results are source/safety 57/57, PnP IRP lifetime
+10/10, publication 38/38 and DMA ownership 17/17. No driver implementation
+changed, so driver builds and DMA/INTEN stress reruns were not justified.
+
+### Batch 2B stopped result and lifetime follow-up
+
+Batch 2B attempted only the next authorized R0 command. The process runner
+preserved the empty positional argument, but the reviewed `lecdiag` binary
+opened the interface and rejected an empty hex payload in user mode. Exit code
+2 occurred before `DeviceIoControl`; commands 6–9 and R1 were not run. The
+post-stop device state matched the baseline and the exact 29.3-second interval
+contained no System, Kernel-PnP or Code Integrity event.
+
+The defect was in the diagnostic utility rather than the driver or process
+runner. The offline fix accepts a zero-length payload deterministically and
+initializes both output fields before returning. The rebuilt x64 utility hash is
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
+It has not been used against the device. Source contracts pass 59/59; a new
+hardware authorization must bind to this hash.
+
+The independent lifetime audit reached these classifications:
+
+- Process identity is part of every transfer token lookup, but CLOSE has no
+  file-object or per-process open-count state. The first close from a process
+  can therefore free that process's idle registrations while another handle in
+  the same process remains open. This contradicts the source comment's
+  last-process-close claim. A per-file ownership change would alter the legacy
+  sharing ABI; a per-process count needs new allocation/rundown state. Neither
+  is proven safe enough for a minimal production patch while DMA is inactive.
+- Interface enable remains continue-on-error. A one-failure fault model proves
+  that it can leave four published classes and still permit START to continue.
+  Expanded first, middle, last and multiple-failure models plus STOP/REMOVE
+  teardown all pass. The original image proves four registrations and passive
+  XStream evidence proves the fifth endpoint is required, but neither proves
+  the original driver's response to an enable failure. Failing START or rolling
+  back successful classes could therefore change compatibility. Production
+  behavior remains unchanged pending direct lower-stack fault injection and an
+  explicit compatibility decision.
+- Event slots are intentionally FDO-global. Registration references the new
+  object before publication, swaps under the DPC-shared lock and dereferences
+  the old object after the swap. Handle close does not stale the referenced
+  object. A 19/19 host model covers multiple handles, both serialized
+  DPC/replacement orderings, DPC during close, STOP/REMOVE during replacement,
+  partial interface activation and the DMA ownership design cases. Concurrent
+  clients can replace each other's notification target; device-global slots
+  match the recovered device-object storage and are therefore intentional
+  legacy semantics, not a demonstrated object-lifetime defect.
+- DEVICE_CONTROL completes synchronously and contains no pending/cancel path.
+  Adding one solely for Verifier would create new ABI/lifetime behavior rather
+  than fix a demonstrated defect. Pending lower-PnP forwarding remains covered
+  separately.
+
+No driver source changed, so driver rebuilds and DMA/INTEN stress reruns were
+not warranted. The private final evidence-manifest SHA-256 is
+`3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.
+
+### Batch 2C offline proof and live stop
+
+The production PowerShell 5.1 runner and exact `lecdiag.c` parser completed a
+fake-device end-to-end matrix before any live operation. All nine R0 command
+forms, both R1 forms and five malformed inputs passed 16/16. Exact mocked
+request codes and lengths included the explicit zero-length inputs, four zero
+delay bytes, the 84-byte PCI output and both START-register reads.
+
+The live preflight then failed closed. A successful host boot outside this
+test was followed by Code Integrity event 3004 rejecting
+`LecS65AcqDrv.sys` and Kernel-PnP event 219 recording the failed driver load.
+The package identity and SYS file hash remained correct, but the device was at
+problem code 52, `LecS65AcqDrv` was stopped, all five interfaces were disabled
+and PCI enumeration reported 5:1.0 instead of the authorized 4:1.0 baseline.
+No device handle was opened and none of R0-5 through R0-9 or R1 executed.
+
+The follow-up elevated read-only signing audit established the boot-policy
+cause. The active `{current}` EFI/BCD loader contains no `testsigning` element,
+whereas retained pre-install evidence recorded `testsigning Yes` on the prior
+boot path. Code Integrity and Kernel-PnP recorded `0xC0000428`; package hashes,
+local Authenticode, local chain and catalog membership remain valid. Secure
+Boot, VBS, HVCI and WDAC are inactive. See
+[Code 52 signing recovery](code52-signing-recovery.md).
+
+The separately authorized recovery on 2026-10-21 changed only the active
+loader's `testsigning` element and issued one restart. Immediate and post-boot
+readback show `testsigning Yes`; the current HFM/HarddiskVolume1 boot identity
+is unchanged. The stable PCI instance returned to problem code zero, the exact
+approved image is loaded, the service is running and all five interfaces are
+enabled. No LeCroy-related Code Integrity error, Kernel-PnP 219 or SCM error
+occurred after boot. This restores the passive prerequisite only; R0-5 through
+R0-9 and R1 remain NOT RUN and require new explicit authorization. Private
+evidence remains outside the public repository; see the recovery document for
+manifest hashes.
+
+### Batch 2D stopped preflight and offline follow-up
+
+Batch 2D retained the restored boot baseline and unchanged diagnostic binary
+and runner identities. A fresh mock traversal of all R0/R1 command shapes and
+malformed-input boundaries passed 16/16. The one authorized elevated live
+invocation nevertheless stopped before the runtime baseline and before any
+device command. `Win32_DeviceGuard` returned VBS status `0`, both policy
+enforcement states `0` and `SecurityServicesRunning={0}`. The temporary
+one-shot wrapper incorrectly interpreted the zero sentinel as an active
+service because it rejected every nonempty array.
+
+No attempt marker, native process log or device snapshot was created; only the
+failure, outcome and manifest records exist. Thus no device path was opened,
+R0-5 through R0-9 were not invoked, and the conditional R1 gate never became
+effective. There was no retry or system repair. The private manifest SHA-256 is
+`A41492D7CD65C20DE4CE0C72C3D40D643BC22EE8D30E9CD2BF8C7DAB9D1DF9FB`.
+A subsequent passive snapshot passed: the exact instance remained problem-free
+at 5:1.0, `oem101.inf` and the loaded SYS hash were unchanged, the service was
+running and all five interfaces remained published. No target event appeared
+in the exact post-attempt window. Snapshot SHA-256 is
+`08C05F481BBED834B8CEF857661267EA2F96FB3C343F39A1E748D155243422DA`;
+supplemental evidence-manifest SHA-256 is
+`D459BA05A31B90EFF665D320EFA7A4C336593CC09A994F9AF15607DD2CB7BC90`.
+
+The independent offline lifetime review remains green: process/file DMA 22/22,
+event/interface/DMA lifetime 19/19, PnP IRP 10/10, publication 38/38, mapping
+ownership 17/17, completion 39/39 plus 2/2 deterministic interleavings, DMA
+stress 5,000/5,000 and INTEN 49/49 plus 1,000/1,000. These prove software model
+contracts, not physical DMA retirement. No production source change was
+justified. A later hardware attempt requires a new explicit authorization and
+a reviewed Device Guard predicate that rejects nonzero service identifiers,
+not the `{0}` sentinel.
+
+### R0/R1 completion attempt: guard fixed, live gate stopped
+
+`scripts/deviceguard-preflight.ps1` is now the reusable production predicate
+for passive security-policy gating. Its 10/10 matrix passes on PowerShell 7 and
+Windows PowerShell 5.1. It handles scalar and vector unrolling, accepts zero and
+empty service sets, fails closed on null/absent/unknown data, distinguishes
+configured-but-not-blocking state and rejects active or contradictory VBS,
+HVCI and CI-policy evidence. The serialized result contains both evaluated and
+raw values. The actual host evaluates `Inactive` and allowed.
+
+The subsequently authorized one-shot live chain did not reach `lecdiag`.
+Windows PowerShell 5.1 treated the temporary UTF-8-without-BOM wrapper as an
+ANSI script and decoded the previous-location literal `Gerät` as `GerÃ¤t`.
+The stable instance ID, hardware ID, `oem101.inf`, version, problem code zero,
+running service, exact SYS hash and five interfaces all matched. The baseline
+still failed closed on the location mismatch because the separate acknowledgement
+flag was intentionally absent. Zero device-command attempt markers prove that
+R0-5 through R0-9 and the conditional R1 pair remain NOT RUN; no retry occurred.
+
+The initial private manifest SHA-256 is
+`8995F1FFE864ADCE58244AD5A8710CD71852B4FA1EE6E79AA3E6116671E8AA99`.
+The post-stop passive baseline passed and has SHA-256
+`55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`;
+supplemental manifest SHA-256 is
+`AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`,
+and no target event occurred in the exact interval. Any later active run requires
+new authorization and an ASCII-safe or retained-JSON location input. BDF
+remains evidence only and never a selection key.
+
+### Batch 2F permanent harness and partial runtime result
+
+The repository-controlled
+`scripts/invoke-runtime-ioctl-qualification.ps1` replaces the temporary
+wrappers. It requires 64-bit Windows PowerShell 5.1, uses ASCII-safe source,
+structured PnP/CIM identity data, the production Device Guard predicate and
+the reviewed job-object process runner. Its modes separate complete mock
+execution, passive preflight and owner-authorized runtime execution. The
+19/19 offline matrix proves the seven-command allowlist, exact one-shot calls,
+five-second timeout, exclusive evidence and fail-closed state transitions.
+
+The first real passive run found a harness-only `OrderedDictionary` versus
+`PSCustomObject` mismatch while all rollback bytes matched. The normalized
+collector passed a fresh passive run with no command markers. The subsequent
+single authorized runtime attempt passed R0-5 and R0-6. R0-7 returned four
+bytes containing `0x00000110`, exit 0 and no stderr. The harness stopped before
+its post-command check because the plan-derived output contract incorrectly
+expected `0x1A08`. R0-8, R0-9 and both R1 commands were not attempted.
+
+The current driver source and canonical ABI reconstruction independently
+establish `0x110` as the `CKeTraceControl` descriptor size returned by
+`0x00223004`; `0x1A08` was stale planning data. The permanent harness and mock
+now use `0x110`, and the complete offline matrix passes again. No runtime retry
+was performed. A fresh passive post-stop run confirms the same stable instance,
+problem code zero, running service, loaded SYS hash, five published interfaces
+and an empty target-event set. The next gate is a new explicit authorization
+for exactly R0-8, R0-9 and, only after their success, the two conditional R1
+reads. The already completed R0 commands must not be repeated merely to obtain
+a contiguous transcript.
+
+Private evidence identities:
+
+| Evidence | SHA-256 |
+|---|---|
+| Passing passive-preflight manifest | `EACB718CC5E255DCD3DF11FE2F5F2AC33A2AACE5EA3A52445FCA07C5FACD091C` |
+| Authorized-run manifest | `9BDD0BBD23962B1726350C5DAFF48465CA44410214B5D4B7D0A105A638EE9C5B` |
+| R0-5 combined log / structured result | `649EE70902B0929AEDF6367A4BE8FB2AAF316A234A25466D80E3BD9694BA9520` / `DAC361A15F0783C793699743E1D5799CB8FAFF050A1FFDF134FD1295DB384A79` |
+| R0-6 combined log / structured result | `2A606239022BAC70177637F88CABCDBE0C25E1A6E3491D3572E640F88C2DAA11` / `E6F2BABABD63AF4DD6CF8878A508294FDFD064403F8CA13119E8E967C39E83CA` |
+| R0-7 combined log / structured result | `EB554BF844E7863BEAAA1345FEEA06F4D1EED53F3191929FE99C0E04C13E3433` / `1BBDCC976FBC0305A83DD1F067617F6CE4C1FB3E67CB3983AC3EEBBFF513ED44` |
+| Post-stop passive-preflight JSON / target events / manifest | `E3AF928DD2F53AB812A18F16F283E09611BF61CB406D49FB304849DC2D1F64D8` / `7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6` / `B791CCA4E4776AC62499D58CE871870AFBCC4CE68D3351F39BDD7DDC5CD5CEDE` |
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved
@@ -283,13 +528,19 @@ infer that authorization from Stages 1–5.
 
 ### 6A. Bounded metadata and ABI requests
 
-The smallest next gate is the exact R0 batch documented in
-[Runtime IOCTL safety classification](ioctl-runtime-safety.md). It requires a
-new owner authorization for the listed device handles and IOCTLs. Run one
-command at a time with a five-second job-object timeout, no PnP transition and
-no Verifier. Capture pre/post device, service, interface and kernel-event
-snapshots. Do not include Dallas, event registration, register write,
-interrupt, acquisition or DMA controls.
+Before any runtime authorization, run `scripts/test-runtime-baseline.ps1`.
+Selection must match the exact full hardware ID and instance ID. BDF/location
+is recorded only as mutable topology evidence; a changed value fails pending
+explicit acknowledgement but never selects a different device.
+
+The smallest runtime gate after a healthy passive baseline is a new
+authorization for the five R0 commands that did
+not run in Batch 2: the two no-ops, two four-byte size queries and zero-delay
+request documented in [Runtime IOCTL safety classification](ioctl-runtime-safety.md).
+Run each once with the corrected, qualified runner and a five-second timeout,
+no PnP transition and no Verifier. Preserve the four already passed results;
+do not repeat them merely to obtain a single transcript. Capture pre/post
+device, service, interface and kernel-event snapshots.
 
 After R0 passes, authorize R1 separately: the bounded PCI-configuration query
 and reviewed START-register read. Stop on any timeout, unexpected length/value,
@@ -323,26 +574,53 @@ orderly removal and must never be reported as surprise-removal coverage.
 
 ### 6D. Targeted Verifier
 
-Target this driver only:
+The first one-boot pass should exclude DMA Verification and every resource-
+fault injection option. Target only the exact image with flags `0x0002093B`:
+Special Pool, Force IRQL Checking, Pool Tracking, I/O Verification, Deadlock
+Detection, Security Checks, Miscellaneous Checks and DDI Compliance Checking.
 
 ```text
 verifier /reset
-verifier /standard /driver LecS65AcqDrv.sys
+verifier /flags 0x0002093B /driver LecS65AcqDrv.sys
 verifier /bootmode oneboot
 verifier /querysettings
 shutdown /r /t 0
 ```
 
-After boot, confirm that `LecS65AcqDrv.sys` is the only project driver under
-verification. Save `verifier /query`, `verifier /querysettings`, System events
-and dump state. A verifier finding or boot anomaly is immediate FAIL and invokes
-the proven rollback route.
+These commands are prepared, not executed. Configuration, one-boot mode and
+reboot each require explicit authorization. `/all`, random/systematic low-
+resource simulation, Force Pending I/O Requests, IRP Logging, DMA Verification
+and Code Integrity Checks are excluded from the first pass. DMA Verification
+does not itself launch DMA, but would mix DMA-API findings into the initial
+non-DMA lifetime baseline.
 
-Verifier activation, its one-boot setting and the reboot each require explicit
-authorization. Run the R0 lifetime batch first under Verifier; do not combine
-the first Verifier boot with a PnP cycle. Recovery requires console/WinRE access,
-`verifier /reset`, the preserved rollback package and separately authorized
-reboot or package replacement.
+Selected risks are deliberate. Special Pool can expose overruns under memory
+pressure; Force IRQL can bugcheck pageable or wrong-IRQL access; I/O and DDI
+verification can bugcheck malformed forwarding/completion; Deadlock Detection
+tracks lock order; Pool Tracking reports leaks; Security and Miscellaneous
+Checks enforce handle, buffer and other kernel contracts. Any finding, hang or
+unexpected selected driver is FAIL.
+
+Read-only readiness remains incomplete: flags are zero and no driver is
+selected; `CrashDumpEnabled=7`, dump path is `C:\Windows\MEMORY.DMP`,
+`AutoReboot=1`, physical memory is 8,458,924,032 bytes, the boot-volume page
+file is 1,664 MiB, `C:` has about 23.9 GB free and no current `MEMORY.DMP`
+exists. This does not prove that a useful kernel dump will survive a verifier
+bugcheck. Before activation, separately authorize a recovery rehearsal, verify
+page-file/dump sufficiency and decide whether to set `AutoReboot=0`.
+
+Recovery commands remain:
+
+```text
+verifier.exe /reset
+verifier.exe /querysettings
+shutdown.exe /r /t 0
+```
+
+After boot, require `LecS65AcqDrv.sys` to be the only selected project driver.
+Save `verifier /query`, `/querysettings`, System events and any untouched dump.
+Run only a separately authorized R0 metadata batch; do not combine the first
+Verifier boot with PnP, R1 MMIO reads, acquisition or DMA.
 
 ### 6E. Limited cancellation and teardown
 
@@ -367,6 +645,59 @@ retention through STOP/REMOVE, then restore or reboot. Never create a real
 indeterminate DMA transfer for coverage and never free quarantined ownership in
 the same boot.
 
+## Prepared single PnP restart experiment
+
+This plan is not authorized for execution. It targets only `oem101.inf`,
+version `0.2026.1018.1`, loaded SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`
+and instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39fd0a79&0&08F0`.
+
+1. Create a new exclusive evidence root and record device, service, five-
+   interface, SetupAPI and event bookmarks. Require no open driver handle,
+   acquisition client, Verifier setting or existing DebugView process.
+2. Revalidate DebugView CLI 5.02 x64 SHA-256
+   `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`
+   and PnPUtil SHA-256
+   `CFE15658F1F4AB0E19465A15738B7FDB4BE947CDA4F2AA8B1C1B995CF50CBDDB`.
+3. Start one bounded kernel-only capture:
+
+   ```text
+   dbgviewcli64.exe --kernel --verbose-kernel --no-win32 --clock-ms --format text --duration 300 --max-lines 100000 --log <new-raw-log> --no-banner
+   ```
+
+   Require the collector to remain live, the raw log to exist and an exclusive
+   `capture-ready.json` record before PnPUtil is reachable. Require one
+   independently attributable kernel record within the readiness window;
+   otherwise stop without restart.
+4. Start a read-only interface metadata watcher, then invoke once:
+
+   ```text
+   pnputil.exe /restart-device "PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39fd0a79&0&08F0"
+   ```
+
+5. Expect STOP entry/lower forwarding, five successful interface-disable
+   records, IRQ disconnect and no post-quiescence hardware access. Then require
+   START entry, lower dispatch/completion/final success, local resource success,
+   interrupt-connect success, five indexed interface-enable successes and final
+   success. Metadata must observe withdrawal and restoration to exactly five
+   enabled instances.
+6. Correlate UTC trace times with SetupAPI, Kernel-PnP, Code Integrity, SCM and
+   System events. Record PnPUtil exit, problem code, service, loaded SYS,
+   interface counts and SHA-256 for every evidence file.
+
+Admission closure, drain and remove-lock balance are source-backed but lack a
+dedicated runtime marker in the installed image. A clean restart supports but
+does not directly prove those internal boundaries. Do not hold an IOCTL open
+across this first cycle.
+
+Stop without retry or automatic rollback on missing capture readiness,
+collector exit, PnPUtil nonzero, reboot request, unexpected minor/status,
+missing disable/enable record, IRQ error, persistent device problem,
+service/image change, interface mismatch, kernel error, bugcheck, hang,
+interrupt storm, acquisition or DMA indication. Recovery, rollback and reboot
+each require their own authorization.
+
 ## Evidence, failure and rollback
 
 For every executed stage retain privately:
@@ -387,3 +718,37 @@ Passing all applicable stages would qualify only the bounded kernel-runtime
 cases above. It would not prove physical DMA bus-idle, IOMMU-safe PFN DMA,
 general acquisition, HLK success, WHQL/WHCP certification or production
 deployment.
+
+## Batch 3 runtime completion and next-stage readiness
+
+The exact `Batch3Remaining` harness path completed R0-8, R0-9 and the two
+conditional R1 reads once each. The final R0/R1 status is 9/9 plus 2/2 PASS;
+the device remained problem-free and no relevant event was recorded. The
+private run manifest is
+`D6F6EAC9CDABAEEA32DB684276D65B02036EBD697EA5AE2C47F05B9EB2F71C63`.
+
+The prepared one-cycle PnP procedure above remains technically ready but is
+not authorized. DebugView CLI 5.02 x64 is present with the pinned SHA-256,
+valid Microsoft Authenticode signature, and no current DebugView process or
+`DBGV` service instance. The cycle must use the exact installed instance and
+package, establish capture readiness before the single `pnputil /restart-device`
+call, correlate all `PNP_STATUS:` stages, and never retry automatically.
+
+The proposed initial Verifier mask `0x0002093B` selects Special Pool, Force
+IRQL Checking, Pool Tracking, I/O Verification, Deadlock Detection, Security
+Checks, Miscellaneous Checks and DDI Compliance. It deliberately excludes
+random/systematic low-resource injection, forced pending I/O and DMA
+Verification from the first boot. That is appropriate for the first lifetime
+pass because the installed driver still uses the legacy PFN-derived DMA path,
+acquisition is excluded, and DMA Verification would not prove physical
+retirement of that bypass path.
+
+Current passive readiness is incomplete: Verifier is off with no selected
+driver, `CrashDumpEnabled=7`, `C:\Windows\MEMORY.DMP`, `AutoReboot=1` and
+overwrite enabled. The boot-volume page file is automatic but currently only
+1,280 MiB for approximately 8 GiB RAM; 21.1 GB is free on C:. This does not
+prove that a useful kernel dump will be captured. No settings were changed.
+Before authorizing Verifier, the owner must separately approve or explicitly
+accept a reviewed dump/page-file policy, recovery-path validation, the one-boot
+Verifier configuration and the reboot. Do not combine the first Verifier boot
+with PnP restart, device IOCTLs, acquisition or DMA.

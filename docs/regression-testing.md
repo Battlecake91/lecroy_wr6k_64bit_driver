@@ -788,6 +788,139 @@ prove physical DMA retirement or hardware bus idle. No reproducible defect was
 found, so no source patch, driver rebuild or expanded stress rerun was
 justified.
 
+## Kernel Runtime Qualification Batch 2 focused checks
+
+The live R0 sequence exposed an offline native-runner parameter-binding defect
+before its fifth command started: a `string[]` parameter admitted an empty
+collection but rejected the required empty string element. The runner now uses
+both `AllowEmptyCollection` and `AllowEmptyString`; the existing C# quoting
+layer already encodes an empty argument as `""`.
+
+`test-package-workflow-compatibility.ps1` now launches a three-argument fixture
+and requires the middle empty argument to retain its exact position. Results:
+
+| Suite | Result |
+|---|---:|
+| Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
+| Package workflow compatibility, PowerShell 7.6.5 | 26/26 PASS |
+| Source and safety contracts | 57/57 PASS |
+| PnP IRP/remove-lock lifetime | 10/10 PASS |
+| PnP interface publication | 38/38 PASS |
+| DMA ownership | 17/17 PASS |
+
+New source contracts specifically cover balanced CREATE/CLOSE remove-lock and
+IOCTL-admission ownership, legacy event-object replacement/teardown, and empty
+native arguments. The change affects only the offline process runner and tests;
+driver implementation code did not change. DMA/INTEN stress and driver rebuilds
+were therefore not repeated.
+
+## Kernel Runtime Qualification Batch 2B focused checks
+
+The corrected runner reached `lecdiag`, which then rejected the authorized
+zero-length raw payload before issuing an IOCTL. `parse_hex_bytes` now treats an
+explicit empty string as a valid zero-byte input, initializes its two outputs
+and avoids a zero-byte allocation. The rebuilt x64 utility has SHA-256
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`.
+
+`test-runtime-lifetime-audit.ps1` is part of Dry mode. Its native model covers
+event-reference survival after user handle close, serialized DPC/event
+replacement orderings, close and teardown races; first, middle, last and
+multiple interface-enable failures plus idempotent partial teardown; and the
+proposed per-process DMA open-reference rule, including final-close retirement
+and `UnknownActive` retention. Source contracts bind existing event/interface
+ordering to production. The DMA portion is a design characterization, not a
+claim that the current driver implements the proposed open-reference state.
+
+`test-lecdiag-command-chain.ps1` compiles the exact production `lecdiag.c`
+behind a fake Win32 device boundary and invokes it with the production native
+process runner. It verifies all nine R0 and both R1 argument/IOCTL shapes plus
+five negative cases under Windows PowerShell 5.1. Optional `-EvidenceRoot`
+preserves the mock executable, separate runner logs and a result record in a
+new, non-overwriting directory.
+
+| Suite | Result |
+|---|---:|
+| Source and safety contracts | 59/59 PASS |
+| lecdiag R0/R1 command-chain mock | 16/16 PASS |
+| Runtime event/interface/DMA lifetime audit | 19/19 PASS |
+| Process/file-object DMA lifetime model | 22/22 PASS |
+| Stable runtime identity baseline mocks (Windows PowerShell 5.1) | 6/6 PASS |
+| Package workflow compatibility, Windows PowerShell 5.1.19041.6456 | 26/26 PASS |
+| PnP IRP/remove-lock lifetime | 10/10 PASS |
+| PnP interface publication | 38/38 PASS |
+| DMA ownership | 17/17 PASS |
+
+Only the user-mode utility, tests and documentation changed. No driver build,
+DMA/INTEN stress rerun, signing, installation or live retry was performed.
+
+The 2026-10-20 signing-recovery qualification then ran the complete Dry suite
+without rebuilding the unchanged driver. It passed 469/469 functional/model
+checks, 5,000/5,000 default DMA stress iterations and 1,000/1,000 default
+INTEN stress iterations. The total includes 62/62 source/safety contracts,
+22/22 process/file-object DMA lifetime cases and 6/6 Windows PowerShell 5.1
+stable-identity mocks. Expanded stress was not repeated because neither driver
+code nor the stressed DMA/INTEN implementation changed.
+
+The post-recovery real passive baseline exposed two metadata-only robustness
+issues: some present PnP objects do not return a `Data` property for the
+hardware-ID query, and German PnPUtil reports `Schnittstellestatus: Aktiviert`.
+The baseline now ignores property results without `Data`, requires exactly one
+interface path per class and accepts the explicit English or German enabled
+status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
+stable-identity, service, hash and five-interface gate passes. No device handle
+or IOCTL is used.
+
+## Permanent runtime qualification harness
+
+Run the focused harness test after changes to runtime gating, device-state
+collection, allowed command shapes or the lecdiag mock boundary:
+
+```powershell
+.\tests\dry\test-runtime-ioctl-qualification.ps1
+```
+
+The test compiles the production `lecdiag.c` behind the fake Win32 boundary
+and launches the exact production harness in Windows PowerShell 5.1. Current
+result: 21/21 PASS. Coverage includes UTF-8 with and without BOM, German
+metadata, stable identity across BDF 4:1.0 and 5:1.0, missing/changed PnP data,
+Device Guard inactive/active/unknown/contradictory states, hash failures,
+problem code 52, interface multiplicity, acquisition clients, the seven-command
+allowlist, exact input buffers, timeout, missing output, non-overwrite and
+stop-on-failure behavior. The full PASS path observes exactly eight mock
+`DeviceIoControl` calls: one for each of five R0 commands and the PCI R1 read,
+plus two reviewed reads for `start-register`.
+
+The additional Batch 3 path permits only R0-8, R0-9 and the two conditional R1
+commands. Its PASS case observes exactly five mock calls and proves that no
+completed R0-1 through R0-7 request can be dispatched. Its failure case proves
+that an R0-8 error prevents R0-9 and both R1 commands.
+
+The R0 trace-size fixture returns `0x110`, matching the current driver source
+and canonical ABI analysis. The historical `0x1A08` expectation was stale and
+must not be reintroduced. The permanent harness still requires a separate
+owner authorization for `RunAuthorized`; successful mocks or `Preflight` do
+not grant hardware access.
+
+The legacy query-size audit adds public canonical constants and compile-time
+driver/tool layout assertions. `test-source-contracts.ps1` binds the public
+`0x110`, `0x10A`, 43 and `0x2CAE` values to driver and mock behavior. Current
+focused results are 63/63 source/ABI contracts and 16/16 lecdiag command-chain
+cases. The stale `0x1A08` value is retained only as historical failure evidence.
+
+## Device Guard preflight predicate
+
+`tests/dry/test-deviceguard-preflight.ps1` imports the exact production
+predicate from `scripts/deviceguard-preflight.ps1`. It runs without CIM, BCD,
+device or hardware access and covers zero service sentinels, empty arrays,
+null and absent values, known active HVCI, unknown numeric values,
+contradictory reports, configured-but-not-blocking state, enforced kernel CI
+and an active CI policy file. PowerShell 7.6.5 and Windows PowerShell
+5.1.19041.6456 both pass 10/10. The live `{0}` Device Guard vectors evaluate
+as `Inactive`; raw CIM values remain serialized with the decision.
+
+This focused change does not touch driver, DMA or INTEN implementation. Driver
+builds and unrelated stress suites are therefore not repeated.
+
 
 ## Read-only XStream COM object scanner
 

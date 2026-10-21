@@ -51,6 +51,12 @@
 
 #define LECS65_LEGACY_DRIVER_BUILD               UINT32_C(1002)
 
+/* Reconstructed two-stage query ABI. */
+#define LECS65_LEGACY_TRACE_BLOCK_BYTES          UINT32_C(0x00000110)
+#define LECS65_LEGACY_REGISTER_ENTRY_BYTES       UINT32_C(0x0000010A)
+#define LECS65_LEGACY_REGISTER_COUNT             UINT32_C(43)
+#define LECS65_LEGACY_REGISTER_LIST_BYTES        UINT32_C(0x00002CAE)
+
 #pragma pack(push, 1)
 
 /* 0xCFDC21C0, 4-byte form: BAR0 implied. */

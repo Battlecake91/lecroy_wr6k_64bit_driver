@@ -2,6 +2,14 @@
 
 Last reviewed: 2026-09-30.
 
+The development host's post-reboot Code 52 was attributed to an active EFI/BCD
+loader entry without `testsigning`, not to package corruption or loss of the
+local certificate chain. A separately authorized one-element BCD change and
+one restart restored the healthy test-driver baseline on 2026-10-21. See
+[Code 52 signing recovery](code52-signing-recovery.md) for the evidence. Local
+Authenticode trust remains distinct from Microsoft kernel-policy trust outside
+Test Mode.
+
 This project currently uses test signing for development. Public distribution without
 Windows test mode is a separate release step and should not be confused with ordinary
 Authenticode signing of user-mode applications.

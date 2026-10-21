@@ -10,12 +10,12 @@ transfer state; detailed evidence and analysis are canonical in
 
 - bound INF: `oem101.inf`;
 - driver version: `0.2026.1018.1`;
-- loaded SYS SHA-256:
+- installed SYS SHA-256:
   `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`;
-- device status: `OK`, problem code zero;
-- service: `LecS65AcqDrv`, running;
-- interfaces: exactly one enabled target path in each of the five legacy
-  classes;
+- device status: `Error`, problem code 52 after an intervening host reboot;
+- service: `LecS65AcqDrv`, stopped;
+- interfaces: all five expected instances exist but are disabled;
+- current PCI location: 5:1.0, not the previously approved 4:1.0 baseline;
 - acquisition clients: not running;
 - DebugView/`DBGV`: absent after the completed capture.
 
@@ -39,17 +39,44 @@ a verified installation/PnP intermediate state, not a failure returned by the
 new driver's START. The exact internal Windows/PnP source of status
 `0xC00000BB` remains indeterminate.
 
-Focused offline contracts pass: source/ABI 54/54, PnP/remove-lock 10/10,
-publication 38/38, DMA completion 39/39, interleavings 2/2, DMA stress
-5,000/5,000, INTEN 49/49 plus 1,000/1,000 stress, and ownership 17/17. No
-reproducible source defect was identified and the signed package was not
-rebuilt.
+Kernel Runtime Qualification Batch 2 passed its first four R0 commands once.
+Batch 2B then attempted command 5 once with the corrected runner. `lecdiag`
+opened the approved interface but rejected its explicit zero-length hex input
+and exited 2 before `DeviceIoControl`. Commands 6–9 and R1 were skipped; no
+retry occurred. The exact interval had no System, Kernel-PnP or Code Integrity
+event, and the post-stop state remains identical to the current runtime state
+above.
 
-## Next boundary
+The utility parser now accepts zero-length raw input offline. Rebuilt x64
+`lecdiag.exe` SHA-256 is
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`;
+it has not issued a live request. Focused contracts pass: source/safety 59/59,
+event/interface lifetime audit 19/19, PnP/remove-lock 10/10, publication 38/38
+and ownership 17/17. Driver sources and the installed package were not changed.
 
-No further PnP transition, reboot, Verifier activation, device handle, IOCTL,
-XStream, acquisition or DMA operation is authorized. The smallest next gate is
-one explicitly authorized, bounded R0 metadata-only IOCTL batch as specified in
-[`../ioctl-runtime-safety.md`](../ioctl-runtime-safety.md). A single captured
-PnP restart and targeted one-boot Driver Verifier are later independent gates.
-Rollback or package replacement also requires separate authorization.
+Source review also established two deferred lifetime gaps: CLOSE releases all
+DMA registrations for the process on every handle close rather than a proven
+last-process-handle boundary, and partial interface-enable failure does not
+fail START. Neither affected the R0 run, and neither has been deployed or
+changed in this workstream.
+
+## Batch 2C stop and next boundary
+
+The complete offline command chain passed 16/16 with a mocked device boundary.
+The subsequent passive preflight found Code Integrity event 3004 and
+Kernel-PnP event 219 immediately after the intervening boot. It stopped before
+opening a device handle, so R0-5 through R0-9 and R1 are NOT RUN. No retry,
+repair or PnP transition occurred. The exact boot-policy cause is not proven.
+Private Batch 2C evidence is retained at
+`C:\Users\LeCroyUser\.codex\driver-backups\Phase2C-KernelRuntimeBatch2C-R0R1-20261020-attempt1`;
+raw host logs remain outside this public repository. The result-record SHA-256
+is `14E0B58920F01B92EBFF7597BBF5BE423DB47BD4F953233C5772D98DAE974248`
+and the final evidence-manifest SHA-256 is
+`AD1732D26E8D8C114A165FD7E661C8B0D3C5A4EDC8A76451940A220DCF4F722A`.
+
+No PnP transition, reboot, boot-policy change, driver load, Verifier activation,
+device handle, IOCTL, XStream, acquisition or DMA operation is authorized.
+Restoring a healthy approved baseline is now the smallest separate gate. A
+later runtime authorization must again bind only R0 commands 5–9 to the rebuilt
+utility hash above and may conditionally name the two R1 reads. The four
+earlier passing commands must not be repeated merely to rebuild one transcript.

@@ -33,7 +33,7 @@ programmable device state from volatile register and driver state.
 | `0x00222C00` | 4-byte delay in milliseconds / no output | No | No | No | No | No | No | Yes, zero delay only | **R0** bounded software delay; nonzero delays are unnecessary for the first batch |
 | `0x00222C04` | 1-byte flag / no output | No | No | No | No | No | No | No | **R2** changes driver software state |
 | `0x00223000` | exactly `0x108` bytes / no output | No | No | No | No | No | No | Yes | **R0** trace-control compatibility input is validated and logged; the current x64 path has no board side effect |
-| `0x00223004` | no input / 4-byte size or `0x1A08`-byte trace payload | No | No | No | No | No | No | Yes, size query | **R0** software trace snapshot |
+| `0x00223004` | no input / 4-byte size or `0x110`-byte trace payload | No | No | No | No | No | No | Yes, size query | **R0** software trace snapshot |
 | `0x0022303C` | exactly `0x10A`-byte setter record / no output | No | Yes | Possible by selected register | Can arm acquisition/DMA-related registers | No | Not established; volatile device state | No | **R3** indexed write to the known 43-register table |
 | `0x00223040` | no input / 4-byte size; or 4-byte index / `0x10A`-byte record; or full `43 * 0x10A` list | Yes for hardware-backed records | No | May observe status | No | No | No | Yes, size query and reviewed reads | **R0** for the size query; **R1** for established register reads |
 | `0x00223044` | no input / 4-byte value | Yes, BAR0 START/FVER | No | No | No | No | No | Yes | **R1** established bounded START-register read |
@@ -111,7 +111,7 @@ foreach ($test in $tests) {
 
 Expected R0 invariants are build `1002`; debug structure version `1`; BAR
 lengths `0x200`, `0x40000`, `0x200`; successful no-op and zero-delay calls;
-query sizes `0x1A08` and `0x2CAE`; and no device problem, interface-count
+query sizes `0x110` and `0x2CAE`; and no device problem, interface-count
 change, new kernel error, or acquisition activity. The deterministic
 `0xCFDC212C` rejection is deferred until the harness records an expected
 nonzero application exit without treating it as a retry.
@@ -144,3 +144,228 @@ device problem, service-state change, missing or duplicate interface, new
 driver-related kernel event, capture of an unapproved IOCTL, or any sign of
 acquisition, DMA, interrupt storm, or hardware-state change. Do not retry and
 do not perform automatic rollback.
+
+## Kernel Runtime Qualification Batch 2 result
+
+Batch 2 used x64 `lecdiag.exe` SHA-256
+`824F089EBED1D4C5EC0337CBE18F05489D2B062476AD5C1723333869B299A8DD`
+and a five-second job-object timeout for each authorized command. Passive
+preflight confirmed `oem101.inf`, version `0.2026.1018.1`, the approved loaded
+SYS, device `OK`, problem code zero, a running service, five single enabled
+interfaces, no acquisition client, and hash-identical rollback artifacts.
+
+The first four R0 commands ran once and passed:
+
+| Command | Request / response | Exit | Observed result |
+|---|---|---:|---|
+| `lecdiag build` | input 0; output capacity 4; returned 4 | 0 | build `1002` |
+| `lecdiag stats` | input 0; output capacity/ABI result 48; the utility does not print `bytesReturned` | 0 | structure version `1`, build `1002`, unknown IOCTL count `0` |
+| `lecdiag bars` | input 0; output capacity 72; returned 72 | 0 | lengths `0x200 / 0x40000 / 0x200`; bulk `0x40000` |
+| `lecdiag trace` | input 0; output capacity 118,800; returned 118,800 | 0 | trace version `3`, one preexisting build-query record |
+
+The fifth authorized command was not started. PowerShell rejected the explicit
+empty raw-input argument while binding `Invoke-LecS65NativeProcess` because its
+`string[] Arguments` parameter allowed an empty collection but not an empty
+string element. No fifth IOCTL reached the driver. Tests 6–9 were not attempted,
+and the conditional R1 gate did not become effective. No retry was made.
+
+The bounded-process helper now declares both `AllowEmptyCollection` and
+`AllowEmptyString`. A focused mock proves byte-for-byte positional preservation
+of `before`, an empty argument and `after` under Windows PowerShell 5.1 and
+PowerShell 7; both compatibility runs pass 26/26. This is an offline workflow
+fix only. It does not renew the consumed runtime authorization.
+
+The post-stop state is identical to preflight and the exact test interval has
+no Kernel-PnP, Code Integrity or System event. Remaining R0 commands 5–9, and
+then the two conditional R1 commands, require a new explicit authorization.
+The private evidence-manifest SHA-256 is
+`78D3C40B85F1885A0B9AC20EA1859A65BC5E5599675C775E5DB763E40259652A`;
+the R0 result-record SHA-256 is
+`B14326835689C647D57A698509A7EA9AC0654E6ED6EB9BAF409D57FC42A28F90`.
+
+## Kernel Runtime Qualification Batch 2B result
+
+Batch 2B authorized commands 5–9 and conditionally the two R1 reads. Preflight
+again proved `oem101.inf`, version `0.2026.1018.1`, the approved loaded SYS,
+problem code zero, a running service, five single enabled interfaces, closed
+acquisition clients and the hash-identical `oem100.inf` rollback export. The
+corrected runner passed its Windows PowerShell 5.1 compatibility suite 26/26.
+
+Command 5 ran once with the reviewed argument vector. `lecdiag` opened the
+approved interface and then exited 2 with `invalid input hex`; source inspection
+proved that `parse_hex_bytes` rejected `digits == 0`. It did not call
+`DeviceIoControl`, so no command-5 IOCTL reached the driver. The stop rule
+therefore prohibited commands 6–9 and both R1 reads. No retry occurred.
+
+The exact UTC interval from `2026-10-20T16:52:32.1040864Z` through
+`2026-10-20T16:53:01.3960437Z` contains no System, Kernel-PnP or Code Integrity
+event. INF, version, problem code, service, loaded SYS and all five interface
+counts are identical before and after the stopped attempt.
+
+The offline utility correction initializes an empty result and accepts an
+explicit zero-length string without allocation. The rebuilt x64 utility has
+SHA-256
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA`;
+source contracts pass 59/59. This hash has never been used for a live request.
+The next runtime authorization must name it explicitly. Private evidence is
+retained outside the public repository; final evidence-manifest SHA-256 is
+`3472CE4AC5854DA4861A9E5139DCC61F802C1D4CEBCEA10BF69004C613EC5DC8`.
+
+## Kernel Runtime Qualification Batch 2C stopped preflight
+
+The exact production `lecdiag.c` was compiled behind a fake Win32 device
+boundary and invoked through the production Windows PowerShell 5.1 process
+runner. All nine R0 and both R1 command shapes reached the expected mocked
+IOCTL with exact input/output lengths. The matrix also proved preservation of
+an explicit empty argument, four zero input bytes for `00000000`, the two
+four-byte outputs, R1 PCI structure size 84, both START-register calls and
+failure-before-`DeviceIoControl` for five malformed cases. Result: 16/16 PASS.
+
+The following live preflight did not meet the approved baseline. At
+`2026-10-20T18:02:18.1588646Z` the selected package was still `oem101.inf`,
+version `0.2026.1018.1`, and the installed SYS file retained SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`.
+The device nevertheless reported problem code 52, the service was stopped,
+the five interface instances were disabled, and enumeration reported BDF
+5:1.0 rather than the authorized 4:1.0 baseline. System evidence records a
+successful intervening boot, Code Integrity event 3004 for
+`LecS65AcqDrv.sys`, and Kernel-PnP event 219 for the failed service load.
+
+The gate therefore stopped before any device path was opened. R0-5 through
+R0-9 and both conditional R1 commands are NOT RUN. The event evidence proves
+the Code Integrity rejection. A later elevated read-only audit proved that the
+active EFI/BCD `{current}` entry lacks `testsigning`; `0xC0000428` is therefore
+attributed to the absent Test Mode boot element, not package drift. No repair,
+retry, PnP action or IOCTL is part of this result. Future batches must use the
+exact stable hardware/instance identity gate in `scripts/test-runtime-baseline.ps1`;
+BDF changes require review but are never a device-selection key.
+
+## Kernel Runtime Qualification Batch 2D stopped preflight
+
+The exact `lecdiag.exe` SHA-256 remained
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA` and
+the bounded runner SHA-256 remained
+`58AE76C5F90EE34F7E8634E5CA769A36F134A13CD6E3262FE38D1C16E07700D7`.
+A fresh mock command-chain run passed all eleven positive R0/R1 forms and five
+malformed forms, 16/16. The previously established Windows PowerShell 5.1
+serialization evidence therefore remained applicable; the fresh run added an
+unchanged-source check rather than changing the command contract.
+
+The only elevated live invocation stopped before its runtime-baseline snapshot
+or any `lecdiag` call. `Win32_DeviceGuard` reported
+`VirtualizationBasedSecurityStatus=0`, both code-integrity enforcement values
+as `0`, and `SecurityServicesRunning={0}`. The one-shot wrapper correctly
+rejected what it interpreted as a preflight mismatch, but its predicate was
+wrong: it tested whether the array was nonempty instead of treating the
+documented zero value as no running service. There are zero `*.attempted`
+markers in the exclusive evidence directory. Consequently no device interface
+was opened, no `DeviceIoControl` occurred, and R0-5 through R0-9 and both R1
+commands remain NOT RUN. The stop/no-retry rule was honored. The private
+failure manifest has SHA-256
+`A41492D7CD65C20DE4CE0C72C3D40D643BC22EE8D30E9CD2BF8C7DAB9D1DF9FB`.
+A subsequent passive baseline passed with unchanged package, SYS, device,
+service, BDF and five-interface state. The target event window was empty.
+Snapshot SHA-256 is
+`08C05F481BBED834B8CEF857661267EA2F96FB3C343F39A1E748D155243422DA` and
+supplemental evidence-manifest SHA-256 is
+`D459BA05A31B90EFF665D320EFA7A4C336593CC09A994F9AF15607DD2CB7BC90`.
+
+A future authorization must use a reviewed predicate that accepts only a
+service list containing no nonzero values. It must create a new exclusive
+evidence root and must not infer renewed hardware authorization from this
+offline correction.
+
+## R0/R1 completion attempt stopped before device access
+
+The reusable `scripts/deviceguard-preflight.ps1` predicate now performs that
+reviewed evaluation. It preserves raw CIM data, treats numeric zero as no
+running service, distinguishes inactive, configured, active, unknown and
+contradictory states, and rejects active CI policy files. Ten exact-predicate
+tests pass under PowerShell 7 and Windows PowerShell 5.1. The current host's
+`{0}` service vectors, VBS/CI status zero and empty active-policy set evaluate
+as `Inactive` and allowed.
+
+The one authorized elevated command-chain invocation nevertheless stopped in
+the subsequent stable-identity baseline. The temporary external wrapper was
+UTF-8 without a BOM; Windows PowerShell 5.1 interpreted its `Gerät` literal
+through the legacy ANSI path as `GerÃ¤t`. The captured device location itself
+was still `PCI-Bus 5, Gerät 1, Funktion 0`, and every substantive identity and
+health check passed. The baseline correctly failed closed because the supplied
+previous-location string differed and no acknowledgement switch was present.
+
+No `*.attempted` marker exists, so no interface was opened and no
+`DeviceIoControl` was issued. R0-5 through R0-9 and both conditional R1 reads
+remain NOT RUN. No retry was made. The initial private manifest SHA-256 is
+`8995F1FFE864ADCE58244AD5A8710CD71852B4FA1EE6E79AA3E6116671E8AA99`.
+A later passive baseline passed with identical device and service state; its
+SHA-256 is `55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`,
+the exact target-event window is empty, and supplemental manifest SHA-256 is
+`AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`.
+
+A future launcher must avoid locale-sensitive source literals under Windows
+PowerShell 5.1, for example by constructing the character from its Unicode code
+point or by consuming a retained UTF-8 JSON value. Location acknowledgement is
+permitted only after the exact stable instance and hardware IDs have passed;
+it must never change device selection.
+
+## Runtime Qualification Batch 2F result
+
+`scripts/invoke-runtime-ioctl-qualification.ps1` is the permanent,
+repository-controlled Windows PowerShell 5.1 harness. Its `OfflineMock`,
+`Preflight` and `RunAuthorized` modes share the production control flow. The
+harness pins the executable and driver identities, treats BDF as observed
+metadata, uses exclusive evidence roots and one-shot markers, and performs no
+device command in `Preflight`. Its 19/19 focused matrix covers both UTF-8
+forms, German metadata, BDF 4:1.0 and 5:1.0, security and identity failures,
+the exact IOCTL allowlist, timeout and stop-on-failure behavior.
+
+The first real preflight exposed only an in-memory rollback representation
+mismatch; the retained files and hashes were correct. After normalizing that
+collector value to the same structured model used by validation, a fresh
+preflight passed with zero command markers.
+
+The single authorized run then produced these results:
+
+- R0-5 `0x00222400`: PASS, zero input/output, exit 0.
+- R0-6 `0xCFDC2184`: PASS, zero input/output, exit 0.
+- R0-7 `0x00223004`: the driver returned four bytes containing `0x00000110`
+  and exit 0, but the harness stopped because its copied plan expectation was
+  the stale value `0x1A08`.
+- R0-8, R0-9 and both conditional R1 commands: NOT RUN.
+
+The authoritative ABI analysis and implementation both require `0x110` for
+the reconstructed `CKeTraceControl` block. The harness and mock now use that
+value. This correction was validated offline only; the consumed one-shot
+authorization was not inferred or reused. A post-stop passive preflight passed
+with the unchanged device, service, loaded SYS and five interfaces, and its
+target-event set was empty. A new explicit authorization is required to run
+the remaining R0-8/R0-9 commands and conditional R1 pair.
+
+## Runtime Qualification Batch 3 result
+
+The versioned permanent harness added a `Batch3Remaining` command set so the
+completed R0-1 through R0-7 requests could not be repeated. Its 21/21 offline
+matrix proves the four-command allowlist, five resulting mock
+`DeviceIoControl` calls, conditional R1 gate and first-failure stop.
+
+The real passive preflight passed with zero attempt markers. The single
+authorized run then completed exactly these operations:
+
+| Command | Result |
+|---|---|
+| R0-8 `0x00223040`, in=0/out=4 | PASS; returned 4; value `0x00002CAE` |
+| R0-9 `0x00222C00`, in=4/out=0 | PASS; input `00000000`; returned 0 |
+| R1 `pci` | PASS; `1570:0005`; observed BDF 5:1.0; 64 PCI bytes read |
+| R1 `start-register` | PASS; `0x00223044` and BAR0+0 both `0x00000002` |
+
+Every child exited zero without stderr or timeout. Each pre/post state check
+retained the exact instance, problem code zero, running service, loaded SYS
+hash and five interfaces. All target-event files are empty. Together with the
+retained earlier results, the bounded safe runtime matrix is 9/9 R0 and 2/2 R1
+PASS. This does not authorize R2/R3 requests, acquisition, DMA, Verifier or a
+PnP transition.
+
+Private evidence roots:
+
+- preflight: `C:\Users\LeCroyUser\.codex\driver-backups\Phase3-Preflight-20261021-attempt1`, manifest `9C92E2315096EDEDC6F177084E8C8422B4B13E54949613A6059B33917CA2AC50`;
+- authorized run: `C:\Users\LeCroyUser\.codex\driver-backups\Phase3-RunAuthorized-20261021-attempt1`, manifest `D6F6EAC9CDABAEEA32DB684276D65B02036EBD697EA5AE2C47F05B9EB2F71C63`.

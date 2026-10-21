@@ -198,6 +198,33 @@ exit 0
         (Get-Content -LiteralPath ($nativeLog + '.stderr.txt') -Raw) -match
             'diagnostic-stderr')
 
+    $emptyArgumentFixture = Join-Path $tempRoot 'native-empty-argument.ps1'
+    Set-Content -LiteralPath $emptyArgumentFixture -Encoding UTF8 -Value @'
+param(
+    [string]$First,
+    [AllowEmptyString()][string]$Second,
+    [string]$Third
+)
+if ($First -cne 'before' -or $Second -cne '' -or $Third -cne 'after') {
+    [Console]::Error.WriteLine(
+        "argument mismatch: first=[$First] second=[$Second] third=[$Third]")
+    exit 92
+}
+Write-Output 'empty-argument-preserved'
+exit 0
+'@
+    $emptyArgumentLog = Join-Path $evidenceDir 'native-empty-argument.log'
+    $emptyArgumentResult = Invoke-LecS65NativeProcess `
+        -Name 'Native empty argument' -FilePath $nativeHost `
+        -Arguments @('-NoProfile', '-NonInteractive', '-File',
+            $emptyArgumentFixture, 'before', '', 'after') `
+        -WorkingDirectory $tempRoot -LogPath $emptyArgumentLog `
+        -TimeoutSeconds 30
+    Test-Condition 'native runner preserves an explicitly empty argument' (
+        $emptyArgumentResult.ExitCode -eq 0 -and
+        $emptyArgumentResult.StdOut -match 'empty-argument-preserved' -and
+        [string]::IsNullOrEmpty($emptyArgumentResult.StdErr))
+
     $startupLog = Join-Path $evidenceDir 'startup-failure.log'
     Expect-Rejection 'native startup failure is logged and rejected' {
         Invoke-LecS65NativeProcess -Name 'Missing native child' `

@@ -4,6 +4,19 @@ This document is the controlled bridge between offline package creation and
 runtime qualification. The first authorized installation and START completed
 on 2026-10-18; later gated commands remain unexecuted unless stated otherwise.
 
+## Current post-recovery state
+
+The 2026-10-20 audit found the active EFI/BCD loader without `testsigning` and
+attributed Code 52 to that missing boot element. On 2026-10-21 the owner
+authorized exactly one `testsigning on` change and one restart. Both BCD
+commands returned zero, only that loader element changed, and post-boot
+readback shows `testsigning Yes`. The HFM NVMe boot/system path is unchanged.
+The exact `oem101.inf` driver is now loaded, problem-free and running with all
+five interfaces enabled. Windows RE remains disabled and only one disk is
+visible; no recovery rehearsal was added. See
+[Code 52 signing recovery](code52-signing-recovery.md). Any later Test Mode
+disable, reboot, IOCTL or PnP test remains separately gated.
+
 ## First installation outcome
 
 One elevated 64-bit Windows PowerShell 5.1 invocation ran PnPUtil from

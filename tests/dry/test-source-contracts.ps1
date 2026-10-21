@@ -39,12 +39,17 @@ $pnpIrpSource = Join-Path $repo "driver\PnpIrpLifetime.c"
 $driverProject = Join-Path $repo "driver\LecS65AcqDrv.vcxproj"
 $driverInf = Join-Path $repo "driver\LecS65AcqDrv.inf"
 $lecwatchSource = Join-Path $repo "tools\lecwatch\lecwatch.c"
+$lecdiagSource = Join-Path $repo "tools\lecdiag\lecdiag.c"
 $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 $nativeProcess = Join-Path $repo "scripts\native-process.ps1"
 $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install.ps1"
+$code52Collector = Join-Path $repo "scripts\collect-code52-signing-diagnostics.ps1"
+$runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
+$processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
+$mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -77,9 +82,14 @@ $pnpIrpText = Get-Content -LiteralPath $pnpIrpSource -Raw
 $driverProjectText = Get-Content -LiteralPath $driverProject -Raw
 $driverInfText = Get-Content -LiteralPath $driverInf -Raw
 $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
+$code52CollectorText = Get-Content -LiteralPath $code52Collector -Raw
+$runtimeBaselineText = Get-Content -LiteralPath $runtimeBaseline -Raw
+$processDmaModelText = Get-Content -LiteralPath $processDmaModel -Raw
+$lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 $diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
+$mockDeviceText = Get-Content -LiteralPath $mockDeviceSource -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -222,6 +232,17 @@ Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" 
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x106\)'
 }
 
+Test-Contract "legacy two-stage query sizes agree across public ABI, driver and mock" {
+    (Get-HexDefine $publicText "LECS65_LEGACY_TRACE_BLOCK_BYTES") -eq "00000110" -and
+    (Get-HexDefine $publicText "LECS65_LEGACY_REGISTER_ENTRY_BYTES") -eq "0000010A" -and
+    (Get-HexDefine $publicText "LECS65_LEGACY_REGISTER_LIST_BYTES") -eq "00002CAE" -and
+    $publicText -match 'LECS65_LEGACY_REGISTER_COUNT\s+UINT32_C\(43\)' -and
+    $ioctlText -match 'C_ASSERT\(LECS65_LEGACY_TRACE_BLOCK_BYTES == 0x110UL\)' -and
+    $ioctlText -match 'C_ASSERT\(LECS65_LEGACY_REGISTER_LIST_BYTES == 0x2CAEUL\)' -and
+    $mockDeviceText -match '(?s)case 0x00223004:.*?\*\(DWORD\*\)OutputBuffer = 0x110;' -and
+    $mockDeviceText -match '(?s)case 0x00223040:.*?\*\(DWORD\*\)OutputBuffer = 0x2CAE;'
+}
+
 Test-Contract "replacement publishes the exact five legacy-compatible interface classes" {
     $interfaceBlock = [regex]::Match(
         $driverSourceText,
@@ -316,6 +337,40 @@ Test-Contract "IOCTL admission counter releases at dispatch completion" {
     $ioctlText -match 'if \(!LecEnterIoctl\(devExt\)\)' -and
     $ioctlText -match 'LecLeaveIoctl\(devExt\)' -and
     $driverSourceText -match 'KeWaitForSingleObject\(\s*&DevExt->IoIdleEvent'
+}
+
+Test-Contract "create and close keep remove-lock and IOCTL-admission ownership balanced" {
+    $create = [regex]::Match($driverSourceText,
+        '(?s)LecS65Create\s*\(.*?(?=NTSTATUS\s+LecS65Close)')
+    $close = [regex]::Match($driverSourceText,
+        '(?s)LecS65Close\s*\(.*?\n\}')
+    $create.Success -and $close.Success -and
+    $create.Value -match '(?s)IoAcquireRemoveLock.*?IoReleaseRemoveLock.*?IoCompleteRequest' -and
+    $close.Value -match '(?s)IoAcquireRemoveLock.*?LecEnterIoctl.*?LecReleaseTransfersForProcess.*?LecLeaveIoctl.*?IoReleaseRemoveLock.*?IoCompleteRequest'
+}
+
+Test-Contract "legacy event replacement and teardown retain exact object lifetime" {
+    $capture = [regex]::Match($ioctlText,
+        '(?s)LecCaptureLegacyEvent\s*\(.*?\n\}')
+    $release = [regex]::Match($deviceText,
+        '(?s)LecReleaseLegacyEvents\s*\(.*?\n\}')
+    $capture.Success -and $release.Success -and
+    $capture.Value -match '(?s)ObReferenceObjectByHandle.*?EVENT_MODIFY_STATE.*?KeAcquireSpinLock.*?oldEvent = \*Slot.*?\*Slot = eventObject.*?KeReleaseSpinLock.*?ObDereferenceObject\(oldEvent\)' -and
+    $release.Value -match '(?s)KeAcquireSpinLock.*?LegacyEvent0 = NULL.*?LegacyEvent4 = NULL.*?KeReleaseSpinLock.*?ObDereferenceObject' -and
+    ([regex]::Matches($deviceText,
+        '(?s)LecQuiesceDeferredWork\(.*?LecReleaseLegacyEvents').Count -ge 3)
+}
+
+Test-Contract "legacy event and interface audit models match production ordering" {
+    $auditModel = Get-Content -LiteralPath (Join-Path $PSScriptRoot "test-runtime-lifetime-audit.c") -Raw
+    $auditModel -match 'reference-before-publish' -and
+    $auditModel -match 'DPC signaling while the production LegacyEventLock is held' -and
+    $auditModel -match 'middle interface failure preserves current continue-on-error policy' -and
+    $auditModel -match 'partial publication teardown is idempotent' -and
+    $auditModel -match 'first same-process CLOSE preserves inactive DMA registration' -and
+    $auditModel -match 'UnknownActive remains quarantined while physical bus-idle is unproven' -and
+    $deviceText -match '(?s)IoSetDeviceInterfaceState\(&DevExt->InterfaceLink\[i\], TRUE\).*?if \(NT_SUCCESS\(status\)\).*?InterfaceEnabled\[i\] = TRUE.*?else.*?enable failed' -and
+    $ioctlText -match '(?s)ObReferenceObjectByHandle.*?KeAcquireSpinLock\(&DevExt->LegacyEventLock.*?\*Slot = eventObject.*?KeReleaseSpinLock.*?ObDereferenceObject\(oldEvent\)'
 }
 
 Test-Contract "PnP remove is drained before deleting device" {
@@ -755,6 +810,18 @@ Test-Contract "package workflow is installation- and device-operation-free" {
     $nativeProcessText -match 'Task\.WaitAll'
 }
 
+Test-Contract "native process runner admits and quotes explicit empty arguments" {
+    $nativeProcessText -match '\[AllowEmptyCollection\(\)\]\[AllowEmptyString\(\)\]\[string\[\]\]\$Arguments' -and
+    $nativeProcessText -match 'if \(value\.Length == 0\)\s*return "\\"\\"";'
+}
+
+Test-Contract "lecdiag raw IOCTL parser accepts an explicit zero-length input" {
+    $lecdiagText -match '\*bytesOut\s*=\s*NULL\s*;' -and
+    $lecdiagText -match '\*lengthOut\s*=\s*0\s*;' -and
+    $lecdiagText -match "(?s)if\s*\(text\[0\]\s*==\s*'\\0'\)\s*\{\s*return\s+0\s*;\s*\}" -and
+    $lecdiagText -match 'digits\s*==\s*0\s*\|\|'
+}
+
 Test-Contract "package workflow pins reviewed source and toolchain" {
     $packageBuildText -match 'ExpectedDriverTreeCommit' -and
     $packageBuildText -match "'merge-base', '--is-ancestor'" -and
@@ -796,6 +863,34 @@ Test-Contract "diagnostic launcher keeps capture and installation explicitly gat
     $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
     $diagnosticLauncherText -notmatch 'restart-device|scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
+}
+
+Test-Contract "Code 52 collector is read-only and fail-closed" {
+    $code52CollectorText -match "(?s)bcdedit\.exe.*?@\('/enum','\{current\}'\)" -and
+    $code52CollectorText -match "(?s)pnputil\.exe.*?@\('/enum-devices'" -and
+    $code52CollectorText -match 'OutputRoot already exists' -and
+    $code52CollectorText -notmatch "(?i)@\('/set'|@\('/deletevalue'|/add-driver|/delete-driver|Import-Certificate|Set-Acl|DeviceIoControl|restart-device|disable-device|enable-device"
+}
+
+Test-Contract "runtime baseline uses stable identity and treats BDF as evidence" {
+    $runtimeBaselineText -match "SelectionBasis = 'ExactHardwareIdAndInstanceId'" -and
+    $runtimeBaselineText -match "BdfPolicy = 'EvidenceOnlyNeverSelectionKey'" -and
+    $runtimeBaselineText -match 'Expected exactly one present device with hardware ID' -and
+    $runtimeBaselineText -match "Properties\.Name -contains 'Data'" -and
+    $runtimeBaselineText -match '/enum-interfaces /class' -and
+    $runtimeBaselineText -match 'Interface status\|Schnittstellestatus' -and
+    $runtimeBaselineText -match 'Stable instance ID mismatch' -and
+    $runtimeBaselineText -match 'AcknowledgeLocationChange' -and
+    $runtimeBaselineText -notmatch 'DeviceIoControl|CreateFile|pnputil.*?/add-driver|restart-device|disable-device|enable-device'
+}
+
+Test-Contract "process DMA model covers file association and irreversible quarantine" {
+    $processDmaModelText -match 'CREATE process-allocation failure rolls back without association' -and
+    $processDmaModelText -match 'Association, never caller context, owns CLOSE' -and
+    $processDmaModelText -match 'first-CLOSE-before-register ordering accepts remaining handle' -and
+    $processDmaModelText -match 'surprise removal closes CREATE admission' -and
+    $processDmaModelText -match 'UnknownActive remains quarantined without physical idle proof' -and
+    $processDmaModelText -match 'CREATE serialized after removal is rejected without association'
 }
 
 Write-Host ""

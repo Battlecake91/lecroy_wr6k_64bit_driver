@@ -41,6 +41,23 @@ SURPRISE_REMOVAL and REMOVE close IOCTL admission and disable every enabled
 interface before resource teardown. REMOVE frees each registered interface
 string after remove-lock rundown.
 
+Enable failures currently use a continue-on-error policy: successful classes
+remain published and START may still succeed. Offline fault models cover first,
+middle, last and multiple enable failures and confirm that STOP/REMOVE disables
+only the classes actually enabled. Original-driver evidence proves the four
+kernel registrations and the fifth XStream endpoint requirement, but does not
+prove legacy behavior when `IoSetDeviceInterfaceState` fails. Failing START or
+rolling back successful classes is therefore a compatibility-affecting change,
+not an established fix. The current behavior remains unchanged pending direct
+fault injection and an explicit policy decision.
+
+The Batch 2D offline audit reconfirmed the 19/19 lifetime model across first,
+middle, last and multiple enable failures and repeated teardown. Changing START
+to fail after a single interface activation error would withdraw otherwise
+working legacy endpoints and is therefore externally observable. No evidence
+currently establishes that behavior as the original compatibility contract or
+as a required defect fix, so the continue-on-error policy remains unchanged.
+
 The INF binds the PCI hardware ID, class and service. It has no `AddInterface`
 directive and does not create any of the five interface classes. Their
 publication is exclusively the driver's runtime responsibility.

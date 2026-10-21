@@ -934,6 +934,54 @@ software implementation releases that never-launched allocation through the
 same required primitive; actual HAL/IOMMU behavior, chained-MDL handling and
 teardown ordering remain unverified until controlled kernel tests are possible.
 
+### Process-close ownership boundary
+
+Legacy registered transfers are keyed by opaque token plus process identity.
+The current CLOSE path nevertheless calls `LecReleaseTransfersForProcess` on
+every file-object close from that process. With two open handles in one process,
+closing either handle can therefore unlink and free every idle registration
+that the other handle can still address. Selected and `DmaUnsafeToFree`
+transfers remain protected, so this is not a route around the active-DMA
+quarantine; it is a lifetime and compatibility gap for idle registrations.
+
+The source comment describes cleanup on the last process close, but no
+per-process open count or per-file ownership exists. Changing token ownership
+to file objects would prevent cross-handle use and may break the legacy ABI.
+The narrow ABI-compatible behavior is a per-process open-reference table.
+CREATE must record the originating process identity on the file object and
+increment that process entry; CLOSE must decrement that recorded identity and
+retire inactive registrations only at the last reference. CLEANUP alone must
+not retire process-shared registrations. STOP, surprise removal and REMOVE
+must still release only registrations proven inactive; `UnknownActive`
+mappings remain quarantined. A 19/19 deterministic characterization model now
+covers first/final CLOSE, CLEANUP, PnP teardown and quarantine alongside the
+event/interface cases. A separate 22/22 process/file-object model expands the
+proposed rule to transactional CREATE rollback, explicit file association,
+two handles in one process, independent processes, both serialized
+registration/CLOSE outcomes, duplicate CLOSE, surprise removal and
+CREATE/removal ordering. It retains `UnknownActive` after final CLOSE and
+teardown because no tested software event proves physical DMA retirement.
+
+This model is not a production patch. A safe implementation also needs
+transactional CREATE rollback, nonpaged per-file/process state, synchronization
+with concurrent registration and close, process-context-independent CLOSE and
+remove-time rundown. Moving the release call mechanically from CLOSE to
+CLEANUP or switching to file-object ownership would either remain unsafe or
+change the legacy sharing ABI. Driver source remains unchanged until those
+ownership rules are implemented and reviewed together; builds and ownership
+stress then precede any deployment proposal.
+
+The Batch 2D focused rerun reconfirmed this boundary. The process/file model
+passes 22/22, including both serialized REGISTER/final-CLOSE orders,
+transactional CREATE rollback, multiple handles, surprise removal and
+irreversible `UnknownActive` retention. The combined lifetime audit passes
+19/19 and PnP publication passes 38/38. Direct source review still shows CREATE
+without a file association and every CLOSE calling
+`LecReleaseTransfersForProcess` with the current process identity. The model
+therefore demonstrates the required behavior but not an implementation-safe
+patch. Process-context-independent CLOSE, remove-time rundown and concurrent
+registration ownership remain unresolved together; no driver change was made.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.
