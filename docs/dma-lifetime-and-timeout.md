@@ -962,25 +962,32 @@ registration/CLOSE outcomes, duplicate CLOSE, surprise removal and
 CREATE/removal ordering. It retains `UnknownActive` after final CLOSE and
 teardown because no tested software event proves physical DMA retirement.
 
-This model is not a production patch. A safe implementation also needs
-transactional CREATE rollback, nonpaged per-file/process state, synchronization
-with concurrent registration and close, process-context-independent CLOSE and
-remove-time rundown. Moving the release call mechanically from CLOSE to
-CLEANUP or switching to file-object ownership would either remain unsafe or
-change the legacy sharing ABI. Driver source remains unchanged until those
-ownership rules are implemented and reviewed together; builds and ownership
-stress then precede any deployment proposal.
+The production implementation now records a nonpaged file context on each
+successful CREATE. The context binds the file object to the creating process
+identity; all transfer registration, lookup, launch and unregister paths use
+that recorded identity rather than the thread that happens to issue the IOCTL
+or CLOSE. CREATE association, CLOSE detachment, last-handle detection and
+transfer-list changes are serialized by `TransferMutex`. A failed CREATE does
+not publish a context. The final CLOSE for one process unlinks only inactive,
+non-current registrations for that process and frees them after dropping the
+mutex. Earlier same-process closes preserve shared registrations. A CLOSE in a
+different process context still uses the recorded owner.
 
-The Batch 2D focused rerun reconfirmed this boundary. The process/file model
-passes 22/22, including both serialized REGISTER/final-CLOSE orders,
-transactional CREATE rollback, multiple handles, surprise removal and
-irreversible `UnknownActive` retention. The combined lifetime audit passes
-19/19 and PnP publication passes 38/38. Direct source review still shows CREATE
-without a file association and every CLOSE calling
-`LecReleaseTransfersForProcess` with the current process identity. The model
-therefore demonstrates the required behavior but not an implementation-safe
-patch. Process-context-independent CLOSE, remove-time rundown and concurrent
-registration ownership remain unresolved together; no driver change was made.
+REMOVE clears every remaining file association only after remove-lock rundown;
+STOP and surprise removal retain file associations while applying the existing
+transfer teardown. No cleanup path frees a current or `DmaUnsafeToFree`
+transfer. `UnknownActive` therefore remains irreversible and independently
+retained exactly as before. The obsolete every-CLOSE
+`LecReleaseTransfersForProcess` helper was removed so the unsafe behavior
+cannot be reintroduced accidentally.
+
+Offline qualification builds Debug and Release x64 with zero warnings and zero
+errors. Source/ABI contracts pass 63/63, the process/file model 23/23, the
+combined lifetime audit 19/19, and the complete Dry suite passes. Default
+stress passes 5,000/5,000 DMA races and 1,000/1,000 INTEN iterations; expanded
+stress passes 50,000/50,000 DMA races and 10,000/10,000 INTEN iterations. This
+is production-source qualification, not deployment qualification: the changed
+driver has not been signed, installed, loaded or exercised on hardware.
 
 ## Remaining P0 work, no shortcuts
 

@@ -953,3 +953,26 @@ first child-resolution path in the E2E helper before trying
 `Parent.Objects.Item(name)` or `Parent.Object.Item(name)`.
 The scanner has not yet been owner-run; do not claim its observed hierarchy
 until the resulting dump is supplied.
+
+## Multi-handle DMA ownership qualification
+
+The production driver now associates each successful CREATE with its file
+object and creating process. DMA token operations resolve ownership from that
+association, and only the last CLOSE for the recorded process retires safe
+inactive registrations. Focused source contracts bind CREATE rollback, CLOSE
+detachment, last-handle release, IOCTL owner lookup and REMOVE-time context
+rundown to the production source. The deterministic process/file model covers
+both REGISTER/final-CLOSE orders, duplicate CLOSE, independent processes,
+surprise removal and irreversible `UnknownActive` retention.
+
+Offline results for this change:
+
+- Debug x64 and Release x64: 0 warnings, 0 errors;
+- source/ABI contracts: 63/63 PASS;
+- process/file-object lifetime: 23/23 PASS;
+- combined runtime lifetime audit: 19/19 PASS;
+- complete Dry suite: PASS;
+- default stress: DMA 5,000/5,000 and INTEN 1,000/1,000 PASS;
+- expanded stress: DMA 50,000/50,000 and INTEN 10,000/10,000 PASS.
+
+No live driver, PnP, device, MMIO or DMA operation is part of this evidence.

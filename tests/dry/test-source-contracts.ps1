@@ -339,14 +339,17 @@ Test-Contract "IOCTL admission counter releases at dispatch completion" {
     $driverSourceText -match 'KeWaitForSingleObject\(\s*&DevExt->IoIdleEvent'
 }
 
-Test-Contract "create and close keep remove-lock and IOCTL-admission ownership balanced" {
+Test-Contract "create and close keep remove-lock and file ownership balanced" {
     $create = [regex]::Match($driverSourceText,
         '(?s)LecS65Create\s*\(.*?(?=NTSTATUS\s+LecS65Close)')
     $close = [regex]::Match($driverSourceText,
         '(?s)LecS65Close\s*\(.*?\n\}')
     $create.Success -and $close.Success -and
-    $create.Value -match '(?s)IoAcquireRemoveLock.*?IoReleaseRemoveLock.*?IoCompleteRequest' -and
-    $close.Value -match '(?s)IoAcquireRemoveLock.*?LecEnterIoctl.*?LecReleaseTransfersForProcess.*?LecLeaveIoctl.*?IoReleaseRemoveLock.*?IoCompleteRequest'
+    $create.Value -match '(?s)IoAcquireRemoveLock.*?LecAssociateFileContext.*?IoReleaseRemoveLock.*?IoCompleteRequest' -and
+    $close.Value -match '(?s)IoAcquireRemoveLock.*?LecCloseFileContext.*?IoReleaseRemoveLock.*?IoCompleteRequest' -and
+    $acquisitionText -match '(?s)LecCloseFileContext.*?RemoveEntryList\(&candidate->Link\).*?ownerStillOpen.*?!transfer->DmaUnsafeToFree' -and
+    $ioctlText -match '(?s)LecGetFileOwnerProcessId.*?ownerProcessId.*?LecRegisterTransfer' -and
+    $deviceText -match '(?s)IoReleaseRemoveLockAndWait.*?LecReleaseAllTransfers.*?LecReleaseAllFileContexts'
 }
 
 Test-Contract "legacy event replacement and teardown retain exact object lifetime" {
@@ -425,7 +428,7 @@ Test-Contract "uncertain DMA is latched after both launch paths" {
 Test-Contract "unknown DMA memory cannot be released by cleanup" {
     $acquisitionText -match 'if \(Transfer->DmaUnsafeToFree\)' -and
     $acquisitionText -match 'transfer->DmaUnsafeToFree\) \{' -and
-    $acquisitionText -match '!candidate->DmaUnsafeToFree' -and
+    $acquisitionText -match '!transfer->DmaUnsafeToFree' -and
     $acquisitionText -match 'LecDmaCompletionMarkQuarantined'
 }
 
