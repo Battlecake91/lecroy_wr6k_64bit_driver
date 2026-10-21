@@ -179,7 +179,7 @@ function Get-RealState {
             TestSigning=($bcd -match '(?im)^testsigning\s+Yes\s*$')
             SecureBootEnabled=[bool]$secureBoot; DeviceGuard=$deviceGuard;
             ActiveCiPolicyFiles=@($activePolicies) }
-        Devices=@($devices); BlockedClients=@($blocked); Rollback=$rollback
+        Devices=@($devices); BlockedClients=@($blocked); Rollback=[pscustomobject]$rollback
     }
 }
 
