@@ -718,3 +718,37 @@ Passing all applicable stages would qualify only the bounded kernel-runtime
 cases above. It would not prove physical DMA bus-idle, IOMMU-safe PFN DMA,
 general acquisition, HLK success, WHQL/WHCP certification or production
 deployment.
+
+## Batch 3 runtime completion and next-stage readiness
+
+The exact `Batch3Remaining` harness path completed R0-8, R0-9 and the two
+conditional R1 reads once each. The final R0/R1 status is 9/9 plus 2/2 PASS;
+the device remained problem-free and no relevant event was recorded. The
+private run manifest is
+`D6F6EAC9CDABAEEA32DB684276D65B02036EBD697EA5AE2C47F05B9EB2F71C63`.
+
+The prepared one-cycle PnP procedure above remains technically ready but is
+not authorized. DebugView CLI 5.02 x64 is present with the pinned SHA-256,
+valid Microsoft Authenticode signature, and no current DebugView process or
+`DBGV` service instance. The cycle must use the exact installed instance and
+package, establish capture readiness before the single `pnputil /restart-device`
+call, correlate all `PNP_STATUS:` stages, and never retry automatically.
+
+The proposed initial Verifier mask `0x0002093B` selects Special Pool, Force
+IRQL Checking, Pool Tracking, I/O Verification, Deadlock Detection, Security
+Checks, Miscellaneous Checks and DDI Compliance. It deliberately excludes
+random/systematic low-resource injection, forced pending I/O and DMA
+Verification from the first boot. That is appropriate for the first lifetime
+pass because the installed driver still uses the legacy PFN-derived DMA path,
+acquisition is excluded, and DMA Verification would not prove physical
+retirement of that bypass path.
+
+Current passive readiness is incomplete: Verifier is off with no selected
+driver, `CrashDumpEnabled=7`, `C:\Windows\MEMORY.DMP`, `AutoReboot=1` and
+overwrite enabled. The boot-volume page file is automatic but currently only
+1,280 MiB for approximately 8 GiB RAM; 21.1 GB is free on C:. This does not
+prove that a useful kernel dump will be captured. No settings were changed.
+Before authorizing Verifier, the owner must separately approve or explicitly
+accept a reviewed dump/page-file policy, recovery-path validation, the one-boot
+Verifier configuration and the reboot. Do not combine the first Verifier boot
+with PnP restart, device IOCTLs, acquisition or DMA.

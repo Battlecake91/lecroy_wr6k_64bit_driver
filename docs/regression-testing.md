@@ -881,7 +881,7 @@ collection, allowed command shapes or the lecdiag mock boundary:
 
 The test compiles the production `lecdiag.c` behind the fake Win32 boundary
 and launches the exact production harness in Windows PowerShell 5.1. Current
-result: 19/19 PASS. Coverage includes UTF-8 with and without BOM, German
+result: 21/21 PASS. Coverage includes UTF-8 with and without BOM, German
 metadata, stable identity across BDF 4:1.0 and 5:1.0, missing/changed PnP data,
 Device Guard inactive/active/unknown/contradictory states, hash failures,
 problem code 52, interface multiplicity, acquisition clients, the seven-command
@@ -890,11 +890,22 @@ stop-on-failure behavior. The full PASS path observes exactly eight mock
 `DeviceIoControl` calls: one for each of five R0 commands and the PCI R1 read,
 plus two reviewed reads for `start-register`.
 
+The additional Batch 3 path permits only R0-8, R0-9 and the two conditional R1
+commands. Its PASS case observes exactly five mock calls and proves that no
+completed R0-1 through R0-7 request can be dispatched. Its failure case proves
+that an R0-8 error prevents R0-9 and both R1 commands.
+
 The R0 trace-size fixture returns `0x110`, matching the current driver source
 and canonical ABI analysis. The historical `0x1A08` expectation was stale and
 must not be reintroduced. The permanent harness still requires a separate
 owner authorization for `RunAuthorized`; successful mocks or `Preflight` do
 not grant hardware access.
+
+The legacy query-size audit adds public canonical constants and compile-time
+driver/tool layout assertions. `test-source-contracts.ps1` binds the public
+`0x110`, `0x10A`, 43 and `0x2CAE` values to driver and mock behavior. Current
+focused results are 63/63 source/ABI contracts and 16/16 lecdiag command-chain
+cases. The stale `0x1A08` value is retained only as historical failure evidence.
 
 ## Device Guard preflight predicate
 

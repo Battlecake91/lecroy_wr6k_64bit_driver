@@ -47,8 +47,9 @@ $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install
 $code52Collector = Join-Path $repo "scripts\collect-code52-signing-diagnostics.ps1"
 $runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
 $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
+$mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -88,6 +89,7 @@ $lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 $diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
+$mockDeviceText = Get-Content -LiteralPath $mockDeviceSource -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -228,6 +230,17 @@ Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" 
     $ioctlText -match 'entry\s*=\s*&g_LecLegacyRegisterList\[index\]' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x101\)' -and
     $ioctlText -match 'LecReadU32\(Buffer\s*\+\s*0x106\)'
+}
+
+Test-Contract "legacy two-stage query sizes agree across public ABI, driver and mock" {
+    (Get-HexDefine $publicText "LECS65_LEGACY_TRACE_BLOCK_BYTES") -eq "00000110" -and
+    (Get-HexDefine $publicText "LECS65_LEGACY_REGISTER_ENTRY_BYTES") -eq "0000010A" -and
+    (Get-HexDefine $publicText "LECS65_LEGACY_REGISTER_LIST_BYTES") -eq "00002CAE" -and
+    $publicText -match 'LECS65_LEGACY_REGISTER_COUNT\s+UINT32_C\(43\)' -and
+    $ioctlText -match 'C_ASSERT\(LECS65_LEGACY_TRACE_BLOCK_BYTES == 0x110UL\)' -and
+    $ioctlText -match 'C_ASSERT\(LECS65_LEGACY_REGISTER_LIST_BYTES == 0x2CAEUL\)' -and
+    $mockDeviceText -match '(?s)case 0x00223004:.*?\*\(DWORD\*\)OutputBuffer = 0x110;' -and
+    $mockDeviceText -match '(?s)case 0x00223040:.*?\*\(DWORD\*\)OutputBuffer = 0x2CAE;'
 }
 
 Test-Contract "replacement publishes the exact five legacy-compatible interface classes" {

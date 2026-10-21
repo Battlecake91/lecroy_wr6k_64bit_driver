@@ -340,3 +340,32 @@ authorization was not inferred or reused. A post-stop passive preflight passed
 with the unchanged device, service, loaded SYS and five interfaces, and its
 target-event set was empty. A new explicit authorization is required to run
 the remaining R0-8/R0-9 commands and conditional R1 pair.
+
+## Runtime Qualification Batch 3 result
+
+The versioned permanent harness added a `Batch3Remaining` command set so the
+completed R0-1 through R0-7 requests could not be repeated. Its 21/21 offline
+matrix proves the four-command allowlist, five resulting mock
+`DeviceIoControl` calls, conditional R1 gate and first-failure stop.
+
+The real passive preflight passed with zero attempt markers. The single
+authorized run then completed exactly these operations:
+
+| Command | Result |
+|---|---|
+| R0-8 `0x00223040`, in=0/out=4 | PASS; returned 4; value `0x00002CAE` |
+| R0-9 `0x00222C00`, in=4/out=0 | PASS; input `00000000`; returned 0 |
+| R1 `pci` | PASS; `1570:0005`; observed BDF 5:1.0; 64 PCI bytes read |
+| R1 `start-register` | PASS; `0x00223044` and BAR0+0 both `0x00000002` |
+
+Every child exited zero without stderr or timeout. Each pre/post state check
+retained the exact instance, problem code zero, running service, loaded SYS
+hash and five interfaces. All target-event files are empty. Together with the
+retained earlier results, the bounded safe runtime matrix is 9/9 R0 and 2/2 R1
+PASS. This does not authorize R2/R3 requests, acquisition, DMA, Verifier or a
+PnP transition.
+
+Private evidence roots:
+
+- preflight: `C:\Users\LeCroyUser\.codex\driver-backups\Phase3-Preflight-20261021-attempt1`, manifest `9C92E2315096EDEDC6F177084E8C8422B4B13E54949613A6059B33917CA2AC50`;
+- authorized run: `C:\Users\LeCroyUser\.codex\driver-backups\Phase3-RunAuthorized-20261021-attempt1`, manifest `D6F6EAC9CDABAEEA32DB684276D65B02036EBD697EA5AE2C47F05B9EB2F71C63`.

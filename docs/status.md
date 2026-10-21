@@ -220,6 +220,26 @@
   zero, `oem101.inf` version `0.2026.1018.1`, running service, expected SYS
   hash, five interfaces and no target event. A new explicit authorization is
   required for the remaining runtime commands.
+- Runtime Qualification Batch 3 completed the low-risk runtime matrix without
+  repeating R0-1 through R0-7. The permanent harness added an exact
+  `Batch3Remaining` allowlist and passes 21/21 focused Windows PowerShell 5.1
+  cases. R0-8 returned the canonical register-list size `0x2CAE`; R0-9
+  completed the exact four-byte zero-delay request; the bounded PCI query
+  returned `1570:0005` at observed BDF 5:1.0; and the dedicated and generic
+  START reads both returned `0x00000002`. All four processes exited zero with
+  no stderr, timeout, retry, health change or target event. The safe ABI
+  runtime baseline is now 9/9 R0 plus 2/2 R1 PASS. The installed package,
+  service, loaded SYS and five interfaces remain unchanged.
+- The legacy ABI consistency audit now publishes canonical `0x110`, `0x10A`,
+  43 and `0x2CAE` size constants, compiles driver/tool size assertions and
+  binds the mock values through a source contract. Focused source contracts
+  pass 63/63 and the lecdiag command chain passes 16/16.
+- PR #26 has no repository-level merge conflict: its base commit is an ancestor
+  of the head, the branch is 12 commits ahead and zero behind, and a local
+  `git merge-tree --write-tree` succeeds. The reported non-mergeable state is
+  therefore not branch topology; GitHub's public page currently fails to load
+  merge/check details, so a stale mergeability calculation or unmet hosted
+  check/protection requirement remains the external explanation.
 
 ## DMA/PnP staging
 
