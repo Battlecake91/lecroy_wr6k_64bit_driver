@@ -11,11 +11,13 @@ public static class MockDiagnosticNative
         string counter = Environment.GetEnvironmentVariable(
             "LECS65_DIAGNOSTIC_MOCK_COUNTER");
         bool install = Array.IndexOf(args, "/add-driver") >= 0;
+        bool restart = Array.IndexOf(args, "/restart-device") >= 0;
         Console.WriteLine("MOCK ARGS: " + String.Join("|", args));
         if (!String.IsNullOrEmpty(counter))
-            File.AppendAllText(counter, install ? "install\r\n" : "capture\r\n");
+            File.AppendAllText(counter, install ? "install\r\n" :
+                (restart ? "restart\r\n" : "capture\r\n"));
 
-        if (install)
+        if (install || restart)
         {
             Console.WriteLine("MOCK PNPUTIL INVOCATION");
             return scenario == "PnPUtilFailure" ? 55 : 0;

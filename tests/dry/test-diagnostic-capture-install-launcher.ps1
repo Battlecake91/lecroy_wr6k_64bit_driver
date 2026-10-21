@@ -106,7 +106,8 @@ $script:CaseNumber = 0
 function Invoke-Case {
     param(
         [string]$Name,
-        [ValidateSet('Preflight','CaptureQualification','InstallWithCapture')]
+        [ValidateSet('Preflight','CaptureQualification','InstallWithCapture',
+            'RestartWithCapture')]
         [string]$Mode='Preflight',
         [string]$Scenario='Success',
         [string]$FailureInjection='',
@@ -161,6 +162,10 @@ function Invoke-Case {
             $arguments += @('-AuthorizeInstallation','-PnPUtilPath',$context.MockExe,
                 '-ExpectedPnPUtilHash',$context.MockHash)
         }
+        elseif ($Mode -eq 'RestartWithCapture') {
+            $arguments += @('-AuthorizePnpRestart','-PnPUtilPath',$context.MockExe,
+                '-ExpectedPnPUtilHash',$context.MockHash)
+        }
         $hostPath = Join-Path $PSHOME 'powershell.exe'
         $outerLog = Join-Path $tempRoot ("$Name-outer.log")
         $result = Invoke-LecS65NativeProcess -Name "Case $Name" -FilePath $hostPath `
@@ -195,6 +200,13 @@ try {
         $install.ExitCode -eq 0 -and $install.Invocations -eq 2 -and
         ($install.Records -join ',') -eq 'capture,install')
 
+    $restart = Invoke-Case -Name 'restart-success' -Mode RestartWithCapture
+    Add-Result 'mock capture/restart path invokes each child exactly once' (
+        $restart.ExitCode -eq 0 -and $restart.Invocations -eq 2 -and
+        ($restart.Records -join ',') -eq 'capture,restart' -and
+        (Get-Content -Raw (Join-Path $restart.Evidence 'result.json') |
+            ConvertFrom-Json).PnpRestartInvocations -eq 1)
+
     $early = Invoke-Case -Name 'early-exception' -Mode CaptureQualification `
         -FailureInjection BeforeCaptureStart
     Add-Result 'early terminating exception is persisted before child logs' (
@@ -221,6 +233,13 @@ try {
         $pnpFailure.ExitCode -ne 0 -and $pnpFailure.Invocations -eq 2 -and
         @($pnpFailure.Records | Where-Object {$_ -eq 'install'}).Count -eq 1)
 
+    $restartFailure = Invoke-Case -Name 'restart-failure' `
+        -Mode RestartWithCapture -Scenario PnPUtilFailure
+    Add-Result 'nonzero PnP restart stops after one restart invocation' (
+        $restartFailure.ExitCode -ne 0 -and
+        $restartFailure.Invocations -eq 2 -and
+        @($restartFailure.Records | Where-Object {$_ -eq 'restart'}).Count -eq 1)
+
     $badPackage = Invoke-Case -Name 'bad-package-hash' -InfHash ('0'*64)
     Add-Result 'incorrect package hash stops before active work' ($badPackage.ExitCode -ne 0 -and $badPackage.Invocations -eq 0)
     $badTool = Invoke-Case -Name 'bad-tool-hash' -DebugViewHash ('0'*64)
@@ -240,7 +259,8 @@ try {
             Where-Object {
                 $lines=@(Get-Content -LiteralPath $_.FullName)
                 @($lines|Where-Object{$_ -eq 'capture'}).Count -gt 1 -or
-                @($lines|Where-Object{$_ -eq 'install'}).Count -gt 1
+                (@($lines|Where-Object{$_ -eq 'install'}).Count -gt 1) -or
+                (@($lines|Where-Object{$_ -eq 'restart'}).Count -gt 1)
             }).Count -eq 0)
     Start-Sleep -Milliseconds 500
     Add-Result 'no mock native process remains orphaned' (
