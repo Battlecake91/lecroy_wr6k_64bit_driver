@@ -953,3 +953,38 @@ first child-resolution path in the E2E helper before trying
 `Parent.Objects.Item(name)` or `Parent.Object.Item(name)`.
 The scanner has not yet been owner-run; do not claim its observed hierarchy
 until the resulting dump is supplied.
+
+## Batch 4 independent PR #27 reproduction
+
+The exact PR #27 head `1120687c181e85ade70f91d656d127ef0533d7a6`
+was checked out in an isolated detached worktree. SDK/WDK 10.0.28000.0 and
+MSVC 14.41.34120 produced Debug and Release x64 drivers with zero warnings and
+zero errors. The resulting SYS hashes are:
+
+| Configuration | SHA-256 |
+|---|---|
+| Debug x64 | `D12C4822719193F0F4EDAAFBEEAB3760F351A6A95C3B901BE9B7E115044EB496` |
+| Release x64 | `C2017E20F5E52DE0711B550E02567E181CCF78FFD227B812610B2DEAD5D4E325` |
+
+Both images are AMD64 native drivers with `DriverEntry` and the expected
+`ntoskrnl.exe` and `HAL.dll` imports. The complete Dry runner passed, including
+63/63 source/ABI contracts, 23/23 process/file lifetime cases, 19/19 combined
+lifetime cases, 10/10 PnP IRP cases, 38/38 publication cases, 39/39 DMA
+completion cases, 2/2 deterministic interleavings and 49/49 INTEN functional
+cases. Default stress passed 5,000/5,000 DMA plus 1,000/1,000 INTEN;
+the independent expanded run passed 50,000/50,000 DMA plus 10,000/10,000
+INTEN. No test opened the device, signed or installed a driver, or performed
+MMIO/DMA/acquisition.
+
+The Batch 4 launcher-only change adds one source contract, bringing its branch
+to 64/64. Elevated Windows PowerShell 5.1.19041.6456 launcher mocks pass 20/20
+and cover the one-shot restart gate without invoking real PnPUtil. The final
+mock transcript SHA-256 is
+`226FF30F0218DE1F53467AD27B686DF75DB8CFF40CD888F7A44CB15382734592`;
+its result JSON SHA-256 is
+`B5DD9B0CCFAA0C95F46FF82A27F7F5550ABEA206069399DC5285B66A4BD79914`.
+Live DebugView buffering exposed a gap not represented by the immediate-write
+mock: a 15-second readiness window can expire while valid kernel records remain
+buffered. Real active modes now reject windows below 60 seconds and reserve at
+least 120 seconds after the deadline. This correction is offline-qualified
+only; a new authorization is required before any live restart.

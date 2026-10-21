@@ -982,6 +982,48 @@ therefore demonstrates the required behavior but not an implementation-safe
 patch. Process-context-independent CLOSE, remove-time rundown and concurrent
 registration ownership remain unresolved together; no driver change was made.
 
+### Independent review of PR #27
+
+PR #27 head `1120687c181e85ade70f91d656d127ef0533d7a6` implements the
+previously modeled process-shared ownership rule without changing token or
+IOCTL wire formats. Each successful CREATE allocates a nonpaged file context,
+records the originating process and publishes the context under
+`TransferMutex`. Failed allocation or association returns an error without a
+list entry. CLOSE resolves the recorded association rather than the current
+thread/process, removes exactly that file context and retires safe inactive
+registrations only when no other context for that process remains.
+
+The source review found no production defect in the reviewed revision:
+
+- CREATE, CLOSE and remove-time context rundown are covered by the remove lock;
+- file-context and transfer-list mutations share `TransferMutex`, while frees
+  and publication retention occur after releasing it;
+- a CLOSE for one of several file objects cannot retire registrations while
+  another context for that originating process remains;
+- I/O-manager CLOSE ordering plus IOCTL admission/rundown prevents a file
+  context from being freed underneath an outstanding request on that file;
+- REMOVE waits for dispatch rundown, releases or independently retains every
+  transfer, then clears and frees remaining file contexts before device
+  deletion; and
+- `CurrentTransfer` and `DmaUnsafeToFree` checks preserve live and
+  `UnknownActive` ownership. Quarantined storage still moves to the independent
+  publication owner and is never unlocked by final CLOSE or REMOVE.
+
+No public IOCTL constant, packed record, buffer-length rule or token-sharing
+rule changed. The residual assumptions are WDM/I/O-manager lifetime contracts,
+not evidence of physical DMA idle. The source remains uninstalled and cannot
+be called hardware-qualified.
+
+Independent offline reproduction at the exact PR head produced zero-warning,
+zero-error Debug and Release x64 builds. Debug SYS SHA-256 is
+`D12C4822719193F0F4EDAAFBEEAB3760F351A6A95C3B901BE9B7E115044EB496`;
+Release SYS SHA-256 is
+`C2017E20F5E52DE0711B550E02567E181CCF78FFD227B812610B2DEAD5D4E325`.
+Both are AMD64 native images with `DriverEntry` and only `ntoskrnl.exe`/`HAL.dll`
+imports. Focused process/file tests pass 23/23, combined lifetime tests 19/19,
+PnP IRP tests 10/10, publication tests 38/38, source/ABI contracts 63/63,
+default DMA/INTEN stress 5,000/1,000 and expanded stress 50,000/10,000.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.

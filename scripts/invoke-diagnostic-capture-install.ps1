@@ -51,7 +51,7 @@ param(
     [string]$PnPUtilPath = "$env:SystemRoot\System32\pnputil.exe",
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedPnPUtilHash,
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
-    [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 10,
+    [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
     [ValidateRange(1, 120)][int]$CaptureShutdownGraceSeconds = 15,
     [string]$DeviceInstanceId =
         'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0',
@@ -347,6 +347,15 @@ try {
         $PSVersionTable.PSVersion.Minor -ne 1 -or
         -not [Environment]::Is64BitProcess) {
         throw 'The diagnostic launcher requires 64-bit Windows PowerShell 5.1.'
+    }
+    if (-not $TestMode -and $Mode -ne 'Preflight') {
+        if ($CaptureReadinessTimeoutSeconds -lt 60) {
+            throw 'Real capture modes require at least 60 seconds for buffered kernel-log readiness.'
+        }
+        if ($CaptureDurationSeconds -lt
+            ($CaptureReadinessTimeoutSeconds + 120)) {
+            throw 'Real capture modes require at least 120 seconds after the readiness deadline.'
+        }
     }
 
     $repository = Get-AbsolutePath $RepositoryRoot 'RepositoryRoot'

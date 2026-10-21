@@ -752,3 +752,81 @@ Before authorizing Verifier, the owner must separately approve or explicitly
 accept a reviewed dump/page-file policy, recovery-path validation, the one-boot
 Verifier configuration and the reboot. Do not combine the first Verifier boot
 with PnP restart, device IOCTLs, acquisition or DMA.
+
+## Batch 4 captured-restart attempt
+
+The installed baseline passed before active work: exact PCI instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`, observed
+BDF 5:1.0, `oem101.inf` version `0.2026.1018.1`, problem code zero, running
+`LecS65AcqDrv`, five enabled legacy interfaces and loaded SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`.
+Test-signing was enabled, Device Guard reported no active service, acquisition
+clients were absent, the signed candidate and original `oem100.inf` rollback
+set matched their frozen hashes, and Verifier was off.
+
+The one authorized `RestartWithCapture` launcher execution began at
+`2026-10-21T22:02:56.4158729Z`. DebugView started once, but its raw log still
+reported zero bytes when the 15-second readiness deadline expired. The
+launcher recorded `FAIL`, exit code 1, one capture invocation, zero install
+invocations and zero PnP restart invocations. No restart marker or PnPUtil log
+exists. The authorization was consumed and no retry occurred.
+
+After the fail-closed decision, DebugView flushed a 458,752-byte raw file. It
+contains 5,862 records, 5,861 of which are independently attributable
+`STORMINI: StorNVMe` kernel records. The first record is timestamped
+22:02:58.745, but the file length was not externally visible during the gate;
+the last record is 22:05:11.540 and the final line is truncated. There is no
+`PNP_STATUS:` record because PnPUtil was never reachable. This proves that the
+failure was buffered log visibility, not missing kernel capture, but it does
+not authorize retroactively treating capture as ready.
+
+Post-run state is unchanged. DebugView and `DBGV` are absent; device, package,
+service and loaded SYS identity match preflight. SetupAPI retains its prior
+length, last-write time and SHA-256
+`2FE8D1DFE99D97651F8DD3BB5FD8355BA7510A2064344B3CD2E26A53A618C714`.
+No target Kernel-PnP, Code Integrity or SCM event occurred after the bookmark,
+including Event 411. Because no PnP transition occurred, the attempt proves
+nothing new about STOP/START, IRQ disconnect/reconnect, interface withdrawal
+or physical DMA idle. Historical Event 411 attribution remains unchanged.
+
+Private evidence hashes:
+
+| Evidence | SHA-256 |
+|---|---|
+| Passive preflight JSON | `58A74F4B22DD04690904E43ACA2D88A7FB5836A43C0CF92A806BE954AAE84733` |
+| Capture attempt marker | `73214D7AEF7A170BC2D6CAE55E9636E6852C63CF50485B4E457535441959F828` |
+| Raw kernel capture | `73D3238F8C23CE3B782880C05CB0F013D4FC01D4A34C2DBE727B79BC653A47B9` |
+| Launcher result | `DB4EA044BA09AAFF01B25055D33AB81CDCFDF5ECFC96F52FFD7FCC67D4951DE7` |
+| Launcher exception | `57CDF5BCD4749B657E8E3C4D609232247A4609492C398D6AA39228733A52CA43` |
+
+Real capture modes now require a readiness window of at least 60 seconds and a
+capture duration that leaves at least 120 seconds after that deadline. This is
+a fail-closed correction for DebugView's observed buffering; it has only mock
+and source-contract validation. A future restart requires a fresh evidence
+root, a newly reviewed exact command, successful live readiness and a new
+explicit owner authorization.
+
+### Verifier readiness result
+
+The proposed `0x0002093B` mask remains appropriate for the first non-DMA WDM
+lifetime pass. It includes Special Pool, Force IRQL Checking, Pool Tracking,
+I/O Verification, Deadlock Detection, Security Checks, Miscellaneous Checks
+and DDI Compliance, while excluding DMA Verification and resource-fault
+injection.
+
+The elevated passive audit recorded Verifier flags zero and no selected
+driver, current-boot `testsigning Yes`, `CrashDumpEnabled=7`, automatic reboot,
+`C:\Windows\MEMORY.DMP`, an automatically managed 1,280-MiB boot page file,
+approximately 8,067 MiB visible RAM and 19.64 GiB free on C:. `reagentc /info`
+reported `WinRE Status: Disabled`. Therefore neither useful dump capture nor a
+recovery route has been demonstrated, and the test-signing state of a recovery
+boot path cannot be verified. The private readiness JSON SHA-256 is
+`5483CB3DA8E97C4604D91C73306F09F078FDDC504F4515782B8827DF75CD20FD`.
+
+Verifier activation remains blocked until a separately authorized change and
+rehearsal establish: adequate page-file or dedicated-dump backing, a usable
+WinRE/Safe Mode or external recovery path, successful `verifier /reset`
+recovery, and preservation of the signed test-driver boot policy. Only then may
+the already documented one-boot commands be authorized. The first pass must
+target only `LecS65AcqDrv.sys` and must not include PnP restart, acquisition,
+DMA or hardware IOCTLs.

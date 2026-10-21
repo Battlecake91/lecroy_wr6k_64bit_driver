@@ -868,6 +868,12 @@ Test-Contract "diagnostic launcher keeps capture installation and restart explic
     $diagnosticLauncherText -notmatch 'scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
 }
 
+Test-Contract "real capture readiness accounts for buffered DebugView logging" {
+    $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds = 60' -and
+    $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds -lt 60' -and
+    $diagnosticLauncherText -match 'CaptureDurationSeconds -lt\s*\(\$CaptureReadinessTimeoutSeconds \+ 120\)'
+}
+
 Test-Contract "Code 52 collector is read-only and fail-closed" {
     $code52CollectorText -match "(?s)bcdedit\.exe.*?@\('/enum','\{current\}'\)" -and
     $code52CollectorText -match "(?s)pnputil\.exe.*?@\('/enum-devices'" -and
