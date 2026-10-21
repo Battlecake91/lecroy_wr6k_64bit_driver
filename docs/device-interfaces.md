@@ -51,6 +51,13 @@ rolling back successful classes is therefore a compatibility-affecting change,
 not an established fix. The current behavior remains unchanged pending direct
 fault injection and an explicit policy decision.
 
+The Batch 2D offline audit reconfirmed the 19/19 lifetime model across first,
+middle, last and multiple enable failures and repeated teardown. Changing START
+to fail after a single interface activation error would withdraw otherwise
+working legacy endpoints and is therefore externally observable. No evidence
+currently establishes that behavior as the original compatibility contract or
+as a required defect fix, so the continue-on-error policy remains unchanged.
+
 The INF binds the PCI hardware ID, class and service. It has no `AddInterface`
 directive and does not create any of the five interface classes. Their
 publication is exclusively the driver's runtime responsibility.

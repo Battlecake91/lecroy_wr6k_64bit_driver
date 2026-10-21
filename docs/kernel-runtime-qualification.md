@@ -417,6 +417,39 @@ R0-9 and R1 remain NOT RUN and require new explicit authorization. Private
 evidence remains outside the public repository; see the recovery document for
 manifest hashes.
 
+### Batch 2D stopped preflight and offline follow-up
+
+Batch 2D retained the restored boot baseline and unchanged diagnostic binary
+and runner identities. A fresh mock traversal of all R0/R1 command shapes and
+malformed-input boundaries passed 16/16. The one authorized elevated live
+invocation nevertheless stopped before the runtime baseline and before any
+device command. `Win32_DeviceGuard` returned VBS status `0`, both policy
+enforcement states `0` and `SecurityServicesRunning={0}`. The temporary
+one-shot wrapper incorrectly interpreted the zero sentinel as an active
+service because it rejected every nonempty array.
+
+No attempt marker, native process log or device snapshot was created; only the
+failure, outcome and manifest records exist. Thus no device path was opened,
+R0-5 through R0-9 were not invoked, and the conditional R1 gate never became
+effective. There was no retry or system repair. The private manifest SHA-256 is
+`A41492D7CD65C20DE4CE0C72C3D40D643BC22EE8D30E9CD2BF8C7DAB9D1DF9FB`.
+A subsequent passive snapshot passed: the exact instance remained problem-free
+at 5:1.0, `oem101.inf` and the loaded SYS hash were unchanged, the service was
+running and all five interfaces remained published. No target event appeared
+in the exact post-attempt window. Snapshot SHA-256 is
+`08C05F481BBED834B8CEF857661267EA2F96FB3C343F39A1E748D155243422DA`;
+supplemental evidence-manifest SHA-256 is
+`D459BA05A31B90EFF665D320EFA7A4C336593CC09A994F9AF15607DD2CB7BC90`.
+
+The independent offline lifetime review remains green: process/file DMA 22/22,
+event/interface/DMA lifetime 19/19, PnP IRP 10/10, publication 38/38, mapping
+ownership 17/17, completion 39/39 plus 2/2 deterministic interleavings, DMA
+stress 5,000/5,000 and INTEN 49/49 plus 1,000/1,000. These prove software model
+contracts, not physical DMA retirement. No production source change was
+justified. A later hardware attempt requires a new explicit authorization and
+a reviewed Device Guard predicate that rejects nonzero service identifiers,
+not the `{0}` sentinel.
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved

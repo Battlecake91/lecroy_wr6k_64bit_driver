@@ -239,3 +239,38 @@ attributed to the absent Test Mode boot element, not package drift. No repair,
 retry, PnP action or IOCTL is part of this result. Future batches must use the
 exact stable hardware/instance identity gate in `scripts/test-runtime-baseline.ps1`;
 BDF changes require review but are never a device-selection key.
+
+## Kernel Runtime Qualification Batch 2D stopped preflight
+
+The exact `lecdiag.exe` SHA-256 remained
+`ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA` and
+the bounded runner SHA-256 remained
+`58AE76C5F90EE34F7E8634E5CA769A36F134A13CD6E3262FE38D1C16E07700D7`.
+A fresh mock command-chain run passed all eleven positive R0/R1 forms and five
+malformed forms, 16/16. The previously established Windows PowerShell 5.1
+serialization evidence therefore remained applicable; the fresh run added an
+unchanged-source check rather than changing the command contract.
+
+The only elevated live invocation stopped before its runtime-baseline snapshot
+or any `lecdiag` call. `Win32_DeviceGuard` reported
+`VirtualizationBasedSecurityStatus=0`, both code-integrity enforcement values
+as `0`, and `SecurityServicesRunning={0}`. The one-shot wrapper correctly
+rejected what it interpreted as a preflight mismatch, but its predicate was
+wrong: it tested whether the array was nonempty instead of treating the
+documented zero value as no running service. There are zero `*.attempted`
+markers in the exclusive evidence directory. Consequently no device interface
+was opened, no `DeviceIoControl` occurred, and R0-5 through R0-9 and both R1
+commands remain NOT RUN. The stop/no-retry rule was honored. The private
+failure manifest has SHA-256
+`A41492D7CD65C20DE4CE0C72C3D40D643BC22EE8D30E9CD2BF8C7DAB9D1DF9FB`.
+A subsequent passive baseline passed with unchanged package, SYS, device,
+service, BDF and five-interface state. The target event window was empty.
+Snapshot SHA-256 is
+`08C05F481BBED834B8CEF857661267EA2F96FB3C343F39A1E748D155243422DA` and
+supplemental evidence-manifest SHA-256 is
+`D459BA05A31B90EFF665D320EFA7A4C336593CC09A994F9AF15607DD2CB7BC90`.
+
+A future authorization must use a reviewed predicate that accepts only a
+service list containing no nonzero values. It must create a new exclusive
+evidence root and must not infer renewed hardware authorization from this
+offline correction.

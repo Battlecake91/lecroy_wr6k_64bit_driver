@@ -971,6 +971,17 @@ change the legacy sharing ABI. Driver source remains unchanged until those
 ownership rules are implemented and reviewed together; builds and ownership
 stress then precede any deployment proposal.
 
+The Batch 2D focused rerun reconfirmed this boundary. The process/file model
+passes 22/22, including both serialized REGISTER/final-CLOSE orders,
+transactional CREATE rollback, multiple handles, surprise removal and
+irreversible `UnknownActive` retention. The combined lifetime audit passes
+19/19 and PnP publication passes 38/38. Direct source review still shows CREATE
+without a file association and every CLOSE calling
+`LecReleaseTransfersForProcess` with the current process identity. The model
+therefore demonstrates the required behavior but not an implementation-safe
+patch. Process-context-independent CLOSE, remove-time rundown and concurrent
+registration ownership remain unresolved together; no driver change was made.
+
 ## Remaining P0 work, no shortcuts
 
 - Obtain real board documentation or a verified, recoverable bench measurement of MAM and MTT abort/idle, physical completion ordering and safe reset/readback. Do not invent MMIO commands from guesses or treat the old x86 driver's behavior as a proof of hardware safety.

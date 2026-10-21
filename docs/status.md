@@ -165,6 +165,30 @@
   62/62 source/safety contracts and the new 22/22 process/file-object DMA
   lifetime model. No driver source changed, so no driver rebuild, signing or
   expanded stress rerun was warranted.
+- Kernel Runtime Qualification Batch 2D revalidated the exact command chain
+  16/16 with unchanged `lecdiag.exe` and process-runner identities. The single
+  elevated live invocation then stopped in its passive preflight at
+  `2026-10-21T16:45:04Z`: Windows reported VBS status `0` and security-service
+  sentinel `{0}`, but the one-shot wrapper incorrectly treated every nonempty
+  array as an active service. The device-command phase had not started and no
+  attempt marker existed, so R0-5 through R0-9 and both R1 commands remain
+  **NOT RUN**. No retry was made. Private evidence-manifest SHA-256 is
+  `A41492D7CD65C20DE4CE0C72C3D40D643BC22EE8D30E9CD2BF8C7DAB9D1DF9FB`.
+  A later passive snapshot passed with the unchanged device, service, SYS and
+  five interfaces; no target event occurred in the test window. Its JSON
+  SHA-256 is `08C05F481BBED834B8CEF857661267EA2F96FB3C343F39A1E748D155243422DA`
+  and the supplemental evidence-manifest SHA-256 is
+  `D459BA05A31B90EFF665D320EFA7A4C336593CC09A994F9AF15607DD2CB7BC90`.
+- The Batch 2D offline follow-up again passes source/safety 62/62,
+  process/file-object DMA lifetime 22/22, combined event/interface/DMA lifetime
+  19/19, PnP IRP lifetime 10/10, PnP publication 38/38, DMA ownership 17/17,
+  DMA completion 39/39, completion interleavings 2/2, DMA stress 5,000/5,000,
+  INTEN functional 49/49 and INTEN stress 1,000/1,000. Source review still
+  finds the per-close process cleanup gap, but the proposed per-process
+  reference model is not yet safe enough to promote into the live driver.
+  Interface activation and FDO-global event replacement remain intentional
+  compatibility policies rather than verified defects; no driver source or
+  public ABI changed.
 
 ## DMA/PnP staging
 
