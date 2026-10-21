@@ -78,6 +78,27 @@ static BOOL fail_request(DWORD error)
     return FALSE;
 }
 
+static BOOL environment_ioctl_matches(const char* name, DWORD code)
+{
+    char value[32];
+    unsigned long parsed;
+    DWORD length = GetEnvironmentVariableA(name, value, ARRAYSIZE(value));
+    if (length == 0 || length >= ARRAYSIZE(value)) return FALSE;
+    if (sscanf_s(value, "%lx", &parsed) != 1) return FALSE;
+    return (DWORD)parsed == code;
+}
+
+static DWORD environment_delay_ms(void)
+{
+    char value[32];
+    unsigned long parsed;
+    DWORD length = GetEnvironmentVariableA(
+        "LECS65_MOCK_DELAY_MS", value, ARRAYSIZE(value));
+    if (length == 0 || length >= ARRAYSIZE(value)) return 0;
+    if (sscanf_s(value, "%lu", &parsed) != 1) return 0;
+    return (DWORD)parsed;
+}
+
 HANDLE WINAPI LecdiagMockCreateFileW(
     LPCWSTR FileName,
     DWORD DesiredAccess,
@@ -130,6 +151,16 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
     }
     if (OutputBuffer != NULL) {
         ZeroMemory(OutputBuffer, OutputLength);
+    }
+    if (environment_ioctl_matches("LECS65_MOCK_DELAY_IOCTL", IoControlCode)) {
+        Sleep(environment_delay_ms());
+    }
+    if (environment_ioctl_matches("LECS65_MOCK_FAIL_IOCTL", IoControlCode)) {
+        return fail_request(ERROR_GEN_FAILURE);
+    }
+    if (environment_ioctl_matches(
+            "LECS65_MOCK_MISSING_OUTPUT_IOCTL", IoControlCode)) {
+        return TRUE;
     }
 
     switch (IoControlCode) {
