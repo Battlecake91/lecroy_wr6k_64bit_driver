@@ -235,7 +235,7 @@
   binds the mock values through a source contract. Focused source contracts
   pass 63/63 and the lecdiag command chain passes 16/16.
 - PR #26 has no repository-level merge conflict: its base commit is an ancestor
-  of the head, the branch is 12 commits ahead and zero behind, and a local
+  of the head, the branch is 13 commits ahead and zero behind, and a local
   `git merge-tree --write-tree` succeeds. The reported non-mergeable state is
   therefore not branch topology; GitHub's public page currently fails to load
   merge/check details, so a stale mergeability calculation or unmet hosted
