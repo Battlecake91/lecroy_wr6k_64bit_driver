@@ -479,6 +479,47 @@ and no target event occurred in the exact interval. Any later active run require
 new authorization and an ASCII-safe or retained-JSON location input. BDF
 remains evidence only and never a selection key.
 
+### Batch 2F permanent harness and partial runtime result
+
+The repository-controlled
+`scripts/invoke-runtime-ioctl-qualification.ps1` replaces the temporary
+wrappers. It requires 64-bit Windows PowerShell 5.1, uses ASCII-safe source,
+structured PnP/CIM identity data, the production Device Guard predicate and
+the reviewed job-object process runner. Its modes separate complete mock
+execution, passive preflight and owner-authorized runtime execution. The
+19/19 offline matrix proves the seven-command allowlist, exact one-shot calls,
+five-second timeout, exclusive evidence and fail-closed state transitions.
+
+The first real passive run found a harness-only `OrderedDictionary` versus
+`PSCustomObject` mismatch while all rollback bytes matched. The normalized
+collector passed a fresh passive run with no command markers. The subsequent
+single authorized runtime attempt passed R0-5 and R0-6. R0-7 returned four
+bytes containing `0x00000110`, exit 0 and no stderr. The harness stopped before
+its post-command check because the plan-derived output contract incorrectly
+expected `0x1A08`. R0-8, R0-9 and both R1 commands were not attempted.
+
+The current driver source and canonical ABI reconstruction independently
+establish `0x110` as the `CKeTraceControl` descriptor size returned by
+`0x00223004`; `0x1A08` was stale planning data. The permanent harness and mock
+now use `0x110`, and the complete offline matrix passes again. No runtime retry
+was performed. A fresh passive post-stop run confirms the same stable instance,
+problem code zero, running service, loaded SYS hash, five published interfaces
+and an empty target-event set. The next gate is a new explicit authorization
+for exactly R0-8, R0-9 and, only after their success, the two conditional R1
+reads. The already completed R0 commands must not be repeated merely to obtain
+a contiguous transcript.
+
+Private evidence identities:
+
+| Evidence | SHA-256 |
+|---|---|
+| Passing passive-preflight manifest | `EACB718CC5E255DCD3DF11FE2F5F2AC33A2AACE5EA3A52445FCA07C5FACD091C` |
+| Authorized-run manifest | `9BDD0BBD23962B1726350C5DAFF48465CA44410214B5D4B7D0A105A638EE9C5B` |
+| R0-5 combined log / structured result | `649EE70902B0929AEDF6367A4BE8FB2AAF316A234A25466D80E3BD9694BA9520` / `DAC361A15F0783C793699743E1D5799CB8FAFF050A1FFDF134FD1295DB384A79` |
+| R0-6 combined log / structured result | `2A606239022BAC70177637F88CABCDBE0C25E1A6E3491D3572E640F88C2DAA11` / `E6F2BABABD63AF4DD6CF8878A508294FDFD064403F8CA13119E8E967C39E83CA` |
+| R0-7 combined log / structured result | `EB554BF844E7863BEAAA1345FEEA06F4D1EED53F3191929FE99C0E04C13E3433` / `1BBDCC976FBC0305A83DD1F067617F6CE4C1FB3E67CB3983AC3EEBBFF513ED44` |
+| Post-stop passive-preflight JSON / target events / manifest | `E3AF928DD2F53AB812A18F16F283E09611BF61CB406D49FB304849DC2D1F64D8` / `7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6` / `B791CCA4E4776AC62499D58CE871870AFBCC4CE68D3351F39BDD7DDC5CD5CEDE` |
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved

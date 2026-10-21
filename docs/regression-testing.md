@@ -870,6 +870,32 @@ status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
 stable-identity, service, hash and five-interface gate passes. No device handle
 or IOCTL is used.
 
+## Permanent runtime qualification harness
+
+Run the focused harness test after changes to runtime gating, device-state
+collection, allowed command shapes or the lecdiag mock boundary:
+
+```powershell
+.\tests\dry\test-runtime-ioctl-qualification.ps1
+```
+
+The test compiles the production `lecdiag.c` behind the fake Win32 boundary
+and launches the exact production harness in Windows PowerShell 5.1. Current
+result: 19/19 PASS. Coverage includes UTF-8 with and without BOM, German
+metadata, stable identity across BDF 4:1.0 and 5:1.0, missing/changed PnP data,
+Device Guard inactive/active/unknown/contradictory states, hash failures,
+problem code 52, interface multiplicity, acquisition clients, the seven-command
+allowlist, exact input buffers, timeout, missing output, non-overwrite and
+stop-on-failure behavior. The full PASS path observes exactly eight mock
+`DeviceIoControl` calls: one for each of five R0 commands and the PCI R1 read,
+plus two reviewed reads for `start-register`.
+
+The R0 trace-size fixture returns `0x110`, matching the current driver source
+and canonical ABI analysis. The historical `0x1A08` expectation was stale and
+must not be reintroduced. The permanent harness still requires a separate
+owner authorization for `RunAuthorized`; successful mocks or `Preflight` do
+not grant hardware access.
+
 ## Device Guard preflight predicate
 
 `tests/dry/test-deviceguard-preflight.ps1` imports the exact production

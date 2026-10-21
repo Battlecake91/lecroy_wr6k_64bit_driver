@@ -46,7 +46,7 @@ $commands = @(
         Pattern='(?m)^IOCTL 0xCFDC2184 succeeded: input=0 output-capacity=0 returned=0\r?$';
         MockCalls=@('ioctl=0xCFDC2184 input=0 output=0 input-hex=') },
     [pscustomobject]@{ Name='r0-7-trace-size'; Phase='R0'; Args=@('raw-ioctl','0x00223004','','4');
-        Pattern='(?ms)^IOCTL 0x00223004 succeeded: input=0 output-capacity=4 returned=4\r?\nOutput:081A0000\r?$';
+        Pattern='(?ms)^IOCTL 0x00223004 succeeded: input=0 output-capacity=4 returned=4\r?\nOutput:10010000\r?$';
         MockCalls=@('ioctl=0x00223004 input=0 output=4 input-hex=') },
     [pscustomobject]@{ Name='r0-8-register-size'; Phase='R0'; Args=@('raw-ioctl','0x00223040','','4');
         Pattern='(?ms)^IOCTL 0x00223040 succeeded: input=0 output-capacity=4 returned=4\r?\nOutput:AE2C0000\r?$';

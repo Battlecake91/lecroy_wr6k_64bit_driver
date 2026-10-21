@@ -33,7 +33,7 @@ programmable device state from volatile register and driver state.
 | `0x00222C00` | 4-byte delay in milliseconds / no output | No | No | No | No | No | No | Yes, zero delay only | **R0** bounded software delay; nonzero delays are unnecessary for the first batch |
 | `0x00222C04` | 1-byte flag / no output | No | No | No | No | No | No | No | **R2** changes driver software state |
 | `0x00223000` | exactly `0x108` bytes / no output | No | No | No | No | No | No | Yes | **R0** trace-control compatibility input is validated and logged; the current x64 path has no board side effect |
-| `0x00223004` | no input / 4-byte size or `0x1A08`-byte trace payload | No | No | No | No | No | No | Yes, size query | **R0** software trace snapshot |
+| `0x00223004` | no input / 4-byte size or `0x110`-byte trace payload | No | No | No | No | No | No | Yes, size query | **R0** software trace snapshot |
 | `0x0022303C` | exactly `0x10A`-byte setter record / no output | No | Yes | Possible by selected register | Can arm acquisition/DMA-related registers | No | Not established; volatile device state | No | **R3** indexed write to the known 43-register table |
 | `0x00223040` | no input / 4-byte size; or 4-byte index / `0x10A`-byte record; or full `43 * 0x10A` list | Yes for hardware-backed records | No | May observe status | No | No | No | Yes, size query and reviewed reads | **R0** for the size query; **R1** for established register reads |
 | `0x00223044` | no input / 4-byte value | Yes, BAR0 START/FVER | No | No | No | No | No | Yes | **R1** established bounded START-register read |
@@ -111,7 +111,7 @@ foreach ($test in $tests) {
 
 Expected R0 invariants are build `1002`; debug structure version `1`; BAR
 lengths `0x200`, `0x40000`, `0x200`; successful no-op and zero-delay calls;
-query sizes `0x1A08` and `0x2CAE`; and no device problem, interface-count
+query sizes `0x110` and `0x2CAE`; and no device problem, interface-count
 change, new kernel error, or acquisition activity. The deterministic
 `0xCFDC212C` rejection is deferred until the harness records an expected
 nonzero application exit without treating it as a retry.
@@ -307,3 +307,36 @@ PowerShell 5.1, for example by constructing the character from its Unicode code
 point or by consuming a retained UTF-8 JSON value. Location acknowledgement is
 permitted only after the exact stable instance and hardware IDs have passed;
 it must never change device selection.
+
+## Runtime Qualification Batch 2F result
+
+`scripts/invoke-runtime-ioctl-qualification.ps1` is the permanent,
+repository-controlled Windows PowerShell 5.1 harness. Its `OfflineMock`,
+`Preflight` and `RunAuthorized` modes share the production control flow. The
+harness pins the executable and driver identities, treats BDF as observed
+metadata, uses exclusive evidence roots and one-shot markers, and performs no
+device command in `Preflight`. Its 19/19 focused matrix covers both UTF-8
+forms, German metadata, BDF 4:1.0 and 5:1.0, security and identity failures,
+the exact IOCTL allowlist, timeout and stop-on-failure behavior.
+
+The first real preflight exposed only an in-memory rollback representation
+mismatch; the retained files and hashes were correct. After normalizing that
+collector value to the same structured model used by validation, a fresh
+preflight passed with zero command markers.
+
+The single authorized run then produced these results:
+
+- R0-5 `0x00222400`: PASS, zero input/output, exit 0.
+- R0-6 `0xCFDC2184`: PASS, zero input/output, exit 0.
+- R0-7 `0x00223004`: the driver returned four bytes containing `0x00000110`
+  and exit 0, but the harness stopped because its copied plan expectation was
+  the stale value `0x1A08`.
+- R0-8, R0-9 and both conditional R1 commands: NOT RUN.
+
+The authoritative ABI analysis and implementation both require `0x110` for
+the reconstructed `CKeTraceControl` block. The harness and mock now use that
+value. This correction was validated offline only; the consumed one-shot
+authorization was not inferred or reused. A post-stop passive preflight passed
+with the unchanged device, service, loaded SYS and five interfaces, and its
+target-event set was empty. A new explicit authorization is required to run
+the remaining R0-8/R0-9 commands and conditional R1 pair.

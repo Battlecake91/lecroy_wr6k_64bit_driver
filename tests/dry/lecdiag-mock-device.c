@@ -207,7 +207,7 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
         return (InputLength == 0 && OutputLength == 0) ? TRUE : fail_request(ERROR_INVALID_PARAMETER);
     case 0x00223004:
         if (InputLength != 0 || OutputLength != sizeof(DWORD)) return fail_request(ERROR_INVALID_PARAMETER);
-        *(DWORD*)OutputBuffer = 0x1A08;
+        *(DWORD*)OutputBuffer = 0x110;
         *BytesReturned = sizeof(DWORD);
         return TRUE;
     case 0x00223040:

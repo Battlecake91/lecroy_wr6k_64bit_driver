@@ -207,6 +207,19 @@
   `55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`;
   supplemental manifest SHA-256 is
   `AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`.
+- Runtime Qualification Batch 2F replaced temporary wrappers with
+  `scripts/invoke-runtime-ioctl-qualification.ps1`. Its exact Windows
+  PowerShell 5.1 production flow passes 19/19 focused mock cases. The corrected
+  passive preflight passed with zero device-command markers. In the one
+  authorized runtime chain, R0-5 and R0-6 passed once. R0-7 also returned exit
+  0 and the canonical four-byte value `0x00000110`, but the harness correctly
+  stopped because it had copied the stale plan expectation `0x1A08`. R0-8,
+  R0-9 and both R1 reads were not run. Source and canonical ABI evidence prove
+  that `0x110` is the current trace-control descriptor size; the harness and
+  mock are corrected offline. Post-stop passive state is unchanged: problem
+  zero, `oem101.inf` version `0.2026.1018.1`, running service, expected SYS
+  hash, five interfaces and no target event. A new explicit authorization is
+  required for the remaining runtime commands.
 
 ## DMA/PnP staging
 
