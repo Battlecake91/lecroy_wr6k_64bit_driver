@@ -234,6 +234,17 @@
   43 and `0x2CAE` size constants, compiles driver/tool size assertions and
   binds the mock values through a source contract. Focused source contracts
   pass 63/63 and the lecdiag command chain passes 16/16.
+- The production multi-handle DMA ownership gap is fixed on a separate
+  development branch. CREATE records a nonpaged file-object/process
+  association, DMA token operations use that association, and only the last
+  handle for the recorded process retires safe inactive registrations.
+  REMOVE drains remaining associations after remove-lock rundown;
+  `UnknownActive` remains irreversible. Debug and Release x64 build with zero
+  warnings and errors. The complete Dry suite, 23/23 process/file cases,
+  19/19 combined lifetime cases, 5,000/5,000 default and 50,000/50,000
+  expanded DMA races, and 1,000/1,000 default and 10,000/10,000 expanded INTEN
+  iterations pass. This changed driver has not been signed, installed or
+  hardware-tested.
 - PR #26 has no repository-level merge conflict: its base commit is an ancestor
   of the head, the branch is 12 commits ahead and zero behind, and a local
   `git merge-tree --write-tree` succeeds. The reported non-mergeable state is

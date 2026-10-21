@@ -148,6 +148,7 @@ LecS65AddDevice(
     KeInitializeMutex(&devExt->DallasMutex, 0);
     KeInitializeMutex(&devExt->TransferMutex, 0);
     InitializeListHead(&devExt->TransferList);
+    InitializeListHead(&devExt->FileContextList);
     devExt->NextTransferToken = 0;
     devExt->CurrentTransfer = NULL;
     KeInitializeSpinLock(&devExt->DmaCompletionLock);
@@ -321,6 +322,7 @@ LecS65Create(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
     LONGLONG count;
     NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
     if (!NT_SUCCESS(status)) {
@@ -337,7 +339,11 @@ LecS65Create(
         devExt->Started,
         count);
 
-    status = devExt->Removed ? STATUS_DELETE_PENDING : STATUS_SUCCESS;
+    status = devExt->Removed ? STATUS_DELETE_PENDING :
+        LecAssociateFileContext(
+            devExt,
+            stack->FileObject,
+            PsGetCurrentProcessId());
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = 0;
     IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
@@ -353,6 +359,7 @@ LecS65Close(
 {
     PLECS65_DEVICE_EXTENSION devExt =
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
     LONGLONG count;
     NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
     if (!NT_SUCCESS(status)) {
@@ -366,18 +373,11 @@ LecS65Close(
     LecTrace("CLOSE: pid=%p count=%lld\n", PsGetCurrentProcessId(), count);
 
     /*
-     * The x86 driver releases process-owned registered transfers on the last
-     * process close. The x64 replacement uses opaque tokens rather than
-     * leaking kernel pointers, and always enforces owner identity.
+     * CLOSE can run in a process other than the creator.  The file association
+     * is authoritative, and only the final handle for that owner retires safe
+     * inactive registrations. UnknownActive registrations remain quarantined.
      */
-    /*
-     * STOP waits for process-owned transfer cleanup as well as IOCTLs.
-     * A close racing with STOP leaves transfer release to the PnP teardown.
-     */
-    if (LecEnterIoctl(devExt)) {
-        LecReleaseTransfersForProcess(devExt, PsGetCurrentProcessId());
-        LecLeaveIoctl(devExt);
-    }
+    LecCloseFileContext(devExt, stack->FileObject);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;

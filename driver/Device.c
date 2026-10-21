@@ -606,6 +606,7 @@ LecS65Pnp(
          */
         LecReleaseLegacyEvents(devExt);
         LecReleaseAllTransfers(devExt);
+        LecReleaseAllFileContexts(devExt);
 
         if (devExt->DmaPnpPublication != NULL) {
             PLECS65_DMA_PNP_PUBLICATION publication =
