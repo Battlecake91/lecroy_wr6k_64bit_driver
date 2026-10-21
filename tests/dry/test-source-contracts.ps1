@@ -863,6 +863,9 @@ Test-Contract "runtime baseline uses stable identity and treats BDF as evidence"
     $runtimeBaselineText -match "SelectionBasis = 'ExactHardwareIdAndInstanceId'" -and
     $runtimeBaselineText -match "BdfPolicy = 'EvidenceOnlyNeverSelectionKey'" -and
     $runtimeBaselineText -match 'Expected exactly one present device with hardware ID' -and
+    $runtimeBaselineText -match "Properties\.Name -contains 'Data'" -and
+    $runtimeBaselineText -match '/enum-interfaces /class' -and
+    $runtimeBaselineText -match 'Interface status\|Schnittstellestatus' -and
     $runtimeBaselineText -match 'Stable instance ID mismatch' -and
     $runtimeBaselineText -match 'AcknowledgeLocationChange' -and
     $runtimeBaselineText -notmatch 'DeviceIoControl|CreateFile|pnputil.*?/add-driver|restart-device|disable-device|enable-device'

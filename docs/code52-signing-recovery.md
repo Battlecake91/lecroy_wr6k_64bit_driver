@@ -2,11 +2,11 @@
 
 ## Scope and result
 
-This is a passive diagnosis of the post-reboot Code 52 state observed on
-2026-10-20. No BCD, certificate-store, driver, Driver Store, PnP, service or
-hardware state was changed. The diagnosis used the repository-controlled
-`scripts/collect-code52-signing-diagnostics.ps1` collector from an elevated
-64-bit Windows PowerShell 5.1 process.
+This document records the passive diagnosis of the Code 52 state observed on
+2026-10-20 and the separately authorized recovery on 2026-10-21. Diagnosis did
+not change BCD, certificate-store, driver, Driver Store, PnP, service or
+hardware state. Recovery changed only the `testsigning` element of the active
+`{current}` loader and issued one restart.
 
 The root cause is established with high confidence: the Windows boot loader
 entry actually used by the current installation does not contain
@@ -81,27 +81,62 @@ After reboot, PCI location changed from 4:1.0 to 5:1.0 while stable PnP identity
 did not. BDF is consequently mutable topology evidence and must not be used as
 the primary device identity.
 
-## Minimal recovery design (not executed)
+## Authorized recovery outcome
 
-Recovery requires a new authorization covering one BCD write and one reboot.
-Before that authorization is used, revalidate the exact current loader,
-Secure Boot/VBS/HVCI/WDAC state, candidate hashes, stable instance ID and the
-available recovery route. Windows RE is currently disabled and only one disk
-is visible, so this limitation must remain an explicit prerequisite rather
-than being assumed away.
+The owner authorized one BCD write and one restart. An elevated 64-bit Windows
+PowerShell 5.1 preflight reconfirmed Windows 10 Pro x64 build 19045, the exact
+`oem101.inf` package and SYS hash, the stable PCI instance, Code 52, disabled
+Secure Boot, inactive VBS/HVCI/WDAC and the HFM256GDHTNG-8510B boot/system
+disk. Windows RE remained disabled and only that disk was visible; those
+accepted limitations were not repaired.
 
-The minimal proposed elevated change is:
+The one authorized command was executed once:
 
 ```powershell
 bcdedit.exe /set '{current}' testsigning on
 bcdedit.exe /enum '{current}'
 ```
 
-The second command must show `testsigning Yes`. One separately authorized
-reboot is then required. After boot, perform only passive verification of Code
-52, service state, loaded image hash and the five interface publications before
-any IOCTL batch. Do not substitute `nointegritychecks`, do not select an old
-firmware entry whose storage is absent, and do not repair certificate stores.
+Both the set command and immediate readback returned zero. The readback showed
+`testsigning Yes`; line-by-line comparison proved that no other `{current}`
+element changed. No `nointegritychecks`, debug, boot-debug, alternate entry or
+certificate-store action was used.
+
+One restart request was issued at `2026-10-21T16:07:53.7671647Z`. System event
+1074 records the request at 18:07:52 local time, event 6006 and Kernel-General
+13 record a clean shutdown by 18:08:11, and Kernel-General 12 records the next
+boot at 18:20:46. There was no unexpected-shutdown event and no second restart.
+
+Post-boot elevated readback proves that the active loader remains `{current}`
+on `C:` through `HarddiskVolume1` and contains `testsigning Yes`. The HFM disk
+remains the only boot/system disk. The exact same PCI instance is now `OK` with
+problem code zero at observed BDF 5:1.0. `oem101.inf`, version
+`0.2026.1018.1`, and signed SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`
+are unchanged. `LecS65AcqDrv` is running and all five legacy interface classes
+are enabled, without opening an interface.
+
+No LeCroy-related Code Integrity error, Kernel-PnP 219 or Service Control
+Manager error occurred after this boot. Code Integrity event 3085 records that
+WHQL driver enforcement was disabled for the boot session. New event 3033
+records rejected `Bonjour\mdnsNSP.dll` loads; those events do not name or
+implicate the LeCroy image.
+
+Private evidence remains outside the repository. Manifest SHA-256 values are:
+
+- pre-change passive collection:
+  `0FBE9629FC127819135D1CC3E9745123217A8A360DE037B5A1E44FB3C91AA0FD`;
+- authorized BCD/restart action:
+  `E9C79C87E55A5A85B43A6EE35C76F2BA24F021D97AFEE161056F516E80BF3EBA`;
+- post-boot passive collection:
+  `849329495A234BDE361F55C43CE25B8B5AC47CB8CC9BD109F44B04759D60E077`;
+- passing stable-runtime record:
+  `F134ECBD60C89AD696EFD4D8501F916E0F38DCDBE71F7A00CCB22CE13E7BC352`.
+
+No IOCTL, device handle, manual PnP transition, installation, acquisition or
+DMA action was performed.
+
+## Future return to normal enforcement
 
 To restore normal kernel signing enforcement after a suitable Microsoft-signed
 driver is available:
@@ -111,8 +146,10 @@ bcdedit.exe /set '{current}' testsigning off
 bcdedit.exe /enum '{current}'
 ```
 
-That also requires a reboot. Turning Test Mode off while this locally
-test-signed package is selected is expected to reproduce the load rejection.
+This is a future production-transition procedure, not current authorization.
+It requires a separate BCD-change and restart approval. Turning Test Mode off
+while this locally test-signed package is selected is expected to reproduce
+the load rejection.
 Test Mode weakens normal kernel trust by permitting test-signed kernel images
 and displays a desktop watermark; it is appropriate only for this expendable
 development environment.
@@ -125,6 +162,6 @@ running service, loaded SYS hash and five published interface classes. PCI
 location is logged but never used to select a device. A location change fails
 closed until `-AcknowledgeLocationChange` is supplied after reviewing the
 stable identity. Mock regressions cover stable, moved, duplicate, mismatched
-and unhealthy cases. The gate opens no device interface and issues no IOCTL.
-
-No recovery command in this document has been executed.
+and unhealthy cases. Real enumeration uses read-only PnP metadata and localized
+PnPUtil interface status. The post-recovery real gate passed with all five
+classes enabled. The gate opens no device interface and issues no IOCTL.

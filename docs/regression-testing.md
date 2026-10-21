@@ -861,6 +861,15 @@ INTEN stress iterations. The total includes 62/62 source/safety contracts,
 stable-identity mocks. Expanded stress was not repeated because neither driver
 code nor the stressed DMA/INTEN implementation changed.
 
+The post-recovery real passive baseline exposed two metadata-only robustness
+issues: some present PnP objects do not return a `Data` property for the
+hardware-ID query, and German PnPUtil reports `Schnittstellestatus: Aktiviert`.
+The baseline now ignores property results without `Data`, requires exactly one
+interface path per class and accepts the explicit English or German enabled
+status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
+stable-identity, service, hash and five-interface gate passes. No device handle
+or IOCTL is used.
+
 
 ## Read-only XStream COM object scanner
 

@@ -48,9 +48,11 @@ function Write-Result([object]$Value) {
 function Get-RealState {
     $matches = @()
     foreach ($device in @(Get-PnpDevice -PresentOnly -ErrorAction Stop)) {
-        $ids = Get-PnpDeviceProperty -InstanceId $device.InstanceId `
-            -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction SilentlyContinue
-        if ($ids -and @($ids.Data) -contains $ExpectedHardwareId) {
+        $idProperties = @(Get-PnpDeviceProperty -InstanceId $device.InstanceId `
+            -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSObject.Properties.Name -contains 'Data' })
+        $hardwareIds = @($idProperties | ForEach-Object { @($_.Data) })
+        if ($hardwareIds -contains $ExpectedHardwareId) {
             $matches += $device
         }
     }
@@ -69,22 +71,19 @@ function Get-RealState {
         }
         $serviceName = [string]$map['DEVPKEY_Device_Service']
         $sysPath = Join-Path $env:SystemRoot 'System32\drivers\LecS65AcqDrv.sys'
-        $encodedInstance = $device.InstanceId.Replace('\', '#')
         $interfaces = foreach ($class in $interfaceClasses) {
-            $classRoot = "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceClasses\$class"
-            $published = $false
-            if (Test-Path -LiteralPath $classRoot) {
-                foreach ($key in @(Get-ChildItem -LiteralPath $classRoot -ErrorAction Stop)) {
-                    if ($key.PSChildName -like "*#$encodedInstance#*") {
-                        $control = Join-Path $key.PSPath 'Control'
-                        $linked = Get-ItemProperty -LiteralPath $control `
-                            -Name Linked -ErrorAction SilentlyContinue
-                        if ($linked -and [int]$linked.Linked -eq 1) {
-                            $published = $true
-                        }
-                    }
-                }
-            }
+            $interfaceOutput = & "$env:SystemRoot\System32\pnputil.exe" `
+                /enum-interfaces /class $class 2>&1
+            $interfaceExit = $LASTEXITCODE
+            $interfaceText = @($interfaceOutput) -join [Environment]::NewLine
+            $instanceCount = [regex]::Matches($interfaceText,
+                [regex]::Escape($device.InstanceId),
+                [Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+            $pathCount = [regex]::Matches($interfaceText,
+                '(?im)^\s*(Interface path|Schnittstellenpfad)\s*:').Count
+            $published = $interfaceExit -eq 0 -and $instanceCount -ge 1 -and
+                $pathCount -eq 1 -and
+                $interfaceText -match '(?im)^\s*(Interface status|Schnittstellestatus)\s*:\s*(Enabled|Aktiviert)\s*$'
             [pscustomobject]@{ ClassGuid = $class; Published = $published }
         }
         [pscustomobject]@{

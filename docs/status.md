@@ -145,15 +145,21 @@
   blockers. The same stable device instance was enumerated at 5:1.0, so BDF is
   mutable topology evidence rather than device identity. See
   [Code 52 signing recovery](code52-signing-recovery.md).
-  Restoring a healthy approved baseline, and then any new runtime IOCTL batch,
-  are separate future authorization gates.
 - The passive Code 52 collector completed with evidence-manifest SHA-256
   `9544E8EDA2ED225404C112E6E4FBBF7DEAFF2A6960E1823422184E987A8464D8`.
-  The prepared recovery is one explicit `bcdedit /set {current} testsigning on`
-  change plus one reboot, neither executed. `scripts/test-runtime-baseline.ps1`
-  now gates future batches on the exact full hardware/instance identity and
-  treats PCI location changes as separately acknowledged evidence. Its six
-  Windows PowerShell 5.1 mock cases pass 6/6.
+  On 2026-10-21 the separately authorized single
+  `bcdedit /set {current} testsigning on` change and one restart completed.
+  Post-boot readback shows `testsigning Yes` on the same HFM EFI/BCD path. The
+  stable device instance is `OK` at observed BDF 5:1.0, `oem101.inf` version
+  `0.2026.1018.1` and its SYS hash are unchanged, `LecS65AcqDrv` is running,
+  and all five interfaces are enabled. No new LeCroy Code Integrity, Kernel-PnP
+  219 or SCM error occurred. R0-5 through R0-9 and R1 remain NOT RUN and need
+  new explicit authorization.
+- `scripts/test-runtime-baseline.ps1` gates future batches on the exact full
+  hardware/instance identity and treats PCI location changes as separately
+  acknowledged evidence. Its six Windows PowerShell 5.1 mock cases pass 6/6;
+  the post-recovery real passive gate also passes. Interface enumeration now
+  handles missing PnP properties and localized PnPUtil output fail-closed.
 - The current offline Dry run passes 469/469 functional/model checks plus
   5,000/5,000 DMA and 1,000/1,000 INTEN stress iterations. This includes
   62/62 source/safety contracts and the new 22/22 process/file-object DMA

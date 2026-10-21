@@ -404,14 +404,18 @@ whereas retained pre-install evidence recorded `testsigning Yes` on the prior
 boot path. Code Integrity and Kernel-PnP recorded `0xC0000428`; package hashes,
 local Authenticode, local chain and catalog membership remain valid. Secure
 Boot, VBS, HVCI and WDAC are inactive. See
-[Code 52 signing recovery](code52-signing-recovery.md). Any action that changes
-boot configuration, reboots, loads/restarts the driver or otherwise restores
-PnP state requires a new explicit approval.
-Only after a healthy baseline is re-established can a separately authorized
-R0/R1 batch be considered; prior authorization was not used to bypass the
-failed gate. Private evidence remains outside the public repository; its final
-manifest SHA-256 is
-`AD1732D26E8D8C114A165FD7E661C8B0D3C5A4EDC8A76451940A220DCF4F722A`.
+[Code 52 signing recovery](code52-signing-recovery.md).
+
+The separately authorized recovery on 2026-10-21 changed only the active
+loader's `testsigning` element and issued one restart. Immediate and post-boot
+readback show `testsigning Yes`; the current HFM/HarddiskVolume1 boot identity
+is unchanged. The stable PCI instance returned to problem code zero, the exact
+approved image is loaded, the service is running and all five interfaces are
+enabled. No LeCroy-related Code Integrity error, Kernel-PnP 219 or SCM error
+occurred after boot. This restores the passive prerequisite only; R0-5 through
+R0-9 and R1 remain NOT RUN and require new explicit authorization. Private
+evidence remains outside the public repository; see the recovery document for
+manifest hashes.
 
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 

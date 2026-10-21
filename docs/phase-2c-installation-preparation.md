@@ -4,16 +4,18 @@ This document is the controlled bridge between offline package creation and
 runtime qualification. The first authorized installation and START completed
 on 2026-10-18; later gated commands remain unexecuted unless stated otherwise.
 
-## Current post-reboot recovery readiness
+## Current post-recovery state
 
-The 2026-10-20 elevated read-only audit supersedes the earlier recovery-state
-snapshot below. The active EFI/BCD loader no longer contains `testsigning`,
-Windows RE is disabled, only the HFM NVMe boot/system disk is visible, and the
-previous KINGSTON firmware/BCD path is not currently available. The unchanged
-`oem101.inf` test-signed image is rejected with `0xC0000428` and Device Manager
-Code 52. Package hashes and local certificate trust remain valid. See
-[Code 52 signing recovery](code52-signing-recovery.md). No recovery action has
-been executed; enabling Test Mode and rebooting require new explicit approval.
+The 2026-10-20 audit found the active EFI/BCD loader without `testsigning` and
+attributed Code 52 to that missing boot element. On 2026-10-21 the owner
+authorized exactly one `testsigning on` change and one restart. Both BCD
+commands returned zero, only that loader element changed, and post-boot
+readback shows `testsigning Yes`. The HFM NVMe boot/system path is unchanged.
+The exact `oem101.inf` driver is now loaded, problem-free and running with all
+five interfaces enabled. Windows RE remains disabled and only one disk is
+visible; no recovery rehearsal was added. See
+[Code 52 signing recovery](code52-signing-recovery.md). Any later Test Mode
+disable, reboot, IOCTL or PnP test remains separately gated.
 
 ## First installation outcome
 
