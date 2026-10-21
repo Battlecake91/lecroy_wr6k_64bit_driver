@@ -450,6 +450,35 @@ justified. A later hardware attempt requires a new explicit authorization and
 a reviewed Device Guard predicate that rejects nonzero service identifiers,
 not the `{0}` sentinel.
 
+### R0/R1 completion attempt: guard fixed, live gate stopped
+
+`scripts/deviceguard-preflight.ps1` is now the reusable production predicate
+for passive security-policy gating. Its 10/10 matrix passes on PowerShell 7 and
+Windows PowerShell 5.1. It handles scalar and vector unrolling, accepts zero and
+empty service sets, fails closed on null/absent/unknown data, distinguishes
+configured-but-not-blocking state and rejects active or contradictory VBS,
+HVCI and CI-policy evidence. The serialized result contains both evaluated and
+raw values. The actual host evaluates `Inactive` and allowed.
+
+The subsequently authorized one-shot live chain did not reach `lecdiag`.
+Windows PowerShell 5.1 treated the temporary UTF-8-without-BOM wrapper as an
+ANSI script and decoded the previous-location literal `Gerät` as `GerÃ¤t`.
+The stable instance ID, hardware ID, `oem101.inf`, version, problem code zero,
+running service, exact SYS hash and five interfaces all matched. The baseline
+still failed closed on the location mismatch because the separate acknowledgement
+flag was intentionally absent. Zero device-command attempt markers prove that
+R0-5 through R0-9 and the conditional R1 pair remain NOT RUN; no retry occurred.
+
+The initial private manifest SHA-256 is
+`8995F1FFE864ADCE58244AD5A8710CD71852B4FA1EE6E79AA3E6116671E8AA99`.
+The post-stop passive baseline passed and has SHA-256
+`55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`;
+supplemental manifest SHA-256 is
+`AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`,
+and no target event occurred in the exact interval. Any later active run requires
+new authorization and an ASCII-safe or retained-JSON location input. BDF
+remains evidence only and never a selection key.
+
 ## Stage 6 — targeted Driver Verifier and controlled PnP
 
 Stage 6 needs a new explicit authorization for Verifier, reboot, approved

@@ -870,6 +870,20 @@ status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
 stable-identity, service, hash and five-interface gate passes. No device handle
 or IOCTL is used.
 
+## Device Guard preflight predicate
+
+`tests/dry/test-deviceguard-preflight.ps1` imports the exact production
+predicate from `scripts/deviceguard-preflight.ps1`. It runs without CIM, BCD,
+device or hardware access and covers zero service sentinels, empty arrays,
+null and absent values, known active HVCI, unknown numeric values,
+contradictory reports, configured-but-not-blocking state, enforced kernel CI
+and an active CI policy file. PowerShell 7.6.5 and Windows PowerShell
+5.1.19041.6456 both pass 10/10. The live `{0}` Device Guard vectors evaluate
+as `Inactive`; raw CIM values remain serialized with the decision.
+
+This focused change does not touch driver, DMA or INTEN implementation. Driver
+builds and unrelated stress suites are therefore not repeated.
+
 
 ## Read-only XStream COM object scanner
 

@@ -189,6 +189,24 @@
   Interface activation and FDO-global event replacement remain intentional
   compatibility policies rather than verified defects; no driver source or
   public ABI changed.
+- The next authorized R0/R1 completion attempt added a reusable, side-effect-free
+  Device Guard predicate. Ten focused cases pass under both PowerShell 7 and
+  Windows PowerShell 5.1, covering zero sentinels, empty/null/absent data,
+  configured-only state, active HVCI/CI policy, unknown values and contradictory
+  reports. The real host evaluates `Inactive` and allowed while preserving the
+  raw CIM values. The single elevated live invocation still stopped before its
+  first `lecdiag` call: Windows PowerShell 5.1 decoded the temporary UTF-8
+  wrapper's non-ASCII previous-location literal as `GerÃ¤t`, so the otherwise
+  passing stable-identity baseline required explicit location acknowledgement.
+  There are zero device-command attempt markers; R0-5 through R0-9 and both R1
+  reads remain **NOT RUN**, with no retry. A subsequent passive baseline passed
+  with unchanged problem-zero device, running service, SYS hash, BDF 5:1.0 and
+  five interfaces, and no target event appeared. Initial private manifest
+  SHA-256 is `8995F1FFE864ADCE58244AD5A8710CD71852B4FA1EE6E79AA3E6116671E8AA99`;
+  post-stop baseline SHA-256 is
+  `55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`;
+  supplemental manifest SHA-256 is
+  `AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`.
 
 ## DMA/PnP staging
 

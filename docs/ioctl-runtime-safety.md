@@ -274,3 +274,36 @@ A future authorization must use a reviewed predicate that accepts only a
 service list containing no nonzero values. It must create a new exclusive
 evidence root and must not infer renewed hardware authorization from this
 offline correction.
+
+## R0/R1 completion attempt stopped before device access
+
+The reusable `scripts/deviceguard-preflight.ps1` predicate now performs that
+reviewed evaluation. It preserves raw CIM data, treats numeric zero as no
+running service, distinguishes inactive, configured, active, unknown and
+contradictory states, and rejects active CI policy files. Ten exact-predicate
+tests pass under PowerShell 7 and Windows PowerShell 5.1. The current host's
+`{0}` service vectors, VBS/CI status zero and empty active-policy set evaluate
+as `Inactive` and allowed.
+
+The one authorized elevated command-chain invocation nevertheless stopped in
+the subsequent stable-identity baseline. The temporary external wrapper was
+UTF-8 without a BOM; Windows PowerShell 5.1 interpreted its `Gerät` literal
+through the legacy ANSI path as `GerÃ¤t`. The captured device location itself
+was still `PCI-Bus 5, Gerät 1, Funktion 0`, and every substantive identity and
+health check passed. The baseline correctly failed closed because the supplied
+previous-location string differed and no acknowledgement switch was present.
+
+No `*.attempted` marker exists, so no interface was opened and no
+`DeviceIoControl` was issued. R0-5 through R0-9 and both conditional R1 reads
+remain NOT RUN. No retry was made. The initial private manifest SHA-256 is
+`8995F1FFE864ADCE58244AD5A8710CD71852B4FA1EE6E79AA3E6116671E8AA99`.
+A later passive baseline passed with identical device and service state; its
+SHA-256 is `55967F8633D61E66D8B89C91A883A6B831C0ED1D8C25C214FE03A5DF2B4D6780`,
+the exact target-event window is empty, and supplemental manifest SHA-256 is
+`AB9D0181B675FADEDB1B546498CAD4904AC1A0A3AE17044B98FD70E94000A48C`.
+
+A future launcher must avoid locale-sensitive source literals under Windows
+PowerShell 5.1, for example by constructing the character from its Unicode code
+point or by consuming a retained UTF-8 JSON value. Location acknowledgement is
+permitted only after the exact stable instance and hardware IDs have passed;
+it must never change device selection.
