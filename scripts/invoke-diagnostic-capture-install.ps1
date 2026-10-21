@@ -2,16 +2,18 @@
 .SYNOPSIS
   Validate or execute one diagnostic capture/installation attempt.
 .DESCRIPTION
-  This fail-closed launcher has three explicit modes. Preflight is passive.
+  This fail-closed launcher has four explicit modes. Preflight is passive.
   CaptureQualification may start only the pinned capture executable.
   InstallWithCapture may invoke the pinned PnPUtil executable at most once,
-  and only after capture readiness. The launcher never elevates itself,
-  retries, rolls back, opens a device or changes system policy.
+  and only after capture readiness. RestartWithCapture may invoke exactly one
+  pinned PnPUtil restart for the exact device instance. The launcher never
+  elevates itself, retries, rolls back, opens a device or changes system policy.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('Preflight', 'CaptureQualification', 'InstallWithCapture')]
+    [ValidateSet('Preflight', 'CaptureQualification', 'InstallWithCapture',
+        'RestartWithCapture')]
     [string]$Mode,
     [Parameter(Mandatory=$true)][string]$RepositoryRoot,
     [Parameter(Mandatory=$true)]
@@ -45,10 +47,11 @@ param(
     [string]$AuthorizationId,
     [switch]$AuthorizeKernelCapture,
     [switch]$AuthorizeInstallation,
+    [switch]$AuthorizePnpRestart,
     [string]$PnPUtilPath = "$env:SystemRoot\System32\pnputil.exe",
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedPnPUtilHash,
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
-    [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 10,
+    [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
     [ValidateRange(1, 120)][int]$CaptureShutdownGraceSeconds = 15,
     [string]$DeviceInstanceId =
         'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0',
@@ -75,6 +78,7 @@ $script:CaptureJob = $null
 $script:CaptureResult = $null
 $script:CaptureLogPath = $null
 $script:InstallInvocations = 0
+$script:PnpRestartInvocations = 0
 $script:CaptureInvocations = 0
 
 function Get-AbsolutePath {
@@ -133,6 +137,7 @@ function Write-Result {
         CompletedUtc = [DateTime]::UtcNow.ToString('o')
         CaptureInvocations = $script:CaptureInvocations
         InstallInvocations = $script:InstallInvocations
+        PnpRestartInvocations = $script:PnpRestartInvocations
     }
     $json = $result | ConvertTo-Json -Depth 4
     [IO.File]::WriteAllText($script:ResultPath,
@@ -343,6 +348,15 @@ try {
         -not [Environment]::Is64BitProcess) {
         throw 'The diagnostic launcher requires 64-bit Windows PowerShell 5.1.'
     }
+    if (-not $TestMode -and $Mode -ne 'Preflight') {
+        if ($CaptureReadinessTimeoutSeconds -lt 60) {
+            throw 'Real capture modes require at least 60 seconds for buffered kernel-log readiness.'
+        }
+        if ($CaptureDurationSeconds -lt
+            ($CaptureReadinessTimeoutSeconds + 120)) {
+            throw 'Real capture modes require at least 120 seconds after the readiness deadline.'
+        }
+    }
 
     $repository = Get-AbsolutePath $RepositoryRoot 'RepositoryRoot'
     $package = Get-AbsolutePath $PackageRoot 'PackageRoot'
@@ -387,23 +401,36 @@ try {
 
     if ($Mode -eq 'Preflight') {
         if ($AuthorizeKernelCapture -or $AuthorizeInstallation -or
+            $AuthorizePnpRestart -or
             -not [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'Preflight forbids active authorization switches.'
         }
     }
     elseif ($Mode -eq 'CaptureQualification') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
+            $AuthorizePnpRestart -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'CaptureQualification requires only explicit capture authorization.'
         }
     }
-    else {
+    elseif ($Mode -eq 'InstallWithCapture') {
         if (-not $AuthorizeKernelCapture -or -not $AuthorizeInstallation -or
+            $AuthorizePnpRestart -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'InstallWithCapture requires explicit capture and installation authorization.'
         }
         if ([string]::IsNullOrWhiteSpace($ExpectedPnPUtilHash)) {
             throw 'InstallWithCapture requires ExpectedPnPUtilHash.'
+        }
+    }
+    else {
+        if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
+            -not $AuthorizePnpRestart -or
+            [string]::IsNullOrWhiteSpace($AuthorizationId)) {
+            throw 'RestartWithCapture requires explicit capture and PnP restart authorization.'
+        }
+        if ([string]::IsNullOrWhiteSpace($ExpectedPnPUtilHash)) {
+            throw 'RestartWithCapture requires ExpectedPnPUtilHash.'
         }
     }
 
@@ -422,7 +449,8 @@ try {
 
     $captureMarker = Join-Path $evidence 'capture-attempt.marker'
     $installMarker = Join-Path $evidence 'install-attempt.marker'
-    foreach ($marker in @($captureMarker, $installMarker)) {
+    $restartMarker = Join-Path $evidence 'pnp-restart-attempt.marker'
+    foreach ($marker in @($captureMarker, $installMarker, $restartMarker)) {
         if (Test-Path -LiteralPath $marker) {
             throw "Attempt marker already exists: $marker"
         }
@@ -456,7 +484,8 @@ try {
     $ready = $false
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($script:CaptureJob.State -ne 'Running') { break }
-        if (Test-Path -LiteralPath $rawLog -PathType Leaf) {
+        if ((Test-Path -LiteralPath $rawLog -PathType Leaf) -and
+            (Get-Item -LiteralPath $rawLog).Length -gt 0) {
             $ready = $true
             break
         }
@@ -498,6 +527,27 @@ try {
             throw "PnPUtil exited with code $($installResult.ExitCode); no retry was attempted."
         }
         Write-LauncherOutput 'INSTALL CHILD PASS'
+    }
+    elseif ($Mode -eq 'RestartWithCapture') {
+        if ($script:CaptureJob.State -ne 'Running') {
+            throw 'Capture ended before the PnP restart gate.'
+        }
+        $pnp = Get-AbsolutePath $PnPUtilPath 'PnPUtilPath'
+        Assert-FileHash -Path $pnp -Expected $ExpectedPnPUtilHash `
+            -Label 'PnPUtil executable'
+        Write-ExclusiveTextFile -Path $restartMarker `
+            -Text ($markerText + "`r`nPnpRestartApproved=true`r`nDeviceInstanceId=$DeviceInstanceId`r`n")
+        $script:PnpRestartInvocations++
+        $restartResult = Invoke-LecS65NativeProcess `
+            -Name 'Approved one-time PnP restart' -FilePath $pnp `
+            -Arguments @('/restart-device', $DeviceInstanceId) `
+            -WorkingDirectory (Split-Path $pnp -Parent) `
+            -LogPath (Join-Path $evidence 'pnp-restart-child.log') `
+            -TimeoutSeconds 120 -ReturnOnNonZeroExit
+        if ($restartResult.ExitCode -ne 0) {
+            throw "PnPUtil restart exited with code $($restartResult.ExitCode); no retry was attempted."
+        }
+        Write-LauncherOutput 'PNP RESTART CHILD PASS'
     }
 
     $script:CaptureResult = Complete-CaptureJob -Job $script:CaptureJob `

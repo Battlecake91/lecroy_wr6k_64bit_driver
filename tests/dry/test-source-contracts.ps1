@@ -854,15 +854,24 @@ Test-Contract "package signing is opt-in and thumbprint-bound" {
     $packageBuildText -match 'UnsignedValidationOnly'
 }
 
-Test-Contract "diagnostic launcher keeps capture and installation explicitly gated" {
-    $diagnosticLauncherText -match "ValidateSet\('Preflight', 'CaptureQualification', 'InstallWithCapture'\)" -and
+Test-Contract "diagnostic launcher keeps capture installation and restart explicitly gated" {
+    $diagnosticLauncherText -match "'RestartWithCapture'" -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeKernelCapture' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeInstallation' -and
+    $diagnosticLauncherText -match '\[switch\]\$AuthorizePnpRestart' -and
     $diagnosticLauncherText -match 'Preflight forbids active authorization switches' -and
     $diagnosticLauncherText -match 'CAPTURE READY' -and
     $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
+    $diagnosticLauncherText -match 'PnpRestartInvocations\+\+' -and
+    $diagnosticLauncherText -match '-Arguments @\(''/restart-device'', \$DeviceInstanceId\)' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
-    $diagnosticLauncherText -notmatch 'restart-device|scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
+    $diagnosticLauncherText -notmatch 'scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
+}
+
+Test-Contract "real capture readiness accounts for buffered DebugView logging" {
+    $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds = 60' -and
+    $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds -lt 60' -and
+    $diagnosticLauncherText -match 'CaptureDurationSeconds -lt\s*\(\$CaptureReadinessTimeoutSeconds \+ 120\)'
 }
 
 Test-Contract "Code 52 collector is read-only and fail-closed" {

@@ -526,3 +526,28 @@ No additional PnP transition, device handle or IOCTL was used. The smallest
 next authorization is the bounded R0 metadata-only batch in
 [Runtime IOCTL safety classification](ioctl-runtime-safety.md). A controlled
 PnP restart and Driver Verifier remain later, separately authorized gates.
+
+## Batch 4 buffered-readiness failure
+
+The first separately authorized captured restart did not reach PnPUtil. The
+exact signed driver and device baseline passed, DebugView was started once,
+and the launcher waited 15 seconds for the raw log to become non-empty. The
+file length remained zero at the gate, so the launcher stopped with exit code
+1 and recorded `PnpRestartInvocations=0`. No restart marker exists and no PnP
+transition occurred.
+
+After the stop decision, DebugView flushed 458,752 bytes containing 5,861
+independently attributable `STORMINI: StorNVMe` kernel records. The first
+record's internal timestamp predates the readiness deadline, proving that the
+collector was receiving kernel output while its file writer still exposed a
+zero-length buffer. This run therefore identified a visibility latency in the
+readiness predicate; it did not disprove the previously qualified capture
+path. The raw log SHA-256 is
+`73D3238F8C23CE3B782880C05CB0F013D4FC01D4A34C2DBE727B79BC653A47B9`.
+
+Real active modes now require at least 60 seconds for non-empty raw-log proof
+and a capture duration leaving at least 120 seconds after that deadline. File
+existence alone is still insufficient, and process liveness alone is not
+promoted to kernel-capture proof. Failure remains fail-closed and consumes the
+one-shot authorization. The next live run requires new owner authorization;
+the failed authorization and evidence paths must never be reused.

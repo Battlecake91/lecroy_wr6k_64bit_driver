@@ -234,12 +234,32 @@
   43 and `0x2CAE` size constants, compiles driver/tool size assertions and
   binds the mock values through a source contract. Focused source contracts
   pass 63/63 and the lecdiag command chain passes 16/16.
-- PR #26 has no repository-level merge conflict: its base commit is an ancestor
-  of the head, the head is a strict descendant of the base, and a local
-  `git merge-tree --write-tree` succeeds. The reported non-mergeable state is
-  therefore not branch topology; GitHub's public page currently fails to load
-  merge/check details, so a stale mergeability calculation or unmet hosted
-  check/protection requirement remains the external explanation.
+- GitHub currently reports PR #26 and its stacked PR #27 as mergeable. Fresh
+  local `git merge-tree --write-tree` checks also succeed for both edges.
+  Neither head has a workflow run or commit status, and the repository exposes
+  no rulesets. The earlier non-mergeable result was therefore transient GitHub
+  mergeability state, not a source conflict. Merge PR #26 before PR #27; do not
+  flatten the reviewed stack or combine runtime evidence with the DMA change.
+- Runtime Qualification Batch 4 attempted the one authorized captured PnP
+  restart. The active launcher stopped before PnPUtil because DebugView's raw
+  log remained zero bytes during the 15-second readiness gate. The completed
+  log later proved that kernel capture had started, but buffered file output
+  made that fact unavailable at the gate. `PnpRestartInvocations=0`; no PnP
+  transition, Event 411, SetupAPI change or target system event occurred. The
+  installed `oem101.inf` device remains problem-free with the expected running
+  service, five interfaces and SYS hash. Real capture modes now reject a
+  readiness window below 60 seconds and reserve at least 120 seconds after the
+  deadline. A new owner authorization is required for any restart.
+- Independent review of PR #27 found no release, quarantine, remove-lock or
+  public-ABI defect. Debug and Release x64 build with zero warnings/errors; the
+  complete Dry suite, 23/23 process/file lifetime model, 19/19 combined
+  lifetime audit, 50,000/50,000 DMA stress and 10,000/10,000 INTEN stress pass.
+  This is offline qualification only; the PR has not been signed, installed or
+  hardware-qualified.
+- Driver Verifier remains blocked. Verifier is off, current-boot test-signing
+  is enabled and automatic dumps are configured, but WinRE is disabled and the
+  current system-managed page file is only 1,280 MiB for about 8 GiB RAM. No
+  usable offline recovery path or sufficient dump backing has been demonstrated.
 
 ## DMA/PnP staging
 
