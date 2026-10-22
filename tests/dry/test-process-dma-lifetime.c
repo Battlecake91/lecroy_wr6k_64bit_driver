@@ -138,6 +138,12 @@ static void close_file(FILE_MODEL* file)
     }
 }
 
+static void close_file_from_process(FILE_MODEL* file, unsigned callerPid)
+{
+    (void)callerPid;
+    close_file(file); /* Recorded file association, not caller context, owns it. */
+}
+
 static void surprise_remove(DEVICE_MODEL* device)
 {
     unsigned i;
@@ -218,6 +224,15 @@ int main(void)
           find_process(&device, 300)->InactiveRegistrations == 0 &&
           find_process(&device, 301)->InactiveRegistrations == 1 &&
           find_process(&device, 301)->OpenReferences == 1);
+
+    initialize_device(&device);
+    a = create_file(&device, 350, 1, 1);
+    process = find_process(&device, 350);
+    register_dma(a, DmaRegistrationInactive);
+    close_file_from_process(a, 999);
+    check("CLOSE caller context cannot change recorded ownership",
+          process->OpenReferences == 0 &&
+          process->InactiveRegistrations == 0);
 
     initialize_device(&device);
     a = create_file(&device, 400, 1, 1);
