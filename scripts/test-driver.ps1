@@ -72,6 +72,34 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
     Invoke-Step "Dry source/ABI contracts" {
         & $drySuite
     }
+
+    Invoke-Step "DMA logical descriptor layout unit tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-dma-layout.ps1")
+    }
+
+    Invoke-Step "DMA mapping ownership state tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-dma-ownership.ps1")
+    }
+
+    Invoke-Step "WDM SG bridge fake-DDI callback tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-sg-stage.ps1")
+    }
+
+    Invoke-Step "Synchronous WDM v3 SG no-launch tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-sg-sync.ps1")
+    }
+
+    Invoke-Step "Live PnP publication lifetime tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-pnp-publication.ps1")
+    }
+
+    Invoke-Step "Live PnP IRP and remove-lock tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-pnp-irp-lifetime.ps1")
+    }
+
+    Invoke-Step "Live DMA completion-state tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-dma-completion.ps1")
+    }
 }
 
 if ($Mode -eq "Hardware" -or $Mode -eq "All") {

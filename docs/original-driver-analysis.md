@@ -260,6 +260,11 @@ Further constructor analysis shows that the LeCroy device object registers four 
 
 The four GUID objects are consecutive in the original image and are passed in four consecutive interface-registration calls.
 
+This constructor-local result is not the complete public interface set. Later
+passive original-XStream tracing established a fifth class,
+`{958695A4-693A-435E-8297-66F805D8E46A}`, used for discovery and the main
+acquisition/control path after the legacy DOS-name probe fails.
+
 See [device-interfaces.md](device-interfaces.md) for addresses and migration implications.
 
 A PCI vendor/device ID is not present as a readable string in the SYS image. It is expected to be supplied by the original INF, so that remains an external-data item rather than something worth guessing.

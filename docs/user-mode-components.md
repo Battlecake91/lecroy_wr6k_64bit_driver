@@ -126,7 +126,7 @@ The next collection pass should not use `DataAcquisition` as a primary binary si
 
 More useful discriminators are:
 
-- the four recovered device-interface GUIDs;
+- the five recovered device-interface GUIDs;
 - the known IOCTL constants;
 - `AladdinHwAccessPCI`;
 - `AladdinDriver`;

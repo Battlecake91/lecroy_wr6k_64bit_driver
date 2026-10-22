@@ -1091,7 +1091,8 @@ LecFillLegacyRegisterEntry(
 
     if (source->Bar == 0 &&
         source->Offset == 0x084) {
-        data = DevExt->InterruptEnableShadow;
+        data = (ULONG)InterlockedCompareExchange(
+            (volatile LONG*)&DevExt->InterruptEnableShadow, 0, 0);
     }
 
     LecWriteU32(Target + 0x106, data);
@@ -1134,25 +1135,7 @@ LecCommitLegacyInterruptMask(
     _In_ ULONG NewMask
     )
 {
-    volatile ULONG* inten;
-    NTSTATUS status;
-
-    status = LecResolveRegister(DevExt, 0, 0x084, &inten);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    InterlockedExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        (LONG)NewMask);
-
-    WRITE_REGISTER_ULONG(inten, NewMask);
-
-    LecTrace(
-        "CFDC2110 legacy INTEN shadow <- 0x%08lX\n",
-        NewMask);
-
-    return STATUS_SUCCESS;
+    return LecWriteInterruptMask(DevExt, NewMask);
 }
 
 static
@@ -1879,16 +1862,22 @@ LecExecuteLegacyMttTransferLocked(
     volatile ULONG* iimtc;
     volatile ULONG* iimcl;
     volatile ULONG* mttrgo;
-    ULONG currentMask;
-    ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     LARGE_INTEGER timeout;
     NTSTATUS status;
-    NTSTATUS disableStatus;
+    NTSTATUS disableStatus = STATUS_SUCCESS;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
 
     if (Transfer == NULL) {
         return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     /*
@@ -1921,26 +1910,37 @@ LecExecuteLegacyMttTransferLocked(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        Transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        Transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
     transferSelected = TRUE;
 
-    currentMask = (ULONG)InterlockedCompareExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        0,
-        0);
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Cleanup;
+    }
+    transferArmed = TRUE;
 
-    status = LecCommitLegacyInterruptMask(
-        DevExt,
-        currentMask | 0x01UL);
+    status = LecUpdateInterruptMask(DevExt, 0, 0x01UL, TRUE);
     if (!NT_SUCCESS(status)) {
         goto Cleanup;
     }
     transferInterruptEnabled = TRUE;
 
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mttrgo, (ULONG)LaunchUnits);
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mttrgo,
+        (ULONG)LaunchUnits,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
+        goto Cleanup;
+    }
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -1955,15 +1955,21 @@ LecExecuteLegacyMttTransferLocked(
     }
 
 Cleanup:
+    /*
+     * A timeout, failed wait or synthetic completion is NOT DMA idle.
+     * Retain both the user-page MDLs and descriptor pages indefinitely,
+     * and refuse later DMA starts on this FDO. No guessed abort writes.
+     */
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+    }
     if (transferInterruptEnabled) {
-        cleanupMask = (ULONG)InterlockedCompareExchange(
-            (volatile LONG*)&DevExt->InterruptEnableShadow,
-            0,
-            0);
-
-        disableStatus = LecCommitLegacyInterruptMask(
-            DevExt,
-            cleanupMask & ~0x01UL);
+        disableStatus = LecUpdateInterruptMask(DevExt, 0x01UL, 0, TRUE);
 
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
@@ -1971,10 +1977,23 @@ Cleanup:
         }
     }
 
+    /* Finalize ownership only after the fallible interrupt-mask cleanup. */
+    if (dmaLaunched && LecDmaCompletionFinishCleanup(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS),
+            (BOOLEAN)(NT_SUCCESS(disableStatus)))) {
+        LecMarkDmaUnknownActive(DevExt, Transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            Transfer,
+            dmaGeneration);
     }
 
     LecTrace(
@@ -2981,7 +3000,7 @@ LecIoctlCfDc2110(
                      * helpers do, then commit the resulting value to BAR0
                      * INTEN before forwarding the command to board firmware.
                      */
-                    newMask = DevExt->InterruptEnableShadow;
+                    newMask = 0;
 
                     if ((controlWord & 0x0080U) != 0) {
                         newMask |= 0x04UL;
@@ -3005,9 +3024,8 @@ LecIoctlCfDc2110(
                     }
 
                     hwStatus =
-                        LecCommitLegacyInterruptMask(
-                            DevExt,
-                            newMask);
+                        LecUpdateInterruptMask(
+                            DevExt, 0x34UL, newMask, FALSE);
                 }
 
                 if (NT_SUCCESS(hwStatus)) {
@@ -3288,7 +3306,6 @@ LecIoctlCfDc2110(
                         0xFB, 0x85, 0x40, 0x00
                     };
                     ULONG received = 0;
-                    ULONG rxInterruptMask;
 
                     /*
                      * Legacy FUN_0001619A calls FUN_000160A8(this, 1)
@@ -3302,17 +3319,9 @@ LecIoctlCfDc2110(
                      * masked out of the ISR. Preserve every other INTEN bit
                      * and commit only on the first fetch after startup.
                      */
-                    rxInterruptMask = (ULONG)InterlockedCompareExchange(
-                        (volatile LONG*)&DevExt->InterruptEnableShadow,
-                        0,
-                        0);
-                    if ((rxInterruptMask & 0x08UL) == 0) {
-                        status = LecCommitLegacyInterruptMask(
-                            DevExt,
-                            rxInterruptMask | 0x08UL);
-                        if (!NT_SUCCESS(status)) {
-                            break;
-                        }
+                    status = LecEnsureReceiveInterrupt(DevExt);
+                    if (!NT_SUCCESS(status)) {
+                        break;
                     }
 
                     status = LecTransportSend(
@@ -3447,6 +3456,19 @@ LecIoctlCfDc2110(
             }
         }
 
+        /*
+         * This packed request may contain multiple hardware commands.
+         * If an earlier MTT launch became indeterminate, never run the
+         * remaining records while the same outer IOCTL is still active.
+         */
+        if (InterlockedCompareExchange(
+                &DevExt->DmaUnknownActive, 0, 0) != 0) {
+            if (NT_SUCCESS(status)) {
+                status = STATUS_DEVICE_NOT_READY;
+            }
+            break;
+        }
+
         outputOffset += recordOutput;
         inputOffset += 8 + payloadLength;
     }
@@ -3486,8 +3508,7 @@ LecIoctlAcquireBufferedOneChannel(
     ULONG requestedBytes;
     ULONG blockBytes;
     ULONG launchCount;
-    ULONG currentMask;
-    ULONG cleanupMask;
+    ULONGLONG dmaGeneration = 0;
     ULONG gpioValue;
     ULONG iimStatus;
     ULONG mamValues[5];
@@ -3505,9 +3526,11 @@ LecIoctlAcquireBufferedOneChannel(
     volatile ULONG* errs;
     LARGE_INTEGER timeout;
     NTSTATUS status;
-    NTSTATUS disableStatus;
+    NTSTATUS disableStatus = STATUS_SUCCESS;
     BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
     BOOLEAN transferInterruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
     ULONG i;
 
     if (SystemBuffer == NULL ||
@@ -3515,6 +3538,11 @@ LecIoctlAcquireBufferedOneChannel(
         InputLength != 15 ||
         OutputLength != sizeof(ULONG)) {
         return STATUS_INVALID_BUFFER_SIZE;
+    }
+
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
+        return STATUS_DEVICE_NOT_READY;
     }
 
     RtlCopyMemory(&token, SystemBuffer, sizeof(token));
@@ -3553,6 +3581,18 @@ LecIoctlAcquireBufferedOneChannel(
         KernelMode,
         FALSE,
         NULL);
+
+    /*
+     * Another already-admitted IOCTL can wait here while a prior DMA request
+     * times out and permanently closes admission. Recheck the terminal fault
+     * after serialization and before any MAM setup MMIO.
+     */
+    if (!DevExt->Started || !DevExt->InterruptConnected ||
+        InterlockedCompareExchange(
+            &DevExt->DmaUnknownActive, 0, 0) != 0) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto Exit;
+    }
 
     transfer = LecFindTransferOwned(
         DevExt,
@@ -3690,26 +3730,37 @@ LecIoctlAcquireBufferedOneChannel(
         (volatile LONG*)&DevExt->InterruptPendingShadow,
         ~1L);
 
-    (VOID)InterlockedExchangePointer(
-        (PVOID volatile*)&DevExt->CurrentTransfer,
-        transfer);
+    status = LecSelectDmaTransfer(
+        DevExt,
+        transfer,
+        &dmaGeneration);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
     transferSelected = TRUE;
 
-    currentMask = (ULONG)InterlockedCompareExchange(
-        (volatile LONG*)&DevExt->InterruptEnableShadow,
-        0,
-        0);
+    if (!LecArmSelectedDma(DevExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto CleanupTransfer;
+    }
+    transferArmed = TRUE;
 
-    status = LecCommitLegacyInterruptMask(
-        DevExt,
-        currentMask | 0x01UL);
+    status = LecUpdateInterruptMask(DevExt, 0, 0x01UL, TRUE);
     if (!NT_SUCCESS(status)) {
         goto CleanupTransfer;
     }
     transferInterruptEnabled = TRUE;
 
-    WRITE_REGISTER_ULONG(iimcl, 1UL);
-    WRITE_REGISTER_ULONG(mamRgo, launchCount);
+    status = LecLaunchSelectedDma(
+        DevExt,
+        dmaGeneration,
+        iimcl,
+        mamRgo,
+        launchCount,
+        &dmaLaunched);
+    if (!NT_SUCCESS(status)) {
+        goto CleanupTransfer;
+    }
 
     timeout.QuadPart = -50000000LL;
     status = KeWaitForSingleObject(
@@ -3724,15 +3775,16 @@ LecIoctlAcquireBufferedOneChannel(
     }
 
 CleanupTransfer:
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(DevExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            FALSE);
+        LecMarkDmaUnknownActive(DevExt, transfer);
+    }
     if (transferInterruptEnabled) {
-        cleanupMask = (ULONG)InterlockedCompareExchange(
-            (volatile LONG*)&DevExt->InterruptEnableShadow,
-            0,
-            0);
-
-        disableStatus = LecCommitLegacyInterruptMask(
-            DevExt,
-            cleanupMask & ~0x01UL);
+        disableStatus = LecUpdateInterruptMask(DevExt, 0x01UL, 0, TRUE);
 
         if (NT_SUCCESS(status) &&
             !NT_SUCCESS(disableStatus)) {
@@ -3740,10 +3792,23 @@ CleanupTransfer:
         }
     }
 
+    /* Finalize ownership only after the fallible interrupt-mask cleanup. */
+    if (dmaLaunched && LecDmaCompletionFinishCleanup(
+            &DevExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS),
+            (BOOLEAN)(NT_SUCCESS(disableStatus)))) {
+        LecMarkDmaUnknownActive(DevExt, transfer);
+        if (status == STATUS_SUCCESS) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+
     if (transferSelected) {
-        (VOID)InterlockedExchangePointer(
-            (PVOID volatile*)&DevExt->CurrentTransfer,
-            NULL);
+        LecDeselectDmaTransfer(
+            DevExt,
+            transfer,
+            dmaGeneration);
     }
 
     /*
@@ -3818,7 +3883,15 @@ LecIoctlRegisterRead(
         return status;
     }
 
-    value = READ_REGISTER_ULONG(reg);
+    if (bar == 0 && offset == 0x084) {
+        status = LecReadInterruptMask(DevExt, &value);
+        if (!NT_SUCCESS(status)) {
+            return status;
+        }
+    }
+    else {
+        value = READ_REGISTER_ULONG(reg);
+    }
     *(PULONG)SystemBuffer = value;
     *Information = sizeof(ULONG);
 
@@ -3874,6 +3947,9 @@ LecIoctlRegisterWrite(
     LecTrace("REG-WR: BAR%u + 0x%08lX <- 0x%08lX\n",
         bar, offset, value);
 
+    if (bar == 0 && offset == 0x084) {
+        return LecWriteInterruptMask(DevExt, value);
+    }
     WRITE_REGISTER_ULONG(reg, value);
     return STATUS_SUCCESS;
 }
@@ -3924,6 +4000,21 @@ LecS65DeviceControl(
     ULONG outputPreviewLength = 0;
     PVOID type3InputBuffer =
         stack->Parameters.DeviceIoControl.Type3InputBuffer;
+    NTSTATUS lockStatus = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);
+
+    if (!NT_SUCCESS(lockStatus)) {
+        Irp->IoStatus.Status = lockStatus;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return lockStatus;
+    }
+    if (!LecEnterIoctl(devExt)) {
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+        Irp->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_DEVICE_NOT_READY;
+    }
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
     RtlZeroMemory(outputPreview, sizeof(outputPreview));
@@ -4295,7 +4386,6 @@ LecS65DeviceControl(
             ULONG control;
             ULONG errorMaskRequest;
             ULONG programmedErrm;
-            ULONG newInterruptMask;
             volatile ULONG* errm;
 
             RtlCopyMemory(
@@ -4333,22 +4423,8 @@ LecS65DeviceControl(
                     (LONG)programmedErrm);
                 WRITE_REGISTER_ULONG(errm, programmedErrm);
 
-                newInterruptMask =
-                    (ULONG)InterlockedCompareExchange(
-                        (volatile LONG*)&devExt->InterruptEnableShadow,
-                        0,
-                        0);
-
-                if (errorMaskRequest != 0) {
-                    newInterruptMask |= 0x02UL;
-                }
-                else {
-                    newInterruptMask &= ~0x02UL;
-                }
-
-                status = LecCommitLegacyInterruptMask(
-                    devExt,
-                    newInterruptMask);
+                status = LecUpdateInterruptMask(devExt, 0x02UL,
+                    errorMaskRequest != 0 ? 0x02UL : 0, FALSE);
             }
 
             information = 0;
@@ -4751,6 +4827,8 @@ LecS65DeviceControl(
 
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = information;
+    LecLeaveIoctl(devExt);
+    IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return status;
 }

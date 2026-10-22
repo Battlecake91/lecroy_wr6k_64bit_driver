@@ -20,6 +20,9 @@ x64/
 tools/lecdiag/build/
 tools/lecwatch/build/
 
+# Native, hardware-independent unit test output
+tests/dry/build/
+
 # Visual Studio / package-manager caches
 .vs/
 packages/
