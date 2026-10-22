@@ -30,7 +30,13 @@ public static class MockDiagnosticNative
         string rawLog = null;
         for (int i = 0; i + 1 < args.Length; ++i)
             if (args[i] == "--log") rawLog = args[i + 1];
-        if (scenario != "MissingCaptureReady" && rawLog != null)
+        if (scenario != "MissingCaptureReady")
+            Console.WriteLine("1 00:00:00.001 1 - MOCK_KERNEL: independently attributable record");
+        if (scenario == "DelayedFileFlush") {
+            Thread.Sleep(1200);
+            if (rawLog != null) File.WriteAllText(rawLog, "MOCK KERNEL RECORD\r\n");
+        }
+        else if (scenario != "MissingCaptureReady" && rawLog != null)
             File.WriteAllText(rawLog, "MOCK KERNEL RECORD\r\n");
 
         if (scenario == "UnexpectedCaptureExit")

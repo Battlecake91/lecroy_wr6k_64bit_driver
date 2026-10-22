@@ -195,6 +195,15 @@ try {
         $capture.ExitCode -eq 0 -and $capture.Invocations -eq 1 -and
         @($capture.Records) -contains 'capture')
 
+    $delayed = Invoke-Case -Name 'delayed-file-flush' -Mode CaptureQualification `
+        -Scenario DelayedFileFlush
+    $delayedReady = Get-Content -Raw (Join-Path $delayed.Evidence 'capture-ready.json') |
+        ConvertFrom-Json
+    Add-Result 'delayed raw-log flush does not hide confirmed live kernel output' (
+        $delayed.ExitCode -eq 0 -and $delayedReady.ConfirmedKernelMessage -and
+        $delayedReady.CaptureInitialized -and
+        $delayedReady.ConfirmedKernelMessageText -match 'MOCK_KERNEL')
+
     $install = Invoke-Case -Name 'install-success' -Mode InstallWithCapture
     Add-Result 'mock capture/install path invokes each child exactly once' (
         $install.ExitCode -eq 0 -and $install.Invocations -eq 2 -and

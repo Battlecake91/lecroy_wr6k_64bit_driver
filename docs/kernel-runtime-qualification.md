@@ -806,6 +806,99 @@ and source-contract validation. A future restart requires a fresh evidence
 root, a newly reviewed exact command, successful live readiness and a new
 explicit owner authorization.
 
+## Batch 5 live-readiness result
+
+The launcher now uses the existing job-object process runner with optional
+exclusive live stdout/stderr files. Its gate records collector health, capture
+initialization, raw-log flush and confirmed kernel-message reception as
+separate properties. The gate requires a recognizable kernel record; process
+existence or a created zero-byte file is insufficient. Elevated Windows
+PowerShell 5.1 mocks pass 21/21, including delayed raw-file flush, early exit,
+missing output, timeout, nonzero PnPUtil and no-retry/no-orphan checks. Source
+and ABI contracts pass 64/64.
+
+The single Batch 5 authorization was consumed at launcher commit
+`869b3cdae0ee4ebb68f536f85247ae77c6d99f55`. Passive preflight passed, then
+DebugView loaded once and emitted valid records. The first live predicate
+matched only a marker at the beginning of a line, while DebugView prefixes each
+real record with sequence, time, CPU and ` - `. It therefore failed closed
+before creating the restart marker. Result counts are capture 1, install 0 and
+PnP restart 0. The 7,655,850-byte raw log contains 100,002 timestamped
+`STORMINI: StorNVMe` records from 18:46:53.439 through 18:47:06.829 and no
+`PNP_STATUS:` record. DebugView stopped at its 100,000-line bound and left no
+process. Raw log SHA-256 is
+`63017DA62845963535E20D67138A9DBA1D05EAB4AFFA831DB25BF49E1455BF85`;
+result SHA-256 is
+`E44442DC406F418A3903DAD6D1C216C2E17404B8A1E83728B1E7908C53457951`;
+the evidence manifest SHA-256 is
+`1092480531CD50FE96757A84E7C1E43C813AB4A1718D36E543BE9FE579362E8D`.
+
+The installed device remains `OK` with problem code zero, `oem101.inf`
+0.2026.1018.1, running service, five enabled interfaces and loaded SYS SHA-256
+`8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`.
+SetupAPI remains unchanged at SHA-256
+`2FE8D1DFE99D97651F8DD3BB5FD8355BA7510A2064344B3CD2E26A53A618C714`.
+No target Kernel-PnP event or Event 411 occurred because PnPUtil was never
+invoked. Commit `ca358d0a5ca1616377dd1308b9fb477c3e735dbc` accepts both bare mock
+markers and DebugView's timestamped ` - STORMINI:`/` - PNP_STATUS:` form; it
+is offline-qualified only.
+
+### Recovery and one-boot Verifier gate
+
+The read-only recovery audit found one healthy 256-GB GPT NVMe disk with only
+a 600-MiB EFI partition and the 110.6-GiB C: partition. `reagentc /info`
+reports WinRE disabled with no location. No removable or optical recovery
+volume was present. BCD `{current}` boots C: with `testsigning Yes`; stale
+recovery entries refer to `unknown` devices and are not a demonstrated path.
+CrashControl uses automatic dumps (`CrashDumpEnabled=7`), `AutoReboot=1`,
+`C:\Windows\MEMORY.DMP` and overwrite. The system-managed page file is
+1,280 MiB for 8,458,805,248 bytes RAM, with about 17.6 GB free on C:.
+
+The minimum robust preparation is: create and boot-test external Windows 10
+recovery/install media; preserve the verified `oem100.inf` rollback set off
+C:; separately authorize a page-file/dump policy large enough for the selected
+dump; disable automatic reboot for observation if desired; and rehearse Safe
+Mode plus elevated `verifier /reset` before enabling Verifier. Enabling WinRE
+would require adding or safely provisioning recovery storage and must not be
+assumed from the stale BCD objects.
+
+After those gates, the future first pass targets only the exact installed
+`LecS65AcqDrv.sys` and uses:
+
+```text
+verifier /reset
+verifier /flags 0x0002093B /driver LecS65AcqDrv.sys
+verifier /bootmode oneboot
+verifier /querysettings
+```
+
+The mask covers Special Pool, Force IRQL Checking, Pool Tracking, I/O
+Verification, Deadlock Detection, Security Checks, Miscellaneous Checks and
+DDI Compliance. It excludes DMA verification and fault injection. `oneboot`
+enables the settings only for the next Windows start and disables them for
+subsequent boots. The first boot workload is limited to passive device,
+service, interface and event inspection; PnP, acquisition, DMA and hardware
+IOCTLs remain separate gates. A failure requires Safe Mode or external media,
+`verifier /reset`, evidence preservation and a controlled reboot.
+
+### DMA integration order
+
+PR #27 head `1120687c181e85ade70f91d656d127ef0533d7a6` remains ABI-compatible
+and offline-qualified. It associates CREATE/CLOSE with a nonpaged file context,
+preserves process-shared registrations until the last file closes, serializes
+file/transfer ownership under `TransferMutex`, drains contexts on REMOVE and
+never retires `CurrentTransfer` or `DmaUnsafeToFree` storage. It changes no
+PnP START, IRQ or public IOCTL contract and does not prove physical bus idle.
+
+The safe stack order is PR #26, PR #27, then PR #28 plus Batch 5 tooling and
+documentation. PR #27 and PR #28 cannot be merged directly without resolving
+their two canonical-document conflicts. A later signed DMA-fixed candidate
+needs a distinct DriverVer and full package identity. After separately approved
+installation, repeat package/START health, five-interface enumeration, the 9/9
+R0 and 2/2 bounded R1 matrix, captured single PnP lifetime testing and the
+recoverable non-DMA Verifier pass. Acquisition and active DMA remain a later,
+independent workstream.
+
 ### Verifier readiness result
 
 The proposed `0x0002093B` mask remains appropriate for the first non-DMA WDM

@@ -20,6 +20,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace LecS65
@@ -138,6 +139,15 @@ namespace LecS65
             string fileName, string[] arguments, string workingDirectory,
             int timeoutMilliseconds, int streamDrainMilliseconds)
         {
+            return Run(fileName, arguments, workingDirectory,
+                timeoutMilliseconds, streamDrainMilliseconds, null, null);
+        }
+
+        public static NativeProcessResult Run(
+            string fileName, string[] arguments, string workingDirectory,
+            int timeoutMilliseconds, int streamDrainMilliseconds,
+            string liveStdOutPath, string liveStdErrPath)
+        {
             if (String.IsNullOrWhiteSpace(fileName))
                 throw new ArgumentException("Native executable path is empty.", "fileName");
             if (arguments == null)
@@ -183,8 +193,30 @@ namespace LecS65
                     throw new Win32Exception(error, "AssignProcessToJobObject failed.");
                 }
 
-                Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-                Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+                StringBuilder stdout = new StringBuilder();
+                StringBuilder stderr = new StringBuilder();
+                object stdoutLock = new object();
+                object stderrLock = new object();
+                process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) {
+                    if (e.Data == null) return;
+                    lock (stdoutLock) {
+                        stdout.AppendLine(e.Data);
+                        if (!String.IsNullOrWhiteSpace(liveStdOutPath))
+                            File.AppendAllText(liveStdOutPath, e.Data + Environment.NewLine,
+                                new UTF8Encoding(false));
+                    }
+                };
+                process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) {
+                    if (e.Data == null) return;
+                    lock (stderrLock) {
+                        stderr.AppendLine(e.Data);
+                        if (!String.IsNullOrWhiteSpace(liveStdErrPath))
+                            File.AppendAllText(liveStdErrPath, e.Data + Environment.NewLine,
+                                new UTF8Encoding(false));
+                    }
+                };
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
                 bool exited = process.WaitForExit(timeoutMilliseconds);
                 int exitCode = exited ? process.ExitCode : 124;
 
@@ -194,16 +226,14 @@ namespace LecS65
                 if (!exited && !process.WaitForExit(streamDrainMilliseconds))
                     throw new TimeoutException("Timed-out native process did not terminate after job closure.");
 
-                Task[] streamTasks = new Task[] { stdoutTask, stderrTask };
-                if (!Task.WaitAll(streamTasks, streamDrainMilliseconds))
-                    throw new TimeoutException("Native process output streams did not close after process-tree cleanup.");
+                process.WaitForExit();
 
                 return new NativeProcessResult {
                     ProcessId = process.Id,
                     ExitCode = exitCode,
                     TimedOut = !exited,
-                    StdOut = stdoutTask.Result,
-                    StdErr = stderrTask.Result,
+                    StdOut = stdout.ToString(),
+                    StdErr = stderr.ToString(),
                     JobAssigned = true,
                     ProcessTreeClosed = true
                 };
@@ -266,6 +296,8 @@ function Invoke-LecS65NativeProcess {
         [string]$LogPath,
         [ValidateRange(1, 86400)][int]$TimeoutSeconds = 900,
         [ValidateRange(1, 300)][int]$StreamDrainTimeoutSeconds = 15,
+        [string]$LiveStdOutPath,
+        [string]$LiveStdErrPath,
         [switch]$AllowPositiveExitCode,
         [switch]$ReturnOnNonZeroExit
     )
@@ -281,6 +313,8 @@ function Invoke-LecS65NativeProcess {
     }
 
     $resolvedLog = $null
+    $resolvedLiveStdOut = $null
+    $resolvedLiveStdErr = $null
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
         if (-not [System.IO.Path]::IsPathRooted($LogPath)) {
             throw "Native process log path must be absolute: $LogPath"
@@ -300,6 +334,21 @@ function Invoke-LecS65NativeProcess {
             New-LecS65ExclusiveFile -Path $path
         }
     }
+    foreach ($live in @(
+            @{ Value=$LiveStdOutPath; Label='LiveStdOutPath'; Variable='resolvedLiveStdOut' },
+            @{ Value=$LiveStdErrPath; Label='LiveStdErrPath'; Variable='resolvedLiveStdErr' })) {
+        if (-not [string]::IsNullOrWhiteSpace($live.Value)) {
+            if (-not [System.IO.Path]::IsPathRooted($live.Value)) {
+                throw "$($live.Label) must be absolute: $($live.Value)"
+            }
+            $resolved = [System.IO.Path]::GetFullPath($live.Value)
+            if (Test-Path -LiteralPath $resolved) {
+                throw "$($live.Label) already exists: $resolved"
+            }
+            New-LecS65ExclusiveFile -Path $resolved
+            Set-Variable -Name $live.Variable -Value $resolved
+        }
+    }
 
     Write-Host ''
     Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
@@ -307,7 +356,8 @@ function Invoke-LecS65NativeProcess {
         $result = [LecS65.NativeProcessRunner]::Run(
             $executable, [string[]]$Arguments, $working,
             [int]($TimeoutSeconds * 1000),
-            [int]($StreamDrainTimeoutSeconds * 1000))
+            [int]($StreamDrainTimeoutSeconds * 1000),
+            $resolvedLiveStdOut, $resolvedLiveStdErr)
     }
     catch {
         $message = "$Name failed to start or supervise: $($_.Exception.Message)"

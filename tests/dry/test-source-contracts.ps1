@@ -807,7 +807,9 @@ Test-Contract "package workflow is installation- and device-operation-free" {
     $nativeProcessText -match 'RedirectStandardError = true' -and
     $nativeProcessText -match 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' -and
     $nativeProcessText -match 'WaitForExit\(timeoutMilliseconds\)' -and
-    $nativeProcessText -match 'Task\.WaitAll'
+    $nativeProcessText -match 'BeginOutputReadLine\(\)' -and
+    $nativeProcessText -match 'BeginErrorReadLine\(\)' -and
+    $nativeProcessText -match 'ProcessTreeClosed = true'
 }
 
 Test-Contract "native process runner admits and quotes explicit empty arguments" {
