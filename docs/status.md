@@ -260,6 +260,23 @@
   GPT disk has only EFI and C: partitions, no removable recovery medium was
   present, and the current 1,280-MiB page file does not demonstrate adequate
   backing for a useful dump from about 8 GiB RAM.
+- The production multi-handle DMA ownership gap is fixed on a separate
+  development branch. CREATE records a nonpaged file-object/process
+  association, DMA token operations use that association, and only the last
+  handle for the recorded process retires safe inactive registrations.
+  REMOVE drains remaining associations after remove-lock rundown;
+  `UnknownActive` remains irreversible. Debug and Release x64 build with zero
+  warnings and errors. The complete Dry suite, 23/23 process/file cases,
+  19/19 combined lifetime cases, 5,000/5,000 default and 50,000/50,000
+  expanded DMA races, and 1,000/1,000 default and 10,000/10,000 expanded INTEN
+  iterations pass. This changed driver has not been signed, installed or
+  hardware-tested.
+- PR #26 has no repository-level merge conflict: its base commit is an ancestor
+  of the head, the head is a strict descendant of the base, and a local
+  `git merge-tree --write-tree` succeeds. The reported non-mergeable state is
+  therefore not branch topology; GitHub's public page currently fails to load
+  merge/check details, so a stale mergeability calculation or unmet hosted
+  check/protection requirement remains the external explanation.
 
 ## DMA/PnP staging
 

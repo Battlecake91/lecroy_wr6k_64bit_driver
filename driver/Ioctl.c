@@ -2451,6 +2451,7 @@ static
 NTSTATUS
 LecIoctlCfDc2110(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ HANDLE OwnerProcessId,
     _Inout_updates_bytes_(OutputLength) UCHAR* SystemBuffer,
     _In_ ULONG InputLength,
     _In_ ULONG OutputLength,
@@ -3068,7 +3069,7 @@ LecIoctlCfDc2110(
                     transfer = LecFindTransferOwned(
                         DevExt,
                         token,
-                        PsGetCurrentProcessId());
+                        OwnerProcessId);
 
                     /*
                      * FUN_000160DC accepts the selected transfer only when
@@ -3499,6 +3500,7 @@ static
 NTSTATUS
 LecIoctlAcquireBufferedOneChannel(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ HANDLE OwnerProcessId,
     _Inout_updates_bytes_(OutputLength) UCHAR* SystemBuffer,
     _In_ ULONG InputLength,
     _In_ ULONG OutputLength,
@@ -3602,7 +3604,7 @@ LecIoctlAcquireBufferedOneChannel(
     transfer = LecFindTransferOwned(
         DevExt,
         token,
-        PsGetCurrentProcessId());
+        OwnerProcessId);
 
     if (transfer == NULL) {
         status = STATUS_INVALID_PARAMETER;
@@ -3997,6 +3999,7 @@ LecS65DeviceControl(
     ULONG method = code & 3;
     PVOID systemBuffer = Irp->AssociatedIrp.SystemBuffer;
     NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
+    HANDLE ownerProcessId = NULL;
     ULONG_PTR information = 0;
     BOOLEAN wow64 = FALSE;
     UCHAR inputPreview[LECS65_TRACE_PREVIEW_BYTES];
@@ -4019,6 +4022,14 @@ LecS65DeviceControl(
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_DEVICE_NOT_READY;
+    }
+
+    status = LecGetFileOwnerProcessId(
+        devExt,
+        stack->FileObject,
+        &ownerProcessId);
+    if (!NT_SUCCESS(status)) {
+        goto Complete;
     }
 
     RtlZeroMemory(inputPreview, sizeof(inputPreview));
@@ -4108,6 +4119,7 @@ LecS65DeviceControl(
                 inputLength)) {
             status = LecIoctlCfDc2110(
                 devExt,
+                ownerProcessId,
                 (UCHAR*)systemBuffer,
                 inputLength,
                 outputLength,
@@ -4639,6 +4651,7 @@ LecS65DeviceControl(
                 ULongToPtr(request[0]),
                 request[1],
                 Irp->RequestorMode,
+                ownerProcessId,
                 &token);
 
             if (NT_SUCCESS(status)) {
@@ -4666,13 +4679,14 @@ LecS65DeviceControl(
         status = LecUnregisterTransfer(
             devExt,
             *(PULONG)systemBuffer,
-            PsGetCurrentProcessId());
+            ownerProcessId);
         information = 0;
         break;
 
     case LECS65_IOCTL_ACQUIRE_BUFFERED:
         status = LecIoctlAcquireBufferedOneChannel(
             devExt,
+            ownerProcessId,
             (UCHAR*)systemBuffer,
             inputLength,
             outputLength,
@@ -4790,6 +4804,7 @@ LecS65DeviceControl(
         break;
     }
 
+Complete:
     if (method == METHOD_BUFFERED &&
         NT_SUCCESS(status) &&
         information != 0 &&

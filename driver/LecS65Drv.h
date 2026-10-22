@@ -215,6 +215,12 @@ typedef struct _LECS65_TRANSFER {
     KEVENT CompletionEvent;
 } LECS65_TRANSFER, *PLECS65_TRANSFER;
 
+typedef struct _LECS65_FILE_CONTEXT {
+    LIST_ENTRY Link;
+    PFILE_OBJECT FileObject;
+    HANDLE OwnerProcessId;
+} LECS65_FILE_CONTEXT, *PLECS65_FILE_CONTEXT;
+
 struct _LECS65_DMA_PNP_PUBLICATION;
 typedef struct _LECS65_DMA_PNP_PUBLICATION
     LECS65_DMA_PNP_PUBLICATION, *PLECS65_DMA_PNP_PUBLICATION;
@@ -256,6 +262,7 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     KMUTEX DallasMutex;
     KMUTEX TransferMutex;
     LIST_ENTRY TransferList;
+    LIST_ENTRY FileContextList;
     ULONG NextTransferToken;
     volatile PLECS65_TRANSFER CurrentTransfer;
     KSPIN_LOCK DmaCompletionLock;
@@ -419,15 +426,26 @@ NTSTATUS LecRegisterTransfer(
     _In_ PVOID UserBuffer,
     _In_ ULONG TotalBytes,
     _In_ KPROCESSOR_MODE AccessMode,
+    _In_ HANDLE OwnerProcessId,
     _Out_ PULONG Token);
 NTSTATUS LecUnregisterTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ ULONG Token,
     _In_ HANDLE OwnerProcessId);
-VOID LecReleaseTransfersForProcess(
-    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
-    _In_ HANDLE OwnerProcessId);
 VOID LecReleaseAllTransfers(_Inout_ PLECS65_DEVICE_EXTENSION DevExt);
+NTSTATUS LecAssociateFileContext(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PFILE_OBJECT FileObject,
+    _In_ HANDLE OwnerProcessId);
+NTSTATUS LecGetFileOwnerProcessId(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ PFILE_OBJECT FileObject,
+    _Out_ PHANDLE OwnerProcessId);
+VOID LecCloseFileContext(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PFILE_OBJECT FileObject);
+VOID LecReleaseAllFileContexts(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt);
 NTSTATUS LecSelectDmaTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _Inout_ PLECS65_TRANSFER Transfer,

@@ -467,11 +467,221 @@ LecBuildDescriptorTable(
 }
 
 NTSTATUS
+LecAssociateFileContext(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PFILE_OBJECT FileObject,
+    _In_ HANDLE OwnerProcessId
+    )
+{
+    PLECS65_FILE_CONTEXT context;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    if (FileObject == NULL || OwnerProcessId == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    context = (PLECS65_FILE_CONTEXT)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED,
+        sizeof(*context),
+        LECS65_TAG);
+    if (context == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlZeroMemory(context, sizeof(*context));
+    context->FileObject = FileObject;
+    context->OwnerProcessId = OwnerProcessId;
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    if (DevExt->Removed) {
+        status = STATUS_DELETE_PENDING;
+    }
+    else if (FileObject->FsContext != NULL) {
+        status = STATUS_INVALID_DEVICE_STATE;
+    }
+    else {
+        InsertTailList(&DevExt->FileContextList, &context->Link);
+        FileObject->FsContext = context;
+    }
+
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+
+    if (!NT_SUCCESS(status)) {
+        ExFreePool(context);
+    }
+    return status;
+}
+
+NTSTATUS
+LecGetFileOwnerProcessId(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _In_ PFILE_OBJECT FileObject,
+    _Out_ PHANDLE OwnerProcessId
+    )
+{
+    PLECS65_FILE_CONTEXT context;
+    PLIST_ENTRY link;
+    NTSTATUS status = STATUS_FILE_CLOSED;
+
+    if (FileObject == NULL || OwnerProcessId == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    context = (PLECS65_FILE_CONTEXT)FileObject->FsContext;
+    for (link = DevExt->FileContextList.Flink;
+         context != NULL && link != &DevExt->FileContextList;
+         link = link->Flink) {
+        PLECS65_FILE_CONTEXT candidate =
+            CONTAINING_RECORD(link, LECS65_FILE_CONTEXT, Link);
+
+        if (candidate == context && candidate->FileObject == FileObject) {
+            *OwnerProcessId = candidate->OwnerProcessId;
+            status = STATUS_SUCCESS;
+            break;
+        }
+    }
+
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+    return status;
+}
+
+VOID
+LecCloseFileContext(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
+    _Inout_ PFILE_OBJECT FileObject
+    )
+{
+    LIST_ENTRY releaseList;
+    PLECS65_FILE_CONTEXT context = NULL;
+    HANDLE ownerProcessId = NULL;
+    PLIST_ENTRY link;
+    BOOLEAN ownerStillOpen = FALSE;
+
+    if (FileObject == NULL) {
+        return;
+    }
+    InitializeListHead(&releaseList);
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    context = (PLECS65_FILE_CONTEXT)FileObject->FsContext;
+    for (link = DevExt->FileContextList.Flink;
+         context != NULL && link != &DevExt->FileContextList;
+         link = link->Flink) {
+        PLECS65_FILE_CONTEXT candidate =
+            CONTAINING_RECORD(link, LECS65_FILE_CONTEXT, Link);
+
+        if (candidate == context && candidate->FileObject == FileObject) {
+            ownerProcessId = candidate->OwnerProcessId;
+            RemoveEntryList(&candidate->Link);
+            FileObject->FsContext = NULL;
+            break;
+        }
+    }
+
+    if (ownerProcessId != NULL) {
+        for (link = DevExt->FileContextList.Flink;
+             link != &DevExt->FileContextList;
+             link = link->Flink) {
+            PLECS65_FILE_CONTEXT candidate =
+                CONTAINING_RECORD(link, LECS65_FILE_CONTEXT, Link);
+            if (candidate->OwnerProcessId == ownerProcessId) {
+                ownerStillOpen = TRUE;
+                break;
+            }
+        }
+
+        if (!ownerStillOpen) {
+            PLIST_ENTRY next;
+            for (link = DevExt->TransferList.Flink;
+                 link != &DevExt->TransferList;
+                 link = next) {
+                PLECS65_TRANSFER transfer =
+                    CONTAINING_RECORD(link, LECS65_TRANSFER, Link);
+                next = link->Flink;
+                if (transfer->OwnerProcessId == ownerProcessId &&
+                    DevExt->CurrentTransfer != transfer &&
+                    !transfer->DmaUnsafeToFree) {
+                    RemoveEntryList(link);
+                    InsertTailList(&releaseList, link);
+                }
+            }
+        }
+    }
+
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+
+    if (ownerProcessId != NULL) {
+        ExFreePool(context);
+    }
+    while (!IsListEmpty(&releaseList)) {
+        link = RemoveHeadList(&releaseList);
+        LecFreeTransfer(
+            DevExt,
+            CONTAINING_RECORD(link, LECS65_TRANSFER, Link));
+    }
+}
+
+VOID
+LecReleaseAllFileContexts(
+    _Inout_ PLECS65_DEVICE_EXTENSION DevExt
+    )
+{
+    LIST_ENTRY releaseList;
+
+    InitializeListHead(&releaseList);
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex,
+        Executive,
+        KernelMode,
+        FALSE,
+        NULL);
+
+    while (!IsListEmpty(&DevExt->FileContextList)) {
+        PLIST_ENTRY link = RemoveHeadList(&DevExt->FileContextList);
+        PLECS65_FILE_CONTEXT context =
+            CONTAINING_RECORD(link, LECS65_FILE_CONTEXT, Link);
+        if (context->FileObject != NULL &&
+            context->FileObject->FsContext == context) {
+            context->FileObject->FsContext = NULL;
+        }
+        InsertTailList(&releaseList, link);
+    }
+
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+
+    while (!IsListEmpty(&releaseList)) {
+        PLIST_ENTRY link = RemoveHeadList(&releaseList);
+        ExFreePool(CONTAINING_RECORD(
+            link, LECS65_FILE_CONTEXT, Link));
+    }
+}
+
+NTSTATUS
 LecRegisterTransfer(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ PVOID UserBuffer,
     _In_ ULONG TotalBytes,
     _In_ KPROCESSOR_MODE AccessMode,
+    _In_ HANDLE OwnerProcessId,
     _Out_ PULONG Token
     )
 {
@@ -500,7 +710,7 @@ LecRegisterTransfer(
     }
 
     RtlZeroMemory(transfer, sizeof(*transfer));
-    transfer->OwnerProcessId = PsGetCurrentProcessId();
+    transfer->OwnerProcessId = OwnerProcessId;
     transfer->UserBuffer = UserBuffer;
     transfer->TotalBytes = TotalBytes;
     transfer->DataBytes = dataBytes;
@@ -635,48 +845,6 @@ LecUnregisterTransfer(
 
     LecFreeTransfer(DevExt, transfer);
     return STATUS_SUCCESS;
-}
-
-VOID
-LecReleaseTransfersForProcess(
-    _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
-    _In_ HANDLE OwnerProcessId
-    )
-{
-    for (;;) {
-        PLECS65_TRANSFER transfer = NULL;
-        PLIST_ENTRY link;
-
-        KeWaitForSingleObject(
-            &DevExt->TransferMutex,
-            Executive,
-            KernelMode,
-            FALSE,
-            NULL);
-
-        for (link = DevExt->TransferList.Flink;
-             link != &DevExt->TransferList;
-             link = link->Flink) {
-            PLECS65_TRANSFER candidate =
-                CONTAINING_RECORD(link, LECS65_TRANSFER, Link);
-
-            if (candidate->OwnerProcessId == OwnerProcessId &&
-                DevExt->CurrentTransfer != candidate &&
-                !candidate->DmaUnsafeToFree) {
-                RemoveEntryList(link);
-                transfer = candidate;
-                break;
-            }
-        }
-
-        KeReleaseMutex(&DevExt->TransferMutex, FALSE);
-
-        if (transfer == NULL) {
-            break;
-        }
-
-        LecFreeTransfer(DevExt, transfer);
-    }
 }
 
 VOID
