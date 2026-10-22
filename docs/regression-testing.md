@@ -988,3 +988,28 @@ mock: a 15-second readiness window can expire while valid kernel records remain
 buffered. Real active modes now reject windows below 60 seconds and reserve at
 least 120 seconds after the deadline. This correction is offline-qualified
 only; a new authorization is required before any live restart.
+
+## Batch 6 capture and integration qualification
+
+The hardened Windows PowerShell 5.1 launcher path passes 31/31 elevated mocks.
+Coverage includes timestamped and millisecond records, `PNP_STATUS:` records,
+split and delayed writes, a 5,000-line burst, incorrect embedded source text,
+no output, early and post-readiness exit, timeout, collector stderr, successful
+restart, PnP failure/cleanup and one-shot no-retry behavior. The transcript
+SHA-256 is
+`C71B94483966C214C80B236BC54A258896579AC9BC2E77F39ED163D6636E2103`;
+the result JSON SHA-256 is
+`EBDE8743716EBE8A2087255F3BB5F88916A9737CCC0AC3A41A4A2CBFF8ACC0EE`.
+Source contracts pass 64/64.
+
+After integrating the exact PR #27 driver tree, focused tests pass:
+
+- process/file DMA lifetime: 23/23;
+- combined runtime lifetime: 19/19;
+- PnP IRP lifetime: 10/10;
+- PnP publication: 38/38; and
+- source/ABI contracts: 64/64.
+
+The driver source is byte-identical to the previously built and stressed PR #27
+revision. The 50,000 DMA and 10,000 INTEN expanded stress evidence therefore
+remains applicable; no unrelated stress rerun was performed.
