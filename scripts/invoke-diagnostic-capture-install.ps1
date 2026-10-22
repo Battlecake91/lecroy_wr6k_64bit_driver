@@ -503,7 +503,9 @@ try {
         if ($captureInitialized -and (Get-Item -LiteralPath $captureLiveOut).Length -gt 0) {
             $kernelMessage = @(Get-Content -LiteralPath $captureLiveOut |
                 ForEach-Object { [string]$_ } |
-                Where-Object { $_ -match '^(PNP_STATUS|STORMINI|MOCK_KERNEL):' } |
+                Where-Object {
+                    $_ -match '(?:^|\s-\s)(PNP_STATUS|STORMINI|MOCK_KERNEL):'
+                } |
                 Select-Object -First 1)
             if ($kernelMessage.Count -eq 1) {
                 $kernelMessage = [string]$kernelMessage[0]
