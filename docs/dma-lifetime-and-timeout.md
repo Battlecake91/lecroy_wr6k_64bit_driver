@@ -1039,3 +1039,24 @@ default DMA/INTEN stress 5,000/1,000 and expanded stress 50,000/10,000.
 - Replace the emergency pinned-memory quarantine with verified abort/drain/recovery ownership, including what happens across driver remove/reinstallation. It is not a viable final production resource-management model.
 
 No artificial nonzero IRQ injection, licensed Dallas writes, hazardous DMA timeouts or unverified register writes should be performed on the only working WR6k.
+
+## Combined runtime branch integration
+
+The PR #27 driver tree was merged into the Batch 6 runtime/tooling stack on an
+isolated integration branch. A direct tree comparison confirms that the merged
+`driver/` directory and process-lifetime model are identical to reviewed PR #27
+head `1120687c181e85ade70f91d656d127ef0533d7a6`; only later launcher, contract
+and canonical-document changes surround it.
+
+Focused validation passes 23/23 process/file ownership cases, 19/19 combined
+lifetime cases, 10/10 PnP IRP cases, 38/38 publication cases and 64/64 source
+contracts. The already-qualified exact driver source also retains its prior
+50,000 DMA and 10,000 INTEN expanded stress evidence, so those unchanged binary
+paths were not rerun merely for documentation integration.
+
+The captured restart of the currently installed pre-fix diagnostic package
+showed clean REMOVE/START lifetime and zero retained transfers, but it does not
+hardware-qualify this new ownership implementation and cannot prove physical
+DMA idle. A future combined candidate requires a distinct package version,
+signing authorization, installation authorization and repetition of the bounded
+runtime matrix before any acquisition or DMA work.

@@ -923,3 +923,70 @@ recovery, and preservation of the signed test-driver boot policy. Only then may
 the already documented one-boot commands be authorized. The first pass must
 target only `LecS65AcqDrv.sys` and must not include PnP restart, acquisition,
 DMA or hardware IOCTLs.
+
+## Batch 6 captured PnP result
+
+One separately authorized restart ran through the qualified launcher exactly
+once. DebugView became capture-ready at `2026-10-22T19:43:15.0537626Z`; the
+verified capture process was PID 4640 and had 295 seconds remaining. PnPUtil
+returned zero. Invocation counts were capture 1, install 0 and restart 1.
+
+The 887,838-byte raw log contains 42 `PNP_STATUS:` and 11,330 independently
+attributable `STORMINI:` records. The old device stack received query-relations,
+QUERY_REMOVE and REMOVE, disabled all five interfaces, disconnected the IRQ,
+reported zero retained transfers, unmapped BARs and unloaded. Re-enumeration
+then registered all five classes. START completed from lower-stack pending to
+success; local resource setup, `IoConnectInterrupt`, all five interface enables
+and the final IRP status were successful. No STOP_DEVICE IRP occurred.
+
+Five `0xC00000BB` completions are directly attributed to the lower stack for
+query-relations, reserved/legacy and QUERY_INTERFACE requests. None is a local
+START, IRQ or publication failure. Event 411 did not recur and no target Code
+Integrity, Kernel-PnP or Service Control Manager error appeared. The device,
+service, package, loaded SYS and five interfaces remained healthy. This
+corroborates the historical Event 411 classification as an installation
+intermediate, while the exact internal Windows producer remains unproved.
+The capture does not prove physical DMA bus-idle.
+
+Private evidence hashes are: raw capture
+`A6E5D87F996F32F6FC126E1ABEFF9FFAED6D83CA015D0ED57A78034237598F33`,
+trace summary
+`4CA9C8BF5D0FCDFA358772E36C58AA37C0A63D462BA34E27E00484F007FE7E33`,
+result JSON
+`1CDC1D6FF78B38EECBF156CA8405E8E85DC7AF67C03B65B993454632617B5CBF`
+and evidence manifest
+`283E1AD73C32DA8341CCBCEC127777410BF4507AE48515A4B9A58A36654CB077`.
+
+## Recovery and dump preparation
+
+The passive audit found a single healthy NVMe disk with only EFI and C:
+partitions. WinRE is disabled and has no location. There is no removable
+recovery disk, mapped recovery share, system image or VSS snapshot; rollback
+exists only on C:. A missing or failed NVMe is therefore not recoverable from
+the current host state. Prepare and boot-test external Windows media, copy the
+verified rollback set and a restorable system image off C:, and preserve BCD
+evidence before any Verifier configuration.
+
+WinRE recovery must identify the physical disk by model, size and unique
+identity, locate Windows by its SYSTEM hive, and locate the EFI partition by
+its FAT32 contents. Never rely on cached volume numbers or `{current}`. Enumerate
+the offline BCD store and operate on its exact loader GUID. Prefer a one-time
+Safe Mode boot followed by elevated `verifier /reset`; remove the Safe Mode
+setting only after reset is verified. Offline SYSTEM-hive editing is a last
+resort and requires a hive backup and selection of the active control set.
+
+For the first Verifier pass, use a kernel memory dump and provision reliable
+internal dump backing before reboot. With approximately 8 GiB RAM, a prudent
+upper-bound page/dump backing target is RAM plus 257 MiB, and C: should retain
+enough free space for both backing and `MEMORY.DMP`; the current free space and
+1,280-MiB page file do not meet that proof. Disable automatic reboot for
+observation if separately approved. USB storage must not be assumed usable by
+the crash-dump path.
+
+After recovery is demonstrated, the bounded target remains
+`verifier /flags 0x0002093B /driver LecS65AcqDrv.sys` plus `oneboot`. The first
+verified boot performs only passive device, service, interface and event
+inspection, followed by a controlled second reboot and proof that Verifier is
+off. DMA verification, fault injection, PnP cycling, acquisition and hardware
+IOCTLs remain excluded. Configuration changes and both reboots require new
+explicit authorization.

@@ -574,3 +574,28 @@ existence alone is still insufficient, and process liveness alone is not
 promoted to kernel-capture proof. Failure remains fail-closed and consumes the
 one-shot authorization. The next live run requires new owner authorization;
 the failed authorization and evidence paths must never be reused.
+
+## Batch 6 qualified captured restart
+
+The corrected matcher accepts only complete DebugView records with numeric
+sequence/time fields and an exact `STORMINI:` or `PNP_STATUS:` source prefix;
+arbitrary embedded substrings do not establish readiness. The launcher also
+records the exclusive process identity, requires a 500-ms stable observation,
+checks collector liveness at every gate, preserves separate stdout/stderr and
+reserves at least 120 seconds after readiness. Elevated Windows PowerShell 5.1
+mocks pass 31/31 and source contracts pass 64/64.
+
+The authorized restart then passed with capture 1, install 0 and PnP restart 1.
+The raw log SHA-256 is
+`A6E5D87F996F32F6FC126E1ABEFF9FFAED6D83CA015D0ED57A78034237598F33`.
+It contains 42 driver status records and 11,330 independently attributable
+storage kernel records. The driver trace proves successful REMOVE teardown,
+unload, re-enumeration and START, including all five interface transitions and
+IRQ teardown/reconnection. All observed `0xC00000BB` completions came from the
+lower stack on query-only requests; local START, interrupt and interface
+statuses were successful. Event 411 did not recur.
+
+Post-test state remained `oem101.inf`, version `0.2026.1018.1`, problem code
+zero, running service, five interfaces and the approved loaded SYS hash. No
+DebugView process remained. No installation, IOCTL, acquisition or physical
+DMA-idle experiment occurred.
