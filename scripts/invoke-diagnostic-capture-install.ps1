@@ -53,6 +53,7 @@ param(
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
     [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
     [ValidateRange(1, 120)][int]$CaptureShutdownGraceSeconds = 15,
+    [ValidateRange(100, 5000)][int]$CaptureStabilityMilliseconds = 500,
     [string]$DeviceInstanceId =
         'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0',
     [string]$ExpectedCurrentInf = 'oem17.inf',
@@ -291,12 +292,13 @@ function Assert-PassiveIdentity {
 function Start-CaptureJob {
     param([string]$Executable, [string[]]$Arguments,
         [string]$WorkingDirectory, [string]$LogPath, [string]$RunnerPath,
-        [string]$LiveStdOutPath, [string]$LiveStdErrPath)
+        [string]$LiveStdOutPath, [string]$LiveStdErrPath,
+        [string]$ProcessInfoPath)
     $script:CaptureInvocations++
     $argumentJson = ConvertTo-Json -InputObject @($Arguments) -Compress
     return Start-Job -ScriptBlock {
         param($Runner, $File, $ArgumentJson, $Working, $Log, $Timeout,
-            $LiveOut, $LiveErr)
+            $LiveOut, $LiveErr, $ProcessInfo)
         $ErrorActionPreference = 'Stop'
         . $Runner
         $parsedArguments = $ArgumentJson | ConvertFrom-Json
@@ -305,10 +307,26 @@ function Start-CaptureJob {
         Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
             -FilePath $File -Arguments $nativeArguments -WorkingDirectory $Working `
             -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit `
-            -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr
+            -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr `
+            -ProcessInfoPath $ProcessInfo
     } -ArgumentList $RunnerPath, $Executable, $argumentJson, $WorkingDirectory,
         $LogPath, ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds),
-        $LiveStdOutPath, $LiveStdErrPath
+        $LiveStdOutPath, $LiveStdErrPath, $ProcessInfoPath
+}
+
+function Test-ConfirmedKernelCaptureLine {
+    param([string]$Line)
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
+    return $Line -match (
+        '^(?:\d+\s+\d{1,2}:\d{2}:\d{2}\.\d+\s+\d+\s+-\s+' +
+        '(?:PNP_STATUS|STORMINI):|MOCK_KERNEL:)')
+}
+
+function Assert-CaptureJobRunning {
+    param([System.Management.Automation.Job]$Job, [string]$Boundary)
+    if ($null -eq $Job -or $Job.State -ne 'Running') {
+        throw "Capture collector exited before $Boundary."
+    }
 }
 
 function Complete-CaptureJob {
@@ -476,26 +494,32 @@ try {
     $captureArguments = @('--kernel', '--verbose-kernel', '--no-win32',
         '--clock-ms', '--format', 'text', '--duration',
         $CaptureDurationSeconds.ToString([Globalization.CultureInfo]::InvariantCulture),
-        '--max-lines', '100000', '--log', $rawLog, '--no-banner')
+        '--max-lines', '3000000', '--log', $rawLog, '--no-banner')
     $captureLog = Join-Path $evidence 'capture-child.log'
     $captureLiveOut = Join-Path $evidence 'capture-live.stdout.txt'
     $captureLiveErr = Join-Path $evidence 'capture-live.stderr.txt'
+    $captureProcessInfo = Join-Path $evidence 'capture-process.txt'
     $script:CaptureLogPath = $captureLog
     $runner = Join-Path $PSScriptRoot 'native-process.ps1'
     $script:CaptureJob = Start-CaptureJob -Executable $debugView `
         -Arguments $captureArguments -WorkingDirectory (Split-Path $debugView -Parent) `
         -LogPath $captureLog -RunnerPath $runner -LiveStdOutPath $captureLiveOut `
-        -LiveStdErrPath $captureLiveErr
+        -LiveStdErrPath $captureLiveErr -ProcessInfoPath $captureProcessInfo
 
+    $captureStartedUtc = [DateTime]::UtcNow
     $deadline = [DateTime]::UtcNow.AddSeconds($CaptureReadinessTimeoutSeconds)
     $ready = $false
     $captureInitialized = $false
     $rawLogFlushed = $false
     $confirmedKernelMessage = $false
     $kernelMessage = $null
+    $messageFirstSeenUtc = $null
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($script:CaptureJob.State -ne 'Running') { break }
-        $captureInitialized = (Test-Path -LiteralPath $captureLiveOut -PathType Leaf)
+        $captureInitialized = (
+            (Test-Path -LiteralPath $captureLiveOut -PathType Leaf) -and
+            (Test-Path -LiteralPath $captureProcessInfo -PathType Leaf) -and
+            (Get-Item -LiteralPath $captureProcessInfo).Length -gt 0)
         if ((Test-Path -LiteralPath $rawLog -PathType Leaf) -and
             (Get-Item -LiteralPath $rawLog).Length -gt 0) {
             $rawLogFlushed = $true
@@ -503,21 +527,34 @@ try {
         if ($captureInitialized -and (Get-Item -LiteralPath $captureLiveOut).Length -gt 0) {
             $kernelMessage = @(Get-Content -LiteralPath $captureLiveOut |
                 ForEach-Object { [string]$_ } |
-                Where-Object {
-                    $_ -match '(?:^|\s-\s)(PNP_STATUS|STORMINI|MOCK_KERNEL):'
-                } |
+                Where-Object { Test-ConfirmedKernelCaptureLine $_ } |
                 Select-Object -First 1)
             if ($kernelMessage.Count -eq 1) {
                 $kernelMessage = [string]$kernelMessage[0]
                 $confirmedKernelMessage = $true
-                $ready = $true
-                break
+                if ($null -eq $messageFirstSeenUtc) {
+                    $messageFirstSeenUtc = [DateTime]::UtcNow
+                }
+                if (([DateTime]::UtcNow - $messageFirstSeenUtc).TotalMilliseconds `
+                        -ge $CaptureStabilityMilliseconds) {
+                    $ready = $true
+                    break
+                }
             }
         }
         Start-Sleep -Milliseconds 100
     }
     if (-not $ready) {
         throw 'Capture readiness was not established before the deadline.'
+    }
+    Assert-CaptureJobRunning -Job $script:CaptureJob -Boundary 'the readiness record'
+    $expectedRemainingSeconds = $CaptureDurationSeconds -
+        [int]([DateTime]::UtcNow - $captureStartedUtc).TotalSeconds
+    if (-not $TestMode -and $expectedRemainingSeconds -lt 120) {
+        throw 'Capture has less than 120 seconds of expected duration remaining.'
+    }
+    if ((Get-Item -LiteralPath $captureLiveErr).Length -gt 0) {
+        throw 'Capture collector reported stderr before readiness.'
     }
     $readyRecord = [ordered]@{
         ReadyUtc = [DateTime]::UtcNow.ToString('o')
@@ -529,6 +566,10 @@ try {
         RawLogFlushed = $rawLogFlushed
         ConfirmedKernelMessage = $confirmedKernelMessage
         ConfirmedKernelMessageText = $kernelMessage
+        MessageFirstSeenUtc = $messageFirstSeenUtc.ToString('o')
+        ExpectedRemainingSeconds = $expectedRemainingSeconds
+        StabilityMilliseconds = $CaptureStabilityMilliseconds
+        ProcessInfo = $captureProcessInfo
         LiveStdOut = $captureLiveOut
         RawLog = $rawLog
         CaptureJobState = $script:CaptureJob.State.ToString()
@@ -560,14 +601,17 @@ try {
         Write-LauncherOutput 'INSTALL CHILD PASS'
     }
     elseif ($Mode -eq 'RestartWithCapture') {
-        if ($script:CaptureJob.State -ne 'Running') {
-            throw 'Capture ended before the PnP restart gate.'
-        }
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'the PnP restart gate'
         $pnp = Get-AbsolutePath $PnPUtilPath 'PnPUtilPath'
         Assert-FileHash -Path $pnp -Expected $ExpectedPnPUtilHash `
             -Label 'PnPUtil executable'
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'the PnP restart marker'
         Write-ExclusiveTextFile -Path $restartMarker `
             -Text ($markerText + "`r`nPnpRestartApproved=true`r`nDeviceInstanceId=$DeviceInstanceId`r`n")
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'PnP restart dispatch'
         $script:PnpRestartInvocations++
         $restartResult = Invoke-LecS65NativeProcess `
             -Name 'Approved one-time PnP restart' -FilePath $pnp `

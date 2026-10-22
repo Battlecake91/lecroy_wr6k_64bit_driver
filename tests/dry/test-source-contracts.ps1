@@ -873,7 +873,17 @@ Test-Contract "diagnostic launcher keeps capture installation and restart explic
 Test-Contract "real capture readiness accounts for buffered DebugView logging" {
     $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds = 60' -and
     $diagnosticLauncherText -match 'CaptureReadinessTimeoutSeconds -lt 60' -and
-    $diagnosticLauncherText -match 'CaptureDurationSeconds -lt\s*\(\$CaptureReadinessTimeoutSeconds \+ 120\)'
+    $diagnosticLauncherText -match 'CaptureDurationSeconds -lt\s*\(\$CaptureReadinessTimeoutSeconds \+ 120\)' -and
+    $diagnosticLauncherText -match 'Test-ConfirmedKernelCaptureLine' -and
+    $diagnosticLauncherText -match '\\d\{1,2\}:\\d\{2\}:\\d\{2\}\\.\\d\+' -and
+    $diagnosticLauncherText -match 'CaptureStabilityMilliseconds' -and
+    $diagnosticLauncherText -match 'ExpectedRemainingSeconds' -and
+    $diagnosticLauncherText -match 'Assert-CaptureJobRunning' -and
+    $diagnosticLauncherText -match "'3000000'" -and
+    $nativeProcessText -match 'FileMode\.CreateNew' -and
+    $nativeProcessText -match 'ProcessId=' -and
+    $nativeProcessText -match 'LiveStdOutPath' -and
+    $nativeProcessText -match 'LiveStdErrPath'
 }
 
 Test-Contract "Code 52 collector is read-only and fail-closed" {

@@ -30,8 +30,31 @@ public static class MockDiagnosticNative
         string rawLog = null;
         for (int i = 0; i + 1 < args.Length; ++i)
             if (args[i] == "--log") rawLog = args[i + 1];
-        if (scenario != "MissingCaptureReady")
-            Console.WriteLine("1 00:00:00.001 1 - MOCK_KERNEL: independently attributable record");
+        if (scenario == "DelayedStdout")
+            Thread.Sleep(500);
+
+        if (scenario == "SplitKernelLine")
+        {
+            Console.Write("17\t12:34:56.789\t4 - STORM");
+            Console.Out.Flush();
+            Thread.Sleep(300);
+            Console.WriteLine("INI: StorNVMe split record");
+        }
+        else if (scenario == "IncorrectMessageSource")
+            Console.WriteLine("TRACE: arbitrary STORMINI: substring");
+        else if (scenario == "PnpStatusPrefix")
+            Console.WriteLine("18\t12:34:56.790\t4 - PNP_STATUS: minor=START status=0");
+        else if (scenario != "MissingCaptureReady" &&
+            scenario != "UnexpectedCaptureExit")
+            Console.WriteLine("17\t12:34:56.789\t4 - STORMINI: StorNVMe kernel record");
+
+        if (scenario == "CollectorStderr")
+            Console.Error.WriteLine("MOCK COLLECTOR ERROR");
+
+        if (scenario == "LargeKernelBurst")
+            for (int i = 0; i < 5000; ++i)
+                Console.WriteLine((18 + i).ToString() +
+                    "\t12:34:56.790\t4 - STORMINI: StorNVMe burst record");
         if (scenario == "DelayedFileFlush") {
             Thread.Sleep(1200);
             if (rawLog != null) File.WriteAllText(rawLog, "MOCK KERNEL RECORD\r\n");
@@ -41,7 +64,12 @@ public static class MockDiagnosticNative
 
         if (scenario == "UnexpectedCaptureExit")
             return 42;
-        if (scenario == "CaptureTimeout" || scenario == "MissingCaptureReady")
+        if (scenario == "ExitAfterReadiness") {
+            Thread.Sleep(100);
+            return 43;
+        }
+        if (scenario == "CaptureTimeout" || scenario == "MissingCaptureReady" ||
+            scenario == "IncorrectMessageSource")
             Thread.Sleep(15000);
         else
             Thread.Sleep(800);

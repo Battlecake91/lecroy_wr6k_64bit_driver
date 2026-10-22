@@ -140,13 +140,14 @@ namespace LecS65
             int timeoutMilliseconds, int streamDrainMilliseconds)
         {
             return Run(fileName, arguments, workingDirectory,
-                timeoutMilliseconds, streamDrainMilliseconds, null, null);
+                timeoutMilliseconds, streamDrainMilliseconds, null, null, null);
         }
 
         public static NativeProcessResult Run(
             string fileName, string[] arguments, string workingDirectory,
             int timeoutMilliseconds, int streamDrainMilliseconds,
-            string liveStdOutPath, string liveStdErrPath)
+            string liveStdOutPath, string liveStdErrPath,
+            string processInfoPath)
         {
             if (String.IsNullOrWhiteSpace(fileName))
                 throw new ArgumentException("Native executable path is empty.", "fileName");
@@ -191,6 +192,19 @@ namespace LecS65
                     int error = Marshal.GetLastWin32Error();
                     try { if (!process.HasExited) process.Kill(); } catch { }
                     throw new Win32Exception(error, "AssignProcessToJobObject failed.");
+                }
+                if (!String.IsNullOrWhiteSpace(processInfoPath))
+                {
+                    using (FileStream info = new FileStream(processInfoPath,
+                        FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                    using (StreamWriter writer = new StreamWriter(info,
+                        new UTF8Encoding(false)))
+                    {
+                        writer.WriteLine("ProcessId=" + process.Id.ToString());
+                        writer.WriteLine("Executable=" + fileName);
+                        writer.WriteLine("StartedUtc=" +
+                            DateTime.UtcNow.ToString("o"));
+                    }
                 }
 
                 StringBuilder stdout = new StringBuilder();
@@ -298,6 +312,7 @@ function Invoke-LecS65NativeProcess {
         [ValidateRange(1, 300)][int]$StreamDrainTimeoutSeconds = 15,
         [string]$LiveStdOutPath,
         [string]$LiveStdErrPath,
+        [string]$ProcessInfoPath,
         [switch]$AllowPositiveExitCode,
         [switch]$ReturnOnNonZeroExit
     )
@@ -315,6 +330,7 @@ function Invoke-LecS65NativeProcess {
     $resolvedLog = $null
     $resolvedLiveStdOut = $null
     $resolvedLiveStdErr = $null
+    $resolvedProcessInfo = $null
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
         if (-not [System.IO.Path]::IsPathRooted($LogPath)) {
             throw "Native process log path must be absolute: $LogPath"
@@ -332,6 +348,19 @@ function Invoke-LecS65NativeProcess {
         }
         foreach ($path in $logPaths) {
             New-LecS65ExclusiveFile -Path $path
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ProcessInfoPath)) {
+        if (-not [System.IO.Path]::IsPathRooted($ProcessInfoPath)) {
+            throw "ProcessInfoPath must be absolute: $ProcessInfoPath"
+        }
+        $resolvedProcessInfo = [System.IO.Path]::GetFullPath($ProcessInfoPath)
+        if (Test-Path -LiteralPath $resolvedProcessInfo) {
+            throw "ProcessInfoPath already exists: $resolvedProcessInfo"
+        }
+        if (-not (Test-Path -LiteralPath (Split-Path -Parent $resolvedProcessInfo) `
+                -PathType Container)) {
+            throw "ProcessInfoPath parent does not exist: $resolvedProcessInfo"
         }
     }
     foreach ($live in @(
@@ -357,7 +386,7 @@ function Invoke-LecS65NativeProcess {
             $executable, [string[]]$Arguments, $working,
             [int]($TimeoutSeconds * 1000),
             [int]($StreamDrainTimeoutSeconds * 1000),
-            $resolvedLiveStdOut, $resolvedLiveStdErr)
+            $resolvedLiveStdOut, $resolvedLiveStdErr, $resolvedProcessInfo)
     }
     catch {
         $message = "$Name failed to start or supervise: $($_.Exception.Message)"
