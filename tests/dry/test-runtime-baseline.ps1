@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $script = Join-Path $repo 'scripts\test-runtime-baseline.ps1'
 $host51 = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+. (Join-Path $repo 'scripts\native-process.ps1')
 $root = Join-Path ([System.IO.Path]::GetTempPath()) `
     ('lec-runtime-baseline-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
@@ -25,8 +26,14 @@ function Invoke-Case {
         '-ExpectedSysHash',('A' * 64),'-PreviousLocation','PCI bus 4, device 1, function 0',
         '-MockStatePath',$state,'-OutputPath',$result)
     if ($Acknowledge) { $args += '-AcknowledgeLocationChange' }
-    & $host51 @args 2>$null
-    $exitCode = $LASTEXITCODE
+    # Expected fail-closed cases intentionally write a terminating exception to
+    # stderr. Keep that native stream as data so an enclosing workflow with
+    # ErrorActionPreference=Stop cannot convert the expected child failure into
+    # a parent PowerShell exception.
+    $process = Invoke-LecS65NativeProcess -Name "runtime baseline: $Name" `
+        -FilePath $host51 -Arguments $args -WorkingDirectory $repo `
+        -TimeoutSeconds 30 -ReturnOnNonZeroExit
+    $exitCode = $process.ExitCode
     $ok = $exitCode -eq $ExpectedExit -and (Test-Path -LiteralPath $result)
     $record = Get-Content -Raw -LiteralPath $result | ConvertFrom-Json
     if ($ExpectedExit -eq 0) { $ok = $ok -and $record.Outcome -eq 'PASS' }
