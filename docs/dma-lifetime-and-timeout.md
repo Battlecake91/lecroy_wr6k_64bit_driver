@@ -1040,6 +1040,32 @@ default DMA/INTEN stress 5,000/1,000 and expanded stress 50,000/10,000.
 
 No artificial nonzero IRQ injection, licensed Dallas writes, hazardous DMA timeouts or unverified register writes should be performed on the only working WR6k.
 
+## Batch 7 unsigned integrated candidate
+
+The integration branch in PR #31 contains the exact reviewed PR #27 driver and
+include trees. The Batch 7 package workflow rebuilt those trees without signing
+and froze Release SYS SHA-256
+`D236EC3809E02BD0DA0BC3A679A48E346298A1076393BA5A8812794956A70646`.
+The full workflow passes 397/397 functional checks and 66,000/66,000 combined
+DMA/INTEN stress iterations.
+
+Relative to the currently installed signed diagnostic package, the intentional
+source changes are limited to process/FileObject DMA ownership and its lifetime
+support: CREATE association and rollback, last-close retirement, concurrent
+registration/close serialization and remove-time context rundown. Public IOCTL
+values and packed wire layouts do not change. PnP START/STOP hardware ordering,
+the five interface classes, interrupt connect/disconnect sequencing and the
+irreversible `UnknownActive` quarantine remain unchanged. No IOCTL, acquisition
+or PnP caller can enter the dormant WDM-v3 DMA mapping stage.
+
+Binary byte differences also include ordinary rebuild metadata, absolute PDB
+path/RSDS identity, the new INF version and absence of the installed binary's
+Authenticode certificate table. They must not be mistaken for additional
+runtime behavior. This candidate remains unsigned, unstaged, uninstalled and
+hardware-unqualified. Required next evidence is recovery establishment,
+separately authorized signing and installation, the bounded R0/R1 baseline,
+captured PnP lifetime, non-DMA Verifier and only later acquisition/DMA work.
+
 ## Combined runtime branch integration
 
 The PR #27 driver tree was merged into the Batch 6 runtime/tooling stack on an

@@ -1,5 +1,47 @@
 # Current project status
 
+## Batch 7 recovery and candidate gate
+
+- The 2026-10-22 passive baseline still matches the healthy installed state:
+  Windows 10 Pro x64 build 19045, current-boot test signing enabled, Secure Boot
+  disabled, inactive Device Guard services, `oem101.inf` version
+  `0.2026.1018.1`, loaded SYS SHA-256
+  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`,
+  problem code zero, running service and five active interfaces. No device was
+  opened and no target Code Integrity, Kernel-PnP or service error was found
+  since the current boot.
+- Recovery remains blocked. The host has one GPT NVMe disk containing only EFI
+  and C:, no recovery partition, external recovery medium, off-C: rollback
+  copy, system image or alternate writable destination. The immutable rollback
+  inventory is verified but still exists only on C:. See
+  [recovery and backup readiness](recovery-and-backup.md).
+- Crash-dump audit found a system-managed 1,280-MiB boot page file,
+  `CrashDumpEnabled=7`, `AutoReboot=1`, overwrite enabled, no dedicated dump
+  and about 17.3 GiB free on C:. The proposed minimum is a kernel dump
+  (`CrashDumpEnabled=2`) with `AutoReboot=0`, retaining the system-managed page
+  file and verifying its actual post-reboot allocation. No setting was changed.
+  The versioned audit/apply/verify/restore script passes 13/13 mocked tests.
+- A new unsigned diagnostic Release candidate was built from integration
+  workflow commit `b1a5404dbee0d3352b9eb1b9cb6ada57fb26d6fc`. Its exact driver and
+  include trees match reviewed PR #27. Identity is Release x64,
+  `DriverVer=10/22/2026,0.2026.1022.1`, `PnpStatusDiagnostics=true`, WDK
+  10.0.28000.0 and MSVC 14.41.34120. Debug and Release build cleanly;
+  397/397 functional checks and 66,000/66,000 stress iterations pass. The
+  package is unsigned, unstaged and uninstalled.
+- Frozen unsigned artifacts are INF
+  `C7F7D496A302FB53ACEC940A77F8A17F781F822EB5A34CEA11A4708B6385C3B6`,
+  CAT `813F87489BC35D53B5008A4D3BAD19D637FCAC6CFDC74EAF13EAC6FE1605CA3A`,
+  SYS `D236EC3809E02BD0DA0BC3A679A48E346298A1076393BA5A8812794956A70646`,
+  matching PDB
+  `5F36EF5F238F65F17EBD22B4456523817B8A7549984304FFD317A39428A174D7`
+  and manifest
+  `5FA35C702314A689867DAB3E27AEA83AB2EB738642C2495540BFF0C7621DAA60`.
+  The Release image is AMD64/native, enters at `DriverEntry`, imports only
+  `hal.dll` and `ntoskrnl.exe`, contains `PNP_STATUS:` and is not signed.
+- The integration order is PR #26, #28, #29, #30, #31, then Batch 7. Each head
+  is an ancestor of the next in the integrated history. PR #31 already contains
+  the exact PR #27 driver/include trees, so PR #27 must not be merged again.
+
 ## Build and software regression
 
 - Development merge commit `cb5010a4712f25de7c56d23d0d7502683542058c`

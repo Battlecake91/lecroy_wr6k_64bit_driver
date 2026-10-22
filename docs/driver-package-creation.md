@@ -576,16 +576,34 @@ separate Phase 2C gates.
 
 ## Proposed combined diagnostic candidate
 
-No package has been created or signed for the integrated multi-handle DMA
-ownership and Batch 6 diagnostic source. The proposed distinct identity is
-Release x64, `DriverVer=10/22/2026,0.2026.1022.1`, with
-`PnpStatusDiagnostics=true`, SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. The
-source commit must be replaced with the final reviewed integration commit in
-the approval record; the existing certificate thumbprint may be used only
-after a new explicit private-key authorization.
+An unsigned validation package now exists for the integrated multi-handle DMA
+ownership and Batch 6 diagnostic source. Its distinct identity is Release x64,
+`DriverVer=10/22/2026,0.2026.1022.1`, `PnpStatusDiagnostics=true`, SDK/WDK
+10.0.28000.0 and MSVC 14.41.34120. Workflow commit
+`b1a5404dbee0d3352b9eb1b9cb6ada57fb26d6fc` records driver tree
+`5dcd2b6e31193a20d733bfce008aeafb3fb38a71` and include tree
+`eb1420b7c97a5e9d827aee59dadd8b0d6dbf3add`, exactly matching reviewed PR
+#27.
 
-Before signing, rerun the package workflow's clean-tree, exact-source,
-toolchain, Dry/stress, marker, manifest and mock-signing gates. A real signing
-run, Driver Store staging, installation, captured restart and later Verifier
-work are independent authorizations. The currently installed `oem101.inf`
-package must not be treated as this proposed candidate.
+Debug and Release built with zero warnings and errors. The complete workflow
+passed 397/397 functional checks, 5,000 DMA plus 1,000 INTEN default stress and
+50,000 DMA plus 10,000 INTEN expanded stress. The Release image is AMD64/native
+with `DriverEntry`, imports only `hal.dll` and `ntoskrnl.exe`, contains the
+diagnostic marker and matches its PDB identity. Frozen hashes are:
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `C7F7D496A302FB53ACEC940A77F8A17F781F822EB5A34CEA11A4708B6385C3B6` |
+| unsigned CAT | `813F87489BC35D53B5008A4D3BAD19D637FCAC6CFDC74EAF13EAC6FE1605CA3A` |
+| unsigned Release SYS | `D236EC3809E02BD0DA0BC3A679A48E346298A1076393BA5A8812794956A70646` |
+| matching PDB | `5F36EF5F238F65F17EBD22B4456523817B8A7549984304FFD317A39428A174D7` |
+| manifest | `5FA35C702314A689867DAB3E27AEA83AB2EB738642C2495540BFF0C7621DAA60` |
+
+Both SYS and CAT are deliberately `NotSigned`. The package was not staged or
+installed, and the installed `oem101.inf` state remained unchanged.
+
+Any real signing run requires a new explicit private-key authorization and a
+new non-overwriting output set. Driver Store staging, installation, captured
+restart and later Verifier work remain independent authorizations. The current
+unsigned artifacts and installed `oem101.inf` package must not be treated as a
+signed release candidate.
