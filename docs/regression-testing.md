@@ -870,6 +870,29 @@ status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
 stable-identity, service, hash and five-interface gate passes. No device handle
 or IOCTL is used.
 
+## Batch 7 package and recovery regressions
+
+`tests/dry/test-crash-dump-readiness.ps1` exercises the exact versioned
+crash-dump implementation against isolated JSON state. It covers audit/plan,
+guarded apply, new-backup enforcement, kernel-dump and no-auto-reboot values,
+verification, exact restore and preservation of unrelated settings. Result:
+13/13 PASS. No registry or page-file setting is touched by the test.
+
+The Batch 7 unsigned package workflow builds Debug and Release x64, validates
+INF/catalog/PE/PDB/diagnostic-marker identity and completes the full Dry plus
+expanded path. Actual result is 397/397 functional checks, 5,000/5,000 default
+DMA, 1,000/1,000 default INTEN, 50,000/50,000 expanded DMA and
+10,000/10,000 expanded INTEN iterations. The total stress count is
+66,000/66,000. Both package signatures are deliberately absent.
+
+The workflow now evaluates host-stream evidence in the transcript that
+actually produces it. This corrects the fail-closed package attempts that
+properly stopped when the test runner's expected child stderr escaped into the
+outer stream, when a stale 53/53 source-contract count remained, and when
+host-stream evidence was searched only in the redirected native-process log.
+The successful fourth fresh output directory proves the corrected complete
+path; no failed directory was reused.
+
 ## Permanent runtime qualification harness
 
 Run the focused harness test after changes to runtime gating, device-state

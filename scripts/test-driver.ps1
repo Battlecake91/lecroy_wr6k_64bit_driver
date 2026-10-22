@@ -113,6 +113,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-runtime-baseline.ps1")
     }
 
+    Invoke-Step "Crash-dump readiness audit and mocked restore (no system changes)" {
+        & (Join-Path $repo "tests\dry\test-crash-dump-readiness.ps1")
+    }
+
     Invoke-Step "Live DMA completion-state tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-completion.ps1")
     }

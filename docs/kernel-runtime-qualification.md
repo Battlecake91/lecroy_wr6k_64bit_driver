@@ -976,12 +976,12 @@ setting only after reset is verified. Offline SYSTEM-hive editing is a last
 resort and requires a hive backup and selection of the active control set.
 
 For the first Verifier pass, use a kernel memory dump and provision reliable
-internal dump backing before reboot. With approximately 8 GiB RAM, a prudent
-upper-bound page/dump backing target is RAM plus 257 MiB, and C: should retain
-enough free space for both backing and `MEMORY.DMP`; the current free space and
-1,280-MiB page file do not meet that proof. Disable automatic reboot for
-observation if separately approved. USB storage must not be assumed usable by
-the crash-dump path.
+internal dump backing before reboot. Do not apply the complete-dump
+`RAM + 257 MiB` rule to a kernel dump. Kernel-dump demand depends on kernel
+virtual-memory use and must be checked against the actual post-reboot
+system-managed page-file allocation and C: free space. Disable automatic reboot
+for observation if separately approved. USB storage must not be assumed usable
+by the crash-dump path.
 
 After recovery is demonstrated, the bounded target remains
 `verifier /flags 0x0002093B /driver LecS65AcqDrv.sys` plus `oneboot`. The first
@@ -990,3 +990,37 @@ inspection, followed by a controlled second reboot and proof that Verifier is
 off. DMA verification, fault injection, PnP cycling, acquisition and hardware
 IOCTLs remain excluded. Configuration changes and both reboots require new
 explicit authorization.
+
+## Batch 7 executable recovery and Verifier preparation
+
+The canonical [recovery and backup procedure](recovery-and-backup.md) replaces
+the earlier high-level recovery outline. Its 2026-10-22 passive inventory found
+only the internal GPT NVMe, EFI and C:. No bootable external medium, writable
+off-C: destination, recovery partition, system image or mapped backup target was
+available. Consequently no rollback copy or image was attempted, and Verifier
+remains blocked.
+
+`scripts/manage-crash-dump-readiness.ps1` now implements read-only `Audit` and
+`Plan`, guarded `Apply`, post-change `Verify` and exact `Restore`. `Apply`
+requires elevation, `-ApplyAcknowledged` and a new backup path. It changes only
+`CrashDumpEnabled` to 2 and `AutoReboot` to 0; it preserves the system-managed
+page file, dump path, overwrite policy and absence of a dedicated dump. The
+real audit made no changes. Mocked apply/verify/restore tests pass 13/13 under
+the same implementation.
+
+The future one-boot experiment still targets only the exact approved
+`LecS65AcqDrv.sys` with mask `0x0002093B`. Before its separately authorized
+configuration and reboot, all of these gates must pass:
+
+1. boot-test official x64 Windows 10 UEFI recovery media;
+2. independently verify an immutable off-C: rollback/evidence copy;
+3. create and restore-test a complete EFI plus Windows image;
+4. apply and post-reboot verify the kernel-dump policy and actual dump backing;
+5. rehearse Safe Mode or offline recovery, including `verifier /reset` and
+   preservation of test-signing state; and
+6. freeze the exact driver/package identity and baseline evidence.
+
+The first workload is passive inspection only. No IOCTL, PnP transition,
+acquisition, DMA, MMIO or fault injection is combined with that boot. Preserve
+any dump and events before recovery, then perform a separately authorized
+second boot and verify that Verifier is off.

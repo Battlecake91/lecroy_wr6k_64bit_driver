@@ -520,8 +520,13 @@ try {
 
     $expectedRegressionEvidence = [ordered]@{
         $transcriptPath = @(
-            'DRY REGRESSION: 53/53 passed; 0 failed.'
+            'DRY REGRESSION: 64/64 passed; 0 failed.'
             'REGRESSION SUITE PASS: Dry'
+            'LECDIAG COMMAND CHAIN: 16/16 passed; 0 failed.'
+            'RUNTIME LIFETIME AUDIT: 19/19 passed; 0 failed.'
+            'PROCESS DMA LIFETIME MODEL: 23/23 passed; 0 failed.'
+            'RUNTIME BASELINE TESTS: 6/6 passed; 0 failed.'
+            'CRASH DUMP READINESS: 13/13 passed; 0 failed.'
         )
         $dryLog = @(
             'DMA LAYOUT: 13/13 passed; 0 failed.'
