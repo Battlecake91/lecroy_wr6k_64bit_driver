@@ -290,11 +290,13 @@ function Assert-PassiveIdentity {
 
 function Start-CaptureJob {
     param([string]$Executable, [string[]]$Arguments,
-        [string]$WorkingDirectory, [string]$LogPath, [string]$RunnerPath)
+        [string]$WorkingDirectory, [string]$LogPath, [string]$RunnerPath,
+        [string]$LiveStdOutPath, [string]$LiveStdErrPath)
     $script:CaptureInvocations++
     $argumentJson = ConvertTo-Json -InputObject @($Arguments) -Compress
     return Start-Job -ScriptBlock {
-        param($Runner, $File, $ArgumentJson, $Working, $Log, $Timeout)
+        param($Runner, $File, $ArgumentJson, $Working, $Log, $Timeout,
+            $LiveOut, $LiveErr)
         $ErrorActionPreference = 'Stop'
         . $Runner
         $parsedArguments = $ArgumentJson | ConvertFrom-Json
@@ -302,9 +304,11 @@ function Start-CaptureJob {
             ForEach-Object { [string]$_ })
         Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
             -FilePath $File -Arguments $nativeArguments -WorkingDirectory $Working `
-            -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit
+            -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit `
+            -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr
     } -ArgumentList $RunnerPath, $Executable, $argumentJson, $WorkingDirectory,
-        $LogPath, ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds)
+        $LogPath, ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds),
+        $LiveStdOutPath, $LiveStdErrPath
 }
 
 function Complete-CaptureJob {
@@ -474,20 +478,39 @@ try {
         $CaptureDurationSeconds.ToString([Globalization.CultureInfo]::InvariantCulture),
         '--max-lines', '100000', '--log', $rawLog, '--no-banner')
     $captureLog = Join-Path $evidence 'capture-child.log'
+    $captureLiveOut = Join-Path $evidence 'capture-live.stdout.txt'
+    $captureLiveErr = Join-Path $evidence 'capture-live.stderr.txt'
     $script:CaptureLogPath = $captureLog
     $runner = Join-Path $PSScriptRoot 'native-process.ps1'
     $script:CaptureJob = Start-CaptureJob -Executable $debugView `
         -Arguments $captureArguments -WorkingDirectory (Split-Path $debugView -Parent) `
-        -LogPath $captureLog -RunnerPath $runner
+        -LogPath $captureLog -RunnerPath $runner -LiveStdOutPath $captureLiveOut `
+        -LiveStdErrPath $captureLiveErr
 
     $deadline = [DateTime]::UtcNow.AddSeconds($CaptureReadinessTimeoutSeconds)
     $ready = $false
+    $captureInitialized = $false
+    $rawLogFlushed = $false
+    $confirmedKernelMessage = $false
+    $kernelMessage = $null
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($script:CaptureJob.State -ne 'Running') { break }
+        $captureInitialized = (Test-Path -LiteralPath $captureLiveOut -PathType Leaf)
         if ((Test-Path -LiteralPath $rawLog -PathType Leaf) -and
             (Get-Item -LiteralPath $rawLog).Length -gt 0) {
-            $ready = $true
-            break
+            $rawLogFlushed = $true
+        }
+        if ($captureInitialized -and (Get-Item -LiteralPath $captureLiveOut).Length -gt 0) {
+            $kernelMessage = @(Get-Content -LiteralPath $captureLiveOut |
+                ForEach-Object { [string]$_ } |
+                Where-Object { $_ -match '^(PNP_STATUS|STORMINI|MOCK_KERNEL):' } |
+                Select-Object -First 1)
+            if ($kernelMessage.Count -eq 1) {
+                $kernelMessage = [string]$kernelMessage[0]
+                $confirmedKernelMessage = $true
+                $ready = $true
+                break
+            }
         }
         Start-Sleep -Milliseconds 100
     }
@@ -499,6 +522,12 @@ try {
         Kernel = $true
         VerboseKernel = $true
         Win32 = $false
+        CollectorProcessHealthy = ($script:CaptureJob.State -eq 'Running')
+        CaptureInitialized = $captureInitialized
+        RawLogFlushed = $rawLogFlushed
+        ConfirmedKernelMessage = $confirmedKernelMessage
+        ConfirmedKernelMessageText = $kernelMessage
+        LiveStdOut = $captureLiveOut
         RawLog = $rawLog
         CaptureJobState = $script:CaptureJob.State.ToString()
     } | ConvertTo-Json
