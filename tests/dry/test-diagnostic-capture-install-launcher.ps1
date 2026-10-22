@@ -153,7 +153,7 @@ function Invoke-Case {
             '-EvidenceRoot',$caseRoot,'-ExpectedCurrentSysHash',('6'*64),
             '-TestMode','-MockStatePath',$context.State,
             '-CaptureReadinessTimeoutSeconds',$ReadinessTimeout,'-CaptureDurationSeconds',$Duration,
-            '-CaptureShutdownGraceSeconds','2')
+            '-CaptureShutdownGraceSeconds','2','-CaptureStabilityMilliseconds','250')
         if ($FailureInjection) { $arguments += @('-FailureInjection',$FailureInjection) }
         if ($Mode -ne 'Preflight') {
             $arguments += @('-AuthorizationId',"mock-$Name",'-AuthorizeKernelCapture')
@@ -202,7 +202,49 @@ try {
     Add-Result 'delayed raw-log flush does not hide confirmed live kernel output' (
         $delayed.ExitCode -eq 0 -and $delayedReady.ConfirmedKernelMessage -and
         $delayedReady.CaptureInitialized -and
-        $delayedReady.ConfirmedKernelMessageText -match 'MOCK_KERNEL')
+        $delayedReady.ConfirmedKernelMessageText -match 'STORMINI')
+
+    foreach($case in @(
+        @{Name='timestamp-prefix';Scenario='Success'}
+        @{Name='millisecond-prefix';Scenario='Success'}
+        @{Name='pnp-status-prefix';Scenario='PnpStatusPrefix'}
+        @{Name='split-line';Scenario='SplitKernelLine'}
+        @{Name='delayed-stdout';Scenario='DelayedStdout'}
+        @{Name='large-burst';Scenario='LargeKernelBurst'}
+    )) {
+        $stream = Invoke-Case -Name $case.Name -Mode CaptureQualification `
+            -Scenario $case.Scenario
+        $readyRecord = if(Test-Path (Join-Path $stream.Evidence 'capture-ready.json')) {
+            Get-Content -Raw (Join-Path $stream.Evidence 'capture-ready.json') |
+                ConvertFrom-Json
+        } else { $null }
+        Add-Result "$($case.Name) establishes production capture readiness" (
+            $stream.ExitCode -eq 0 -and $null -ne $readyRecord -and
+            $readyRecord.ConfirmedKernelMessage -and
+            $readyRecord.CollectorProcessHealthy -and
+            (Test-Path (Join-Path $stream.Evidence 'capture-process.txt')))
+    }
+
+    $wrongSource = Invoke-Case -Name 'incorrect-source' `
+        -Mode CaptureQualification -Scenario IncorrectMessageSource `
+        -ReadinessTimeout 2 -Duration 1
+    Add-Result 'arbitrary embedded marker cannot establish readiness' (
+        $wrongSource.ExitCode -ne 0 -and $wrongSource.Invocations -eq 1 -and
+        -not (Test-Path (Join-Path $wrongSource.Evidence 'capture-ready.json')))
+
+    $stderrCase = Invoke-Case -Name 'collector-stderr' `
+        -Mode CaptureQualification -Scenario CollectorStderr
+    Add-Result 'collector stderr is independent and fails readiness closed' (
+        $stderrCase.ExitCode -ne 0 -and
+        (Get-Content -Raw (Join-Path $stderrCase.Evidence 'capture-live.stderr.txt')) `
+            -match 'MOCK COLLECTOR ERROR')
+
+    $afterReadyExit = Invoke-Case -Name 'exit-after-readiness' `
+        -Mode RestartWithCapture -Scenario ExitAfterReadiness `
+        -ReadinessTimeout 3 -Duration 1
+    Add-Result 'collector exit during stability gate prevents PnP restart' (
+        $afterReadyExit.ExitCode -ne 0 -and
+        @($afterReadyExit.Records | Where-Object {$_ -eq 'restart'}).Count -eq 0)
 
     $install = Invoke-Case -Name 'install-success' -Mode InstallWithCapture
     Add-Result 'mock capture/install path invokes each child exactly once' (
@@ -248,6 +290,9 @@ try {
         $restartFailure.ExitCode -ne 0 -and
         $restartFailure.Invocations -eq 2 -and
         @($restartFailure.Records | Where-Object {$_ -eq 'restart'}).Count -eq 1)
+    Start-Sleep -Milliseconds 500
+    Add-Result 'PnP failure shuts down the owned capture child' (
+        @(Get-Process | Where-Object {$_.Path -eq $context.MockExe}).Count -eq 0)
 
     $badPackage = Invoke-Case -Name 'bad-package-hash' -InfHash ('0'*64)
     Add-Result 'incorrect package hash stops before active work' ($badPackage.ExitCode -ne 0 -and $badPackage.Invocations -eq 0)

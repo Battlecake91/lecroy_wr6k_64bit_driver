@@ -573,3 +573,19 @@ PASS requires all of the following:
 Any ambiguity is FAIL. Stage 2 PASS authorizes neither copying the package to a
 test host nor installing, loading, starting or opening the driver. Those remain
 separate Phase 2C gates.
+
+## Proposed combined diagnostic candidate
+
+No package has been created or signed for the integrated multi-handle DMA
+ownership and Batch 6 diagnostic source. The proposed distinct identity is
+Release x64, `DriverVer=10/22/2026,0.2026.1022.1`, with
+`PnpStatusDiagnostics=true`, SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. The
+source commit must be replaced with the final reviewed integration commit in
+the approval record; the existing certificate thumbprint may be used only
+after a new explicit private-key authorization.
+
+Before signing, rerun the package workflow's clean-tree, exact-source,
+toolchain, Dry/stress, marker, manifest and mock-signing gates. A real signing
+run, Driver Store staging, installation, captured restart and later Verifier
+work are independent authorizations. The currently installed `oem101.inf`
+package must not be treated as this proposed candidate.

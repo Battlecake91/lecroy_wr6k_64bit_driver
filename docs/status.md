@@ -355,7 +355,29 @@
 
 ## Hardware status
 
-- No hardware, driver installation/reload or XStream testing was performed for
-  the current lifetime-hardening changes.
+- Runtime Qualification Batch 6 completed one authorized captured PnP restart
+  with no retry. The launcher invoked DebugView once and PnPUtil once; it did
+  not install a package. The restart completed with exit code zero. The trace
+  records a complete REMOVE/unload/re-enumeration/START sequence, five
+  successful interface disables and enables, IRQ disconnect/reconnect, and
+  successful final REMOVE and START statuses. The installed `oem101.inf`
+  package, version `0.2026.1018.1`, loaded SYS hash
+  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`,
+  service, problem-free device state and five interfaces remained unchanged.
+- Five observed `STATUS_NOT_SUPPORTED` completions are directly attributed to
+  the lower stack for query-only PnP requests. No local START,
+  interrupt-connection, interface-publication or final returned status failed.
+  Event 411 did not recur. This corroborates the earlier Event 411 as an
+  installation intermediate, but does not identify its internal Windows
+  producer. No physical DMA-idle proof was obtained.
+- The Batch 6 launcher path passes 31/31 elevated Windows PowerShell 5.1 mocks
+  and 64/64 source contracts. The combined PR #27 integration branch preserves
+  the exact reviewed driver tree and passes 23/23 process lifetime, 19/19
+  combined lifetime, 10/10 PnP IRP, 38/38 publication and 64/64 source-contract
+  tests. It remains unsigned, uninstalled and hardware-unqualified.
+- Driver Verifier remains blocked: WinRE is disabled, no recovery partition,
+  external recovery medium, off-C rollback copy, system image or shadow copy
+  was found, and the current 1,280-MiB page file does not demonstrate useful
+  dump backing for about 8 GiB RAM.
 - The established real-PCI safe ABI baseline remains 9/9 PASS and the last
   established hardware regression milestone remains 11/11 PASS.
