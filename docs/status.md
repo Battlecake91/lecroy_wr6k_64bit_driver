@@ -234,22 +234,21 @@
   43 and `0x2CAE` size constants, compiles driver/tool size assertions and
   binds the mock values through a source contract. Focused source contracts
   pass 63/63 and the lecdiag command chain passes 16/16.
-- GitHub currently reports PR #26 and its stacked PR #27 as mergeable. Fresh
-  local `git merge-tree --write-tree` checks also succeed for both edges.
-  Neither head has a workflow run or commit status, and the repository exposes
-  no rulesets. The earlier non-mergeable result was therefore transient GitHub
-  mergeability state, not a source conflict. Merge PR #26 before PR #27; do not
-  flatten the reviewed stack or combine runtime evidence with the DMA change.
-- Runtime Qualification Batch 4 attempted the one authorized captured PnP
-  restart. The active launcher stopped before PnPUtil because DebugView's raw
-  log remained zero bytes during the 15-second readiness gate. The completed
-  log later proved that kernel capture had started, but buffered file output
-  made that fact unavailable at the gate. `PnpRestartInvocations=0`; no PnP
-  transition, Event 411, SetupAPI change or target system event occurred. The
-  installed `oem101.inf` device remains problem-free with the expected running
-  service, five interfaces and SYS hash. Real capture modes now reject a
-  readiness window below 60 seconds and reserve at least 120 seconds after the
-  deadline. A new owner authorization is required for any restart.
+- PR #26 is the runtime-evidence base; PR #27 and PR #28 are sibling stacks on
+  that base. Merge PR #26 first, then integrate PR #27's driver change, then
+  replay PR #28 and Batch 5 tooling/documentation. A direct local merge of the
+  current PR #27 and PR #28 heads has real documentation conflicts in
+  `docs/regression-testing.md` and `docs/status.md`; no shared branch was
+  rebased, force-pushed or merged.
+- Runtime Qualification Batch 5 added live stdout observability to the bounded
+  process runner and separates collector health, capture initialization, raw
+  file flush and confirmed kernel-message reception. Elevated Windows
+  PowerShell 5.1 mocks pass 21/21 and source contracts pass 64/64. The single
+  authorized real attempt captured 100,002 timestamped StorNVMe kernel records,
+  but the first implementation accepted only unprefixed markers, so readiness
+  failed closed. `PnpRestartInvocations=0`; no PnP transition or Event 411
+  occurred. The timestamped-record predicate is corrected offline. Any real
+  restart now requires a new explicit authorization.
 - Independent review of PR #27 found no release, quarantine, remove-lock or
   public-ABI defect. Debug and Release x64 build with zero warnings/errors; the
   complete Dry suite, 23/23 process/file lifetime model, 19/19 combined
@@ -257,9 +256,10 @@
   This is offline qualification only; the PR has not been signed, installed or
   hardware-qualified.
 - Driver Verifier remains blocked. Verifier is off, current-boot test-signing
-  is enabled and automatic dumps are configured, but WinRE is disabled and the
-  current system-managed page file is only 1,280 MiB for about 8 GiB RAM. No
-  usable offline recovery path or sufficient dump backing has been demonstrated.
+  is enabled and automatic dumps are configured, but WinRE is disabled, the
+  GPT disk has only EFI and C: partitions, no removable recovery medium was
+  present, and the current 1,280-MiB page file does not demonstrate adequate
+  backing for a useful dump from about 8 GiB RAM.
 
 ## DMA/PnP staging
 

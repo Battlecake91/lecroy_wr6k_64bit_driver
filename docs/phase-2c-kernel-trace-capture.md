@@ -428,6 +428,29 @@ output; an empty or user-mode-only log was not accepted. The first record is at
 as expected, this capture-only run contains no instrumented-driver
 `PNP_STATUS:` record.
 
+## Live stdout readiness hardening
+
+Batch 5 no longer uses the delayed `--log` file as the only live readiness
+signal. The bounded native process runner can write exclusive live stdout and
+stderr evidence while retaining its Windows job-object lifetime bound. The
+launcher separately records collector health, capture initialization, raw-log
+flush and confirmed kernel-message reception. Only a recognizable
+`PNP_STATUS:`, `STORMINI:` or mock-contract record opens the active-operation
+gate; process existence, an empty file or DebugView's own trace banners do not.
+
+The first real use of this protocol captured valid DebugView output, but its
+predicate expected the marker at column zero. Real CLI records begin with a
+sequence/time/CPU prefix followed by ` - STORMINI:`. The launcher therefore
+failed closed with capture 1 and PnP restart 0. The retained raw capture has
+SHA-256
+`63017DA62845963535E20D67138A9DBA1D05EAB4AFFA831DB25BF49E1455BF85`
+and contains 100,002 attributable kernel records; it contains no
+`PNP_STATUS:` record because PnPUtil was never invoked. The offline correction
+accepts the documented timestamped form as well as the bare mock form.
+Elevated Windows PowerShell 5.1 launcher tests pass 21/21 and source contracts
+pass 64/64. This correction does not carry authorization for another capture
+or PnP operation.
+
 After completion no DebugView process, `DBGV` system-driver instance or
 `HKLM\SYSTEM\CurrentControlSet\Services\DBGV` key remained. The LeCroy device
 remained `OK` with problem code zero, bound to `oem17.inf` version
