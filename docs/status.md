@@ -1,8 +1,8 @@
 # Current project status
 
-## Batch 7 recovery and candidate gate
+## Batch 8 recovery establishment and release-readiness gate
 
-- The 2026-10-22 passive baseline still matches the healthy installed state:
+- The 2026-10-23 passive baseline still matches the healthy installed state:
   Windows 10 Pro x64 build 19045, current-boot test signing enabled, Secure Boot
   disabled, inactive Device Guard services, `oem101.inf` version
   `0.2026.1018.1`, loaded SYS SHA-256
@@ -10,24 +10,34 @@
   problem code zero, running service and five active interfaces. No device was
   opened and no target Code Integrity, Kernel-PnP or service error was found
   since the current boot.
-- Recovery remains blocked. The host has one GPT NVMe disk containing only EFI
-  and C:, no recovery partition, external recovery medium, off-C: rollback
-  copy, system image or alternate writable destination. The immutable rollback
-  inventory is verified but still exists only on C:. See
+- Recovery remains blocked. A fresh storage inventory found only the same GPT
+  NVMe containing EFI and C:. No USB disk, recovery medium, network mapping,
+  off-C: rollback copy, system image or alternate writable destination is
+  present. The immutable rollback inventory is verified but still exists only
+  on C:. See
   [recovery and backup readiness](recovery-and-backup.md).
 - Crash-dump audit found a system-managed 1,280-MiB boot page file,
   `CrashDumpEnabled=7`, `AutoReboot=1`, overwrite enabled, no dedicated dump
-  and about 17.3 GiB free on C:. The proposed minimum is a kernel dump
+  and about 16.1 GiB free on C:. The proposed minimum is a kernel dump
   (`CrashDumpEnabled=2`) with `AutoReboot=0`, retaining the system-managed page
   file and verifying its actual post-reboot allocation. No setting was changed.
   The versioned audit/apply/verify/restore script passes 13/13 mocked tests.
-- A new unsigned diagnostic Release candidate was built from integration
+- A versioned system-image workflow now audits storage, requires exact disk and
+  volume identities, rejects the system disk, insufficient space and non-NTFS
+  targets, requires a new evidence directory and explicit execution gate,
+  preserves process logs and verifies the resulting WBAdmin catalog. Its
+  mocked path passes 21/21. A read-only offline recovery-layout validator
+  passes 6/6. No real backup, media creation or recovery boot occurred.
+- The frozen unsigned diagnostic Release candidate from integration
   workflow commit `b1a5404dbee0d3352b9eb1b9cb6ada57fb26d6fc`. Its exact driver and
   include trees match reviewed PR #27. Identity is Release x64,
   `DriverVer=10/22/2026,0.2026.1022.1`, `PnpStatusDiagnostics=true`, WDK
   10.0.28000.0 and MSVC 14.41.34120. Debug and Release build cleanly;
-  397/397 functional checks and 66,000/66,000 stress iterations pass. The
-  package is unsigned, unstaged and uninstalled.
+  recorded 397/397 functional checks and 66,000/66,000 stress iterations. Batch
+  8 independently rechecked all hashes, exact tree provenance, INF/CAT identity,
+  11 diagnostic markers, SYS/PDB match, public ABI and ownership/quarantine
+  contracts. No rebuild was justified. The package remains unsigned, unstaged
+  and uninstalled.
 - Frozen unsigned artifacts are INF
   `C7F7D496A302FB53ACEC940A77F8A17F781F822EB5A34CEA11A4708B6385C3B6`,
   CAT `813F87489BC35D53B5008A4D3BAD19D637FCAC6CFDC74EAF13EAC6FE1605CA3A`,
@@ -38,9 +48,10 @@
   `5FA35C702314A689867DAB3E27AEA83AB2EB738642C2495540BFF0C7621DAA60`.
   The Release image is AMD64/native, enters at `DriverEntry`, imports only
   `hal.dll` and `ntoskrnl.exe`, contains `PNP_STATUS:` and is not signed.
-- The integration order is PR #26, #28, #29, #30, #31, then Batch 7. Each head
-  is an ancestor of the next in the integrated history. PR #31 already contains
-  the exact PR #27 driver/include trees, so PR #27 must not be merged again.
+- GitHub reports PRs #26 through #32 mergeable. The validated stacked order is
+  PR #26, #28, #29, #30, #31, #32, then Batch 8. PR #31 already contains the
+  exact reviewed PR #27 driver/include trees, so PR #27 must not be merged
+  independently into the same history.
 
 ## Build and software regression
 

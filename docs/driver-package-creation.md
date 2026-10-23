@@ -602,6 +602,15 @@ diagnostic marker and matches its PDB identity. Frozen hashes are:
 Both SYS and CAT are deliberately `NotSigned`. The package was not staged or
 installed, and the installed `oem101.inf` state remained unchanged.
 
+Batch 8 reused this immutable set rather than rebuilding unchanged driver
+sources. Independent checks reconfirmed the exact driver/include trees, all five
+artifact hashes, `UnsignedValidationOnly`, the INF DriverVer/catalog/service
+identity, 11 embedded `PNP_STATUS:` markers, Authenticode `NotSigned` for SYS
+and CAT, and the RSDS/PDB match
+`93FA4343-6EA4-4077-B409-D43ED110CD3F`, age 1. Current source/ABI and
+CREATE/CLOSE/REMOVE/UnknownActive contracts pass; the installed signed SYS hash
+and running service remain unchanged. No evidence justified a rebuild.
+
 Any real signing run requires a new explicit private-key authorization and a
 new non-overwriting output set. Driver Store staging, installation, captured
 restart and later Verifier work remain independent authorizations. The current

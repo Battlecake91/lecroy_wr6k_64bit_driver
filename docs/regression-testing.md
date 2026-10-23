@@ -870,7 +870,7 @@ status. Focused source contracts remain 62/62 and identity mocks 6/6; the real
 stable-identity, service, hash and five-interface gate passes. No device handle
 or IOCTL is used.
 
-## Batch 7 package and recovery regressions
+## Batch 8 package and recovery regressions
 
 `tests/dry/test-crash-dump-readiness.ps1` exercises the exact versioned
 crash-dump implementation against isolated JSON state. It covers audit/plan,
@@ -878,10 +878,12 @@ guarded apply, new-backup enforcement, kernel-dump and no-auto-reboot values,
 verification, exact restore and preservation of unrelated settings. Result:
 13/13 PASS. No registry or page-file setting is touched by the test.
 
-The Batch 7 unsigned package workflow builds Debug and Release x64, validates
-INF/catalog/PE/PDB/diagnostic-marker identity and completes the full Dry plus
-expanded path. Actual result is 397/397 functional checks, 5,000/5,000 default
-DMA, 1,000/1,000 default INTEN, 50,000/50,000 expanded DMA and
+The frozen Batch 7 unsigned package workflow built Debug and Release x64,
+validated INF/catalog/PE/PDB/diagnostic-marker identity and completed the full
+Dry plus expanded path. Batch 8 independently revalidated those frozen hashes,
+tree identities and marker/PDB evidence without rebuilding. Recorded result is
+397/397 functional checks, 5,000/5,000 default DMA, 1,000/1,000 default INTEN,
+50,000/50,000 expanded DMA and
 10,000/10,000 expanded INTEN iterations. The total stress count is
 66,000/66,000. Both package signatures are deliberately absent.
 
@@ -892,6 +894,23 @@ outer stream, when a stale 53/53 source-contract count remained, and when
 host-stream evidence was searched only in the redirected native-process log.
 The successful fourth fresh output directory proves the corrected complete
 path; no failed directory was reused.
+
+Batch 8 adds two production-script test suites to Dry mode:
+
+- `test-system-image-readiness.ps1`: 21/21 PASS for read-only inventory,
+  exact disk/volume binding, system-disk rejection, NTFS and capacity gates,
+  existing-backup rejection, execution acknowledgement, non-overwriting
+  evidence, one-shot WBAdmin
+  success/failure, post-backup catalog enumeration and the explicit statement
+  that catalog success is not restore validation; and
+- `test-recovery-layout.ps1`: 6/6 PASS for distinct Windows, EFI and recovery
+  roots, required SYSTEM/kernel/BCD/UEFI/boot-WIM markers, input-hash
+  preservation, missing-marker rejection and exclusive result output.
+
+The existing crash-dump tests remain 13/13 PASS. A complete current Dry run
+with `-SkipBuild` passes all suites plus 5,000/5,000 DMA and 1,000/1,000 INTEN
+stress iterations. No live backup, media write, BCD/CrashControl change, reboot
+or hardware access occurs in any of these tests.
 
 ## Permanent runtime qualification harness
 

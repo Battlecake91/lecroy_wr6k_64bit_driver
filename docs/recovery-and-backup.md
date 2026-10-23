@@ -2,34 +2,39 @@
 
 This document is the recovery gate for kernel qualification on the WR6k test
 host. It is a procedure, not proof that recovery is currently available. The
-2026-10-22 passive audit found no bootable external recovery medium, no off-C:
+2026-10-23 passive audit found no bootable external recovery medium, no off-C:
 rollback copy, no system image and no second internal disk. Driver Verifier and
 installation of a new driver therefore remain blocked.
 
 ## Current passive inventory
 
-The host runs Windows 10 Pro x64 build 19045 in UEFI mode. The only storage
+The host runs Windows 10 Pro x64 build 19045 in UEFI mode. A fresh Batch 8
+inventory again found no USB disk, optical volume or mapped network storage.
+The only storage
 device is one healthy GPT NVMe disk, model `HFM256GDHTNG-8510B`, serial
 `ACE4_2E00_9590_A2AA.` and unique ID `eui.ACE42E009590A2AA`. It contains a
 600-MiB EFI System Partition and the approximately 110.6-GiB C: volume. No
 Recovery partition, removable disk, optical medium, network mapping or other
-writable off-C: destination was present. Record the physical identity again at
+writable off-C: destination was present. C: had 17,276,026,880 bytes free at
+the Batch 8 audit. Record the physical identity again at
 execution time; disk numbers and recovery-environment drive letters are not
 stable identities.
 
 The passive crash-dump audit recorded:
 
 - 8,458,805,248 bytes of physical RAM;
-- approximately 17.3 GiB free on C:;
+- approximately 16.1 GiB free on C:;
 - a system-managed boot page file with 1,280 MiB currently allocated;
 - `CrashDumpEnabled=7`, `AutoReboot=1`, `DumpFile=%SystemRoot%\MEMORY.DMP`
   and overwrite enabled; and
 - no dedicated dump file.
 
-The private audit JSON is
-`C:\Users\LeCroyUser\.codex\driver-backups\Phase7-PassiveAudit-20261022\crash-dump-audit.json`,
-SHA-256
-`CE8DF3A90B08C63D541A75838BE5AD9759E726CAF8E77ED2C7D220BB23C732FE`.
+The private Batch 8 audit root is
+`C:\Users\LeCroyUser\.codex\driver-backups\Phase8-PassiveAudit-20261023-final2`.
+Its system-image inventory SHA-256 is
+`2CB491C12E620EE24FCED75DFD475F6C97A7A5822A3C9D311B197571B7E79A64`
+and its crash-dump audit SHA-256 is
+`DDD09A676DCAE37947DD08BE8EA3264DDF7E271A1B2695FAC7C7B26A9A210620`.
 It contains metadata only and must not be committed.
 
 ## Immutable rollback inventory
@@ -101,6 +106,36 @@ equivalent disposable target. Tool success alone does not prove that the image
 can be restored.
 
 Microsoft source: [`wbadmin start backup`](https://learn.microsoft.com/windows-server/administration/windows-commands/wbadmin-start-backup).
+
+### Versioned execution workflow
+
+`scripts/manage-system-image-readiness.ps1` implements four explicit modes:
+
+- `Audit` inventories disks and mounted volumes without selecting a target;
+- `Plan` requires an existing local target root plus exact expected disk and
+  volume unique IDs;
+- `Execute` additionally requires elevation, `-ExecuteAcknowledged` and a new
+  evidence directory; and
+- `VerifyCatalog` performs only a version or item catalog query.
+
+The target guard rejects the boot/system disk, mismatched identities, unhealthy,
+offline or read-only media, non-NTFS volumes, less than 128 GiB free and any
+existing `WindowsImageBackup` tree. Execute
+invokes exactly one `wbadmin start backup` operation, never retries it and, only
+after success, runs one read-only `wbadmin get versions` catalog query. Separate
+stdout, stderr, process and combined logs are preserved by the versioned native
+process runner. A catalog success still records `RestoreValidated=false`.
+
+The exact future command is generated only after the target identities pass:
+
+```text
+wbadmin start backup -backupTarget:<APPROVED-VOLUME> -include:C: -allCritical -quiet
+```
+
+Mocked success, failure, catalog failure, identity mismatch, system-disk,
+filesystem, capacity, existing-backup, acknowledgement and non-overwrite cases
+pass 21/21. No
+live WBAdmin backup was run.
 
 ## Kernel-dump recommendation
 
@@ -176,6 +211,15 @@ volume numbers.
 10. If the NVMe is inaccessible, stop. The current system has no second copy.
     Replace the disk and restore the independently verified system image or
     reinstall Windows, then restore only hash-verified packages and evidence.
+
+`scripts/validate-recovery-layout.ps1` is the read-only pre-drill validator for
+already identified roots. It requires the offline SYSTEM hive and kernel, the
+EFI Microsoft BCD store, the x64 `EFI\Boot\bootx64.efi` file, recovery
+`sources\boot.wim` and, when supplied, the rollback manifest. It hashes those
+markers, rejects missing or overlapping roots and writes only an optional new
+result file. Mocked valid, missing-marker, overlap and non-overwrite cases pass
+6/6. Passing this validator does not prove firmware bootability; the external
+boot still requires separate authorization.
 
 ## Readiness decision
 
