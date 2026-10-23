@@ -1863,6 +1863,14 @@ LecExecuteLegacyMttTransferLocked(
     _In_ USHORT LaunchUnits
     )
 {
+#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA
+    UNREFERENCED_PARAMETER(DevExt);
+    UNREFERENCED_PARAMETER(LaunchUnits);
+    if (Transfer == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_NOT_SUPPORTED;
+#else
     volatile ULONG* sgta;
     volatile ULONG* iimtc;
     volatile ULONG* iimcl;
@@ -2011,6 +2019,7 @@ Cleanup:
         status);
 
     return status;
+#endif
 }
 
 static
@@ -3507,6 +3516,16 @@ LecIoctlAcquireBufferedOneChannel(
     _Out_ PULONG_PTR Information
     )
 {
+#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA
+    UNREFERENCED_PARAMETER(DevExt);
+    UNREFERENCED_PARAMETER(OwnerProcessId);
+    if (SystemBuffer == NULL || Information == NULL ||
+        InputLength != 15 || OutputLength != sizeof(ULONG)) {
+        return STATUS_INVALID_BUFFER_SIZE;
+    }
+    *Information = 0;
+    return STATUS_NOT_SUPPORTED;
+#else
     ULONG token;
     UCHAR channelCount;
     UCHAR pairMarker;
@@ -3850,6 +3869,7 @@ CleanupTransfer:
 Exit:
     KeReleaseMutex(&DevExt->TransferMutex, FALSE);
     return status;
+#endif
 }
 
 static

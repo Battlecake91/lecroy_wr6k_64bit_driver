@@ -360,6 +360,11 @@ LecBuildDescriptorTable(
 
     MmBuildMdlForNonPagedPool(Transfer->DescriptorMdl);
 
+    if (MmGetMdlByteOffset(Transfer->DescriptorMdl) != 0) {
+        LecTrace("DMA table is not page aligned\n");
+        return STATUS_DATATYPE_MISALIGNMENT;
+    }
+
     tablePfns = MmGetMdlPfnArray(Transfer->DescriptorMdl);
     tablePages = ADDRESS_AND_SIZE_TO_SPAN_PAGES(
         Transfer->DescriptorBuffer,
@@ -421,6 +426,13 @@ LecBuildDescriptorTable(
                 ++tableSlot;
                 ++pageNumber;
                 slotInPage = 0;
+            }
+
+            if ((physical & (sizeof(ULONG) - 1)) != 0) {
+                LecTrace(
+                    "DMA source address is not DWORD aligned: PA=%I64X\n",
+                    physical);
+                return STATUS_DATATYPE_MISALIGNMENT;
             }
 
             if (physical > MAXULONG ||

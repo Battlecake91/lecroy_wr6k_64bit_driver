@@ -1,5 +1,25 @@
 # Current project status
 
+## Batch 10 offline DMA safety
+
+- The installed Batch 9 baseline remains unchanged. Batch 10 did not open a
+  device, issue an IOCTL, load or install a driver, change PnP state, sign,
+  reboot, acquire data or launch DMA.
+- Independent x86, x64 and FPGA reviews found no physical bus-idle proof. IRQ
+  completion, `IIMCL=0`, `MTTCTL=0`, INTEN masking and software rundown do not
+  prove descriptor retirement, drained PCI transactions or safe mapping
+  release. POWER remains a pass-through path and is an acquisition blocker.
+- The development tree now blocks both legacy PFN-based MAM and MTT launches
+  by default before DMA MMIO. It also rejects misaligned legacy descriptor
+  storage/device addresses. The installed driver is not replaced by this code.
+- [DMA architecture](dma-architecture.md) now separates verified source,
+  disassembly, FPGA and hardware facts from hypotheses and defines the WDM-v3
+  integration gates.
+- The one-time [Codex continuation](codex-continuation.md) workflow is
+  repository-controlled and passes 14/14 mock cases. No startup task was
+  registered; opening a thread after logon still requires a heartbeat or user
+  message to start a turn.
+
 ## Batch 9 runtime qualification
 
 - The current Windows 10 Pro x64 build 19045 test environment boots from the

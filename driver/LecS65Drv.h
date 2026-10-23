@@ -18,6 +18,14 @@
 #define LECS65_DMA_TABLE_BYTES 0x33000
 #define LECS65_DMA_MAX_TRANSFER_BYTES 0x06000000
 #define LECS65_DMA_MDL_CHUNK_BYTES 0x02000000
+
+/*
+ * The legacy live path publishes CPU PFNs directly to the board. That is not
+ * a Windows DMA logical-address contract and its completion IRQ does not prove
+ * PCI transaction drain. Keep launches disabled until the WDM-v3 transaction
+ * path and a physical idle predicate are both qualified.
+ */
+#define LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA 0
 #define LECS65_ONEWIRE_OFFSET 0x40
 #define LECS65_ONEWIRE_BUSY   0x01
 #define LECS65_ONEWIRE_DATA   0x02

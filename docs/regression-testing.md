@@ -1053,6 +1053,35 @@ Offline results for this change:
 
 No live driver, PnP, device, MMIO or DMA operation is part of this evidence.
 
+## Batch 10 fail-closed DMA and continuation qualification
+
+The Batch 10 driver change blocks the legacy PFN MAM and MTT launch functions
+at compile time by default and adds page/DWORD alignment checks to the legacy
+descriptor builder. Source contracts require both launch gates and the new
+validation. The installed driver is not involved in these tests.
+
+SDK/WDK 10.0.28000.0 and MSVC 14.41.34120 built Debug x64 and Release x64 with
+zero warnings and zero errors. The complete Dry runner passed:
+
+- source/ABI contracts: 65/65;
+- logical layout: 13/13;
+- mapping ownership: 17/17;
+- asynchronous SG bridge: 27/27;
+- synchronous WDM-v3/PnP staging: 149/149;
+- PnP publication: 38/38;
+- PnP IRP lifetime: 10/10;
+- lecdiag command chain: 16/16;
+- combined runtime lifetime: 19/19;
+- process/file DMA lifetime: 23/23;
+- continuation mocks: 14/14;
+- completion: 39/39 plus 2/2 deterministic interleavings;
+- default stress: DMA 5,000/5,000 and INTEN 1,000/1,000.
+
+The independent expanded run passed DMA 50,000/50,000 and INTEN
+10,000/10,000. These tests prove host-side gates, ownership and deterministic
+failure behavior only. They do not prove a physical abort, bus idle, final PCI
+write ordering, power-transition safety or WDM-v3 acquisition readiness.
+
 ## Batch 6 capture and integration qualification
 
 The hardened Windows PowerShell 5.1 launcher path passes 31/31 elevated mocks.

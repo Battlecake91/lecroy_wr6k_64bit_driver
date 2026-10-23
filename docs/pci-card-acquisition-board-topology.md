@@ -38,6 +38,12 @@ The existence of differential wire pairs does **not**, by itself,
 establish their encoding, clock frequency, framing, protocol,
 bitstream semantics or a particular standards-compliant link PHY.
 
+The available drawings also do not provide U3 RTL, a netlist or a DMA register
+contract. They cannot establish GO/abort semantics, descriptor-fetch
+retirement, the timing of INTA# relative to the final PCI memory write, the
+drain of posted transactions or the effect of clearing Bus Master Enable.
+Those properties must not be inferred from connectivity or part identity.
+
 **Configuration assembly options shown in the PCI schematic:**
 
 - PROM configuration: fit `R60/R63/R66`, omit `R88/R89`.
