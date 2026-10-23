@@ -5,10 +5,10 @@
   The script records repository and authorization state before an independently
   authorized reboot. Registration creates an interactive-logon Scheduled Task
   that runs only this script in Resume mode. Resume validates the manifest,
-  host, worktree, branch and HEAD, then opens a pinned codex:// thread URI. It
-  never executes repository commands, hardware operations or a saved arbitrary
-  command. Opening a thread does not itself start a Codex turn; a separately
-  configured thread heartbeat or manual user action is required.
+  host, worktree, branch and HEAD, then uses the supported noninteractive
+  `codex exec resume` command for one exact session UUID. The bounded prompt is
+  hashed in the manifest and cannot expand the recorded authorization scope.
+  No arbitrary saved command is executed.
 #>
 [CmdletBinding()]
 param(
@@ -24,9 +24,13 @@ param(
     [string[]]$ConsumedAuthorizations = @(),
     [string[]]$EvidencePaths = @(),
     [string]$NextPermittedAction,
-    [ValidatePattern('^$|^codex://threads/[0-9a-fA-F-]{20,80}(?:\?.*)?$')]
-    [string]$CodexLaunchUri,
+    [ValidatePattern('^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')]
+    [string]$CodexThreadId,
+    [string]$ContinuationPromptPath,
     [string]$CodexExecutablePath,
+    [ValidatePattern('^$|^[0-9A-Fa-f]{64}$')][string]$ExpectedCodexSha256,
+    [string]$ExpectedCodexVersion,
+    [ValidateRange(60,3600)][int]$ResumeTimeoutSeconds = 900,
     [ValidatePattern('^LecS65-Codex-Continuation-[A-Za-z0-9_-]{1,48}$')]
     [string]$TaskName,
     [switch]$AcknowledgePreparation,
@@ -34,7 +38,9 @@ param(
     [switch]$TestMode,
     [string]$MockTaskRoot,
     [string]$MockHostPath,
-    [ValidateRange(0,32)][int]$MockCodexProcessCount = 0,
+    [int]$MockChildExitCode = 0,
+    [switch]$MockChildTimeout,
+    [string]$MockCodexVersion = 'codex-cli mock',
     [switch]$KeepTaskAfterResume
 )
 
@@ -144,7 +150,7 @@ function Read-And-ValidateManifest([string]$Path) {
         throw 'Continuation manifest hash mismatch.'
     }
     $manifest = [IO.File]::ReadAllText($full, $utf8) | ConvertFrom-Json
-    if ([int]$manifest.Schema -ne 1 -or -not [bool]$manifest.FailClosed -or
+    if ([int]$manifest.Schema -ne 2 -or -not [bool]$manifest.FailClosed -or
         [bool]$manifest.ResumeMayPerformHardwareOperations) {
         throw 'Continuation manifest safety contract is invalid.'
     }
@@ -174,9 +180,17 @@ function Read-And-ValidateManifest([string]$Path) {
     if (@(& git -C $worktree status --porcelain).Count -ne 0) {
         throw 'Recorded worktree is not clean.'
     }
-    if ([string]$manifest.Codex.LaunchUri -notmatch
-        '^codex://threads/[0-9a-fA-F-]{20,80}(?:\?.*)?$') {
-        throw 'Recorded Codex launch URI is invalid.'
+    if ([string]$manifest.Codex.ThreadId -notmatch
+        '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+        throw 'Recorded Codex thread UUID is invalid.'
+    }
+    $codexExecutable = Get-AbsolutePath ([string]$manifest.Codex.Executable) 'Recorded Codex executable'
+    if ((Get-Sha256 $codexExecutable) -ne [string]$manifest.Codex.SHA256) {
+        throw 'Recorded Codex executable hash mismatch.'
+    }
+    $promptPath = Get-AbsolutePath ([string]$manifest.Codex.PromptPath) 'Recorded prompt'
+    if ((Get-Sha256 $promptPath) -ne [string]$manifest.Codex.PromptSHA256) {
+        throw 'Recorded continuation prompt hash mismatch.'
     }
     if ([string]::IsNullOrWhiteSpace([string]$manifest.NextPermittedAction)) {
         throw 'Next permitted action is missing.'
@@ -261,11 +275,41 @@ function Remove-OneTimeTask([string]$Name) {
     }
 }
 
+function Disable-OneTimeTask([string]$Name) {
+    if ($TestMode) {
+        $path = Get-MockTaskPath $Name
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $task = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+            $task | Add-Member -NotePropertyName Disabled -NotePropertyValue $true -Force
+            [IO.File]::WriteAllText($path, (($task | ConvertTo-Json -Depth 6) + "`r`n"), $utf8)
+        }
+        return
+    }
+    Disable-ScheduledTask -TaskName $Name -ErrorAction Stop | Out-Null
+}
+
+function Get-CodexVersion([string]$Executable) {
+    if ($TestMode) { return $MockCodexVersion }
+    $value = @(& $Executable --version 2>&1)
+    if ($LASTEXITCODE -ne 0 -or $value.Count -ne 1) { throw 'Unable to read Codex CLI version.' }
+    [string]$value[0]
+}
+
+function Assert-CodexSignature([string]$Executable) {
+    if ($TestMode) { return }
+    $signature = Get-AuthenticodeSignature -LiteralPath $Executable
+    if ($signature.Status -ne 'Valid' -or
+        [string]$signature.SignerCertificate.Subject -notmatch 'OpenAI') {
+        throw 'Codex CLI Authenticode identity is not valid OpenAI software.'
+    }
+}
+
 $ManifestPath = Get-AbsolutePath $ManifestPath 'ManifestPath'
 if ($Mode -eq 'Prepare') {
     if (-not $AcknowledgePreparation) { throw 'Prepare requires AcknowledgePreparation.' }
     foreach ($required in @($WorktreePath,$ExpectedBranch,$ExpectedHead,$Phase,
-            $NextPermittedAction,$CodexLaunchUri,$TaskName)) {
+            $NextPermittedAction,$CodexThreadId,$ContinuationPromptPath,
+            $CodexExecutablePath,$ExpectedCodexSha256,$ExpectedCodexVersion,$TaskName)) {
         if ([string]::IsNullOrWhiteSpace($required)) { throw 'Prepare parameters are incomplete.' }
     }
     if ((Test-Path -LiteralPath $ManifestPath) -or
@@ -282,25 +326,32 @@ if ($Mode -eq 'Prepare') {
     if (-not $TestMode -and @(& git -C $worktree status --porcelain).Count -ne 0) {
         throw 'Prepare requires a clean worktree.'
     }
-    if ([string]::IsNullOrWhiteSpace($CodexExecutablePath)) {
-        $CodexExecutablePath = "$env:SystemRoot\explorer.exe"
-    }
     $codexExecutable = Get-AbsolutePath $CodexExecutablePath 'CodexExecutablePath'
     if (-not (Test-Path -LiteralPath $codexExecutable -PathType Leaf)) {
-        throw 'Codex URI launcher executable is missing.'
+        throw 'Codex CLI executable is missing.'
     }
-    if (-not $TestMode -and [IO.Path]::GetFileName($codexExecutable) -notin
-            @('explorer.exe','Codex.exe')) {
-        throw 'CodexExecutablePath is not an approved fixed launcher.'
+    if ((Get-Sha256 $codexExecutable) -ne $ExpectedCodexSha256.ToUpperInvariant()) {
+        throw 'Codex CLI hash differs from the approved identity.'
+    }
+    Assert-CodexSignature $codexExecutable
+    $codexVersion = Get-CodexVersion $codexExecutable
+    if ($codexVersion -ne $ExpectedCodexVersion) { throw 'Codex CLI version mismatch.' }
+    $prompt = Get-AbsolutePath $ContinuationPromptPath 'ContinuationPromptPath'
+    if (-not (Test-Path -LiteralPath $prompt -PathType Leaf) -or
+        (Get-Item -LiteralPath $prompt).Length -gt 65536) {
+        throw 'Continuation prompt is missing or exceeds 64 KiB.'
     }
     $evidence = @($EvidencePaths | ForEach-Object { Get-EvidenceIdentity $_ })
     $manifest = [ordered]@{
-        Schema=1; FailClosed=$true; ResumeMayPerformHardwareOperations=$false;
+        Schema=2; FailClosed=$true; ResumeMayPerformHardwareOperations=$false;
         CreatedUtc=[datetime]::UtcNow.ToString('o'); Host=Get-HostIdentity;
         Repository=[ordered]@{ Worktree=$worktree; Branch=$branch; Head=$head };
         Task=[ordered]@{ Name=$TaskName; OneTime=$true; Registered=$false };
-        Codex=[ordered]@{ LaunchUri=$CodexLaunchUri; Executable=$codexExecutable;
-            Limitation='Opening the thread does not start a turn; use a separately configured thread heartbeat or manual input.' };
+        Codex=[ordered]@{ ThreadId=$CodexThreadId.ToLowerInvariant(); Executable=$codexExecutable;
+            SHA256=(Get-Sha256 $codexExecutable); Version=$codexVersion;
+            PromptPath=$prompt; PromptSHA256=(Get-Sha256 $prompt);
+            Sandbox='workspace-write'; TimeoutSeconds=$ResumeTimeoutSeconds;
+            Invocation='exec --sandbox workspace-write --cd <worktree> --json --output-last-message <path> resume --strict-config <exact-uuid> -' };
         Script=[ordered]@{ Path=$scriptPath; SHA256=Get-Sha256 $scriptPath };
         Phase=$Phase; CompletedSteps=@($CompletedSteps);
         ConsumedAuthorizations=@($ConsumedAuthorizations);
@@ -338,33 +389,97 @@ try {
     $acquired = $mutex.WaitOne(0)
     if (-not $acquired) { throw 'Another continuation instance is already active.' }
     $resultPath = $ManifestPath + '.resume-result.json'
-    if (Test-Path -LiteralPath $resultPath) { throw 'Resume result already exists; continuation is one-shot.' }
-    $processCount = if ($TestMode) { $MockCodexProcessCount } else {
-        @(Get-Process -Name Codex -ErrorAction SilentlyContinue).Count
+    $attemptPath = $ManifestPath + '.attempt-started.json'
+    $stdoutPath = $ManifestPath + '.stdout.jsonl'
+    $stderrPath = $ManifestPath + '.stderr.log'
+    $lastMessagePath = $ManifestPath + '.last-message.txt'
+    $exceptionPath = $ManifestPath + '.exception.log'
+    foreach ($path in @($resultPath,$attemptPath,$stdoutPath,$stderrPath,
+            $lastMessagePath,$exceptionPath)) {
+        if (Test-Path -LiteralPath $path) { throw "Continuation evidence already exists: $path" }
     }
-    if ($processCount -gt 1) { throw 'Multiple Codex processes are already present.' }
+    Write-ExclusiveJson $attemptPath ([ordered]@{ StartedUtc=[datetime]::UtcNow.ToString('o');
+        ThreadId=$manifest.Codex.ThreadId; Head=$manifest.Repository.Head })
+    Disable-OneTimeTask ([string]$manifest.Task.Name)
     $codexExecutable = Get-AbsolutePath ([string]$manifest.Codex.Executable) `
         'Recorded Codex executable'
-    if (-not (Test-Path -LiteralPath $codexExecutable -PathType Leaf)) {
-        throw 'Recorded Codex URI launcher is missing.'
+    Assert-CodexSignature $codexExecutable
+    if ((Get-CodexVersion $codexExecutable) -ne [string]$manifest.Codex.Version) {
+        throw 'Codex CLI version changed after preparation.'
     }
-    if (-not $TestMode) {
-        if ([IO.Path]::GetFileName($codexExecutable) -notin @('explorer.exe','Codex.exe')) {
-            throw 'Recorded Codex executable is not an approved launcher.'
+    $arguments = @('exec','--sandbox','workspace-write','--cd',
+        [string]$manifest.Repository.Worktree,'--json','--output-last-message',
+        $lastMessagePath,'resume','--strict-config',[string]$manifest.Codex.ThreadId,'-')
+    $exitCode = 0
+    if ($TestMode) {
+        Write-ExclusiveUtf8 $stdoutPath (([ordered]@{ type='mock'; arguments=$arguments } |
+            ConvertTo-Json -Compress) + "`r`n")
+        Write-ExclusiveUtf8 $stderrPath ''
+        if ($MockChildTimeout) { throw 'Mock Codex child timed out.' }
+        $exitCode = $MockChildExitCode
+        if ($exitCode -eq 0) { Write-ExclusiveUtf8 $lastMessagePath "Mock continuation complete.`r`n" }
+    }
+    else {
+        $quote = { param([string]$v) if ($v -notmatch '[\s"]') { $v } else {
+            '"' + ($v -replace '(\\*)"','$1$1\"' -replace '(\\+)$','$1$1') + '"' } }
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = $codexExecutable
+        $psi.Arguments = (($arguments | ForEach-Object { & $quote $_ }) -join ' ')
+        $psi.WorkingDirectory = [string]$manifest.Repository.Worktree
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $process = New-Object Diagnostics.Process
+        $process.StartInfo = $psi
+        if (-not $process.Start()) { throw 'Codex CLI process did not start.' }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $promptText = [IO.File]::ReadAllText([string]$manifest.Codex.PromptPath, $utf8)
+        $process.StandardInput.Write($promptText)
+        $process.StandardInput.Close()
+        if (-not $process.WaitForExit([int]$manifest.Codex.TimeoutSeconds * 1000)) {
+            $taskkill = Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\taskkill.exe'
+            if (Test-Path -LiteralPath $taskkill -PathType Leaf) {
+                & $taskkill /PID ([string]$process.Id) /T /F *> $null
+            }
+            else { try { $process.Kill() } catch {} }
+            try { $process.WaitForExit(15000) | Out-Null } catch {}
+            try { [Threading.Tasks.Task]::WaitAll(@($stdoutTask,$stderrTask), 15000) | Out-Null } catch {}
+            Write-ExclusiveUtf8 $stdoutPath $(if ($stdoutTask.IsCompleted) { $stdoutTask.Result } else { '' })
+            Write-ExclusiveUtf8 $stderrPath $(if ($stderrTask.IsCompleted) { $stderrTask.Result } else { '' })
+            $process.Dispose()
+            throw 'Codex CLI continuation timed out.'
         }
-        Start-Process -FilePath $codexExecutable `
-            -ArgumentList ([string]$manifest.Codex.LaunchUri)
+        [Threading.Tasks.Task]::WaitAll(@($stdoutTask,$stderrTask))
+        Write-ExclusiveUtf8 $stdoutPath $stdoutTask.Result
+        Write-ExclusiveUtf8 $stderrPath $stderrTask.Result
+        $exitCode = $process.ExitCode
+        $process.Dispose()
+    }
+    if ($exitCode -ne 0) { throw "Codex CLI continuation failed with exit code $exitCode." }
+    if (-not (Test-Path -LiteralPath $lastMessagePath -PathType Leaf)) {
+        throw 'Codex CLI produced no final-message evidence.'
     }
     Write-ExclusiveJson $resultPath ([ordered]@{
         ResumedUtc=[datetime]::UtcNow.ToString('o'); HostValidated=$true;
         RepositoryValidated=$true; HardwareOperationExecuted=$false;
-        ExistingCodexProcessCount=$processCount; LaunchUri=$manifest.Codex.LaunchUri;
+        ThreadId=$manifest.Codex.ThreadId; ExitCode=$exitCode;
+        StdoutSHA256=(Get-Sha256 $stdoutPath); StderrSHA256=(Get-Sha256 $stderrPath);
+        LastMessageSHA256=(Get-Sha256 $lastMessagePath);
         NextPermittedAction=$manifest.NextPermittedAction;
-        Status=if ($TestMode) { 'MockThreadLaunchReady' } else { 'ThreadLaunchRequested' }
+        Status=if ($TestMode) { 'MockResumeCompleted' } else { 'ResumeCompleted' }
     })
     Protect-ContinuationFile $resultPath
     if (-not $KeepTaskAfterResume) { Remove-OneTimeTask ([string]$manifest.Task.Name) }
     Write-Host "CONTINUATION RESUME PASS"
+}
+catch {
+    if ($Mode -eq 'Resume' -and -not (Test-Path -LiteralPath ($ManifestPath + '.exception.log'))) {
+        try { Write-ExclusiveUtf8 ($ManifestPath + '.exception.log') ($_.Exception.ToString() + "`r`n") } catch {}
+    }
+    throw
 }
 finally {
     if ($acquired) { [void]$mutex.ReleaseMutex() }

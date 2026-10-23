@@ -1106,3 +1106,27 @@ After integrating the exact PR #27 driver tree, focused tests pass:
 The driver source is byte-identical to the previously built and stressed PR #27
 revision. The 50,000 DMA and 10,000 INTEN expanded stress evidence therefore
 remains applicable; no unrelated stress rerun was performed.
+
+## Batch 11 WDM-v3 transaction qualification
+
+The new portable transaction suite runs the production state machine and
+descriptor encoder with only its post-GO evidence transition compiled as a
+host-test hook. It passes 134/134 checks covering owner mismatch, adapter and
+buffer admission, mapping failure and late callback, invalid/unrepresentable
+addresses, descriptor capacity, publication barrier, hard launch rejection,
+cancel-before-GO, IRQ during Arming, stale/duplicate completion, timeout,
+POWER/PnP teardown, independent idle proof, quarantine and repeated transfer
+generations.
+
+The synchronous fake-DDI/PnP suite now passes 153/153 and additionally proves
+QUERY admission closure, Dx closure, failed D0 restore and successful D0
+reopening. Source/safety contracts pass 68/68. The exact-session continuation
+workflow passes 17/17 mocks, including prompt/CLI drift, child failure and
+timeout with disabled-task evidence retention.
+
+Debug and Release x64 builds use SDK/WDK 10.0.28000.0 and MSVC 14.41.34120 and
+complete with zero warnings and zero errors. The complete Dry runner passes.
+Default stress passes 5,000/5,000 DMA and 1,000/1,000 INTEN; the independent
+expanded run passes 50,000/50,000 DMA and 10,000/10,000 INTEN. These results
+prove only software state, ordering and fail-closed behavior. They do not
+authorize hardware launch, mapping flush after GO or acquisition.

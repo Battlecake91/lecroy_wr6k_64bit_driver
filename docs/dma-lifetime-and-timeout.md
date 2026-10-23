@@ -1106,3 +1106,26 @@ hardware-qualify this new ownership implementation and cannot prove physical
 DMA idle. A future combined candidate requires a distinct package version,
 signing authorization, installation authorization and repetition of the bounded
 runtime matrix before any acquisition or DMA work.
+
+## Batch 11 transaction and teardown contract
+
+The compiled `DmaTransaction` model makes release ownership explicit across
+the entire software-verifiable path. Each request has one monotonically
+increasing generation and one process/FileObject identity. Mapping completion
+may arrive after pre-GO cancellation; it is then owned only long enough for the
+never-launched release path. A stale generation, duplicate completion or IRQ
+during Arming cannot complete the current request.
+
+Pre-GO cancellation, descriptor failure, QUERY, STOP or power-down may release
+only after the mapping callback has retired and no publication user remains.
+After any possible GO, timeout, power loss, surprise removal or uncertain
+cleanup transitions to `UnknownActive`; mapping, MDLs, common table, adapter and
+PDO ownership remain retained. `CompletionObserved` is deliberately distinct
+from `IdleProved`. The latter still has no production caller because no
+physical idle predicate exists.
+
+The PnP staging parent now separates PnP generation from power generation and
+keeps new mapping admission closed in QUERY, PowerDownPending, Dx and failed
+resume. These are offline admission primitives, not live POWER-IRP wiring.
+Live system-power policy, D0/Dx hardware save/restore, explicit v3 channel/map/
+flush/free orchestration and physical abort/drain remain deployment blockers.

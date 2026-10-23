@@ -90,15 +90,36 @@ the last host-memory access.
    serialize descriptor publication, launch once, establish physical idle and
    only then release its mapping, common buffer and locked pages exactly once.
 
-## Acquisition implementation gap
+## Batch 11 software transaction
 
-The no-launch WDM-v3 modules provide adapter ownership, logical-address
-validation and fake-DDI tests, but not a complete acquisition transaction.
-Missing pieces are: token-to-mapping policy, persistent-versus-map-at-launch
-ownership, common descriptor table publication to `SGTA`, launch/completion
-integration, physical idle evidence, PnP and power rundown, mapping release,
-and multi-token resource-pressure policy. POWER IRPs currently pass through;
-a D0/Dx admission and rundown model is required before acquisition.
+`DmaTransaction` now supplies the hardware-independent owner that connects
+request validation, process/FileObject identity, adapter and buffer admission,
+mapping-callback ownership, logical-address descriptor construction,
+publication, generation-safe completion, cancellation, timeout, retirement and
+quarantine. Its diagnostics count mapping acquisition/release, descriptor
+build/publication, launch admission/rejection, completion, timeout, power/PnP
+teardown and quarantine. The public IOCTL ABI is unchanged.
+
+The transaction calls the established WR6k encoder only with DMA logical
+addresses and propagates invalid, 32-bit-address and table-capacity failures.
+Publication requires an explicit caller-supplied barrier. The production
+`CommitHardwareLaunch` operation always returns `LecDmaTxLaunchDisabled` and
+rolls Arming back to Published. Only host tests compile a model-only possible-
+GO hook, so the driver binary has no transaction transition to DeviceActive.
+
+The staged PnP parent now tracks an independent D0/Dx generation. QUERY and
+power-down close new-mapping admission; only a successful Started+D0 restore
+may reopen it. Existing no-launch mappings remain releasable during rundown.
+These APIs model the required admission rules but are not wired to live POWER
+IRPs or acquisition, so the currently loaded driver is unaffected.
+
+For a future live implementation, prefer the explicit WDM-v3 sequence
+`GetDmaTransferInfo`, `AllocateAdapterChannelEx`, `MapTransferEx`, descriptor
+encoding, gated GO, independent idle proof, `FlushAdapterBuffersEx` and
+`FreeAdapterObject`. A partial `MapTransferEx` result must be rejected before
+GO rather than split into guessed hardware transactions. The current
+synchronous `GetScatterGatherListEx` path remains valid no-launch staging and
+supports MDL chains, but is not a live acquisition transaction.
 
 ## Release gates
 
@@ -112,6 +133,10 @@ Real DMA remains blocked until all of the following exist:
    ownership or quarantine it without a premature release.
 5. Fake-DDI fault injection, expanded race tests, Driver Verifier DMA checks
    and a separately authorized isolated-hardware experiment pass.
+
+Batch 11 completes every transition that can be justified without those
+hardware facts. It does not claim that IRQ observation, DPC drain, INTEN
+masking, D0 exit or original-x86 cleanup proves physical retirement.
 
 The precise lifetime state machine is maintained in
 [DMA lifetime and timeout](dma-lifetime-and-timeout.md); original x86 evidence

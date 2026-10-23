@@ -81,6 +81,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-dma-ownership.ps1")
     }
 
+    Invoke-Step "WDM-v3 DMA transaction and lifecycle tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-dma-transaction.ps1")
+    }
+
     Invoke-Step "WDM SG bridge fake-DDI callback tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-sg-stage.ps1")
     }

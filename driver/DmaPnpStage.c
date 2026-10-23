@@ -38,7 +38,8 @@ LecDmaPnpEnterCall(
         Stage->ActiveCalls != MAXULONG &&
         Stage->AdapterContext != NULL &&
         ((Kind == LecDmaPnpCallMap &&
-          Stage->State == LecDmaPnpStarted && Stage->AdmissionOpen) ||
+          Stage->State == LecDmaPnpStarted && Stage->AdmissionOpen &&
+          Stage->PowerState == LecDmaPowerD0 && !Stage->QueryPending) ||
          (Kind == LecDmaPnpCallExistingMapping &&
           (Stage->State == LecDmaPnpStarted ||
            LecDmaPnpIsTeardownState(Stage->State)))));
@@ -101,6 +102,7 @@ LecDmaPnpStageCreate(
     LecSgSyncOwnerConstruct(&created->SyncOwner);
     created->PhysicalDeviceObject = PhysicalDeviceObject;
     created->State = LecDmaPnpStopped;
+    created->PowerState = LecDmaPowerUnknown;
     created->InterruptDisconnected = TRUE;
     created->DpcDrained = TRUE;
     created->TimerStopped = TRUE;
@@ -158,6 +160,8 @@ LecDmaPnpStartNoLaunch(
         return STATUS_DEVICE_BUSY;
     }
     Stage->State = LecDmaPnpStarting;
+    Stage->PowerState = LecDmaPowerResumePending;
+    Stage->QueryPending = FALSE;
     Stage->AdmissionOpen = FALSE;
     Stage->SyncOwnerDetached = FALSE;
     Stage->InterruptDisconnected = FALSE;
@@ -201,6 +205,7 @@ LecDmaPnpStartNoLaunch(
         }
         else {
             Stage->State = LecDmaPnpStopped;
+            Stage->PowerState = LecDmaPowerUnknown;
             Stage->InterruptDisconnected = TRUE;
             Stage->DpcDrained = TRUE;
             Stage->TimerStopped = TRUE;
@@ -250,6 +255,7 @@ LecDmaPnpStartNoLaunch(
         else {
             Stage->AdapterContext = NULL;
             Stage->State = LecDmaPnpStopped;
+            Stage->PowerState = LecDmaPowerUnknown;
             Stage->InterruptDisconnected = TRUE;
             Stage->DpcDrained = TRUE;
             Stage->TimerStopped = TRUE;
@@ -270,7 +276,9 @@ LecDmaPnpStartNoLaunch(
     }
     else {
         ++Stage->Generation;
+        ++Stage->PowerGeneration;
         Stage->State = LecDmaPnpStarted;
+        Stage->PowerState = LecDmaPowerD0;
         Stage->AdmissionOpen = TRUE;
         status = STATUS_SUCCESS;
     }
@@ -280,6 +288,109 @@ LecDmaPnpStartNoLaunch(
         LecDmaQuarantineAdapterContext(context);
     }
     return status;
+}
+
+NTSTATUS LecDmaPnpBeginQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->State != LecDmaPnpStarted || Stage->QueryPending ||
+        Stage->CleanupActive || Stage->UnknownActive) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    Stage->QueryPending = TRUE;
+    Stage->AdmissionOpen = FALSE;
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpCancelQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (!Stage->QueryPending || Stage->State != LecDmaPnpStarted) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    Stage->QueryPending = FALSE;
+    Stage->AdmissionOpen = (BOOLEAN)(Stage->PowerState == LecDmaPowerD0 &&
+        !Stage->UnknownActive && !LecDmaPnpQuarantineRequested(Stage));
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpBeginPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->State != LecDmaPnpStarted ||
+        Stage->PowerState != LecDmaPowerD0 || Stage->UnknownActive) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    Stage->AdmissionOpen = FALSE;
+    Stage->PowerState = LecDmaPowerDownPending;
+    ++Stage->PowerGeneration;
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpRecordPoweredDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->PowerState != LecDmaPowerDownPending || Stage->ActiveCalls != 0) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    Stage->PowerState = LecDmaPowerDx;
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpBeginResumeD0(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->State != LecDmaPnpStarted || Stage->PowerState != LecDmaPowerDx ||
+        Stage->UnknownActive || LecDmaPnpQuarantineRequested(Stage)) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    Stage->PowerState = LecDmaPowerResumePending;
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpCompleteResumeD0(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage,
+    _In_ BOOLEAN LowerAndRestoreSucceeded)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->PowerState != LecDmaPowerResumePending) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    if (!LowerAndRestoreSucceeded) {
+        Stage->PowerState = LecDmaPowerDx;
+        Stage->AdmissionOpen = FALSE;
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_DEVICE_NOT_READY;
+    }
+    Stage->PowerState = LecDmaPowerD0;
+    Stage->AdmissionOpen = (BOOLEAN)(Stage->State == LecDmaPnpStarted &&
+        !Stage->QueryPending && !Stage->UnknownActive &&
+        !LecDmaPnpQuarantineRequested(Stage));
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -602,6 +713,7 @@ LecDmaPnpSnapshot(
     Snapshot->State = Stage->State;
     Snapshot->ActiveCalls = Stage->ActiveCalls;
     Snapshot->Generation = Stage->Generation;
+    Snapshot->PowerGeneration = Stage->PowerGeneration;
     Snapshot->AdmissionOpen = Stage->AdmissionOpen;
     Snapshot->HasAdapterContext = (BOOLEAN)(Stage->AdapterContext != NULL);
     Snapshot->CleanupActive = Stage->CleanupActive;
@@ -611,6 +723,8 @@ LecDmaPnpSnapshot(
     Snapshot->TimerStopped = Stage->TimerStopped;
     Snapshot->UnknownActive = Stage->UnknownActive;
     Snapshot->LateQuarantine = Stage->LateQuarantine;
+    Snapshot->QueryPending = Stage->QueryPending;
+    Snapshot->PowerState = Stage->PowerState;
     Snapshot->CleanupPhase = Stage->CleanupPhase;
     KeReleaseSpinLock(&Stage->Lock, irql);
 }

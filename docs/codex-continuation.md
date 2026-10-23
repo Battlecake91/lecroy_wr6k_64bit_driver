@@ -1,50 +1,56 @@
 # One-time Codex continuation after an authorized reboot
 
 `scripts/manage-codex-continuation.ps1` provides a fail-closed Windows
-PowerShell 5.1 workflow for recording and reopening a specific Codex thread
-after an independently authorized reboot. It never replays repository,
-hardware, installation, PnP, IOCTL or reboot commands.
+PowerShell 5.1 workflow for resuming one exact Codex session after a separately
+authorized reboot. It uses the supported noninteractive CLI surface:
 
-## Security and authorization model
+```text
+codex exec --sandbox workspace-write --cd <worktree> --json \
+  --output-last-message <new-file> resume --strict-config <exact-uuid> -
+```
 
-- `Prepare` records the absolute worktree, branch, 40-character HEAD, host and
-  user identity, task phase, completed steps, consumed authorizations, evidence
-  file/tree hashes, next permitted action, fixed launcher and `codex://` URI.
-- The manifest and companion hash are created without overwrite and receive an
-  ACL for the current user, SYSTEM and Administrators.
-- `Validate` rechecks the manifest, script hash, host, user, clean repository,
-  HEAD, branch, launcher and every recorded evidence identity.
-- `Register` requires an explicit acknowledgement and creates one interactive
-  logon task under the intended user with limited run level, one action,
-  `IgnoreNew` and a five-minute execution limit. It validates the registered
-  action exactly.
-- `Resume` uses a named mutex and a non-overwriting result record, validates all
-  state again, opens only the pinned thread URI, records that no hardware action
-  ran and removes the task. It rejects multiple existing Codex processes.
-- `Cleanup` removes the named task idempotently.
+The fixed continuation prompt is read from standard input. `--last`, UI URI
+launching, undocumented app-server protocols, history-database edits and
+dangerous sandbox bypasses are forbidden.
 
-The manifest contains no credentials, tokens, signing keys or arbitrary saved
-command. Any changed HEAD, dirty/missing worktree, host mismatch, evidence
-change, script change, missing launcher or prior resume fails closed.
+## Recorded identity and authorization
 
-## Supported limitation
+`Prepare` creates schema-2 manifest and hash files without overwrite. It pins:
 
-Opening a `codex://threads/...` URI restores the user interface context but
-does **not** start a Codex turn. The repository cannot safely inject unattended
-user authority into a thread. A separately configured Codex thread heartbeat,
-or one manual user message after logon, is required to resume reasoning. This
-is the nearest reliable supported alternative to noninteractive continuation.
+- absolute worktree, clean branch and 40-character HEAD;
+- host, user and hashed evidence identities;
+- exact session UUID, CLI path, SHA-256, version and valid OpenAI signature;
+- a bounded prompt file and its SHA-256;
+- workspace-write sandbox, timeout, completed work and consumed authorizations;
+- the next permitted action, which cannot grant broader authority.
 
-No Scheduled Task was registered during Batch 10. The 14-case dry suite uses
-mock task storage and covers exact registration, validation, consumed-authority
-recording, one-shot/partial completion, task cleanup, changed evidence/HEAD,
-dirty or missing worktree, corrupt manifest, host mismatch, duplicate Codex
-processes and missing executable.
+The CLI path is application-versioned. An update changes its identity and
+therefore requires a new manifest. The manifest contains no credentials,
+tokens, API keys, signing keys or private material.
+
+## One-shot execution
+
+`Register` requires explicit acknowledgement and creates a limited,
+interactive-logon Scheduled Task. `Resume` revalidates all state, takes a named
+mutex, exclusively creates `attempt-started.json`, then disables the task
+before starting the CLI. Existing Codex Desktop app-server and exec-server
+processes are normal and are not used as a single-instance predicate.
+
+The child is bounded and synchronous. Its JSONL stdout, stderr and final
+message are separate, non-overwriting files. A successful exit produces a
+hashed result record and removes the task. Failure, timeout or early exception
+retains the disabled task and available evidence; another logon cannot retry.
+Only the recorded child may be terminated on timeout.
+
+No real task was registered and no real session was resumed in Batch 11. The
+17-case mock suite covers exact UUID selection, absence of `--last`, clean
+state validation, task registration and cleanup, executable/prompt/evidence
+drift, one-shot success, nonzero child exit, timeout and persistent failure
+evidence. A live reboot/resume test requires separate authorization.
 
 ## Operator boundary
 
-Registration and any reboot require their own explicit authorization. Prepare
-and validate the manifest before registration; after a failed or obsolete
-attempt, run `Cleanup` and retain the result/evidence files for review. Never
-reuse a manifest to infer authorization for an operation not listed as the
-next permitted action.
+Preparation does not authorize task registration or reboot. Registration and
+the reboot each require explicit owner authorization. The continuation prompt
+may resume only already authorized work; it cannot authorize signing,
+installation, PnP, hardware access or any other new operation.

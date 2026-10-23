@@ -668,10 +668,16 @@ LecS65Power(
         (PLECS65_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
 
-    LecTrace("POWER: minor=0x%02X type=%u state=%u\n",
-        stack->MinorFunction,
-        stack->Parameters.Power.Type,
-        stack->Parameters.Power.State.SystemState);
+    if (stack->Parameters.Power.Type == DevicePowerState) {
+        LecTrace("POWER: minor=0x%02X type=device state=D%u\n",
+            stack->MinorFunction,
+            stack->Parameters.Power.State.DeviceState);
+    }
+    else {
+        LecTrace("POWER: minor=0x%02X type=system state=S%u\n",
+            stack->MinorFunction,
+            stack->Parameters.Power.State.SystemState);
+    }
 
     {
         NTSTATUS status = IoAcquireRemoveLock(&devExt->RemoveLock, Irp);

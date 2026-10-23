@@ -1046,3 +1046,18 @@ WDM-v3 transaction harness and physical-idle predicate do not exist. Creating a
 raw pointer-bearing IOCTL example would bypass the ownership and safety gates.
 Each active row requires a new explicit authorization and immutable artifact
 identity. See [DMA architecture](dma-architecture.md).
+
+## Batch 11 next DMA authorization boundary
+
+The software transaction and its closed launch gate now exist, but this does
+not satisfy the active rows above. Before the first DMA experiment, a new
+candidate must implement and offline-qualify the explicit WDM-v3
+channel/map/flush/free sequence, reject partial mappings, connect it to one
+legacy acquisition request without changing the ABI, and retain every
+post-possible-GO resource. Separately, board/RTL or external analyzer evidence
+must establish a MAM/MTT stop and physical PCI retirement predicate.
+
+Only after those prerequisites are reviewed may the owner authorize signing,
+installation and one smallest bounded transfer as separate gates. The current
+Batch 11 binary is unsigned, uninstalled and has no production transition to
+DeviceActive; no command in this document authorizes running it on hardware.
