@@ -44,6 +44,11 @@ Test-Condition 'manifest records no rebuild and no runtime mutation' (
     $text -match 'RebuildPerformed = \$false' -and
     $text -match 'DriverStoreChanged=\$false' -and
     $text -match 'PnpChanged=\$false')
+Test-Condition 'manifest remains compatible with the qualified install launcher' (
+    $text -match "Schema = 2" -and
+    $text -match "PackageState = 'SignedCandidate'" -and
+    $text -match 'ReviewedDriverTreeCommit' -and
+    $text -match 'PackageIdentity = \[ordered\]')
 
 Write-Host ("FROZEN PACKAGE SIGNING CONTRACTS: {0}/{1} passed; {2} failed." -f
     $passed,($passed+$failed),$failed)

@@ -292,10 +292,14 @@ $toolRecords = @($tools.GetEnumerator() | ForEach-Object {
     [ordered]@{Name=$_.Key;Path=$_.Value;FileVersion=$item.VersionInfo.FileVersion;
         ProductVersion=$item.VersionInfo.ProductVersion;SHA256=Get-Hash $_.Value}
 })
+$workflowCommit = (& git.exe -C $repo rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $workflowCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Unable to resolve the frozen-promotion workflow commit.'
+}
 $manifest = [ordered]@{
-    Schema = 1
+    Schema = 2
     CreatedUtc = [datetime]::UtcNow.ToString('o')
-    PackageState = 'SignedFrozenPromotion'
+    PackageState = 'SignedCandidate'
     InstallAuthorized = $false
     Promotion = [ordered]@{
         RebuildPerformed = $false
@@ -304,20 +308,31 @@ $manifest = [ordered]@{
         UnsignedSourceHashes = $sourceSnapshot
     }
     Source = [ordered]@{
+        WorkflowCommit = $workflowCommit
+        ReviewedDriverTreeCommit =
+            $sourceManifestValue.Source.ReviewedDriverTreeCommit
         DriverTree = $ExpectedDriverTree.ToLowerInvariant()
         IncludeTree = $ExpectedIncludeTree.ToLowerInvariant()
-        DriverVer = $ExpectedDriverVer
-        Configuration = 'Release x64'
-        PnpStatusDiagnostics = $true
-        SDK_WDK = '10.0.28000.0'
-        MSVC = '14.41.34120'
     }
-    Certificate = [ordered]@{
-        Subject=$certificate.Subject;Issuer=$certificate.Issuer
-        Thumbprint=$thumbprint;EKU=$eku;HasPrivateKey=$certificate.HasPrivateKey
-        ChainBuild=$chainBuild;ChainStatus=$chainStatus
-        NotBeforeUtc=$certificate.NotBefore.ToUniversalTime().ToString('o')
-        NotAfterUtc=$certificate.NotAfter.ToUniversalTime().ToString('o')
+    Build = $sourceManifestValue.Build
+    Regression = $sourceManifestValue.Regression
+    PackageIdentity = [ordered]@{
+        DriverVer = $ExpectedDriverVer
+        HardwareId = $sourceManifestValue.PackageIdentity.HardwareId
+        Catalog = 'LecS65AcqDrv.cat'
+        Signed = $true
+        Certificate = [ordered]@{
+            Subject=$certificate.Subject;Issuer=$certificate.Issuer
+            Thumbprint=$thumbprint;EKU=$eku
+            HasPrivateKey=$certificate.HasPrivateKey
+            ChainBuild=$chainBuild;ChainStatus=$chainStatus
+            NotBeforeUtc=$certificate.NotBefore.ToUniversalTime().ToString('o')
+            NotAfterUtc=$certificate.NotAfter.ToUniversalTime().ToString('o')
+        }
+        PreSigningSysSHA256 = $expected.SYS
+        PostSigningSysSHA256 = Get-Hash $packageSys
+        SysSignatureStatus = 'Valid'
+        CatSignatureStatus = 'Valid'
     }
     Verification = [ordered]@{
         InfVerif='PASS';SysAuthenticode='Valid';CatAuthenticode='Valid'
