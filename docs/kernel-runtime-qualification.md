@@ -991,10 +991,10 @@ off. DMA verification, fault injection, PnP cycling, acquisition and hardware
 IOCTLs remain excluded. Configuration changes and both reboots require new
 explicit authorization.
 
-## Batch 7 executable recovery and Verifier preparation
+## Batch 8 executable recovery and Verifier preparation
 
 The canonical [recovery and backup procedure](recovery-and-backup.md) replaces
-the earlier high-level recovery outline. Its 2026-10-22 passive inventory found
+the earlier high-level recovery outline. Its 2026-10-23 passive inventory found
 only the internal GPT NVMe, EFI and C:. No bootable external medium, writable
 off-C: destination, recovery partition, system image or mapped backup target was
 available. Consequently no rollback copy or image was attempted, and Verifier
@@ -1007,6 +1007,15 @@ requires elevation, `-ApplyAcknowledged` and a new backup path. It changes only
 page file, dump path, overwrite policy and absence of a dedicated dump. The
 real audit made no changes. Mocked apply/verify/restore tests pass 13/13 under
 the same implementation.
+
+`scripts/manage-system-image-readiness.ps1` adds read-only audit/plan modes,
+exact disk and volume identity binding, capacity/filesystem/system-disk guards,
+an explicit one-shot WBAdmin execution gate, persistent process logs and a
+post-backup catalog query. Its exact production predicate and mock process path
+pass 21/21. `scripts/validate-recovery-layout.ps1` checks distinct Windows, EFI
+and recovery roots plus the required SYSTEM, kernel, BCD, x64 UEFI and boot-WIM
+markers without mounting or modifying anything; its mocks pass 6/6. Neither
+script has executed a live backup or recovery operation.
 
 The future one-boot experiment still targets only the exact approved
 `LecS65AcqDrv.sys` with mask `0x0002093B`. Before its separately authorized
