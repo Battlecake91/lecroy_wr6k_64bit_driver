@@ -611,8 +611,32 @@ and CAT, and the RSDS/PDB match
 CREATE/CLOSE/REMOVE/UnknownActive contracts pass; the installed signed SYS hash
 and running service remain unchanged. No evidence justified a rebuild.
 
-Any real signing run requires a new explicit private-key authorization and a
-new non-overwriting output set. Driver Store staging, installation, captured
-restart and later Verifier work remain independent authorizations. The current
-unsigned artifacts and installed `oem101.inf` package must not be treated as a
-signed release candidate.
+The unsigned artifacts remain the immutable source set; they must not be
+mistaken for the signed promoted package described below.
+
+## Frozen promotion and installed Batch 9 candidate
+
+Batch 9 added `scripts/sign-frozen-driver-package.ps1` so an already qualified
+unsigned package can be promoted without silently rebuilding it. The workflow
+requires all frozen source hashes and tree identities, copies only the exact
+INF/SYS/PDB set, generates a new catalog, signs only the copied SYS and catalog,
+and verifies InfVerif, Authenticode, local chain, catalog membership and
+SYS/PDB identity. It never stages or installs a package. Focused tests pass
+11/11.
+
+The one authorized promotion used the package above and certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. Final hashes are:
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `C7F7D496A302FB53ACEC940A77F8A17F781F822EB5A34CEA11A4708B6385C3B6` |
+| signed CAT | `19E9358FB1346C8C40FE96D239E2000D0270559C54C04E6D3855CA710AB60B4B` |
+| signed SYS | `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A` |
+| matching PDB | `5F36EF5F238F65F17EBD22B4456523817B8A7549984304FFD317A39428A174D7` |
+| signed manifest | `C8283DF89C4EC3E9517A90B72F35A5BF48E102B0B3BF66D3C12455BE86A1201F` |
+
+The manifest records `RebuildPerformed=false`, exact source manifest
+`5FA35C702314A689867DAB3E27AEA83AB2EB738642C2495540BFF0C7621DAA60`
+and the unchanged driver/include trees. The package is installed as
+`oem102.inf`, version `0.2026.1022.1`, and its loaded SYS matches the signed
+hash. This is a locally test-signed development package, not WHQL/WHCP output.

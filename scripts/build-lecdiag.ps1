@@ -1,6 +1,8 @@
 param(
     [ValidateSet("x64", "x86")]
-    [string]$Architecture = "x64"
+    [string]$Architecture = "x64",
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$MsvcVersion = '14.41.34120'
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,32 +43,30 @@ function Invoke-LecdiagBuildWithCl {
     }
 }
 
-$cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-if ($cl -and $Architecture -eq "x64") {
-    Invoke-LecdiagBuildWithCl $cl.Source $out
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if (-not (Test-Path $vswhere)) {
+    throw "vswhere.exe was not found. Install Visual Studio C++ tools."
 }
-else {
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) {
-        throw "cl.exe is not in PATH and vswhere.exe was not found. Install Visual Studio C++ tools or run from an x64 Native Tools prompt."
-    }
 
-    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (-not $vs) {
-        throw "Visual Studio C++ x64 build tools were not found."
-    }
+$vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) {
+    throw "Visual Studio C++ x64 build tools were not found."
+}
+$toolset = Join-Path $vs "VC\Tools\MSVC\$MsvcVersion"
+if (-not (Test-Path -LiteralPath $toolset -PathType Container)) {
+    throw "Requested MSVC toolset was not found: $toolset"
+}
 
-    $vcvarsName = if ($Architecture -eq "x86") { "vcvars32.bat" } else { "vcvars64.bat" }
-    $vcvars = Join-Path $vs "VC\Auxiliary\Build\$vcvarsName"
-    if (-not (Test-Path $vcvars)) {
-        throw "$vcvarsName not found: $vcvars"
-    }
+$vcvarsName = if ($Architecture -eq "x86") { "vcvars32.bat" } else { "vcvars64.bat" }
+$vcvars = Join-Path $vs "VC\Auxiliary\Build\$vcvarsName"
+if (-not (Test-Path $vcvars)) {
+    throw "$vcvarsName not found: $vcvars"
+}
 
-    $cmd = "`"$vcvars`" >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:`"$out`" lecdiag.c"
-    & $env:ComSpec /d /s /c $cmd
-    if ($LASTEXITCODE -ne 0) {
-        throw "lecdiag build failed with exit code $LASTEXITCODE."
-    }
+$cmd = "`"$vcvars`" -vcvars_ver=$MsvcVersion >nul && cd /d `"$srcDir`" && cl /nologo /W4 /O2 /D_CRT_SECURE_NO_WARNINGS /Fe:`"$out`" lecdiag.c"
+& $env:ComSpec /d /s /c $cmd
+if ($LASTEXITCODE -ne 0) {
+    throw "lecdiag build failed with exit code $LASTEXITCODE."
 }
 
 if (-not (Test-Path $out)) {
@@ -105,3 +105,4 @@ if ($machine -ne $expectedMachine) {
 Write-Host "Built:"
 Write-Host "  $out"
 Write-Host ("  Architecture: {0} (PE machine 0x{1:X4})" -f $Architecture, $machine)
+Write-Host "  MSVC: $MsvcVersion"

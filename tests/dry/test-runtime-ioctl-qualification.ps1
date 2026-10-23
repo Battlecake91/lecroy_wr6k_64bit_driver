@@ -32,13 +32,13 @@ function New-MockState {
     param(
         [string]$Location = 'PCI bus 4, device 1, function 0',
         [string]$InstanceId = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0',
-        [AllowNull()][object]$Version = '0.2026.1018.1',
+        [AllowNull()][object]$Version = '0.2026.1022.1',
         [int]$ProblemCode = 0,
         [object]$DeviceGuard,
         [object[]]$Clients = @(),
         [int]$MissingInterface = -1,
         [int]$DuplicateInterface = -1,
-        [string]$SysHash = '8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A',
+        [string]$SysHash = 'D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A',
         [bool]$TestSigning = $true,
         [bool]$SecureBoot = $false
     )
@@ -69,7 +69,7 @@ function New-MockState {
         Devices=@([pscustomobject]@{
             InstanceId=$InstanceId
             HardwareIds=@('PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00')
-            Inf='oem101.inf'; Version=$Version; ProblemCode=$ProblemCode
+            Inf='oem102.inf'; Version=$Version; ProblemCode=$ProblemCode
             DeviceStatus=if ($ProblemCode -eq 0) { 'OK' } else { 'Error' }
             ServiceName='LecS65AcqDrv'; ServiceStatus=if ($ProblemCode -eq 0) { 'Running' } else { 'Stopped' }
             SysHash=$SysHash; Location=$Location; Interfaces=@($interfaces)
@@ -138,22 +138,22 @@ try {
     $script:mockHash = (Get-FileHash -Algorithm SHA256 $mockExe).Hash
 
     Test-Case 'complete production flow passes once with UTF-8 no BOM and German metadata' {
-        $result = Invoke-HarnessCase 'pass-no-bom' (New-MockState -Location 'GERMAN') 0 7
+        $result = Invoke-HarnessCase 'pass-no-bom' (New-MockState -Location 'GERMAN') 0 11
         $context = Get-Content (Join-Path $result.Evidence 'context.json') -Raw | ConvertFrom-Json
-        if (@($context.ApprovedCommands).Count -ne 7) { throw 'allowlist count is not seven' }
+        if (@($context.ApprovedCommands).Count -ne 11) { throw 'allowlist count is not eleven' }
         $calls = @(Get-ChildItem $result.Evidence -Filter '*.stdout.txt' | ForEach-Object {
             Get-Content $_.FullName | Where-Object { $_ -like 'MOCK_DEVICE_IO_CONTROL *' }
         })
-        if ($calls.Count -ne 8) { throw "mock IOCTL calls=$($calls.Count), expected=8" }
+        if ($calls.Count -ne 12) { throw "mock IOCTL calls=$($calls.Count), expected=12" }
         if (@($calls | Where-Object { $_ -like '*ioctl=0x00222C00 input=4 output=0 input-hex=00000000*' }).Count -ne 1) {
             throw 'four-byte zero-delay request was not exact'
         }
     }
     Test-Case 'UTF-8 BOM and BDF 5:1.0 pass with unchanged identity' {
-        [void](Invoke-HarnessCase 'pass-bom-bdf5' (New-MockState -Location 'GERMAN') 0 7 $null $true)
+        [void](Invoke-HarnessCase 'pass-bom-bdf5' (New-MockState -Location 'GERMAN') 0 11 $null $true)
     }
     Test-Case 'BDF 4:1.0 passes with unchanged identity' {
-        [void](Invoke-HarnessCase 'pass-bdf4' (New-MockState -Location 'PCI bus 4, device 1, function 0') 0 7)
+        [void](Invoke-HarnessCase 'pass-bdf4' (New-MockState -Location 'PCI bus 4, device 1, function 0') 0 11)
     }
     Test-Case 'Batch 3 resume runs only R0-8, R0-9 and conditional R1' {
         $result = Invoke-HarnessCase 'batch3-resume' (New-MockState -Location 'GERMAN') `
@@ -223,22 +223,22 @@ try {
     Test-Case 'R0 process failure blocks remaining R0 and all R1' {
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r0-7-trace-size';Type='Fail';Ioctl='00223004'})}
-        [void](Invoke-HarnessCase 'r0-fail' (New-MockState) 1 3 $scenario)
+        [void](Invoke-HarnessCase 'r0-fail' (New-MockState) 1 7 $scenario)
     }
     Test-Case 'first R1 failure prevents second R1' {
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r1-pci';Type='Fail';Ioctl='80006014'})}
-        [void](Invoke-HarnessCase 'r1-fail' (New-MockState) 1 6 $scenario)
+        [void](Invoke-HarnessCase 'r1-fail' (New-MockState) 1 10 $scenario)
     }
     Test-Case 'timeout is bounded and never retried' {
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r0-5-noop';Type='Timeout';Ioctl='00222400'})}
-        [void](Invoke-HarnessCase 'timeout' (New-MockState) 1 1 $scenario)
+        [void](Invoke-HarnessCase 'timeout' (New-MockState) 1 5 $scenario)
     }
     Test-Case 'missing output stops at exact command' {
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r0-7-trace-size';Type='MissingOutput';Ioctl='00223004'})}
-        [void](Invoke-HarnessCase 'missing-output' (New-MockState) 1 3 $scenario)
+        [void](Invoke-HarnessCase 'missing-output' (New-MockState) 1 7 $scenario)
     }
     Test-Case 'existing evidence directory is rejected without overwrite' {
         $statePath=Join-Path $root 'existing-state.json'; Write-JsonEncoding $statePath (New-MockState) $false

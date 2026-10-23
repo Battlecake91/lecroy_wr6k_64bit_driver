@@ -23,6 +23,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $crashKeyPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\CrashControl'
+$crashSubKeyPath = 'SYSTEM\CurrentControlSet\Control\CrashControl'
 $memoryKeyPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
@@ -125,8 +126,18 @@ function Set-CrashValue {
         Save-MockState $State
         return
     }
-    $key = Get-Item -LiteralPath $crashKeyPath
-    $key.SetValue($Name, $Value, [Microsoft.Win32.RegistryValueKind]::DWord)
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+        $crashSubKeyPath, $true)
+    if ($null -eq $key) {
+        throw "Unable to open CrashControl for bounded write access."
+    }
+    try {
+        $key.SetValue($Name, $Value,
+            [Microsoft.Win32.RegistryValueKind]::DWord)
+    }
+    finally {
+        $key.Dispose()
+    }
 }
 
 function Restore-CrashValue {
@@ -141,15 +152,23 @@ function Restore-CrashValue {
         Save-MockState $State
         return
     }
-    if (-not [bool]$Record.Exists) {
-        Remove-ItemProperty -LiteralPath $crashKeyPath -Name $Name `
-            -ErrorAction SilentlyContinue
-        return
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+        $crashSubKeyPath, $true)
+    if ($null -eq $key) {
+        throw "Unable to open CrashControl for bounded restore access."
     }
-    $kind = [Enum]::Parse([Microsoft.Win32.RegistryValueKind],
-        [string]$Record.Kind)
-    $key = Get-Item -LiteralPath $crashKeyPath
-    $key.SetValue($Name, $Record.Value, $kind)
+    try {
+        if (-not [bool]$Record.Exists) {
+            $key.DeleteValue($Name, $false)
+            return
+        }
+        $kind = [Enum]::Parse([Microsoft.Win32.RegistryValueKind],
+            [string]$Record.Kind)
+        $key.SetValue($Name, $Record.Value, $kind)
+    }
+    finally {
+        $key.Dispose()
+    }
 }
 
 function Assert-WriteAuthorized {

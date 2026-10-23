@@ -1,57 +1,63 @@
 # Current project status
 
-## Batch 8 recovery establishment and release-readiness gate
+## Batch 9 runtime qualification
 
-- The 2026-10-23 passive baseline still matches the healthy installed state:
-  Windows 10 Pro x64 build 19045, current-boot test signing enabled, Secure Boot
-  disabled, inactive Device Guard services, `oem101.inf` version
-  `0.2026.1018.1`, loaded SYS SHA-256
-  `8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A`,
-  problem code zero, running service and five active interfaces. No device was
-  opened and no target Code Integrity, Kernel-PnP or service error was found
-  since the current boot.
-- Recovery remains blocked. A fresh storage inventory found only the same GPT
-  NVMe containing EFI and C:. No USB disk, recovery medium, network mapping,
-  off-C: rollback copy, system image or alternate writable destination is
-  present. The immutable rollback inventory is verified but still exists only
-  on C:. See
-  [recovery and backup readiness](recovery-and-backup.md).
-- Crash-dump audit found a system-managed 1,280-MiB boot page file,
-  `CrashDumpEnabled=7`, `AutoReboot=1`, overwrite enabled, no dedicated dump
-  and about 16.1 GiB free on C:. The proposed minimum is a kernel dump
-  (`CrashDumpEnabled=2`) with `AutoReboot=0`, retaining the system-managed page
-  file and verifying its actual post-reboot allocation. No setting was changed.
-  The versioned audit/apply/verify/restore script passes 13/13 mocked tests.
-- A versioned system-image workflow now audits storage, requires exact disk and
-  volume identities, rejects the system disk, insufficient space and non-NTFS
-  targets, requires a new evidence directory and explicit execution gate,
-  preserves process logs and verifies the resulting WBAdmin catalog. Its
-  mocked path passes 21/21. A read-only offline recovery-layout validator
-  passes 6/6. No real backup, media creation or recovery boot occurred.
-- The frozen unsigned diagnostic Release candidate from integration
-  workflow commit `b1a5404dbee0d3352b9eb1b9cb6ada57fb26d6fc`. Its exact driver and
-  include trees match reviewed PR #27. Identity is Release x64,
-  `DriverVer=10/22/2026,0.2026.1022.1`, `PnpStatusDiagnostics=true`, WDK
-  10.0.28000.0 and MSVC 14.41.34120. Debug and Release build cleanly;
-  recorded 397/397 functional checks and 66,000/66,000 stress iterations. Batch
-  8 independently rechecked all hashes, exact tree provenance, INF/CAT identity,
-  11 diagnostic markers, SYS/PDB match, public ABI and ownership/quarantine
-  contracts. No rebuild was justified. The package remains unsigned, unstaged
-  and uninstalled.
-- Frozen unsigned artifacts are INF
+- The current Windows 10 Pro x64 build 19045 test environment boots from the
+  only visible physical disk: GPT NVMe `HFM256GDHTNG-8510B`, serial
+  `ACE4_2E00_9590_A2AA.`, unique ID `eui.ACE42E009590A2AA`. The owner states
+  that production x86 resides on a physically separate disk with an independent
+  bootloader; that disk was not visible from x64 and was not modified. The x64
+  installation is explicitly expendable for this development phase.
+- CrashControl is now `CrashDumpEnabled=2`, `AutoReboot=0`; the system-managed
+  page file was preserved and allocated 8,192 MiB after the authorized reboot.
+  Current-boot test signing remained enabled, Secure Boot remained disabled,
+  and about 9.63 GiB remained free. No crash dump was produced.
+- Exactly one non-DMA Driver Verifier boot targeted only
+  `LecS65AcqDrv.sys` with mask `0x0002093B`: Special Pool, IRQL checking, pool
+  tracking, I/O verification, deadlock detection, security checks,
+  miscellaneous checks and DDI compliance. DMA verification and fault
+  injection were absent. Runtime counters reached 4,609,185 successful of
+  4,609,185 attempted allocations with zero failures; no bugcheck or target
+  Verifier violation occurred. One-boot state cleared and both persistent and
+  runtime Verifier state are now inactive.
+- The frozen unsigned Batch 7 package was promoted without rebuilding and
+  signed once with local test certificate
+  `4296FA2E355613DF0D5CE6F24D0898E00B706472`. Signed candidate hashes are INF
   `C7F7D496A302FB53ACEC940A77F8A17F781F822EB5A34CEA11A4708B6385C3B6`,
-  CAT `813F87489BC35D53B5008A4D3BAD19D637FCAC6CFDC74EAF13EAC6FE1605CA3A`,
-  SYS `D236EC3809E02BD0DA0BC3A679A48E346298A1076393BA5A8812794956A70646`,
-  matching PDB
-  `5F36EF5F238F65F17EBD22B4456523817B8A7549984304FFD317A39428A174D7`
+  CAT `19E9358FB1346C8C40FE96D239E2000D0270559C54C04E6D3855CA710AB60B4B`,
+  SYS `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`,
+  PDB `5F36EF5F238F65F17EBD22B4456523817B8A7549984304FFD317A39428A174D7`
   and manifest
-  `5FA35C702314A689867DAB3E27AEA83AB2EB738642C2495540BFF0C7621DAA60`.
-  The Release image is AMD64/native, enters at `DriverEntry`, imports only
-  `hal.dll` and `ntoskrnl.exe`, contains `PNP_STATUS:` and is not signed.
-- GitHub reports PRs #26 through #32 mergeable. The validated stacked order is
-  PR #26, #28, #29, #30, #31, #32, then Batch 8. PR #31 already contains the
-  exact reviewed PR #27 driver/include trees, so PR #27 must not be merged
-  independently into the same history.
+  `C8283DF89C4EC3E9517A90B72F35A5BF48E102B0B3BF66D3C12455BE86A1201F`.
+  Authenticode, local chain, catalog membership and SYS/PDB identity pass;
+  Microsoft kernel-policy verification fails as expected for a local test
+  certificate.
+- The single installation published `oem102.inf`, version
+  `0.2026.1022.1`. The loaded SYS matches the signed hash, the device remains
+  problem-free, the service runs and all five interfaces are active. The
+  installation capture completed but the old launcher falsely timed out while
+  serializing about 100 MiB of already-persisted capture output. It was fixed
+  to keep large streams in exclusive evidence files and return only a compact
+  job result; elevated Windows PowerShell 5.1 mocks pass 31/31.
+- The rebuilt and pinned x64 diagnostic executable has SHA-256
+  `0567A21992E95FFBB8E08B24ED10DA1CB4339682CB6DD31CD42F740F99E955D2`.
+  The new driver passed the bounded hardware matrix: R0 9/9 and R1 2/2.
+  Expected trace size is `0x110`, register-list size is `0x2CAE`, PCI is
+  `1570:0005`, observed BDF is 5:1.0, and both bounded START reads returned
+  `0x00000002`.
+- One captured PnP restart then completed without retry: one DebugView capture,
+  zero install invocations and one PnPUtil restart. Forty-two `PNP_STATUS:`
+  records show successful teardown and START, IRQ connection and five interface
+  enables. Lower-stack query paths returned the known `0xC00000BB`; local
+  START and final status were successful. Post-restart baseline passes, no
+  target error event occurred, and DebugView/`Dbgv.sys` left no running
+  component.
+- Focused unchanged-source DMA qualification passes: process/file lifetime
+  23/23, combined lifetime 19/19, mapping ownership 17/17, completion 39/39,
+  deterministic interleavings 2/2, default DMA stress 5,000/5,000, INTEN
+  49/49 plus 1,000/1,000, PnP publication 38/38 and source contracts 64/64.
+  No real DMA or acquisition was executed. Physical DMA retirement, safe abort
+  and final PCI-access ordering remain unproved; WDM-v3 DMA remains dormant.
 
 ## Build and software regression
 
@@ -302,28 +308,6 @@
   failed closed. `PnpRestartInvocations=0`; no PnP transition or Event 411
   occurred. The timestamped-record predicate is corrected offline. Any real
   restart now requires a new explicit authorization.
-- Independent review of PR #27 found no release, quarantine, remove-lock or
-  public-ABI defect. Debug and Release x64 build with zero warnings/errors; the
-  complete Dry suite, 23/23 process/file lifetime model, 19/19 combined
-  lifetime audit, 50,000/50,000 DMA stress and 10,000/10,000 INTEN stress pass.
-  This is offline qualification only; the PR has not been signed, installed or
-  hardware-qualified.
-- Driver Verifier remains blocked. Verifier is off, current-boot test-signing
-  is enabled and automatic dumps are configured, but WinRE is disabled, the
-  GPT disk has only EFI and C: partitions, no removable recovery medium was
-  present, and the current 1,280-MiB page file does not demonstrate adequate
-  backing for a useful dump from about 8 GiB RAM.
-- The production multi-handle DMA ownership gap is fixed on a separate
-  development branch. CREATE records a nonpaged file-object/process
-  association, DMA token operations use that association, and only the last
-  handle for the recorded process retires safe inactive registrations.
-  REMOVE drains remaining associations after remove-lock rundown;
-  `UnknownActive` remains irreversible. Debug and Release x64 build with zero
-  warnings and errors. The complete Dry suite, 23/23 process/file cases,
-  19/19 combined lifetime cases, 5,000/5,000 default and 50,000/50,000
-  expanded DMA races, and 1,000/1,000 default and 10,000/10,000 expanded INTEN
-  iterations pass. This changed driver has not been signed, installed or
-  hardware-tested.
 - PR #26 has no repository-level merge conflict: its base commit is an ancestor
   of the head, the head is a strict descendant of the base, and a local
   `git merge-tree --write-tree` succeeds. The reported non-mergeable state is
@@ -440,14 +424,9 @@
   Event 411 did not recur. This corroborates the earlier Event 411 as an
   installation intermediate, but does not identify its internal Windows
   producer. No physical DMA-idle proof was obtained.
-- The Batch 6 launcher path passes 31/31 elevated Windows PowerShell 5.1 mocks
-  and 64/64 source contracts. The combined PR #27 integration branch preserves
-  the exact reviewed driver tree and passes 23/23 process lifetime, 19/19
-  combined lifetime, 10/10 PnP IRP, 38/38 publication and 64/64 source-contract
-  tests. It remains unsigned, uninstalled and hardware-unqualified.
-- Driver Verifier remains blocked: WinRE is disabled, no recovery partition,
-  external recovery medium, off-C rollback copy, system image or shadow copy
-  was found, and the current 1,280-MiB page file does not demonstrate useful
-  dump backing for about 8 GiB RAM.
+- The launcher path passes 31/31 elevated Windows PowerShell 5.1 mocks and
+  64/64 source contracts. The exact reviewed DMA-fixed driver tree is now the
+  installed Batch 9 candidate; its bounded non-DMA runtime result is summarized
+  at the top of this document.
 - The established real-PCI safe ABI baseline remains 9/9 PASS and the last
   established hardware regression milestone remains 11/11 PASS.

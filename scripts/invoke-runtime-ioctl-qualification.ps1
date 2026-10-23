@@ -4,7 +4,7 @@
 .DESCRIPTION
   OfflineMock exercises the production control flow through a fake Win32
   boundary. Preflight performs passive validation only. RunAuthorized performs
-  the exact five approved R0 commands and, after their success, two read-only
+  the exact nine approved R0 commands and, after their success, two read-only
   R1 commands. The script never installs, restarts or reconfigures a driver.
 #>
 [CmdletBinding()]
@@ -29,8 +29,8 @@ $repo = Split-Path -Parent $PSScriptRoot
 $lecdiag = Join-Path $repo 'tools\lecdiag\build\lecdiag.exe'
 $runnerScript = Join-Path $PSScriptRoot 'native-process.ps1'
 $guardScript = Join-Path $PSScriptRoot 'deviceguard-preflight.ps1'
-$expectedLecdiagHash = 'ADD4A869C05DD85A55DD9308927D2AE946907F26C0D0054E46A54738441FB7BA'
-$expectedSysHash = '8E88F8A1CD60212FCCCB0CA9D894D76C6109A118E965041D02703BFAA8DB2D2A'
+$expectedLecdiagHash = '0567A21992E95FFBB8E08B24ED10DA1CB4339682CB6DD31CD42F740F99E955D2'
+$expectedSysHash = 'D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A'
 $expectedInstance = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0'
 $expectedHardware = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00'
 $interfaceClasses = @(
@@ -41,6 +41,18 @@ $interfaceClasses = @(
     '{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}'
 )
 $commands = @(
+    [pscustomobject]@{ Name='r0-1-build'; Phase='R0'; Args=@('build');
+        Pattern='(?m)^driver build:\s+\d+ \(returned=4\)\r?$';
+        MockCalls=@('ioctl=0xCFDC21C8 input=0 output=4') },
+    [pscustomobject]@{ Name='r0-2-stats'; Phase='R0'; Args=@('stats');
+        Pattern='(?m)^stats version:\s+\d+\r?$';
+        MockCalls=@('ioctl=0x80006000 input=0 output=48') },
+    [pscustomobject]@{ Name='r0-3-bars'; Phase='R0'; Args=@('bars');
+        Pattern='(?m)^bars version:\s+\d+, count:\s+\d+, returned=72\r?$';
+        MockCalls=@('ioctl=0x80006008 input=0 output=72') },
+    [pscustomobject]@{ Name='r0-4-trace'; Phase='R0'; Args=@('trace');
+        Pattern='(?m)^trace version:\s+\d+, entries:\s+\d+, total seen:\s+\d+, returned=\d+\r?$';
+        MockCalls=@('ioctl=0x8000600C input=0 output=118800') },
     [pscustomobject]@{ Name='r0-5-noop'; Phase='R0'; Args=@('raw-ioctl','0x00222400','','0');
         Pattern='(?m)^IOCTL 0x00222400 succeeded: input=0 output-capacity=0 returned=0\r?$';
         MockCalls=@('ioctl=0x00222400 input=0 output=0 input-hex=') },
@@ -217,8 +229,8 @@ function Test-QualificationState([object]$State, [string]$ExecutableHash) {
     $device = if ($matching.Count -eq 1) { $matching[0] } else { $null }
     if ($null -ne $device) {
         if ($device.InstanceId -ne $expectedInstance) { $errors += 'PCI instance ID mismatch.' }
-        if ($device.Inf -ne 'oem101.inf') { $errors += 'Published INF mismatch.' }
-        if ($device.Version -ne '0.2026.1018.1') { $errors += 'Driver version mismatch.' }
+        if ($device.Inf -ne 'oem102.inf') { $errors += 'Published INF mismatch.' }
+        if ($device.Version -ne '0.2026.1022.1') { $errors += 'Driver version mismatch.' }
         if ($null -eq $device.ProblemCode -or [int]$device.ProblemCode -ne 0 -or
             $device.DeviceStatus -ne 'OK') { $errors += 'Device is not problem-free.' }
         if ($device.ServiceName -ne 'LecS65AcqDrv' -or $device.ServiceStatus -ne 'Running') {
@@ -257,7 +269,7 @@ function Get-TargetEvents([datetime]$StartUtc) {
             LogName=$log; StartTime=$StartUtc.ToLocalTime()
         } -ErrorAction SilentlyContinue)) {
             $xml = $event.ToXml()
-            if ($xml -match '(?i)(VEN_1570&amp;DEV_0005|VEN_1570&DEV_0005|LecS65AcqDrv|oem101\.inf)') {
+            if ($xml -match '(?i)(VEN_1570&amp;DEV_0005|VEN_1570&DEV_0005|LecS65AcqDrv|oem102\.inf)') {
                 $result += [pscustomobject]@{ LogName=$log; RecordId=$event.RecordId;
                     Id=$event.Id; Level=$event.Level;
                     TimeCreatedUtc=$event.TimeCreated.ToUniversalTime().ToString('o');

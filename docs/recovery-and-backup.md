@@ -1,16 +1,16 @@
 # Recovery, backup and crash-dump readiness
 
-This document is the recovery gate for kernel qualification on the WR6k test
-host. It is a procedure, not proof that recovery is currently available. The
-2026-10-23 passive audit found no bootable external recovery medium, no off-C:
-rollback copy, no system image and no second internal disk. Driver Verifier and
-installation of a new driver therefore remain blocked.
+This document records recovery readiness for the WR6k test host. The owner has
+explicitly accepted complete loss and reinstallation of the Windows 10 x64
+development environment; an external image or recovery rehearsal is therefore
+not a prerequisite for current bounded kernel qualification. That acceptance
+does not cover the production x86 installation, its physical disk, the scope,
+calibration/license data, EEPROM or FPGA contents.
 
 ## Current passive inventory
 
-The host runs Windows 10 Pro x64 build 19045 in UEFI mode. A fresh Batch 8
-inventory again found no USB disk, optical volume or mapped network storage.
-The only storage
+The host runs Windows 10 Pro x64 build 19045 in UEFI mode. Batch 9 again found
+no USB disk, optical volume or mapped network storage. The only visible storage
 device is one healthy GPT NVMe disk, model `HFM256GDHTNG-8510B`, serial
 `ACE4_2E00_9590_A2AA.` and unique ID `eui.ACE42E009590A2AA`. It contains a
 600-MiB EFI System Partition and the approximately 110.6-GiB C: volume. No
@@ -20,22 +20,26 @@ the Batch 8 audit. Record the physical identity again at
 execution time; disk numbers and recovery-environment drive letters are not
 stable identities.
 
-The passive crash-dump audit recorded:
+The owner reports that production Windows x86 resides on a physically separate
+disk with an independent bootloader. That disk was not visible during Batch 9;
+no command addressed, mounted or modified it. This is owner-confirmed topology,
+not independently observed x64 metadata.
+
+Batch 9 applied and verified the bounded x64 crash-dump configuration:
 
 - 8,458,805,248 bytes of physical RAM;
 - approximately 16.1 GiB free on C:;
-- a system-managed boot page file with 1,280 MiB currently allocated;
-- `CrashDumpEnabled=7`, `AutoReboot=1`, `DumpFile=%SystemRoot%\MEMORY.DMP`
+- a preserved system-managed boot page file with 8,192 MiB allocated after
+  reboot;
+- `CrashDumpEnabled=2`, `AutoReboot=0`, `DumpFile=%SystemRoot%\MEMORY.DMP`
   and overwrite enabled; and
 - no dedicated dump file.
 
-The private Batch 8 audit root is
-`C:\Users\LeCroyUser\.codex\driver-backups\Phase8-PassiveAudit-20261023-final2`.
-Its system-image inventory SHA-256 is
-`2CB491C12E620EE24FCED75DFD475F6C97A7A5822A3C9D311B197571B7E79A64`
-and its crash-dump audit SHA-256 is
-`DDD09A676DCAE37947DD08BE8EA3264DDF7E271A1B2695FAC7C7B26A9A210620`.
-It contains metadata only and must not be committed.
+The private Batch 9 baseline evidence root is
+`C:\Users\LeCroyUser\.codex\driver-backups\Phase9-Baseline-20261023-175650`.
+Its exact applied-state CrashControl backup SHA-256 is
+`B8F8737B4893A171AAA6DED01D21B22B8A4825946904FB5E4C7A74F43FEC8B53`.
+Private evidence must not be committed.
 
 ## Immutable rollback inventory
 
@@ -152,12 +156,13 @@ The versioned `scripts/manage-crash-dump-readiness.ps1` implements `Audit`,
 an explicit acknowledgement and a new exclusive backup path. It changes only
 `CrashDumpEnabled` and `AutoReboot`; it neither changes the page file nor adds a
 dedicated dump. In this batch only the real read-only audit and mocked
-apply/restore path were executed.
+apply/restore path were initially executed; Batch 9 subsequently completed the
+authorized real apply and post-reboot verification.
 
-After any separately authorized apply, reboot is required before relying on the
-setting. Then run `Verify`, recheck actual page-file allocation and C: free
-space, and do not enable Verifier unless sufficient dump backing is observed.
-Preserve the settings backup off C: before the Verifier boot.
+Batch 9 completed the authorized apply, reboot and verification. The one-boot
+non-DMA Verifier run completed without a bugcheck, and Verifier is inactive.
+Future Verifier runs remain separate authorizations and must again verify
+page-file allocation, free space, current boot identity and exact target.
 
 Microsoft sources: [kernel memory
 dumps](https://learn.microsoft.com/windows-hardware/drivers/debugger/kernel-memory-dump)

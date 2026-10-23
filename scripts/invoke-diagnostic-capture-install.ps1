@@ -304,11 +304,21 @@ function Start-CaptureJob {
         $parsedArguments = $ArgumentJson | ConvertFrom-Json
         [string[]]$nativeArguments = @($parsedArguments |
             ForEach-Object { [string]$_ })
-        Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
+        $nativeResult = Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
             -FilePath $File -Arguments $nativeArguments -WorkingDirectory $Working `
             -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit `
             -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr `
-            -ProcessInfoPath $ProcessInfo
+            -ProcessInfoPath $ProcessInfo -SuppressConsoleOutput
+        # Never serialize the potentially very large captured streams through
+        # the Windows PowerShell background-job transport. The authoritative
+        # stdout/stderr bytes are already preserved in exclusive evidence files.
+        [pscustomobject]@{
+            ProcessId = $nativeResult.ProcessId
+            ExitCode = $nativeResult.ExitCode
+            TimedOut = $nativeResult.TimedOut
+            JobAssigned = $nativeResult.JobAssigned
+            ProcessTreeClosed = $nativeResult.ProcessTreeClosed
+        }
     } -ArgumentList $RunnerPath, $Executable, $argumentJson, $WorkingDirectory,
         $LogPath, ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds),
         $LiveStdOutPath, $LiveStdErrPath, $ProcessInfoPath
