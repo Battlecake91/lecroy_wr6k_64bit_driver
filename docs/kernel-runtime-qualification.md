@@ -959,77 +959,68 @@ and evidence manifest
 
 ## Recovery and dump preparation
 
-The passive audit found a single healthy NVMe disk with only EFI and C:
-partitions. WinRE is disabled and has no location. There is no removable
-recovery disk, mapped recovery share, system image or VSS snapshot; rollback
-exists only on C:. A missing or failed NVMe is therefore not recoverable from
-the current host state. Prepare and boot-test external Windows media, copy the
-verified rollback set and a restorable system image off C:, and preserve BCD
-evidence before any Verifier configuration.
+The owner explicitly accepts loss and reinstallation of the expendable x64
+environment, so external media and a system image were not prerequisites for
+Batch 9. The separate production x86 disk and all hardware/firmware remain out
+of scope. The only visible disk was the x64 GPT NVMe; it contains EFI and C:.
 
-WinRE recovery must identify the physical disk by model, size and unique
-identity, locate Windows by its SYSTEM hive, and locate the EFI partition by
-its FAT32 contents. Never rely on cached volume numbers or `{current}`. Enumerate
-the offline BCD store and operate on its exact loader GUID. Prefer a one-time
-Safe Mode boot followed by elevated `verifier /reset`; remove the Safe Mode
-setting only after reset is verified. Offline SYSTEM-hive editing is a last
-resort and requires a hive backup and selection of the active control set.
+CrashControl is now kernel dump with automatic reboot disabled. The preserved
+system-managed page file allocated 8,192 MiB after reboot. The one-boot
+Verifier experiment below completed without a bugcheck and Verifier is now
+inactive. Any future Verifier run requires a new authorization and fresh
+identity, dump-backing and free-space checks. See
+[recovery and backup readiness](recovery-and-backup.md) for optional external
+recovery and destructive offline-repair procedures.
 
-For the first Verifier pass, use a kernel memory dump and provision reliable
-internal dump backing before reboot. Do not apply the complete-dump
-`RAM + 257 MiB` rule to a kernel dump. Kernel-dump demand depends on kernel
-virtual-memory use and must be checked against the actual post-reboot
-system-managed page-file allocation and C: free space. Disable automatic reboot
-for observation if separately approved. USB storage must not be assumed usable
-by the crash-dump path.
+## Batch 9 Verifier, deployment and bounded hardware result
 
-After recovery is demonstrated, the bounded target remains
-`verifier /flags 0x0002093B /driver LecS65AcqDrv.sys` plus `oneboot`. The first
-verified boot performs only passive device, service, interface and event
-inspection, followed by a controlled second reboot and proof that Verifier is
-off. DMA verification, fault injection, PnP cycling, acquisition and hardware
-IOCTLs remain excluded. Configuration changes and both reboots require new
-explicit authorization.
+The owner accepted loss of the expendable x64 installation and removed the
+external-image prerequisite for this phase while explicitly protecting the
+separate production x86 disk and scope hardware. Only the x64 GPT NVMe was
+visible. CrashControl was set to kernel dump with automatic reboot disabled;
+the system-managed page file was 8,192 MiB after reboot.
 
-## Batch 8 executable recovery and Verifier preparation
+One one-boot Driver Verifier run selected only `LecS65AcqDrv.sys` with exact
+mask `0x0002093B`. The decoded checks were Special Pool, IRQL checking, pool
+tracking, I/O verification, deadlock detection, security, miscellaneous and
+DDI compliance. DMA verification and fault injection were absent. Runtime
+counters reported 4,609,185 attempted and successful allocations, zero
+failures and no bugcheck. Persistent and runtime Verifier state are inactive.
 
-The canonical [recovery and backup procedure](recovery-and-backup.md) replaces
-the earlier high-level recovery outline. Its 2026-10-23 passive inventory found
-only the internal GPT NVMe, EFI and C:. No bootable external medium, writable
-off-C: destination, recovery partition, system image or mapped backup target was
-available. Consequently no rollback copy or image was attempted, and Verifier
-remains blocked.
+The frozen DMA-fixed package was signed without rebuilding and installed once.
+The current package is `oem102.inf`, version `0.2026.1022.1`, loaded SYS
+SHA-256
+`D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`.
+The problem code is zero, the service is running and all five interfaces are
+active.
 
-`scripts/manage-crash-dump-readiness.ps1` now implements read-only `Audit` and
-`Plan`, guarded `Apply`, post-change `Verify` and exact `Restore`. `Apply`
-requires elevation, `-ApplyAcknowledged` and a new backup path. It changes only
-`CrashDumpEnabled` to 2 and `AutoReboot` to 0; it preserves the system-managed
-page file, dump path, overwrite policy and absence of a dedicated dump. The
-real audit made no changes. Mocked apply/verify/restore tests pass 13/13 under
-the same implementation.
+The permanent runtime harness was updated to pin that package and a newly
+built x64 `lecdiag.exe` SHA-256
+`0567A21992E95FFBB8E08B24ED10DA1CB4339682CB6DD31CD42F740F99E955D2`.
+It executes the exact nine R0 commands before the conditional two R1 reads.
+Offline qualification passes 21/21. The authorized live result is 9/9 R0 and
+2/2 R1 PASS: trace size `0x110`, register-list size `0x2CAE`, PCI
+`1570:0005`, observed BDF 5:1.0 and matching START reads `0x00000002`.
 
-`scripts/manage-system-image-readiness.ps1` adds read-only audit/plan modes,
-exact disk and volume identity binding, capacity/filesystem/system-disk guards,
-an explicit one-shot WBAdmin execution gate, persistent process logs and a
-post-backup catalog query. Its exact production predicate and mock process path
-pass 21/21. `scripts/validate-recovery-layout.ps1` checks distinct Windows, EFI
-and recovery roots plus the required SYSTEM, kernel, BCD, x64 UEFI and boot-WIM
-markers without mounting or modifying anything; its mocks pass 6/6. Neither
-script has executed a live backup or recovery operation.
+The installation capture preserved valid installation evidence but its
+original launcher result falsely failed while Windows PowerShell serialized
+about 100 MiB of already-persisted stdout. Capture children now suppress
+console replay and return only a compact process result. The exclusive raw and
+child logs remain authoritative; elevated Windows PowerShell 5.1 mocks pass
+31/31.
 
-The future one-boot experiment still targets only the exact approved
-`LecS65AcqDrv.sys` with mask `0x0002093B`. Before its separately authorized
-configuration and reboot, all of these gates must pass:
+One subsequent `RestartWithCapture` run invoked capture once, installation
+zero times and PnP restart once. It exited successfully and retained 42
+`PNP_STATUS:` records. Teardown, local resource START, IRQ connection, five
+interface enables and final START all returned success. `0xC00000BB` appears
+only on forwarded lower-stack query paths. No target error event occurred;
+the post-restart baseline passed and DebugView left no process or kernel
+component. Raw capture SHA-256 is
+`9E7DB4826E6638A38347099BC5B2BB133DE1C7D40C9B8E9DB8B00EBA29C29AAF`.
 
-1. boot-test official x64 Windows 10 UEFI recovery media;
-2. independently verify an immutable off-C: rollback/evidence copy;
-3. create and restore-test a complete EFI plus Windows image;
-4. apply and post-reboot verify the kernel-dump policy and actual dump backing;
-5. rehearse Safe Mode or offline recovery, including `verifier /reset` and
-   preservation of test-signing state; and
-6. freeze the exact driver/package identity and baseline evidence.
-
-The first workload is passive inspection only. No IOCTL, PnP transition,
-acquisition, DMA, MMIO or fault injection is combined with that boot. Preserve
-any dump and events before recovery, then perform a separately authorized
-second boot and verify that Verifier is off.
+No acquisition or real DMA ran. Fresh focused unchanged-source tests pass
+23/23 process/file lifetime, 19/19 combined lifetime, 17/17 ownership, 39/39
+completion, 2/2 interleavings, 5,000/5,000 default DMA stress, 49/49 plus
+1,000/1,000 INTEN, 38/38 PnP publication and 64/64 source contracts. These
+prove software ownership and irreversible quarantine contracts, not physical
+DMA bus-idle, abort or final PCI-access ordering.
