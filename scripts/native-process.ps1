@@ -313,6 +313,7 @@ function Invoke-LecS65NativeProcess {
         [string]$LiveStdOutPath,
         [string]$LiveStdErrPath,
         [string]$ProcessInfoPath,
+        [switch]$SuppressConsoleOutput,
         [switch]$AllowPositiveExitCode,
         [switch]$ReturnOnNonZeroExit
     )
@@ -408,10 +409,10 @@ function Invoke-LecS65NativeProcess {
         Write-LecS65NativeLogs -LogPath $resolvedLog -StdOut $result.StdOut `
             -StdErr $result.StdErr -Summary $summary
     }
-    if (-not [string]::IsNullOrEmpty($result.StdOut)) {
+    if (-not $SuppressConsoleOutput -and -not [string]::IsNullOrEmpty($result.StdOut)) {
         Write-Host $result.StdOut.TrimEnd([char[]]@("`r", "`n"))
     }
-    if (-not [string]::IsNullOrEmpty($result.StdErr)) {
+    if (-not $SuppressConsoleOutput -and -not [string]::IsNullOrEmpty($result.StdErr)) {
         [Console]::Error.Write($result.StdErr)
     }
     if ($result.TimedOut) {
