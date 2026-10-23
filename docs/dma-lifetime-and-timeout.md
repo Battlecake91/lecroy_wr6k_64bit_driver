@@ -1,6 +1,6 @@
 # WR6k DMA completion, timeout and memory lifetime
 
-Status: **merged and offline-qualified; not deployment-qualified**, 2026-10-13.
+Status: **fail-closed development path; not deployment-qualified**, 2026-10-23.
 Implementation base: `fix/p0-irq-start-dma-gating` at merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
 Final PR #10 source-review parent: `fae8a50bb2b622628cd57e18723c3037698f06b5`; the merge tree is identical.
 Research reference only: PR #9 at `6bff97ff473035cd7b5a0b6bd51cf48cfe82d364`; no research merge.
@@ -121,14 +121,34 @@ unproven live-path premises. The correction adds no register access and keeps
 the existing IIMCL-then-GO order and values; it changes only the software
 state and ISR exclusion around those writes.
 
-The successful legacy PFN path intentionally remains behavior-compatible:
+The installed Batch 9 legacy PFN path remains behavior-compatible:
 `CompletionObserved` satisfies its historical synchronous wait and ordinary
 legacy MDLs/descriptors may later be freed. This is an explicit compatibility
 policy based on an **unverified IRQ-to-final-memory-access ordering
 assumption**, not a safety proof and not permission to release future WDM/IOMMU
-mappings. Strict enforcement would require disabling successful acquisition
-or quarantining every normally completed transfer indefinitely; that design
-decision is reserved for the owner after hardware evidence is available.
+mappings. Batch 10 applies strict enforcement in the development tree:
+`LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` defaults to zero and both MAM and MTT
+return `STATUS_NOT_SUPPORTED` before DMA-related MMIO. This change is built and
+offline-tested only; it has not replaced the installed driver.
+
+### Physical retirement state machine
+
+| State | Trigger/evidence | Required synchronization | Permitted cleanup | Forbidden cleanup | Confidence |
+| --- | --- | --- | --- | --- | --- |
+| `NoLaunchOwned` | Resources owned; GO proven not written | Owner/rundown locks | No-launch mapping and MDL release | Claiming a transfer ran | High, software |
+| `Prepared` | SG and descriptors prepared, GO excluded | Owner plus ISR exclusion | Cancel to `NoLaunchOwned` | Release if GO publication is uncertain | High, software |
+| `DeviceActive` | MAMRGO/MTTRGO written | Generation owner and ISR/DPC serialization | Retain and observe | Any DMA-resource release | High for GO, physical state unknown |
+| `CompletionObserved` | Physical ISR accepted `INTST` bit 0 | ISR atomic state, DPC handoff | Complete software wait | Treat as stopped, drained or retirable | High as IRQ evidence only |
+| `ProducerStopped` | Future documented abort/stop and status readback | MAM/MTT-specific exclusion | Proceed to drain proof | Assume old transactions ended | Currently unreachable |
+| `TransactionsDrained` | Documented fence or external bus proof: no new requests, final writes complete, internal buffers empty | Device/platform ordering contract | Begin OS coherency/mapping retirement | Release from IRQ or delay alone | Currently unreachable |
+| `Retirable` | Drain plus ISR/DPC/callback/remove-lock rundown and OS DMA completion | One transaction owner | Release mapping, table and pages exactly once | Partial owner release | Design target |
+| `UnknownActive` | Timeout, uncertain GO, teardown after GO or missing drain proof | Terminal device latch | Close admission and retain all owners | Reset/reuse/free | High, fail-closed |
+| `Quarantined` | Unknown owner survives FDO teardown | Publication anchor | Retention until proven cold recovery | Treat reload/restart as recovery | High, software |
+
+`CompletionObserved != ProducerStopped != TransactionsDrained != Retirable`.
+IRQ masking, DPC flush, a timeout, a delay and `IIMCL=0` are not PCI fences.
+MAM and MTT must be proved independently unless a hardware contract explicitly
+defines a shared stop/drain mechanism.
 
 An already-admitted MAM IOCTL can wait behind another request on
 `TransferMutex`. It now rechecks `DmaUnknownActive` after acquiring that mutex

@@ -683,6 +683,16 @@ Test-Contract "PnP DMA parent publishes lifetime only and cannot activate DMA" {
     $acquisitionText -match 'MmGetMdlPfnArray'
 }
 
+Test-Contract "legacy PFN DMA launches are fail-closed by default" {
+    $driverText -match '#define LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA 0' -and
+    ([regex]::Matches($ioctlText,
+        '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA').Count -eq 2) -and
+    ([regex]::Matches($ioctlText,
+        '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA(?s:.*?)return STATUS_NOT_SUPPORTED;').Count -eq 2) -and
+    $acquisitionText -match 'MmGetMdlByteOffset\(Transfer->DescriptorMdl\) != 0' -and
+    $acquisitionText -match 'physical & \(sizeof\(ULONG\) - 1\)'
+}
+
 Test-Contract "PnP DMA parent gates rundown and unknown-active retention" {
     $pnpDmaHeaderText -match 'ULONG ActiveCalls' -and
     $pnpDmaHeaderText -match 'BOOLEAN AdmissionOpen' -and

@@ -21,6 +21,13 @@ specification establishing an IRQ-to-PCI-drain ordering guarantee.
 This is a conclusion about **available evidence**, not proof that
 hardware has no undocumented abort/reset command.
 
+Batch 10 independently rechecked the cited exports at development base
+`c5c1f8c25f324f7abc81c965ff85ffa7fddc77e6`. The original PE32 itself was not
+present on the visible x64 volume, but the selected Ghidra exports were
+sufficient to confirm the control flow below. No standalone shutdown path,
+PCI Bus Master disable sequence, repeated drain poll or adapter-logical mapping
+was found. The conclusion therefore remains unchanged.
+
 ### Actual original transfer/descriptor sequence
 
 1. Registration `0x1731C` allocates MDL(s) using `0x1807A`,

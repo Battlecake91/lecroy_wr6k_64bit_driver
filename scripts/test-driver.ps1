@@ -128,6 +128,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-recovery-layout.ps1")
     }
 
+    Invoke-Step "One-time Codex continuation mocks (no task registration)" {
+        & (Join-Path $repo "tests\dry\test-codex-continuation.ps1")
+    }
+
     Invoke-Step "Live DMA completion-state tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-completion.ps1")
     }
