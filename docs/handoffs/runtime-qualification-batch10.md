@@ -4,7 +4,9 @@
 
 Batch 10 started from PR #34 commit
 `c5c1f8c25f324f7abc81c965ff85ffa7fddc77e6` in isolated branch
-`codex/phase2c-runtime-batch10`. The installed baseline was passively confirmed
+`codex/phase2c-runtime-batch10`. Implementation and evidence are committed as
+`4682976add715b642339405f847c6d58861bf709` and proposed in PR #35 against the
+Batch 9 branch. The installed baseline was passively confirmed
 unchanged: `oem102.inf`, version `0.2026.1022.1`, device problem code zero,
 service running and loaded SYS SHA-256
 `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`.
