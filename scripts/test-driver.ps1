@@ -112,6 +112,9 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
     Invoke-Step "Stable runtime identity baseline mocks (no hardware)" {
         & (Join-Path $repo "tests\dry\test-runtime-baseline.ps1")
     }
+    Invoke-Step "Frozen package signing contracts (no private key)" {
+        & (Join-Path $repo "tests\dry\test-frozen-package-signing.ps1")
+    }
 
     Invoke-Step "Crash-dump readiness audit and mocked restore (no system changes)" {
         & (Join-Path $repo "tests\dry\test-crash-dump-readiness.ps1")
