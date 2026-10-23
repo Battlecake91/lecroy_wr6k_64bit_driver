@@ -1083,7 +1083,29 @@ int main(void)
     check("PnP START publishes admission only after full initialization",
         pnpSnapshot.State == LecDmaPnpStarted &&
         pnpSnapshot.HasAdapterContext && pnpSnapshot.AdmissionOpen &&
-        pnpSnapshot.Generation == 1 && pnpDevice.References == 1);
+        pnpSnapshot.Generation == 1 && pnpSnapshot.PowerState == LecDmaPowerD0 &&
+        pnpSnapshot.PowerGeneration == 1 && pnpDevice.References == 1);
+    check("QUERY closes and CANCEL restores D0 mapping admission",
+        LecDmaPnpBeginQuery(pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpMapNoLaunch(pnpStage, mdls, 128, &second) ==
+            STATUS_DELETE_PENDING && second == 0 &&
+        LecDmaPnpCancelQuery(pnpStage) == STATUS_SUCCESS);
+    check("power-down closes admission without touching hardware",
+        LecDmaPnpBeginPowerDown(pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpMapNoLaunch(pnpStage, mdls, 128, &second) ==
+            STATUS_DELETE_PENDING && second == 0 &&
+        LecDmaPnpRecordPoweredDown(pnpStage) == STATUS_SUCCESS);
+    LecDmaPnpSnapshot(pnpStage, &pnpSnapshot);
+    check("Dx remains closed until successful D0 completion",
+        pnpSnapshot.PowerState == LecDmaPowerDx && !pnpSnapshot.AdmissionOpen &&
+        LecDmaPnpBeginResumeD0(pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpCompleteResumeD0(pnpStage, FALSE) == STATUS_DEVICE_NOT_READY &&
+        LecDmaPnpBeginResumeD0(pnpStage) == STATUS_SUCCESS &&
+        LecDmaPnpCompleteResumeD0(pnpStage, TRUE) == STATUS_SUCCESS);
+    LecDmaPnpSnapshot(pnpStage, &pnpSnapshot);
+    check("successful D0 restore reopens preparation only",
+        pnpSnapshot.PowerState == LecDmaPowerD0 && pnpSnapshot.AdmissionOpen &&
+        pnpSnapshot.PowerGeneration == 2);
     commonFreesBefore = commonAllocateCalls;
     check("one parent cannot create a second adapter context",
         LecDmaPnpStartNoLaunch(pnpStage, 0x100000, 4096) ==

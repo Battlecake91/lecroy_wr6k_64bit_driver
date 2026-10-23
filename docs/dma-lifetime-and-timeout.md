@@ -688,6 +688,17 @@ Unlike the earlier asynchronous `GetScatterGatherList` bridge,
 this path can distinguish **allocation without any device DMA launch**
 from indeterminate device activity.
 
+Batch 11 also adds the separate inactive `DmaV3Transfer` owner for the exact
+transactional DDI chain intended by a future live path. Fake-DDI qualification
+covers transfer-info discovery, transfer-context initialization, synchronous
+channel allocation, complete `MapTransferEx`, exact SG byte coverage, 32-bit
+device-address validation, common-buffer descriptor encoding and the no-launch
+flush/free path. Partial mappings are rejected before any possible GO. A
+failed cleanup flush is fail-closed: the mapping, channel, pages and adapter
+context are retained under irreversible quarantine. This module contains no
+hardware-start operation and is not called from production IOCTL, acquisition,
+PnP or power dispatch.
+
 The **inactive** `DmaSyncStage.c/.h` implementation now follows the
 installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
 - Requires DMA adapter **v3** and its transfer-context initialization,
@@ -1106,3 +1117,26 @@ hardware-qualify this new ownership implementation and cannot prove physical
 DMA idle. A future combined candidate requires a distinct package version,
 signing authorization, installation authorization and repetition of the bounded
 runtime matrix before any acquisition or DMA work.
+
+## Batch 11 transaction and teardown contract
+
+The compiled `DmaTransaction` model makes release ownership explicit across
+the entire software-verifiable path. Each request has one monotonically
+increasing generation and one process/FileObject identity. Mapping completion
+may arrive after pre-GO cancellation; it is then owned only long enough for the
+never-launched release path. A stale generation, duplicate completion or IRQ
+during Arming cannot complete the current request.
+
+Pre-GO cancellation, descriptor failure, QUERY, STOP or power-down may release
+only after the mapping callback has retired and no publication user remains.
+After any possible GO, timeout, power loss, surprise removal or uncertain
+cleanup transitions to `UnknownActive`; mapping, MDLs, common table, adapter and
+PDO ownership remain retained. `CompletionObserved` is deliberately distinct
+from `IdleProved`. The latter still has no production caller because no
+physical idle predicate exists.
+
+The PnP staging parent now separates PnP generation from power generation and
+keeps new mapping admission closed in QUERY, PowerDownPending, Dx and failed
+resume. These are offline admission primitives, not live POWER-IRP wiring.
+Live system-power policy, D0/Dx hardware save/restore, explicit v3 channel/map/
+flush/free orchestration and physical abort/drain remain deployment blockers.

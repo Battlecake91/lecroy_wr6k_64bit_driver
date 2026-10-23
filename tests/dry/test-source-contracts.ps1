@@ -21,6 +21,10 @@ $deviceSource = Join-Path $repo "driver\Device.c"
 $acquisitionSource = Join-Path $repo "driver\Acquisition.c"
 $completionSource = Join-Path $repo "driver\DmaCompletion.c"
 $completionHeader = Join-Path $repo "driver\DmaCompletion.h"
+$transactionSource = Join-Path $repo "driver\DmaTransaction.c"
+$transactionHeader = Join-Path $repo "driver\DmaTransaction.h"
+$v3TransferSource = Join-Path $repo "driver\DmaV3Transfer.c"
+$v3TransferHeader = Join-Path $repo "driver\DmaV3Transfer.h"
 $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
@@ -47,9 +51,10 @@ $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install
 $code52Collector = Join-Path $repo "scripts\collect-code52-signing-diagnostics.ps1"
 $runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
 $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
+$codexContinuation = Join-Path $repo "scripts\manage-codex-continuation.ps1"
 $mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $mockDeviceSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -64,6 +69,10 @@ $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $completionText = Get-Content -LiteralPath $completionSource -Raw
 $interruptText = Get-Content -LiteralPath (Join-Path $repo "driver\InterruptControl.c") -Raw
 $completionHeaderText = Get-Content -LiteralPath $completionHeader -Raw
+$transactionText = Get-Content -LiteralPath $transactionSource -Raw
+$transactionHeaderText = Get-Content -LiteralPath $transactionHeader -Raw
+$v3TransferText = Get-Content -LiteralPath $v3TransferSource -Raw
+$v3TransferHeaderText = Get-Content -LiteralPath $v3TransferHeader -Raw
 $layoutText = Get-Content -LiteralPath $layoutSource -Raw
 $layoutHeaderText = Get-Content -LiteralPath $layoutHeader -Raw
 $adapterText = Get-Content -LiteralPath $adapterSource -Raw
@@ -85,6 +94,7 @@ $lecwatchText = Get-Content -LiteralPath $lecwatchSource -Raw
 $code52CollectorText = Get-Content -LiteralPath $code52Collector -Raw
 $runtimeBaselineText = Get-Content -LiteralPath $runtimeBaseline -Raw
 $processDmaModelText = Get-Content -LiteralPath $processDmaModel -Raw
+$codexContinuationText = Get-Content -LiteralPath $codexContinuation -Raw
 $lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
@@ -925,6 +935,49 @@ Test-Contract "process DMA model covers file association and irreversible quaran
     $processDmaModelText -match 'surprise removal closes CREATE admission' -and
     $processDmaModelText -match 'UnknownActive remains quarantined without physical idle proof' -and
     $processDmaModelText -match 'CREATE serialized after removal is rejected without association'
+}
+
+Test-Contract "WDM-v3 transaction is built but exposes no production GO path" {
+    $driverProjectText -match 'DmaTransaction\.c' -and
+    $transactionHeaderText -match 'LecDmaTransactionCommitHardwareLaunch' -and
+    $transactionText -match 'return LecDmaTxLaunchDisabled' -and
+    $transactionText -notmatch 'WRITE_REGISTER|READ_REGISTER|DeviceIoControl|MapTransferEx' -and
+    $transactionHeaderText -match '#ifdef LECS65_DMA_TRANSACTION_TEST_HOOKS' -and
+    $driverProjectText -notmatch 'LECS65_DMA_TRANSACTION_TEST_HOOKS'
+}
+
+Test-Contract "DMA transaction keeps IRQ evidence separate from physical idle" {
+    $transactionText -match 'LecDmaTransactionObserveCompletion' -and
+    $transactionText -match 'LecDmaTransactionProvePhysicalIdle' -and
+    $transactionText -match 'if \(!proof \|\| tx->Phase != LecDmaTxCompletionObserved\)' -and
+    $transactionText -match 'LecDmaTxMakeUnknown\(tx\)' -and
+    $transactionHeaderText -match 'MappingAcquired' -and
+    $transactionHeaderText -match 'PowerTeardowns' -and
+    $transactionHeaderText -match 'PnpTeardowns'
+}
+
+Test-Contract "Codex continuation uses exact supported one-shot resume" {
+    $codexContinuationText -match "@\('exec','--sandbox','workspace-write','--cd'" -and
+    $codexContinuationText -match "'resume','--strict-config'" -and
+    $codexContinuationText -match 'attempt-started\.json' -and
+    $codexContinuationText -match 'Disable-OneTimeTask' -and
+    $codexContinuationText -match 'RedirectStandardInput = \$true' -and
+    $codexContinuationText -match 'WaitForExit\(\[int\]\$manifest\.Codex\.TimeoutSeconds \* 1000\)' -and
+    $codexContinuationText -notmatch "'--last'|dangerously-bypass|codex://threads"
+}
+
+Test-Contract "explicit WDM-v3 mapping path is complete and no-launch" {
+    $driverProjectText -match 'DmaV3Transfer\.c' -and
+    $v3TransferText -match 'GetDmaTransferInfo' -and
+    $v3TransferText -match 'AllocateAdapterChannelEx' -and
+    $v3TransferText -match 'MapTransferEx' -and
+    $v3TransferText -match 'LecDmaClaimSynchronousOwner' -and
+    $v3TransferText -match 'LecDmaEncodeMappedSegments' -and
+    $v3TransferText -match 'FlushAdapterBuffersEx' -and
+    $v3TransferText -match 'FreeAdapterObject' -and
+    $v3TransferText -match 'mappedLength != Length' -and
+    $v3TransferText -match 'LecDmaV3MapQuarantined' -and
+    ($v3TransferText + $v3TransferHeaderText) -notmatch 'WRITE_REGISTER|READ_REGISTER|HardwareLaunch|DeviceActive'
 }
 
 Write-Host ""

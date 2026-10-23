@@ -48,6 +48,14 @@ typedef enum _LECS65_DMA_PNP_QUIESCE_STEP {
     LecDmaPnpTimerStopped
 } LECS65_DMA_PNP_QUIESCE_STEP;
 
+typedef enum _LECS65_DMA_POWER_STATE {
+    LecDmaPowerUnknown = 0,
+    LecDmaPowerD0,
+    LecDmaPowerDownPending,
+    LecDmaPowerDx,
+    LecDmaPowerResumePending
+} LECS65_DMA_POWER_STATE;
+
 typedef struct _LECS65_DMA_PNP_STAGE {
     KSPIN_LOCK Lock;
     PDEVICE_OBJECT PhysicalDeviceObject; /* borrowed identity; context refs it */
@@ -56,6 +64,7 @@ typedef struct _LECS65_DMA_PNP_STAGE {
     LECS65_DMA_PNP_STATE State;
     ULONG ActiveCalls;
     ULONG Generation;
+    ULONG PowerGeneration;
     volatile LONG QuarantineRequested;
     LECS65_DMA_PNP_CLEANUP_PHASE CleanupPhase;
     BOOLEAN AdmissionOpen;
@@ -66,12 +75,15 @@ typedef struct _LECS65_DMA_PNP_STAGE {
     BOOLEAN TimerStopped;
     BOOLEAN UnknownActive;
     BOOLEAN LateQuarantine;
+    BOOLEAN QueryPending;
+    LECS65_DMA_POWER_STATE PowerState;
 } LECS65_DMA_PNP_STAGE, *PLECS65_DMA_PNP_STAGE;
 
 typedef struct _LECS65_DMA_PNP_SNAPSHOT {
     LECS65_DMA_PNP_STATE State;
     ULONG ActiveCalls;
     ULONG Generation;
+    ULONG PowerGeneration;
     BOOLEAN AdmissionOpen;
     BOOLEAN HasAdapterContext;
     BOOLEAN CleanupActive;
@@ -81,6 +93,8 @@ typedef struct _LECS65_DMA_PNP_SNAPSHOT {
     BOOLEAN TimerStopped;
     BOOLEAN UnknownActive;
     BOOLEAN LateQuarantine;
+    BOOLEAN QueryPending;
+    LECS65_DMA_POWER_STATE PowerState;
     LECS65_DMA_PNP_CLEANUP_PHASE CleanupPhase;
 } LECS65_DMA_PNP_SNAPSHOT, *PLECS65_DMA_PNP_SNAPSHOT;
 
@@ -107,6 +121,21 @@ NTSTATUS LecDmaPnpStartNoLaunch(
     _Inout_ PLECS65_DMA_PNP_STAGE Stage,
     _In_ ULONG MaximumTransferBytes,
     _In_ ULONG DescriptorTableBytes);
+
+/*
+ * Software admission gates for future live PnP/POWER integration. They never
+ * forward an IRP, wait, touch MMIO or imply hardware quiescence. QUERY and
+ * power-down close new mapping admission atomically; only an exact Started+D0
+ * state may reopen it. Existing no-launch mappings remain releasable.
+ */
+NTSTATUS LecDmaPnpBeginQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpCancelQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpBeginPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpRecordPoweredDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpBeginResumeD0(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpCompleteResumeD0(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage,
+    _In_ BOOLEAN LowerAndRestoreSucceeded);
 
 /* Closes mapping admission before requesting child-owner STOP. Nonblocking. */
 NTSTATUS LecDmaPnpBeginTeardown(

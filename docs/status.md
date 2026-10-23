@@ -1,5 +1,46 @@
 # Current project status
 
+## Batch 11 WDM-v3 software transaction
+
+- The installed Batch 9 baseline remains unchanged: `oem102.inf`, version
+  `0.2026.1022.1`, service running, problem code zero and loaded SYS SHA-256
+  `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`.
+  Batch 11 performed no device open, IOCTL, MMIO, acquisition, DMA, PnP,
+  installation, signing, Verifier or reboot operation.
+- A compiled hardware-independent WDM-v3 transaction now models validation,
+  file/process ownership, adapter/buffer admission, mapping, logical-address
+  descriptor construction, publication, generation-safe completion,
+  cancellation, timeout, retirement, POWER/PnP closure and diagnostics.
+- A separate explicit no-launch WDM-v3 owner now executes the complete
+  `GetDmaTransferInfo` / channel allocation / `MapTransferEx` / descriptor
+  encoding / flush / free sequence against fake DDIs. Partial mappings and
+  malformed or out-of-range SG lists fail before GO; cleanup uncertainty
+  retains ownership and quarantines the adapter context.
+- The production hardware-launch commit always fails with
+  `LecDmaTxLaunchDisabled`; the possible-GO transition exists only under a host
+  test define that is absent from the driver project. Legacy PFN launch gates
+  remain closed.
+- The staged PnP parent tracks D0/Dx separately from PnP state. QUERY and
+  power-down close new mapping admission; failed resume stays closed, and only
+  successful Started+D0 completion reopens no-launch preparation.
+- Debug and Release x64 build with SDK/WDK 10.0.28000.0 and MSVC 14.41.34120,
+  zero warnings and zero errors. Debug SYS SHA-256 is
+  `9D1868FE48C44185096E8B0CF38D9C77BF017EDB4047B240D561E6AC2B08BDC5`;
+  Release is
+  `F3B07D710E41C38EF474996978A9F037CC84C312C79383185B4959731E816274`.
+- Current focused counts are transaction 134/134, explicit WDM-v3 mapping
+  74/74, synchronous SG/PnP/POWER 153/153, source contracts 69/69 and
+  continuation 17/17. The complete Dry
+  suite passes; default stress is DMA 5,000/5,000 plus INTEN 1,000/1,000 and
+  expanded stress is DMA 50,000/50,000 plus INTEN 10,000/10,000.
+- Physical bus idle remains unproved. No IRQ, DPC, mask, STOP, REMOVE or power
+  event authorizes release after a possible GO. Such ownership remains
+  `UnknownActive` and quarantined.
+- The installed Codex CLI now supports exact noninteractive session resume.
+  The one-shot mechanism pins UUID, CLI identity, prompt hash, worktree and
+  authority, disables its task before launch and preserves failure evidence.
+  It is mock-qualified only; no task was registered or session resumed.
+
 ## Batch 10 offline DMA safety
 
 - The installed Batch 9 baseline remains unchanged. Batch 10 did not open a
@@ -15,10 +56,8 @@
 - [DMA architecture](dma-architecture.md) now separates verified source,
   disassembly, FPGA and hardware facts from hypotheses and defines the WDM-v3
   integration gates.
-- The one-time [Codex continuation](codex-continuation.md) workflow is
-  repository-controlled and passes 14/14 mock cases. No startup task was
-  registered; opening a thread after logon still requires a heartbeat or user
-  message to start a turn.
+- The Batch 10 URI-only continuation limitation was superseded by the supported
+  exact-session CLI path described in [Codex continuation](codex-continuation.md).
 
 ## Batch 9 runtime qualification
 

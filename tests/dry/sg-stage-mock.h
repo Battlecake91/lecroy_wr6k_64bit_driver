@@ -97,6 +97,15 @@ typedef struct _SCATTER_GATHER_LIST {
 } SCATTER_GATHER_LIST, *PSCATTER_GATHER_LIST;
 typedef void (*PDRIVER_LIST_CONTROL)(
     PDEVICE_OBJECT, PIRP, PSCATTER_GATHER_LIST, void*);
+typedef struct _DMA_TRANSFER_INFO_V1 {
+    ULONG MapRegisterCount;
+    ULONG ScatterGatherElementCount;
+    ULONG ScatterGatherListSize;
+} DMA_TRANSFER_INFO_V1;
+typedef struct _DMA_TRANSFER_INFO {
+    ULONG Version;
+    DMA_TRANSFER_INFO_V1 V1;
+} DMA_TRANSFER_INFO, *PDMA_TRANSFER_INFO;
 struct _DMA_ADAPTER;
 typedef struct _DMA_OPERATIONS {
     ULONG Size;
@@ -118,6 +127,17 @@ typedef struct _DMA_OPERATIONS {
         BOOLEAN, void*, void*, PSCATTER_GATHER_LIST*);
     VOID (*FreeAdapterObject)(
         struct _DMA_ADAPTER*, int);
+    NTSTATUS (*GetDmaTransferInfo)(
+        struct _DMA_ADAPTER*, PMDL, ULONGLONG, ULONG, BOOLEAN,
+        PDMA_TRANSFER_INFO);
+    NTSTATUS (*AllocateAdapterChannelEx)(
+        struct _DMA_ADAPTER*, PDEVICE_OBJECT, PVOID, ULONG, ULONG,
+        PVOID, PVOID, PVOID*);
+    NTSTATUS (*MapTransferEx)(
+        struct _DMA_ADAPTER*, PMDL, PVOID, ULONGLONG, ULONG, PULONG,
+        BOOLEAN, PSCATTER_GATHER_LIST, ULONG, PVOID, PVOID);
+    NTSTATUS (*FlushAdapterBuffersEx)(
+        struct _DMA_ADAPTER*, PMDL, PVOID, ULONGLONG, ULONG, BOOLEAN);
 } DMA_OPERATIONS, *PDMA_OPERATIONS;
 typedef struct _DMA_ADAPTER {
     USHORT Version;
@@ -158,6 +178,9 @@ PDMA_ADAPTER FakeIoGetDmaAdapter(
 
 #ifndef DMA_TRANSFER_CONTEXT_SIZE_V1
 #define DMA_TRANSFER_CONTEXT_SIZE_V1 128U
+#endif
+#ifndef DMA_TRANSFER_INFO_VERSION1
+#define DMA_TRANSFER_INFO_VERSION1 1U
 #endif
 #ifndef DEVICE_DESCRIPTION_VERSION3
 #define DEVICE_DESCRIPTION_VERSION3 3U
@@ -220,6 +243,7 @@ PDMA_ADAPTER FakeIoGetDmaAdapter(
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(x) (((NTSTATUS)(x)) >= 0)
 #endif
+
 
 #if defined(LECS65_SG_TEST_ALLOCATION_HOOKS)
 void* FakeExAllocatePool2(ULONG flags, size_t bytes, ULONG tag);

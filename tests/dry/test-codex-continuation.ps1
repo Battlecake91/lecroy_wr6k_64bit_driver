@@ -44,8 +44,10 @@ function New-Fixture([string]$Name) {
     [IO.File]::WriteAllText($evidence, 'evidence')
     $codex = Join-Path $case 'Codex.exe'
     [IO.File]::WriteAllText($codex, 'mock')
+    $prompt = Join-Path $case 'prompt.txt'
+    [IO.File]::WriteAllText($prompt, 'Continue only the recorded offline work. Do not perform hardware operations.')
     [pscustomobject]@{ Root=$case;Worktree=$worktree;Tasks=$tasks;Head=$head;
-        Host=$hostPath;Evidence=$evidence;Codex=$codex;
+        Host=$hostPath;Evidence=$evidence;Codex=$codex;Prompt=$prompt;
         Manifest=(Join-Path $case 'continue.json') }
 }
 
@@ -56,8 +58,11 @@ function Prepare([object]$Fixture) {
         '-CompletedSteps','analysis','-ConsumedAuthorizations','none',
         '-EvidencePaths',$Fixture.Evidence,
         '-NextPermittedAction','Continue offline analysis only',
-        '-CodexLaunchUri','codex://threads/01234567-89ab-cdef-0123-456789abcdef',
+        '-CodexThreadId','01234567-89ab-cdef-0123-456789abcdef',
+        '-ContinuationPromptPath',$Fixture.Prompt,
         '-CodexExecutablePath',$Fixture.Codex,
+        '-ExpectedCodexSha256',(Get-FileHash $Fixture.Codex -Algorithm SHA256).Hash,
+        '-ExpectedCodexVersion','codex-cli mock',
         '-TaskName','LecS65-Codex-Continuation-Test','-AcknowledgePreparation',
         '-TestMode','-MockTaskRoot',$Fixture.Tasks,'-MockHostPath',$Fixture.Host) 0 | Out-Null
 }
@@ -86,7 +91,7 @@ try {
         Invoke-Workflow @('-Mode','Register','-ManifestPath',$f.Manifest,'-AcknowledgeRegistration',
             '-TestMode','-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 0|Out-Null
         Invoke-Workflow @('-Mode','Resume','-ManifestPath',$f.Manifest,'-TestMode',
-            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host,'-MockCodexProcessCount','1') 0|Out-Null
+            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 0|Out-Null
         $r=Get-Content ($f.Manifest+'.resume-result.json') -Raw|ConvertFrom-Json
         if ($r.HardwareOperationExecuted -or @(Get-ChildItem $f.Tasks).Count -ne 0) { throw 'unsafe resume' }
     }
@@ -135,10 +140,38 @@ try {
         Invoke-Workflow @('-Mode','Validate','-ManifestPath',$f.Manifest,'-TestMode',
             '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 1|Out-Null
     }
-    Test-Case 'multiple Codex processes fail closed' {
-        $f=New-Fixture 'duplicate'; Prepare $f
+    Test-Case 'existing Codex desktop processes do not select or block the exact UUID' {
+        $f=New-Fixture 'desktop-processes'; Prepare $f
         Invoke-Workflow @('-Mode','Resume','-ManifestPath',$f.Manifest,'-TestMode',
-            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host,'-MockCodexProcessCount','2') 1|Out-Null
+            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 0|Out-Null
+        $line=Get-Content ($f.Manifest+'.stdout.jsonl') -Raw|ConvertFrom-Json
+        if (@($line.arguments) -contains '--last' -or
+            @($line.arguments) -notcontains '01234567-89ab-cdef-0123-456789abcdef') {
+            throw 'unsafe session selection'
+        }
+    }
+    Test-Case 'nonzero child is one-shot and preserves disabled task plus exception evidence' {
+        $f=New-Fixture 'child-failure'; Prepare $f
+        Invoke-Workflow @('-Mode','Register','-ManifestPath',$f.Manifest,'-AcknowledgeRegistration',
+            '-TestMode','-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 0|Out-Null
+        Invoke-Workflow @('-Mode','Resume','-ManifestPath',$f.Manifest,'-TestMode',
+            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host,'-MockChildExitCode','17') 1|Out-Null
+        $task=Get-Content (Join-Path $f.Tasks 'LecS65-Codex-Continuation-Test.json') -Raw|ConvertFrom-Json
+        if (-not $task.Disabled -or -not (Test-Path ($f.Manifest+'.exception.log')) -or
+            -not (Test-Path ($f.Manifest+'.attempt-started.json'))) { throw 'failure evidence incomplete' }
+    }
+    Test-Case 'timeout is one-shot and preserves failure evidence' {
+        $f=New-Fixture 'timeout'; Prepare $f
+        Invoke-Workflow @('-Mode','Resume','-ManifestPath',$f.Manifest,'-TestMode',
+            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host,'-MockChildTimeout') 1|Out-Null
+        if (-not (Test-Path ($f.Manifest+'.exception.log'))) { throw 'timeout evidence missing' }
+    }
+    Test-Case 'changed prompt fails closed before attempt' {
+        $f=New-Fixture 'prompt-change'; Prepare $f
+        [IO.File]::AppendAllText($f.Prompt,' changed')
+        Invoke-Workflow @('-Mode','Resume','-ManifestPath',$f.Manifest,'-TestMode',
+            '-MockTaskRoot',$f.Tasks,'-MockHostPath',$f.Host) 1|Out-Null
+        if (Test-Path ($f.Manifest+'.attempt-started.json')) { throw 'attempt claimed after validation failure' }
     }
     Test-Case 'missing Codex executable fails closed' {
         $f=New-Fixture 'missing-codex'; Prepare $f

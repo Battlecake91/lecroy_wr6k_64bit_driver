@@ -1041,8 +1041,25 @@ or DMA experiment is authorized by the following plan.
 | 6 | Test a manufacturer/RTL-documented MAM and MTT stop/abort separately, then verify no new descriptor fetch, no host write, stable idle status and upstream drain. | Exact abort contract available; sacrificial x64 host; production disk isolated; mapping retained. | Unknown status or traffic requires cold power-off and permanent quarantine of the attempt. |
 | 7 | Evaluate PCI Bus Master Disable only as the highest-risk sacrificial test. | Board/bridge documentation, external analyzer and independent drain predicate. | BME clear alone never authorizes release; any continued/posted transaction stops the experiment. |
 
-The proposed active command is deliberately not executable today: the required
-WDM-v3 transaction harness and physical-idle predicate do not exist. Creating a
-raw pointer-bearing IOCTL example would bypass the ownership and safety gates.
+The proposed active command is deliberately not executable today: the offline
+WDM-v3 transaction components exist, but their reviewed live acquisition
+integration and a physical-idle predicate do not. Creating a raw pointer-
+bearing IOCTL example would bypass the ownership and safety gates.
 Each active row requires a new explicit authorization and immutable artifact
 identity. See [DMA architecture](dma-architecture.md).
+
+## Batch 11 next DMA authorization boundary
+
+The software transaction, closed launch gate and explicit no-launch WDM-v3
+channel/map/descriptor/flush/free owner are offline-qualified, but this does
+not satisfy the active rows above. Before the first DMA experiment, a reviewed
+candidate must connect these owners to exactly one legacy acquisition request
+without changing the ABI, join the borrowed request/MDL lifetime to live
+remove-lock and D0/PnP rundown, and retain every post-possible-GO resource.
+Separately, board/RTL or external analyzer evidence must establish a MAM/MTT
+stop and physical PCI retirement predicate.
+
+Only after those prerequisites are reviewed may the owner authorize signing,
+installation and one smallest bounded transfer as separate gates. The current
+Batch 11 binary is unsigned, uninstalled and has no production transition to
+DeviceActive; no command in this document authorizes running it on hardware.
