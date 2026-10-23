@@ -688,6 +688,17 @@ Unlike the earlier asynchronous `GetScatterGatherList` bridge,
 this path can distinguish **allocation without any device DMA launch**
 from indeterminate device activity.
 
+Batch 11 also adds the separate inactive `DmaV3Transfer` owner for the exact
+transactional DDI chain intended by a future live path. Fake-DDI qualification
+covers transfer-info discovery, transfer-context initialization, synchronous
+channel allocation, complete `MapTransferEx`, exact SG byte coverage, 32-bit
+device-address validation, common-buffer descriptor encoding and the no-launch
+flush/free path. Partial mappings are rejected before any possible GO. A
+failed cleanup flush is fail-closed: the mapping, channel, pages and adapter
+context are retained under irreversible quarantine. This module contains no
+hardware-start operation and is not called from production IOCTL, acquisition,
+PnP or power dispatch.
+
 The **inactive** `DmaSyncStage.c/.h` implementation now follows the
 installed WDK 10.0.28000.0 declarations and the Microsoft v3 contract:
 - Requires DMA adapter **v3** and its transfer-context initialization,

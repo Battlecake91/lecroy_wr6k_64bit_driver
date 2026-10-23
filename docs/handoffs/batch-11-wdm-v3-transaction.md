@@ -8,20 +8,23 @@ software-verifiable transitions through descriptor publication, completion,
 cancellation, retirement and irreversible quarantine. Production hardware
 launch is still unavailable; only host tests can inject a possible-GO state.
 
-The current explicit adapter mapping stage remains no-launch
-`GetScatterGatherListEx` staging. A future live implementation should use the
-explicit WDM-v3 channel/map/flush/free sequence and reject partial mappings.
-It must not derive device addresses from PFNs or release any mapping after a
-possible GO without independent physical-idle proof.
+The branch also contains an explicit no-launch WDM-v3 owner using
+`GetDmaTransferInfo`, `InitializeDmaTransferContext`,
+`AllocateAdapterChannelEx`, complete `MapTransferEx`, common-buffer descriptor
+encoding, `FlushAdapterBuffersEx` and exact-once `FreeAdapterObject`. It rejects
+partial mappings and quarantines any uncertain cleanup. It must not be wired
+to GO until live request/rundown ownership and independent physical-idle proof
+exist.
 
 ## Offline evidence
 
 - Debug x64: 0 warnings, 0 errors; SYS SHA-256
-  `87E5C186AF21F1CAAECB06BC0C94CA4D1CD141CA784FFC4B076B612CBEC7288E`.
+  `9D1868FE48C44185096E8B0CF38D9C77BF017EDB4047B240D561E6AC2B08BDC5`.
 - Release x64: 0 warnings, 0 errors; SYS SHA-256
-  `C04D36DEFFA48086C542A1A2FD94E336DDD06175118A2FC56D290C0E5F48A357`.
-- Transaction: 134/134; synchronous SG/PnP/POWER: 153/153; source contracts:
-  68/68; continuation: 17/17; complete Dry suite: PASS.
+  `F3B07D710E41C38EF474996978A9F037CC84C312C79383185B4959731E816274`.
+- Transaction: 134/134; explicit WDM-v3 mapping: 74/74; synchronous
+  SG/PnP/POWER: 153/153; source contracts: 69/69; continuation: 17/17;
+  complete Dry suite: PASS.
 - Default stress: DMA 5,000/5,000, INTEN 1,000/1,000. Expanded: DMA
   50,000/50,000, INTEN 10,000/10,000.
 - Passive installed baseline: `oem102.inf`, `0.2026.1022.1`, device OK,
@@ -30,9 +33,9 @@ possible GO without independent physical-idle proof.
 
 ## Remaining proof obligations
 
-1. Implement explicit WDM-v3 channel allocation, complete `MapTransferEx`,
-   descriptor publication, post-idle `FlushAdapterBuffersEx` and exact-once
-   `FreeAdapterObject` ownership under fake DDIs.
+1. Integrate the offline-qualified transaction, explicit WDM-v3 mapping owner
+   and one legacy acquisition request without changing the public ABI; join
+   the borrowed MDL/request to live remove-lock and publication rundown.
 2. Wire live POWER and QUERY/CANCEL PnP policy without waits under spin locks
    or premature mapping/MDL release.
 3. Establish hardware MAM and MTT stop, descriptor-fetch cessation, final PCI

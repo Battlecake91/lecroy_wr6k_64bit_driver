@@ -124,6 +124,7 @@
     <ClInclude Include="DmaPnpPublication.h" />
     <ClInclude Include="DmaCompletion.h" />
     <ClInclude Include="DmaTransaction.h" />
+    <ClInclude Include="DmaV3Transfer.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="PnpIrpLifetime.c" />
@@ -131,6 +132,7 @@
     <ClCompile Include="Acquisition.c" />
     <ClCompile Include="DmaCompletion.c" />
     <ClCompile Include="DmaTransaction.c" />
+    <ClCompile Include="DmaV3Transfer.c" />
     <ClCompile Include="InterruptControl.c" />
     <ClCompile Include="DmaLayout.c" />
     <ClCompile Include="DmaAdapterStage.c" />

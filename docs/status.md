@@ -11,6 +11,11 @@
   file/process ownership, adapter/buffer admission, mapping, logical-address
   descriptor construction, publication, generation-safe completion,
   cancellation, timeout, retirement, POWER/PnP closure and diagnostics.
+- A separate explicit no-launch WDM-v3 owner now executes the complete
+  `GetDmaTransferInfo` / channel allocation / `MapTransferEx` / descriptor
+  encoding / flush / free sequence against fake DDIs. Partial mappings and
+  malformed or out-of-range SG lists fail before GO; cleanup uncertainty
+  retains ownership and quarantines the adapter context.
 - The production hardware-launch commit always fails with
   `LecDmaTxLaunchDisabled`; the possible-GO transition exists only under a host
   test define that is absent from the driver project. Legacy PFN launch gates
@@ -20,11 +25,12 @@
   successful Started+D0 completion reopens no-launch preparation.
 - Debug and Release x64 build with SDK/WDK 10.0.28000.0 and MSVC 14.41.34120,
   zero warnings and zero errors. Debug SYS SHA-256 is
-  `87E5C186AF21F1CAAECB06BC0C94CA4D1CD141CA784FFC4B076B612CBEC7288E`;
+  `9D1868FE48C44185096E8B0CF38D9C77BF017EDB4047B240D561E6AC2B08BDC5`;
   Release is
-  `C04D36DEFFA48086C542A1A2FD94E336DDD06175118A2FC56D290C0E5F48A357`.
-- Current focused counts are transaction 134/134, synchronous SG/PnP/POWER
-  153/153, source contracts 68/68 and continuation 17/17. The complete Dry
+  `F3B07D710E41C38EF474996978A9F037CC84C312C79383185B4959731E816274`.
+- Current focused counts are transaction 134/134, explicit WDM-v3 mapping
+  74/74, synchronous SG/PnP/POWER 153/153, source contracts 69/69 and
+  continuation 17/17. The complete Dry
   suite passes; default stress is DMA 5,000/5,000 plus INTEN 1,000/1,000 and
   expanded stress is DMA 50,000/50,000 plus INTEN 10,000/10,000.
 - Physical bus idle remains unproved. No IRQ, DPC, mask, STOP, REMOVE or power

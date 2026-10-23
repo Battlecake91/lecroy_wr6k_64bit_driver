@@ -113,13 +113,16 @@ may reopen it. Existing no-launch mappings remain releasable during rundown.
 These APIs model the required admission rules but are not wired to live POWER
 IRPs or acquisition, so the currently loaded driver is unaffected.
 
-For a future live implementation, prefer the explicit WDM-v3 sequence
-`GetDmaTransferInfo`, `AllocateAdapterChannelEx`, `MapTransferEx`, descriptor
-encoding, gated GO, independent idle proof, `FlushAdapterBuffersEx` and
-`FreeAdapterObject`. A partial `MapTransferEx` result must be rejected before
-GO rather than split into guessed hardware transactions. The current
-synchronous `GetScatterGatherListEx` path remains valid no-launch staging and
-supports MDL chains, but is not a live acquisition transaction.
+`DmaV3Transfer` now implements the explicit no-launch WDM-v3 sequence through
+`GetDmaTransferInfo`, `InitializeDmaTransferContext`,
+`AllocateAdapterChannelEx`, complete `MapTransferEx`, SG validation, common-
+buffer descriptor encoding, `FlushAdapterBuffersEx` and
+`FreeAdapterObject`. It rejects partial mappings, malformed coverage and
+addresses outside the WR6k 32-bit descriptor format. A failed flush retains
+the mapping and permanently quarantines the adapter context. The module has no
+GO or MMIO API and no live acquisition caller. The synchronous
+`GetScatterGatherListEx` owner remains separate no-launch staging with MDL-
+chain coverage; neither path is a live acquisition transaction.
 
 ## Release gates
 

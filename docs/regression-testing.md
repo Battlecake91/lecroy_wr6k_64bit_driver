@@ -1120,7 +1120,10 @@ generations.
 
 The synchronous fake-DDI/PnP suite now passes 153/153 and additionally proves
 QUERY admission closure, Dx closure, failed D0 restore and successful D0
-reopening. Source/safety contracts pass 68/68. The exact-session continuation
+reopening. The explicit WDM-v3 transaction-DDI suite passes 74/74, including
+partial/malformed mapping rejection, descriptor encoding, exact no-launch
+flush/free ownership and flush-failure quarantine. Source/safety contracts
+pass 69/69. The exact-session continuation
 workflow passes 17/17 mocks, including prompt/CLI drift, child failure and
 timeout with disabled-task evidence retention.
 
