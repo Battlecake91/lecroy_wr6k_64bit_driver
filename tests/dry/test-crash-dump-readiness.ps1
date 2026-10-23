@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $script = Join-Path $repo 'scripts\manage-crash-dump-readiness.ps1'
+$scriptText = Get-Content -Raw -LiteralPath $script
 $root = Join-Path ([System.IO.Path]::GetTempPath()) `
     ('lec-crash-readiness-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
@@ -47,6 +48,9 @@ $before = (Get-FileHash -Algorithm SHA256 $statePath).Hash
 $auditPath = Join-Path $root 'audit.json'
 $audit = & $script -Mode Audit -MockStatePath $statePath -OutputPath $auditPath
 Test-Condition 'audit is read-only' ((Get-FileHash -Algorithm SHA256 $statePath).Hash -eq $before)
+Test-Condition 'real registry writes request an explicitly writable key' (
+    $scriptText -match 'OpenSubKey\(\s*\$crashSubKeyPath,\s*\$true\)' -and
+    $scriptText -notmatch '\$key\s*=\s*Get-Item\s+-LiteralPath\s+\$crashKeyPath\s*\r?\n\s*\$key\.SetValue')
 Test-Condition 'audit reports current automatic dump and reboot state' (
     -not $audit.Assessment.KernelDumpSelected -and -not $audit.Assessment.AutoRebootDisabled)
 Test-Condition 'audit preserves system-managed page-file evidence' (
