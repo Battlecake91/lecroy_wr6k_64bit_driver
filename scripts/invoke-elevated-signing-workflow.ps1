@@ -151,6 +151,25 @@ function Assert-PackageManifest {
 
     $configurationModes = @($manifest.Build.Configurations |
         ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
+    $expectedSuiteIds = @(
+        'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+        'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
+        'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
+        'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
+        'runtime-baseline', 'frozen-package-signing', 'crash-dump-readiness',
+        'system-image-readiness', 'recovery-layout', 'codex-continuation',
+        'dma-completion', 'dma-interleavings', 'inten-functional'
+    ) | Sort-Object
+    $suites = @($manifest.Regression.Suites)
+    $actualSuiteIds = @($suites | ForEach-Object Id | Sort-Object)
+    $functionalPassed = ($suites | ForEach-Object { [int]$_.Passed } |
+        Measure-Object -Sum).Sum
+    $functionalFailed = ($suites | ForEach-Object { [int]$_.Failed } |
+        Measure-Object -Sum).Sum
+    $stressTotal = [int]$manifest.Regression.DefaultDmaStressIterations +
+        [int]$manifest.Regression.DefaultIntenStressIterations +
+        [int]$manifest.Regression.ExpandedDmaStressIterations +
+        [int]$manifest.Regression.ExpandedIntenStressIterations
     if ($manifest.Schema -ne 2 -or
         $manifest.PackageState -ne $expectedState -or
         $manifest.InstallAuthorized -ne $false -or
@@ -167,9 +186,19 @@ function Assert-PackageManifest {
         $configurationModes[0] -ne $ExpectedPnpStatusDiagnostics -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
-        $manifest.Regression.FunctionalTestsPassed -ne 776 -or
-        $manifest.Regression.FunctionalTestsFailed -ne 0 -or
-        $manifest.Regression.TotalStressIterations -ne 66000 -or
+        $manifest.Regression.SuiteContract -ne 'batch14-regression-v1' -or
+        ($actualSuiteIds -join ',') -ne ($expectedSuiteIds -join ',') -or
+        @($actualSuiteIds | Select-Object -Unique).Count -ne $expectedSuiteIds.Count -or
+        @($suites | Where-Object {
+            $_.Passed -ne $_.Total -or $_.Failed -ne 0 -or $_.Total -lt 1
+        }).Count -ne 0 -or
+        $manifest.Regression.FunctionalTestsPassed -ne $functionalPassed -or
+        $manifest.Regression.FunctionalTestsFailed -ne $functionalFailed -or
+        $manifest.Regression.TotalStressIterations -ne $stressTotal -or
+        $manifest.Regression.DefaultDmaStressIterations -ne 5000 -or
+        $manifest.Regression.DefaultIntenStressIterations -ne 1000 -or
+        $manifest.Regression.ExpandedDmaStressIterations -ne 50000 -or
+        $manifest.Regression.ExpandedIntenStressIterations -ne 10000 -or
         $manifest.PackageIdentity.DriverVer -ne $ExpectedDriverVer -or
         -not $identityValid -or
         ($artifactNames -join ',') -ne ($requiredNames -join ',') -or

@@ -108,8 +108,13 @@ function Invoke-HarnessCase {
         Write-JsonEncoding $scenarioPath $Scenario $false
         $arguments += @('-MockScenarioPath',$scenarioPath)
     }
-    $output = @(& $ps51 @arguments 2>&1)
-    $exitCode = $LASTEXITCODE
+    $oldPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $ps51 @arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $oldPreference }
     if ($exitCode -ne $ExpectedExit) {
         throw "exit=$exitCode expected=$ExpectedExit output=$($output -join ' ')"
     }
@@ -244,10 +249,16 @@ try {
         $statePath=Join-Path $root 'existing-state.json'; Write-JsonEncoding $statePath (New-MockState) $false
         $evidence=Join-Path $root 'existing-evidence'; New-Item -ItemType Directory $evidence | Out-Null
         $sentinel=Join-Path $evidence 'sentinel.txt'; [IO.File]::WriteAllText($sentinel,'keep')
-        & $ps51 -NoProfile -ExecutionPolicy Bypass -File $harness -Mode OfflineMock `
-            -EvidenceRoot $evidence -MockStatePath $statePath -MockExecutablePath $mockExe `
-            -MockExecutableSha256 $script:mockHash *> $null
-        if ($LASTEXITCODE -eq 0 -or (Get-Content $sentinel) -ne 'keep' -or
+        $oldPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $ps51 -NoProfile -ExecutionPolicy Bypass -File $harness -Mode OfflineMock `
+                -EvidenceRoot $evidence -MockStatePath $statePath -MockExecutablePath $mockExe `
+                -MockExecutableSha256 $script:mockHash *> $null
+            $exitCode = $LASTEXITCODE
+        }
+        finally { $ErrorActionPreference = $oldPreference }
+        if ($exitCode -eq 0 -or (Get-Content $sentinel) -ne 'keep' -or
             @(Get-ChildItem $evidence).Count -ne 1) { throw 'existing evidence was not preserved' }
     }
 }

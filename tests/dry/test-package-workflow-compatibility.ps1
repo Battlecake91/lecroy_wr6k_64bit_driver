@@ -21,6 +21,9 @@ $functionNames = @(
     'Get-FileRecord'
     'Test-AsciiMarker'
     'Assert-PnpDiagnosticMarkerState'
+    'Get-ExpectedRegressionSuiteIds'
+    'Get-RegressionSuiteOutcomes'
+    'Assert-RegressionManifest'
     'Assert-ManifestComplete'
     'Assert-PackageSignatureState'
 )
@@ -280,6 +283,9 @@ exit 0
     $artifacts = @($artifactPaths.Values | ForEach-Object {
         Get-FileRecord -Path $_ -Root $artifactRoot
     })
+    $suiteOutcomes = @(Get-ExpectedRegressionSuiteIds | ForEach-Object {
+        [ordered]@{ Id=$_; Passed=1; Total=1; Failed=0; Occurrences=1 }
+    })
     $manifest = [ordered]@{
         Schema = 2
         Source = [ordered]@{
@@ -297,7 +303,16 @@ exit 0
             )
         }
         Regression = [ordered]@{
-            FunctionalTestsPassed = 776
+            CompleteDry = 'PASS'
+            Expanded = 'PASS'
+            SuiteContract = 'batch14-regression-v1'
+            Suites = $suiteOutcomes
+            FunctionalTestsPassed = $suiteOutcomes.Count
+            FunctionalTestsFailed = 0
+            DefaultDmaStressIterations = 5000
+            DefaultIntenStressIterations = 1000
+            ExpandedDmaStressIterations = 50000
+            ExpandedIntenStressIterations = 10000
             TotalStressIterations = 66000
         }
         Artifacts = $artifacts
@@ -335,13 +350,47 @@ exit 0
         Assert-ManifestComplete -Manifest $ambiguous
     }
 
+    $suiteText = @'
+DRY REGRESSION: 69/69 passed; 0 failed.
+PRE-GO SIDE EFFECTS: 10/10 passed; 0 failed.
+DMA LAYOUT: 13/13 passed; 0 failed.
+DMA OWNERSHIP: 17/17 passed; 0 failed.
+DMA transaction tests: 134/134 checks passed; hardware launch unavailable
+DMA V3 EXPLICIT TRANSFER: 74/74 passed; hardware launch absent
+SG BRIDGE MOCK: 27/27 passed; 0 failed.
+SG SYNC V3: 157/157 passed; 0 failed.
+PNP PUBLICATION: 38/38 passed; 0 failed.
+PNP IRP LIFETIME: 10/10 passed; 0 failed.
+LECDIAG COMMAND CHAIN: 17/17 passed; 0 failed.
+NO-LAUNCH PREPARATION TESTS: 3/3 passed; 0 failed.
+RUNTIME LIFETIME AUDIT: 19/19 passed; 0 failed.
+PROCESS DMA LIFETIME MODEL: 23/23 passed; 0 failed.
+RUNTIME BASELINE TESTS: 6/6 passed; 0 failed.
+FROZEN PACKAGE SIGNING CONTRACTS: 11/11 passed; 0 failed.
+CRASH DUMP READINESS: 14/14 passed; 0 failed.
+SYSTEM IMAGE READINESS: 21/21 passed; 0 failed.
+RECOVERY LAYOUT: 6/6 passed; 0 failed.
+CODEX CONTINUATION: 17/17 passed; 0 failed.
+DMA COMPLETION: 39/39 passed; 0 failed.
+DMA INTERLEAVINGS: 2/2 passed; 0 failed.
+INTEN functional: 49 PASS, 0 FAIL, 0 SKIP
+'@
+    $parsedSuites = @(Get-RegressionSuiteOutcomes -Text $suiteText)
+    $changedSuites = @(Get-RegressionSuiteOutcomes -Text (
+        $suiteText.Replace('14/14', '15/15')))
+    $parsedTotal = ($parsedSuites | ForEach-Object { [int]$_.Passed } |
+        Measure-Object -Sum).Sum
+    $changedTotal = ($changedSuites | ForEach-Object { [int]$_.Passed } |
+        Measure-Object -Sum).Sum
     $workflowText = Get-Content -LiteralPath $workflow -Raw
     Test-Condition 'workflow keeps PowerShell 5.1 path and current regression guards' (
         -not $workflowText.Contains('[System.IO.Path]::GetRelativePath') -and
-        $workflowText.Contains(
-            "'CRASH DUMP READINESS: 14/14 passed; 0 failed.'") -and
-        -not $workflowText.Contains(
-            "'CRASH DUMP READINESS: 13/13 passed; 0 failed.'"))
+        $workflowText.Contains("SuiteContract = 'batch14-regression-v1'") -and
+        $workflowText.Contains('Get-RegressionSuiteOutcomes') -and
+        -not $workflowText.Contains('FunctionalTestsPassed -ne 776') -and
+        -not $workflowText.Contains('FunctionalTestsPassed = 776') -and
+        $parsedSuites.Count -eq 23 -and $parsedTotal -eq 776 -and
+        $changedTotal -eq 777)
 }
 finally {
     $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)

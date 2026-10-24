@@ -275,6 +275,112 @@ function Assert-PackageSignatureState {
     }
 }
 
+function Get-ExpectedRegressionSuiteIds {
+    return @(
+        'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+        'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
+        'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
+        'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
+        'runtime-baseline', 'frozen-package-signing', 'crash-dump-readiness',
+        'system-image-readiness', 'recovery-layout', 'codex-continuation',
+        'dma-completion', 'dma-interleavings', 'inten-functional'
+    )
+}
+
+function Get-RegressionSuiteOutcomes {
+    param([Parameter(Mandatory=$true)][string]$Text)
+
+    $definitions = @(
+        @{ Id='source-abi'; Pattern='(?m)^DRY REGRESSION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='pre-go-side-effects'; Pattern='(?m)^PRE-GO SIDE EFFECTS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='dma-layout'; Pattern='(?m)^DMA LAYOUT: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='dma-ownership'; Pattern='(?m)^DMA OWNERSHIP: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='dma-transaction'; Pattern='(?m)^DMA transaction tests: (?<passed>\d+)/(?<total>\d+) checks passed; hardware launch unavailable\r?$' }
+        @{ Id='dma-v3-transfer'; Pattern='(?m)^DMA V3 EXPLICIT TRANSFER: (?<passed>\d+)/(?<total>\d+) passed; hardware launch absent\r?$' }
+        @{ Id='sg-bridge'; Pattern='(?m)^SG BRIDGE MOCK: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='sg-sync-v3'; Pattern='(?m)^SG SYNC V3: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='pnp-publication'; Pattern='(?m)^PNP PUBLICATION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='pnp-irp-lifetime'; Pattern='(?m)^PNP IRP LIFETIME: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='lecdiag-command-chain'; Pattern='(?m)^LECDIAG COMMAND CHAIN: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='no-launch-preparation'; Pattern='(?m)^NO-LAUNCH PREPARATION TESTS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='runtime-lifetime'; Pattern='(?m)^RUNTIME LIFETIME AUDIT: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='process-dma-lifetime'; Pattern='(?m)^PROCESS DMA LIFETIME MODEL: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='runtime-baseline'; Pattern='(?m)^RUNTIME BASELINE TESTS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='frozen-package-signing'; Pattern='(?m)^FROZEN PACKAGE SIGNING CONTRACTS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='crash-dump-readiness'; Pattern='(?m)^CRASH DUMP READINESS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='system-image-readiness'; Pattern='(?m)^SYSTEM IMAGE READINESS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='recovery-layout'; Pattern='(?m)^RECOVERY LAYOUT: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='codex-continuation'; Pattern='(?m)^CODEX CONTINUATION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='dma-completion'; Pattern='(?m)^DMA COMPLETION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='dma-interleavings'; Pattern='(?m)^DMA INTERLEAVINGS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='inten-functional'; Pattern='(?m)^INTEN functional: (?<passed>\d+) PASS, (?<failed>\d+) FAIL, (?<skipped>\d+) SKIP\r?$' }
+    )
+    $outcomes = @()
+    foreach ($definition in $definitions) {
+        $matches = [regex]::Matches($Text, $definition.Pattern)
+        if ($matches.Count -lt 1) {
+            throw "Missing regression suite outcome: $($definition.Id)"
+        }
+        $values = @($matches | ForEach-Object {
+            $passed = [int]$_.Groups['passed'].Value
+            $total = if ($_.Groups['total'].Success) {
+                [int]$_.Groups['total'].Value
+            } else {
+                $passed + [int]$_.Groups['failed'].Value +
+                    [int]$_.Groups['skipped'].Value
+            }
+            $failed = if ($_.Groups['failed'].Success) {
+                [int]$_.Groups['failed'].Value
+            } else { 0 }
+            "$passed/$total/$failed"
+        } | Select-Object -Unique)
+        if ($values.Count -ne 1) {
+            throw "Contradictory regression suite outcomes: $($definition.Id)"
+        }
+        $parts = @($values[0].Split('/') | ForEach-Object { [int]$_ })
+        if ($parts[0] -ne $parts[1] -or $parts[2] -ne 0) {
+            throw "Regression suite did not pass completely: $($definition.Id)"
+        }
+        $outcomes += [ordered]@{
+            Id = $definition.Id
+            Passed = $parts[0]
+            Total = $parts[1]
+            Failed = $parts[2]
+            Occurrences = $matches.Count
+        }
+    }
+    return $outcomes
+}
+
+function Assert-RegressionManifest {
+    param([Parameter(Mandatory=$true)]$Regression)
+
+    $expectedIds = @(Get-ExpectedRegressionSuiteIds | Sort-Object)
+    $suites = @($Regression.Suites)
+    $actualIds = @($suites | ForEach-Object Id | Sort-Object)
+    $passed = ($suites | ForEach-Object { [int]$_.Passed } |
+        Measure-Object -Sum).Sum
+    $failed = ($suites | ForEach-Object { [int]$_.Failed } |
+        Measure-Object -Sum).Sum
+    $stressTotal = [int]$Regression.DefaultDmaStressIterations +
+        [int]$Regression.DefaultIntenStressIterations +
+        [int]$Regression.ExpandedDmaStressIterations +
+        [int]$Regression.ExpandedIntenStressIterations
+    if ($Regression.SuiteContract -ne 'batch14-regression-v1' -or
+        ($actualIds -join ',') -ne ($expectedIds -join ',') -or
+        @($actualIds | Select-Object -Unique).Count -ne $expectedIds.Count -or
+        @($suites | Where-Object {
+            $_.Passed -ne $_.Total -or $_.Failed -ne 0 -or $_.Total -lt 1
+        }).Count -ne 0 -or
+        $Regression.FunctionalTestsPassed -ne $passed -or
+        $Regression.FunctionalTestsFailed -ne $failed -or
+        $Regression.TotalStressIterations -ne $stressTotal -or
+        $Regression.CompleteDry -ne 'PASS' -or
+        $Regression.Expanded -ne 'PASS') {
+        throw 'Regression manifest does not match the exact passing suite contract.'
+    }
+}
+
 function Assert-ManifestComplete {
     param([Parameter(Mandatory=$true)]$Manifest)
 
@@ -292,8 +398,6 @@ function Assert-ManifestComplete {
         $Manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
         $configurationModes.Count -ne 1 -or
         $configurationModes[0] -ne [bool]$Manifest.Build.PnpStatusDiagnostics -or
-        $Manifest.Regression.FunctionalTestsPassed -ne 776 -or
-        $Manifest.Regression.TotalStressIterations -ne 66000 -or
         ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
         @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
         $Manifest.InstallAuthorized -ne $false -or
@@ -302,6 +406,7 @@ function Assert-ManifestComplete {
         $Manifest.Safety.DeviceOpened -ne $false) {
         throw 'Package manifest is incomplete or violates the offline safety contract.'
     }
+    Assert-RegressionManifest -Regression $Manifest.Regression
 }
 
 function Get-ReviewedSourceIdentity {
@@ -519,27 +624,8 @@ try {
         -LogPath $expandedLog
 
     $expectedRegressionEvidence = [ordered]@{
-        $transcriptPath = @(
-            'DRY REGRESSION: 69/69 passed; 0 failed.'
-            'PRE-GO SIDE EFFECTS: 10/10 passed; 0 failed.'
-            'REGRESSION SUITE PASS: Dry'
-            'LECDIAG COMMAND CHAIN: 17/17 passed; 0 failed.'
-            'NO-LAUNCH PREPARATION TESTS: 3/3 passed; 0 failed.'
-            'RUNTIME LIFETIME AUDIT: 19/19 passed; 0 failed.'
-            'PROCESS DMA LIFETIME MODEL: 23/23 passed; 0 failed.'
-            'RUNTIME BASELINE TESTS: 6/6 passed; 0 failed.'
-            'CRASH DUMP READINESS: 14/14 passed; 0 failed.'
-        )
+        $transcriptPath = @('REGRESSION SUITE PASS: Dry')
         $dryLog = @(
-            'DMA LAYOUT: 13/13 passed; 0 failed.'
-            'DMA OWNERSHIP: 17/17 passed; 0 failed.'
-            'SG BRIDGE MOCK: 27/27 passed; 0 failed.'
-            'SG SYNC V3: 157/157 passed; 0 failed.'
-            'PNP PUBLICATION: 38/38 passed; 0 failed.'
-            'PNP IRP LIFETIME: 10/10 passed; 0 failed.'
-            'DMA COMPLETION: 39/39 passed; 0 failed.'
-            'DMA INTERLEAVINGS: 2/2 passed; 0 failed.'
-            'INTEN functional: 49 PASS, 0 FAIL, 0 SKIP'
             'DMA STRESS TOTAL: 5000/5000 passed; 0 failed.'
             'INTEN RMW stress: 1000/1000 iterations completed'
         )
@@ -556,6 +642,12 @@ try {
             }
         }
     }
+    $suiteOutcomes = @(Get-RegressionSuiteOutcomes -Text (
+        Get-Content -LiteralPath $transcriptPath -Raw))
+    $functionalTestsPassed = ($suiteOutcomes |
+        ForEach-Object { [int]$_.Passed } | Measure-Object -Sum).Sum
+    $functionalTestsFailed = ($suiteOutcomes |
+        ForEach-Object { [int]$_.Failed } | Measure-Object -Sum).Sum
 
     $builtUtilities = @(
         foreach ($utility in @(
@@ -774,8 +866,10 @@ try {
         Regression = [ordered]@{
             CompleteDry = 'PASS'
             Expanded = 'PASS'
-            FunctionalTestsPassed = 776
-            FunctionalTestsFailed = 0
+            SuiteContract = 'batch14-regression-v1'
+            Suites = $suiteOutcomes
+            FunctionalTestsPassed = $functionalTestsPassed
+            FunctionalTestsFailed = $functionalTestsFailed
             DefaultDmaStressIterations = 5000
             DefaultIntenStressIterations = 1000
             ExpandedDmaStressIterations = 50000
