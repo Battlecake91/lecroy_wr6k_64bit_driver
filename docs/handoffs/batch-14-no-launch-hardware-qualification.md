@@ -36,3 +36,28 @@ authorizes GO, acquisition or real DMA.
 
 Physical PCI bus-idle remains a separate unresolved proof obligation requiring
 external conventional-PCI analyzer evidence.
+
+## Signed and installed candidate
+
+The one authorized signing attempt completed from clean workflow commit
+`d90571323984249c93993235c4cad6cf71cd9de6`. Local Authenticode, chain,
+catalog membership and SYS/PDB identity all pass. Frozen SHA-256 values are:
+
+- INF `FED0F507EC7E91553EFA7A2E2AD43C6EB9232653EECE2853935A0D3A310E8B8A`;
+- CAT `97F4C8B25926B3A5202558610B3098872DB7F37410B80583770875808A23BFD7`;
+- signed SYS `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`;
+- PDB `99BF95283A9213A2BBACF5DEF602A68D7C52E91BC141EFFAB2FC2BF8848387D5`;
+- manifest `CDC234B493436ADDBD9E8A5E79EE5B25FF1AEEAFDFF6BFC2A2C8AE7EEED178A0`.
+
+One captured installation completed without retry. Windows published and bound
+`oem103.inf`, version `0.2026.1024.1`. The device is problem-free, the service
+runs and the loaded SYS matches the frozen signed hash. The capture contains
+49 `PNP_STATUS:` records including successful local START, interrupt connect,
+DMA-parent start, all five interface enables and final START. Raw capture
+SHA-256 is
+`29FE149118C08AF5B7667C4B0BC2AE0F3CFF63C1AC6048A82D0EB62D80B43E0D`.
+The prior `oem102.inf` package was not deleted.
+
+The runtime qualification harness now accepts explicit expected INF, version,
+SYS and diagnostic hashes while preserving the previous defaults. Its complete
+mock matrix passes 21/21, including fail-closed and no-retry cases.

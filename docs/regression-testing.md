@@ -1116,6 +1116,11 @@ exact suite identities, per-suite success and recomputed totals. Windows
 PowerShell 5.1 package compatibility remains 26/26; the full elevated no-key
 launcher path passes 36/36.
 
+The permanent R0/R1 harness accepts an explicitly pinned runtime INF, version,
+loaded-SYS hash and x64 `lecdiag` hash. This permits promotion of a reviewed
+candidate without editing its safety logic or weakening the legacy defaults.
+Its complete mock matrix passes 21/21 under Windows PowerShell 5.1.
+
 After integrating the exact PR #27 driver tree, focused tests pass:
 
 - process/file DMA lifetime: 23/23;

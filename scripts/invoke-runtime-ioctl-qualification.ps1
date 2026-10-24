@@ -19,7 +19,15 @@ param(
     [string]$MockStatePath,
     [string]$MockExecutablePath,
     [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$MockExecutableSha256,
-    [string]$MockScenarioPath
+    [string]$MockScenarioPath,
+    [string]$ExpectedInf = 'oem102.inf',
+    [string]$ExpectedVersion = '0.2026.1022.1',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string]$ExpectedSysHash =
+        'D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A',
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string]$ExpectedLecdiagHash =
+        '0567A21992E95FFBB8E08B24ED10DA1CB4339682CB6DD31CD42F740F99E955D2'
 )
 
 Set-StrictMode -Version Latest
@@ -29,8 +37,6 @@ $repo = Split-Path -Parent $PSScriptRoot
 $lecdiag = Join-Path $repo 'tools\lecdiag\build\lecdiag.exe'
 $runnerScript = Join-Path $PSScriptRoot 'native-process.ps1'
 $guardScript = Join-Path $PSScriptRoot 'deviceguard-preflight.ps1'
-$expectedLecdiagHash = '0567A21992E95FFBB8E08B24ED10DA1CB4339682CB6DD31CD42F740F99E955D2'
-$expectedSysHash = 'D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A'
 $expectedInstance = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0'
 $expectedHardware = 'PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00'
 $interfaceClasses = @(
@@ -229,14 +235,16 @@ function Test-QualificationState([object]$State, [string]$ExecutableHash) {
     $device = if ($matching.Count -eq 1) { $matching[0] } else { $null }
     if ($null -ne $device) {
         if ($device.InstanceId -ne $expectedInstance) { $errors += 'PCI instance ID mismatch.' }
-        if ($device.Inf -ne 'oem102.inf') { $errors += 'Published INF mismatch.' }
-        if ($device.Version -ne '0.2026.1022.1') { $errors += 'Driver version mismatch.' }
+        if ($device.Inf -ne $ExpectedInf) { $errors += 'Published INF mismatch.' }
+        if ($device.Version -ne $ExpectedVersion) { $errors += 'Driver version mismatch.' }
         if ($null -eq $device.ProblemCode -or [int]$device.ProblemCode -ne 0 -or
             $device.DeviceStatus -ne 'OK') { $errors += 'Device is not problem-free.' }
         if ($device.ServiceName -ne 'LecS65AcqDrv' -or $device.ServiceStatus -ne 'Running') {
             $errors += 'Driver service is not running.'
         }
-        if ($device.SysHash -ne $expectedSysHash) { $errors += 'Loaded SYS hash mismatch.' }
+        if ($device.SysHash -ne $ExpectedSysHash.ToUpperInvariant()) {
+            $errors += 'Loaded SYS hash mismatch.'
+        }
         $interfaces = @($device.Interfaces)
         foreach ($class in $interfaceClasses) {
             $items = @($interfaces | Where-Object { $_.ClassGuid -eq $class })
@@ -254,7 +262,7 @@ function Test-QualificationState([object]$State, [string]$ExecutableHash) {
     }
     $expectedExecutableHash = if ($Mode -eq 'OfflineMock') {
         $MockExecutableSha256.ToUpperInvariant()
-    } else { $expectedLecdiagHash }
+    } else { $ExpectedLecdiagHash.ToUpperInvariant() }
     if ($ExecutableHash -ne $expectedExecutableHash) { $errors += 'Diagnostic executable hash mismatch.' }
     [pscustomobject]@{ Passed=($errors.Count -eq 0); Errors=@($errors); Device=$device;
         DeviceGuard=$guard; ObservedLocation=if ($device) { $device.Location } else { $null } }
@@ -269,7 +277,8 @@ function Get-TargetEvents([datetime]$StartUtc) {
             LogName=$log; StartTime=$StartUtc.ToLocalTime()
         } -ErrorAction SilentlyContinue)) {
             $xml = $event.ToXml()
-            if ($xml -match '(?i)(VEN_1570&amp;DEV_0005|VEN_1570&DEV_0005|LecS65AcqDrv|oem102\.inf)') {
+            $infPattern = [regex]::Escape($ExpectedInf)
+            if ($xml -match "(?i)(VEN_1570&amp;DEV_0005|VEN_1570&DEV_0005|LecS65AcqDrv|$infPattern)") {
                 $result += [pscustomobject]@{ LogName=$log; RecordId=$event.RecordId;
                     Id=$event.Id; Level=$event.Level;
                     TimeCreatedUtc=$event.TimeCreated.ToUniversalTime().ToString('o');
