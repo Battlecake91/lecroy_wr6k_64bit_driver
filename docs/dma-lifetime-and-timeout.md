@@ -1135,6 +1135,31 @@ PDO ownership remain retained. `CompletionObserved` is deliberately distinct
 from `IdleProved`. The latter still has no production caller because no
 physical idle predicate exists.
 
+## Batch 12 live preparation lifetime
+
+The one-channel `CFDC2138` dispatch now enters the no-launch transaction while
+the dispatch RemoveLock, active-IOCTL count and `TransferMutex` are all owned.
+The associated FileObject and recorded creator PID are nonzero transaction
+identities; the registered source MDL chain is already locked and therefore
+does not depend on the creator's current process address space. The per-PDO
+publication reference survives every blocking DMA DDI.
+
+`GetScatterGatherListEx` uses the synchronous no-callback contract. There is
+therefore no callback that can outlive the caller, IRP or FileObject in this
+selected path. Cancellation is sampled before mapping and again before Arm.
+Every pre-GO exit cancels the software transaction, frees the Windows mapping
+once and leaves the persistent registration intact. Mapping-release failure
+quarantines the parent instead of guessing ownership. CLOSE/unregister cannot
+free the source MDLs while preparation owns `TransferMutex`.
+
+START allocates the adapter and 0x33000-byte common table before interface and
+IOCTL admission. QUERY_STOP/QUERY_REMOVE close global IOCTL admission and the
+DMA parent before forwarding; rejected queries restore both. Device-power IRPs
+use a nonpaged completion context and publication reference, never a blocking
+wait. STOP, REMOVE and surprise removal record IRQ/DPC/timer software rundown
+before releasing only no-launch mappings. None of those steps is a physical
+idle claim after a possible GO.
+
 The PnP staging parent now separates PnP generation from power generation and
 keeps new mapping admission closed in QUERY, PowerDownPending, Dx and failed
 resume. These are offline admission primitives, not live POWER-IRP wiring.

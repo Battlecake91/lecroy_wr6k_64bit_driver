@@ -1,4 +1,5 @@
 #include "LecS65Drv.h"
+#include "DmaPnpPublication.h"
 
 static
 BOOLEAN
@@ -3510,6 +3511,8 @@ NTSTATUS
 LecIoctlAcquireBufferedOneChannel(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt,
     _In_ HANDLE OwnerProcessId,
+    _In_ PFILE_OBJECT FileObject,
+    _In_opt_ volatile BOOLEAN* CancelRequested,
     _Inout_updates_bytes_(OutputLength) UCHAR* SystemBuffer,
     _In_ ULONG InputLength,
     _In_ ULONG OutputLength,
@@ -3517,14 +3520,90 @@ LecIoctlAcquireBufferedOneChannel(
     )
 {
 #if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA
-    UNREFERENCED_PARAMETER(DevExt);
-    UNREFERENCED_PARAMETER(OwnerProcessId);
+    ULONG token;
+    UCHAR channelCount;
+    UCHAR pairMarker;
+    UCHAR channel;
+    ULONG requestedBytes;
+    PLECS65_TRANSFER transfer;
+    LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
+    LECS65_DMA_PREPARE_RESULT prepareResult;
+    NTSTATUS status;
+
     if (SystemBuffer == NULL || Information == NULL ||
         InputLength != 15 || OutputLength != sizeof(ULONG)) {
         return STATUS_INVALID_BUFFER_SIZE;
     }
     *Information = 0;
-    return STATUS_NOT_SUPPORTED;
+    if (OwnerProcessId == NULL || FileObject == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    RtlCopyMemory(&token, SystemBuffer, sizeof(token));
+    channelCount = SystemBuffer[4];
+    pairMarker = SystemBuffer[5];
+    channel = SystemBuffer[6];
+    requestedBytes = LecReadU32(SystemBuffer + 11);
+    if (channelCount != 1 || pairMarker != 1 || channel > 0x3FU ||
+        requestedBytes == 0 || requestedBytes >= 0x01000000UL ||
+        (requestedBytes >= 0x400UL &&
+         (requestedBytes & 0x3FFUL) != 0)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    KeWaitForSingleObject(
+        &DevExt->TransferMutex, Executive, KernelMode, FALSE, NULL);
+    if (!DevExt->Started || DevExt->Removed ||
+        InterlockedCompareExchange(&DevExt->DmaUnknownActive, 0, 0) != 0) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto NoLaunchExit;
+    }
+    transfer = LecFindTransferOwned(DevExt, token, OwnerProcessId);
+    if (transfer == NULL ||
+        transfer->DataBytes != requestedBytes ||
+        transfer->TotalDwords != requestedBytes / sizeof(ULONG)) {
+        status = transfer == NULL ?
+            STATUS_INVALID_PARAMETER : STATUS_INVALID_BUFFER_SIZE;
+        goto NoLaunchExit;
+    }
+    if (DevExt->DmaPnpPublication == NULL) {
+        status = STATUS_DEVICE_NOT_READY;
+        goto NoLaunchExit;
+    }
+    status = LecDmaPnpPublicationAcquire(
+        DevExt->DmaPnpPublication, &reference);
+    if (!NT_SUCCESS(status)) goto NoLaunchExit;
+    status = LecDmaPnpPrepareLegacyNoLaunch(
+        reference.Parent,
+        transfer->SourceMdlChain,
+        requestedBytes,
+        (ULONG_PTR)OwnerProcessId,
+        (ULONG_PTR)FileObject,
+        CancelRequested,
+        &prepareResult);
+    if (prepareResult.MappingToken != 0 &&
+        !prepareResult.MappingReleased) {
+        /*
+         * A Windows DMA mapping that could not be retired owns the locked
+         * source MDLs independently of GO. Preserve the complete registration
+         * through CLOSE and PnP teardown instead of freeing borrowed pages.
+         */
+        LecMarkDmaUnknownActive(DevExt, transfer);
+    }
+    (void)LecDmaPnpPublicationRelease(
+        DevExt->DmaPnpPublication, &reference);
+    LecTrace(
+        "CFDC2138 WDM-v3 prepare: token=%lu bytes=%lu segments=%lu descriptors=%lu launchDenied=%u released=%u status=0x%08X\n",
+        token,
+        requestedBytes,
+        prepareResult.SegmentCount,
+        prepareResult.DescriptorEntries,
+        prepareResult.LaunchDenied,
+        prepareResult.MappingReleased,
+        status);
+
+NoLaunchExit:
+    KeReleaseMutex(&DevExt->TransferMutex, FALSE);
+    return status;
 #else
     ULONG token;
     UCHAR channelCount;
@@ -4707,6 +4786,8 @@ LecS65DeviceControl(
         status = LecIoctlAcquireBufferedOneChannel(
             devExt,
             ownerProcessId,
+            stack->FileObject,
+            &Irp->Cancel,
             (UCHAR*)systemBuffer,
             inputLength,
             outputLength,

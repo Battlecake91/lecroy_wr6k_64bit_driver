@@ -136,6 +136,23 @@ LecDmaPnpPublicationQuarantine(
 }
 
 NTSTATUS
+LecDmaPnpPublicationStartNoLaunch(
+    _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
+    _In_ ULONG MaximumTransferBytes,
+    _In_ ULONG DescriptorTableBytes)
+{
+    LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
+    NTSTATUS status;
+
+    status = LecDmaPnpPublicationAcquire(Publication, &reference);
+    if (!NT_SUCCESS(status)) return status;
+    status = LecDmaPnpStartNoLaunch(
+        reference.Parent, MaximumTransferBytes, DescriptorTableBytes);
+    (void)LecDmaPnpPublicationRelease(Publication, &reference);
+    return status;
+}
+
+NTSTATUS
 LecDmaPnpPublicationRetainLegacyTransfer(
     _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
     _Inout_ PLIST_ENTRY TransferLink,
@@ -184,6 +201,7 @@ LecDmaPnpPublicationNotifyTeardown(
     _In_ LECS65_DMA_PNP_TEARDOWN_REASON Reason)
 {
     LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
+    LECS65_DMA_PNP_SNAPSHOT snapshot;
     NTSTATUS status;
 
     if (Reason != LecDmaPnpTeardownStop &&
@@ -196,7 +214,28 @@ LecDmaPnpPublicationNotifyTeardown(
         return status;
     }
     status = LecDmaPnpBeginTeardown(reference.Parent, Reason);
-    if (NT_SUCCESS(status) && Reason == LecDmaPnpTeardownSurprise) {
+    if (NT_SUCCESS(status)) {
+        RtlZeroMemory(&snapshot, sizeof(snapshot));
+        LecDmaPnpSnapshot(reference.Parent, &snapshot);
+        if (snapshot.State == LecDmaPnpStopped ||
+            snapshot.State == LecDmaPnpSurpriseRemoved) {
+            (void)LecDmaPnpPublicationRelease(Publication, &reference);
+            return STATUS_SUCCESS;
+        }
+    }
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(
+            reference.Parent, LecDmaPnpInterruptDisconnected);
+    }
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(
+            reference.Parent, LecDmaPnpDpcDrained);
+    }
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(
+            reference.Parent, LecDmaPnpTimerStopped);
+    }
+    if (NT_SUCCESS(status)) {
         status = LecDmaPnpFinishTeardownNoLaunch(reference.Parent);
     }
     (void)LecDmaPnpPublicationRelease(Publication, &reference);
@@ -245,6 +284,16 @@ LecDmaPnpPublicationRemove(
     }
 
     status = LecDmaPnpBeginTeardown(parent, LecDmaPnpTeardownRemove);
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(
+            parent, LecDmaPnpInterruptDisconnected);
+    }
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(parent, LecDmaPnpDpcDrained);
+    }
+    if (NT_SUCCESS(status)) {
+        status = LecDmaPnpRecordQuiescence(parent, LecDmaPnpTimerStopped);
+    }
     if (NT_SUCCESS(status)) {
         status = LecDmaPnpFinishTeardownNoLaunch(parent);
     }

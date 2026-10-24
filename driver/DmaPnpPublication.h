@@ -61,6 +61,12 @@ NTSTATUS LecDmaPnpPublicationRelease(
     _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
     _Inout_ PLECS65_DMA_PNP_PUBLICATION_REFERENCE Reference);
 
+/* START-only owner initialization; no mapping and no hardware launch. */
+NTSTATUS LecDmaPnpPublicationStartNoLaunch(
+    _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication,
+    _In_ ULONG MaximumTransferBytes,
+    _In_ ULONG DescriptorTableBytes);
+
 /* Permanent notification; safe at DISPATCH_LEVEL and never waits. */
 NTSTATUS LecDmaPnpPublicationQuarantine(
     _Inout_ PLECS65_DMA_PNP_PUBLICATION Publication);

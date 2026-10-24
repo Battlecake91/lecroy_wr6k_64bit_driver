@@ -1,5 +1,16 @@
 #include "DmaPnpStage.h"
 
+static VOID
+LecDmaPnpPublicationBarrier(_In_opt_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(Context);
+#if defined(LECS65_SG_HOST_TEST)
+    MemoryBarrier();
+#else
+    KeMemoryBarrier();
+#endif
+}
+
 typedef enum _LECS65_DMA_PNP_CALL_KIND {
     LecDmaPnpCallMap = 0,
     LecDmaPnpCallExistingMapping
@@ -296,6 +307,7 @@ NTSTATUS LecDmaPnpBeginQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
     if (Stage == NULL) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Stage->Lock, &irql);
     if (Stage->State != LecDmaPnpStarted || Stage->QueryPending ||
+        Stage->ActiveCalls != 0 ||
         Stage->CleanupActive || Stage->UnknownActive) {
         KeReleaseSpinLock(&Stage->Lock, irql);
         return STATUS_DEVICE_BUSY;
@@ -327,7 +339,7 @@ NTSTATUS LecDmaPnpBeginPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
     KIRQL irql;
     if (Stage == NULL) return STATUS_INVALID_PARAMETER;
     KeAcquireSpinLock(&Stage->Lock, &irql);
-    if (Stage->State != LecDmaPnpStarted ||
+    if (Stage->State != LecDmaPnpStarted || Stage->ActiveCalls != 0 ||
         Stage->PowerState != LecDmaPowerD0 || Stage->UnknownActive) {
         KeReleaseSpinLock(&Stage->Lock, irql);
         return STATUS_INVALID_DEVICE_STATE;
@@ -335,6 +347,23 @@ NTSTATUS LecDmaPnpBeginPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
     Stage->AdmissionOpen = FALSE;
     Stage->PowerState = LecDmaPowerDownPending;
     ++Stage->PowerGeneration;
+    KeReleaseSpinLock(&Stage->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS LecDmaPnpCancelPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage)
+{
+    KIRQL irql;
+    if (Stage == NULL) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Stage->Lock, &irql);
+    if (Stage->State != LecDmaPnpStarted ||
+        Stage->PowerState != LecDmaPowerDownPending) {
+        KeReleaseSpinLock(&Stage->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    Stage->PowerState = LecDmaPowerD0;
+    Stage->AdmissionOpen = (BOOLEAN)(!Stage->QueryPending &&
+        !Stage->UnknownActive && !LecDmaPnpQuarantineRequested(Stage));
     KeReleaseSpinLock(&Stage->Lock, irql);
     return STATUS_SUCCESS;
 }
@@ -660,6 +689,168 @@ LecDmaPnpReleaseNoLaunch(
         return status;
     }
     status = LecSgSyncReleaseNoLaunch(&Stage->SyncOwner, Token);
+    LecDmaPnpLeaveCall(Stage);
+    return status;
+}
+
+NTSTATUS
+LecDmaPnpPrepareLegacyNoLaunch(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage,
+    _In_ PMDL LockedMdlChain,
+    _In_ ULONG Length,
+    _In_ ULONG_PTR OwnerId,
+    _In_ ULONG_PTR FileId,
+    _In_opt_ volatile BOOLEAN* CancelRequested,
+    _Out_ PLECS65_DMA_PREPARE_RESULT Result)
+{
+    LECS65_DMA_TRANSACTION transaction;
+    PSCATTER_GATHER_ELEMENT elements = NULL;
+    LECS65_DMA_MAPPED_SEGMENT* segments = NULL;
+    ULONGLONG generation = 0;
+    ULONGLONG token = 0;
+    ULONG count = 0;
+    ULONG capacity;
+    ULONG i;
+    SIZE_T elementBytes;
+    SIZE_T segmentBytes;
+    NTSTATUS status;
+    LECS65_DMA_TRANSACTION_RESULT txResult = LecDmaTxInvalid;
+    BOOLEAN mappingOwned = FALSE;
+
+    if (Result == NULL || LockedMdlChain == NULL || Length == 0 ||
+        OwnerId == 0 || FileId == 0) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    RtlZeroMemory(Result, sizeof(*Result));
+    status = LecDmaPnpEnterCall(Stage, LecDmaPnpCallMap);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    capacity = Stage->SyncOwner.DescriptorSlotCapacity;
+    if (capacity < 2 ||
+        capacity > ((SIZE_T)-1) / sizeof(*elements) ||
+        capacity > ((SIZE_T)-1) / sizeof(*segments)) {
+        status = STATUS_INTEGER_OVERFLOW;
+        goto Exit;
+    }
+    elementBytes = (SIZE_T)capacity * sizeof(*elements);
+    segmentBytes = (SIZE_T)capacity * sizeof(*segments);
+    elements = (PSCATTER_GATHER_ELEMENT)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, elementBytes, LECS65_TAG);
+    segments = (LECS65_DMA_MAPPED_SEGMENT*)ExAllocatePool2(
+        POOL_FLAG_NON_PAGED, segmentBytes, LECS65_TAG);
+    if (elements == NULL || segments == NULL) {
+        status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Exit;
+    }
+
+    LecDmaTransactionInitialize(&transaction);
+    txResult = LecDmaTransactionSetLifecycle(&transaction, 1, 1);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionBegin(
+        &transaction, OwnerId, FileId, Length, &generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionBindOwner(
+        &transaction, generation, OwnerId, FileId);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionAdmitAdapter(&transaction, generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionAcquireBuffer(&transaction, generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    if (CancelRequested != NULL && *CancelRequested) {
+        (void)LecDmaTransactionCancel(&transaction, generation, 0);
+        status = STATUS_CANCELLED;
+        goto Exit;
+    }
+    txResult = LecDmaTransactionBeginMapping(&transaction, generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+
+    status = LecSgSyncMapNoLaunch(
+        &Stage->SyncOwner, LockedMdlChain, Length, &token);
+    mappingOwned = (BOOLEAN)NT_SUCCESS(status);
+    txResult = LecDmaTransactionMappingComplete(
+        &transaction, generation, token, NT_SUCCESS(status));
+    if (!NT_SUCCESS(status) || txResult != LecDmaTxOk) {
+        goto TransactionFailure;
+    }
+    Result->MappingToken = token;
+
+    status = LecSgSyncCopySegments(
+        &Stage->SyncOwner, token, elements, capacity, &count);
+    if (!NT_SUCCESS(status) || count == 0 || count > capacity) {
+        goto CancelAndRelease;
+    }
+    for (i = 0; i < count; ++i) {
+        segments[i].DeviceAddress = elements[i].Address.QuadPart;
+        segments[i].LengthBytes = elements[i].Length;
+    }
+    Result->SegmentCount = count;
+    txResult = LecDmaTransactionBuildDescriptors(
+        &transaction,
+        generation,
+        (LECS65_DMA_LAYOUT_ENTRY*)Stage->AdapterContext->TableVirtual,
+        Stage->AdapterContext->TableLength,
+        Stage->AdapterContext->TableLogical.QuadPart,
+        segments,
+        count);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    Result->DescriptorEntries = transaction.DescriptorEntries;
+    txResult = LecDmaTransactionPublish(
+        &transaction, generation, LecDmaPnpPublicationBarrier, NULL);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    if (CancelRequested != NULL && *CancelRequested) {
+        status = STATUS_CANCELLED;
+        goto CancelAndRelease;
+    }
+    txResult = LecDmaTransactionBeginArm(&transaction, generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionCommitHardwareLaunch(&transaction, generation);
+    Result->TransactionResult = txResult;
+    Result->LaunchDenied = (BOOLEAN)(txResult == LecDmaTxLaunchDisabled);
+    if (!Result->LaunchDenied) goto TransactionFailure;
+    status = STATUS_NOT_SUPPORTED;
+
+CancelAndRelease:
+    txResult = LecDmaTransactionCancel(&transaction, generation, 0);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    txResult = LecDmaTransactionReleaseMapping(&transaction, generation);
+    if (txResult != LecDmaTxOk) goto TransactionFailure;
+    if (mappingOwned) {
+        NTSTATUS releaseStatus = LecSgSyncReleaseNoLaunch(
+            &Stage->SyncOwner, token);
+        if (!NT_SUCCESS(releaseStatus)) {
+            (void)LecDmaPnpQuarantineUnknownActive(Stage);
+            status = releaseStatus;
+            goto Exit;
+        }
+        mappingOwned = FALSE;
+        Result->MappingReleased = TRUE;
+    }
+    goto Exit;
+
+TransactionFailure:
+    Result->TransactionResult = txResult;
+    status = STATUS_INTERNAL_ERROR;
+    if (mappingOwned) {
+        LECS65_DMA_TRANSACTION_RESULT cancelResult =
+            LecDmaTransactionCancel(&transaction, generation, 0);
+        if (cancelResult == LecDmaTxOk &&
+            LecDmaTransactionReleaseMapping(&transaction, generation) ==
+                LecDmaTxOk &&
+            NT_SUCCESS(LecSgSyncReleaseNoLaunch(
+                &Stage->SyncOwner, token))) {
+            mappingOwned = FALSE;
+            Result->MappingReleased = TRUE;
+        }
+        else {
+            (void)LecDmaPnpQuarantineUnknownActive(Stage);
+        }
+    }
+
+Exit:
+    if (segments != NULL) ExFreePoolWithTag(segments, LECS65_TAG);
+    if (elements != NULL) ExFreePoolWithTag(elements, LECS65_TAG);
     LecDmaPnpLeaveCall(Stage);
     return status;
 }

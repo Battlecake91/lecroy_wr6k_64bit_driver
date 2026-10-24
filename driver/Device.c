@@ -1,6 +1,50 @@
 #include "LecS65Drv.h"
 #include "DmaPnpPublication.h"
 
+typedef struct _LECS65_DMA_POWER_COMPLETION_CONTEXT {
+    PLECS65_DEVICE_EXTENSION DevExt;
+    PLECS65_DMA_PNP_PUBLICATION Publication;
+    LECS65_DMA_PNP_PUBLICATION_REFERENCE Reference;
+    BOOLEAN ResumeD0;
+} LECS65_DMA_POWER_COMPLETION_CONTEXT,
+    *PLECS65_DMA_POWER_COMPLETION_CONTEXT;
+
+static NTSTATUS
+LecDmaPowerCompletion(
+    _In_ PDEVICE_OBJECT DeviceObject,
+    _Inout_ PIRP Irp,
+    _In_ PVOID Context)
+{
+    PLECS65_DMA_POWER_COMPLETION_CONTEXT completion =
+        (PLECS65_DMA_POWER_COMPLETION_CONTEXT)Context;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+        if (completion->ResumeD0) {
+            (void)LecDmaPnpCompleteResumeD0(
+                completion->Reference.Parent, TRUE);
+        }
+        else {
+            (void)LecDmaPnpRecordPoweredDown(
+                completion->Reference.Parent);
+        }
+    }
+    else if (completion->ResumeD0) {
+        (void)LecDmaPnpCompleteResumeD0(
+            completion->Reference.Parent, FALSE);
+    }
+    else {
+        (void)LecDmaPnpCancelPowerDown(
+            completion->Reference.Parent);
+    }
+    (void)LecDmaPnpPublicationRelease(
+        completion->Publication, &completion->Reference);
+    if (Irp->PendingReturned) IoMarkIrpPending(Irp);
+    IoReleaseRemoveLock(&completion->DevExt->RemoveLock, Irp);
+    ExFreePoolWithTag(completion, LECS65_TAG);
+    return STATUS_CONTINUE_COMPLETION;
+}
+
 VOID
 LecReleaseLegacyEvents(
     _Inout_ PLECS65_DEVICE_EXTENSION DevExt
@@ -528,9 +572,26 @@ LecS65Pnp(
                     status = irqStatus;
                 }
                 else {
-                    devExt->Started = TRUE;
-                    LecSetIoctlAdmission(devExt, TRUE);
-                    LecEnableInterfaces(devExt, Irp);
+                    NTSTATUS dmaStatus =
+                        LecDmaPnpPublicationStartNoLaunch(
+                            devExt->DmaPnpPublication,
+                            LECS65_DMA_MAM_MAX_TRANSFER_BYTES,
+                            LECS65_DMA_TABLE_BYTES);
+                    LecPnpStatusTrace(
+                        "PNP_STATUS: irp=%p minor=0x%02X stage=dma-parent-start status=0x%08X\n",
+                        Irp,
+                        stack->MinorFunction,
+                        (ULONG)dmaStatus);
+                    if (!NT_SUCCESS(dmaStatus)) {
+                        LecQuiesceDeferredWork(devExt, TRUE);
+                        LecUnmapBars(devExt);
+                        status = dmaStatus;
+                    }
+                    else {
+                        devExt->Started = TRUE;
+                        LecSetIoctlAdmission(devExt, TRUE);
+                        LecEnableInterfaces(devExt, Irp);
+                    }
                 }
             }
         }
@@ -540,6 +601,58 @@ LecS65Pnp(
             Irp,
             stack->MinorFunction,
             (ULONG)status);
+        Irp->IoStatus.Status = status;
+        IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return status;
+
+    case IRP_MN_QUERY_STOP_DEVICE:
+    case IRP_MN_QUERY_REMOVE_DEVICE:
+        LecSetIoctlAdmission(devExt, FALSE);
+        LecDrainIoctls(devExt);
+        if (devExt->DmaPnpPublication != NULL) {
+            LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
+            status = LecDmaPnpPublicationAcquire(
+                devExt->DmaPnpPublication, &reference);
+            if (NT_SUCCESS(status)) {
+                status = LecDmaPnpBeginQuery(reference.Parent);
+                if (NT_SUCCESS(status)) {
+                    status = LecForwardAndWait(devExt, Irp);
+                    if (!NT_SUCCESS(status)) {
+                        if (NT_SUCCESS(LecDmaPnpCancelQuery(
+                                reference.Parent))) {
+                            LecSetIoctlAdmission(devExt, TRUE);
+                        }
+                    }
+                }
+                (void)LecDmaPnpPublicationRelease(
+                    devExt->DmaPnpPublication, &reference);
+            }
+            Irp->IoStatus.Status = status;
+            IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+            IoCompleteRequest(Irp, IO_NO_INCREMENT);
+            return status;
+        }
+        LecSetIoctlAdmission(devExt, TRUE);
+        return LecForwardLockedIrp(devExt, Irp, FALSE);
+
+    case IRP_MN_CANCEL_STOP_DEVICE:
+    case IRP_MN_CANCEL_REMOVE_DEVICE:
+        status = LecForwardAndWait(devExt, Irp);
+        if (NT_SUCCESS(status) && devExt->DmaPnpPublication != NULL) {
+            LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
+            NTSTATUS lifetimeStatus = LecDmaPnpPublicationAcquire(
+                devExt->DmaPnpPublication, &reference);
+            if (NT_SUCCESS(lifetimeStatus)) {
+                lifetimeStatus = LecDmaPnpCancelQuery(reference.Parent);
+                (void)LecDmaPnpPublicationRelease(
+                    devExt->DmaPnpPublication, &reference);
+            }
+            if (!NT_SUCCESS(lifetimeStatus)) status = lifetimeStatus;
+            if (NT_SUCCESS(lifetimeStatus)) {
+                LecSetIoctlAdmission(devExt, TRUE);
+            }
+        }
         Irp->IoStatus.Status = status;
         IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -689,6 +802,55 @@ LecS65Power(
             return status;
         }
         PoStartNextPowerIrp(Irp);
+        if (stack->MinorFunction == IRP_MN_SET_POWER &&
+            stack->Parameters.Power.Type == DevicePowerState &&
+            devExt->DmaPnpPublication != NULL) {
+            DEVICE_POWER_STATE target =
+                stack->Parameters.Power.State.DeviceState;
+            PLECS65_DMA_POWER_COMPLETION_CONTEXT completion;
+            NTSTATUS lifetimeStatus;
+
+            completion = (PLECS65_DMA_POWER_COMPLETION_CONTEXT)
+                ExAllocatePool2(
+                    POOL_FLAG_NON_PAGED, sizeof(*completion), LECS65_TAG);
+            if (completion == NULL) {
+                IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+                Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+            RtlZeroMemory(completion, sizeof(*completion));
+            completion->DevExt = devExt;
+            completion->Publication = devExt->DmaPnpPublication;
+            lifetimeStatus = LecDmaPnpPublicationAcquire(
+                completion->Publication, &completion->Reference);
+            if (NT_SUCCESS(lifetimeStatus)) {
+                completion->ResumeD0 = (BOOLEAN)(target == PowerDeviceD0);
+                lifetimeStatus = completion->ResumeD0 ?
+                    LecDmaPnpBeginResumeD0(completion->Reference.Parent) :
+                    LecDmaPnpBeginPowerDown(completion->Reference.Parent);
+            }
+            if (NT_SUCCESS(lifetimeStatus)) {
+                IoCopyCurrentIrpStackLocationToNext(Irp);
+                IoSetCompletionRoutine(
+                    Irp, LecDmaPowerCompletion, completion,
+                    TRUE, TRUE, TRUE);
+                return PoCallDriver(devExt->LowerDeviceObject, Irp);
+            }
+            if (completion->Reference.State == 1) {
+                (void)LecDmaPnpPublicationRelease(
+                    completion->Publication, &completion->Reference);
+            }
+            ExFreePoolWithTag(completion, LECS65_TAG);
+
+            /* Idempotent SET_POWER requests do not change admission. */
+            if (lifetimeStatus != STATUS_INVALID_DEVICE_STATE) {
+                IoReleaseRemoveLock(&devExt->RemoveLock, Irp);
+                Irp->IoStatus.Status = lifetimeStatus;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return lifetimeStatus;
+            }
+        }
         return LecForwardLockedIrp(devExt, Irp, TRUE);
     }
 }

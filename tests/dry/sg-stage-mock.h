@@ -51,6 +51,9 @@
 #ifndef TRUE
 #define TRUE 1
 #endif
+#ifndef STATUS_CANCELLED
+#define STATUS_CANCELLED ((NTSTATUS)0xC0000120L)
+#endif
 
 typedef unsigned long KIRQL;
 /* The Windows user header already typedefs KSPIN_LOCK. Substitute a

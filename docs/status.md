@@ -1,5 +1,39 @@
 # Current project status
 
+## Batch 12 legacy acquisition integration
+
+- The installed runtime remains unchanged: `oem102.inf`, version
+  `0.2026.1022.1`, device and service `OK`, and loaded SYS SHA-256
+  `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`.
+  Batch 12 performed no device open, IOCTL, MMIO, acquisition, DMA, PnP,
+  installation, signing, Verifier, power transition or reboot operation.
+- The exact one-channel METHOD_BUFFERED `CFDC2124`/`CFDC2138` MAM path is the
+  first production integration point. It preserves the 15-byte request ABI,
+  binds the registered locked MDL chain to its PID and FileObject, maps it
+  through synchronous WDM-v3 `GetScatterGatherListEx`, validates DMA-logical
+  addresses, builds the common-buffer descriptor chain and then reaches the
+  unconditional `LecDmaTxLaunchDisabled` gate. It performs no acquisition or
+  DMA-control MMIO and releases only the never-launched mapping.
+- START now creates the per-PDO adapter/common-buffer owner before publishing
+  IOCTL admission. QUERY_STOP/QUERY_REMOVE, STOP, REMOVE, surprise removal and
+  asynchronous device D0/Dx completions close or restore DMA admission through
+  the same parent. RemoveLock, active-IOCTL rundown, `TransferMutex` and the
+  publication reference keep the IRP, MDL, FileObject and adapter ownership
+  valid through preparation.
+- Original-x86 and FPGA/PCI evidence still provides no physical DMA-idle
+  predicate. IRQ/DPC, `IIMCL=0`, `MTTCTL=0`, INTEN masking, timeout, reset,
+  STOP, REMOVE and power-down do not prove final descriptor fetch or PCI write
+  retirement. Post-GO uncertainty remains irreversible `UnknownActive`.
+- Debug and Release x64 build with SDK/WDK 10.0.28000.0 and MSVC 14.41.34120,
+  zero warnings and zero errors. Debug SYS SHA-256 is
+  `53BA585AFB165C6818ABBDDB9BA82C4DB6E09827A60403AB8CD4AD4B9FE13EF9`;
+  Release is
+  `4961A8F664ED9AC0FF172E2B35952A8841C8DC166AEC2BE45E644E6EEF30A0D1`.
+- The complete Dry suite passes. Focused synchronous SG/PnP integration is
+  157/157, source contracts 69/69, publication 38/38 and continuation 17/17.
+  Expanded stress passed DMA 50,000/50,000 and INTEN 10,000/10,000; an
+  additional DMA run passed 250,000/250,000 observations.
+
 ## Batch 11 WDM-v3 software transaction
 
 - The installed Batch 9 baseline remains unchanged: `oem102.inf`, version

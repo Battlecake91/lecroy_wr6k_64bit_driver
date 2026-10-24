@@ -13,11 +13,13 @@ $publicationSource = Join-Path $repo "driver\DmaPnpPublication.c"
 $pnpSource = Join-Path $repo "driver\DmaPnpStage.c"
 $syncSource = Join-Path $repo "driver\DmaSyncStage.c"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
+$transactionSource = Join-Path $repo "driver\DmaTransaction.c"
+$layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $outDir = Join-Path $PSScriptRoot "build"
 $exe = Join-Path $outDir "test-pnp-publication.exe"
 New-Item -Path $outDir -ItemType Directory -Force | Out-Null
 
-$sources = @($test, $publicationSource, $pnpSource, $syncSource, $adapterSource)
+$sources = @($test, $publicationSource, $pnpSource, $syncSource, $adapterSource, $transactionSource, $layoutSource)
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Push-Location $outDir
