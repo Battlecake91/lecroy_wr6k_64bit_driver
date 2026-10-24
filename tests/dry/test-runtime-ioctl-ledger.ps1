@@ -230,7 +230,7 @@ try {
         if ($capture -notmatch 'AuthorizePnpRestart' -or $capture -notmatch 'RestartWithCapture') {
             throw 'PnP restart authorization gate missing'
         }
-        if ($noLaunch -notmatch 'OwnerAuthorized' -or $noLaunch -notmatch 'LecDmaTxLaunchDisabled') {
+        if ($noLaunch -notmatch 'OwnerAuthorized' -or $noLaunch -notmatch 'ERROR_NOT_SUPPORTED') {
             throw 'no-launch authorization or closed-launch contract missing'
         }
     }

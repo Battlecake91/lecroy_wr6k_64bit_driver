@@ -71,7 +71,12 @@ function Get-Hash([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Required file is missing: $Path"
     }
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '') }
+        finally { $sha.Dispose() }
+    } finally { $stream.Dispose() }
 }
 
 function Assert-Host([bool]$RequireElevation) {
@@ -182,6 +187,7 @@ function New-ChildScript([object]$Plan, [string]$Stage, [string]$DispatchRoot,
 `$started = [datetime]::UtcNow
 `$code = 1
 try {
+    Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
     & $(& $escape $harness) $($args -join ' ')
     `$code = `$LASTEXITCODE
 } catch {
