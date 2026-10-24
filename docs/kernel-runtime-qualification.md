@@ -1071,6 +1071,30 @@ installation, R0/R1, PnP-restart or live no-launch stages ran. The corrected
 offline workflow must receive a new explicit signing authorization before the
 ordered qualification sequence can resume.
 
+## Batch 14 installed candidate and stopped runtime gate
+
+The corrected workflow produced one signed Release x64 candidate and one
+captured installation published it as `oem103.inf`, version `0.2026.1024.1`.
+The loaded SYS SHA-256 is
+`73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`.
+The installation capture contains 49 diagnostic records covering successful
+local START, interrupt connection, DMA-parent START, five interface enables
+and final START. The device remained problem-free and the service running.
+
+The subsequent R0/R1 passive preflight passed. The authorized elevated
+`RunAuthorized` process was externally terminated after that preflight and
+before its first command attempt marker. The evidence therefore proves zero
+R0/R1 commands were dispatched in Batch 14; it does not prove a partial runtime
+matrix. No retry was made. The dependent captured PnP restart and bounded
+no-launch preparation were skipped exactly as required by the ordered gates.
+
+A future attempt requires new explicit authorization for the complete R0/R1
+matrix. It must use a supervisor that allows the preflight plus all bounded
+commands to complete and still retain the existing exclusive evidence and
+no-retry semantics. PnP restart remains gated on 9/9 R0 plus 2/2 R1, and the
+no-launch preparation remains gated on both. Neither this installation nor its
+successful START supplies physical DMA-idle or post-GO retirement evidence.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

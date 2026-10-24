@@ -672,3 +672,22 @@ independently require the exact identity set, complete success for every suite
 and internally consistent functional and stress totals. The elevated Windows
 PowerShell 5.1 no-key launcher path passes 36/36 mocks before the authorized
 real signing attempt.
+
+The single Batch 14 signing attempt completed successfully from clean workflow
+commit `d90571323984249c93993235c4cad6cf71cd9de6`. It produced and froze one
+locally test-signed Release x64 package with these SHA-256 values:
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `FED0F507EC7E91553EFA7A2E2AD43C6EB9232653EECE2853935A0D3A310E8B8A` |
+| CAT | `97F4C8B25926B3A5202558610B3098872DB7F37410B80583770875808A23BFD7` |
+| signed SYS | `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908` |
+| matching PDB | `99BF95283A9213A2BBACF5DEF602A68D7C52E91BC141EFFAB2FC2BF8848387D5` |
+| signed manifest | `CDC234B493436ADDBD9E8A5E79EE5B25FF1AEEAFDFF6BFC2A2C8AE7EEED178A0` |
+
+Authenticode, the local test chain, catalog membership, INF consistency and
+SYS/PDB identity passed. The manifest records all 23 required suite identities,
+776/776 aggregate functional checks and 66,000/66,000 stress iterations. This
+is local test-signing evidence only, not Microsoft kernel-policy or WHQL/WHCP
+certification. One captured installation later published the package as
+`oem103.inf`; the previous package was retained.

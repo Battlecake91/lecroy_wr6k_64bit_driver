@@ -61,3 +61,41 @@ The prior `oem102.inf` package was not deleted.
 The runtime qualification harness now accepts explicit expected INF, version,
 SYS and diagnostic hashes while preserving the previous defaults. Its complete
 mock matrix passes 21/21, including fail-closed and no-retry cases.
+
+## Runtime gate outcome
+
+The passive R0/R1 preflight passed against `oem103.inf`: Windows build 19045,
+test signing enabled, Secure Boot disabled, Device Guard inactive, exact loaded
+SYS, problem code zero, running service, five published interfaces, no blocked
+acquisition client and intact rollback files. Its evidence-manifest SHA-256 is
+`D7DF41FADE54A91CB36C10C9C2552E47BC442C29D5C1A0BAFD159062584F2E7C`.
+
+The one authorized `RunAuthorized` launcher was then started under elevated
+64-bit Windows PowerShell 5.1. The external invocation was terminated after
+the production preflight completed and before the first call to
+`Invoke-ApprovedCommand`. The retained directory contains the immutable
+context and passive preflight only: zero `*.attempted` files, zero
+`*.result.json` files, no command log and no workflow `outcome.json`. Relevant
+SHA-256 values are:
+
+- context: `8E346DCF682BDBA68318CD5290B4B0BA93CC9CD6FC0EBD1C1EA3357B152105C5`;
+- preflight: `B9BAE0DA1D65259424FFF53E230609DD76FE00E78C37399DE2F7ED15C14B136E`;
+- target-event snapshot: `7EB70257593DA06F682A3DDDA54A9D260D4FC514F645237F5CA74B08F8DA61A6`.
+
+No R0 or R1 device command executed. A passive post-interruption snapshot still
+showed `oem103.inf`, version `0.2026.1024.1`, exact loaded SYS, problem code
+zero and the running service. The authorization was treated as consumed and no
+retry was made. Because R0 9/9 plus R1 2/2 was not established on this package,
+the conditional captured PnP restart and `CFDC2124`/`CFDC2138` no-launch stage
+were not run. Thus there is no live Windows DMA mapping, SG-list, descriptor,
+common-buffer or cleanup evidence from Batch 14.
+
+## Remaining boundary
+
+Any new R0/R1 execution requires a new explicit one-shot authorization and a
+launch mechanism whose supervising process is not subject to the previous
+short external execution limit. The PnP restart remains conditional on a
+complete healthy R0/R1 result, and no-launch preparation remains conditional
+on both preceding stages. Actual GO, DMA and acquisition remain outside this
+workstream. Physical PCI bus-idle is still unproved and requires external bus
+evidence.

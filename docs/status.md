@@ -1,12 +1,34 @@
 # Current project status
 
+## Batch 14 signed no-launch candidate
+
+- One Release x64 package was built and signed from the unchanged reviewed
+  driver/include trees. It uses `DriverVer=10/24/2026,0.2026.1024.1`, retains
+  `PnpStatusDiagnostics=true` and passed all 23 named Dry-suite contracts,
+  776/776 aggregate functional checks and 66,000/66,000 stress iterations.
+  The frozen INF, CAT, signed SYS, PDB and manifest SHA-256 values are recorded
+  in the Batch 14 handoff.
+- One captured installation passed without retry and published `oem103.inf`.
+  The device is `OK` with problem code zero, `LecS65AcqDrv` is running, all five
+  interfaces are published and the loaded SYS SHA-256 is
+  `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`.
+  The preceding `oem102.inf` package was retained.
+- The Batch 14 R0/R1 passive preflight passed. The subsequently authorized
+  launcher process was externally terminated after writing that preflight but
+  before creating any command-attempt marker. Consequently no Batch 14 R0 or
+  R1 command ran. The one-shot authorization was not reused, and the dependent
+  captured PnP restart and live no-launch preparation were skipped.
+- The latest completed runtime matrix therefore remains the earlier 9/9 R0,
+  2/2 R1 and captured PnP restart on `oem102.inf`. Physical DMA bus-idle,
+  post-GO retirement, real DMA and acquisition remain unproved.
+
 ## Batch 12 legacy acquisition integration
 
-- The installed runtime remains unchanged: `oem102.inf`, version
-  `0.2026.1022.1`, device and service `OK`, and loaded SYS SHA-256
+- During Batch 12, the installed runtime remained `oem102.inf`, version
+  `0.2026.1022.1`, with loaded SYS SHA-256
   `D4CFA707E4458D98B1CA91F4C6ADC1603E073752D3E18B77F457B1F2E294FC4A`.
-  Batch 12 performed no device open, IOCTL, MMIO, acquisition, DMA, PnP,
-  installation, signing, Verifier, power transition or reboot operation.
+  Batch 12 itself performed no device open, IOCTL, MMIO, acquisition, DMA,
+  PnP, installation, signing, Verifier, power transition or reboot operation.
 - The exact one-channel METHOD_BUFFERED `CFDC2124`/`CFDC2138` MAM path is the
   first production integration point. It preserves the 15-byte request ABI,
   binds the registered locked MDL chain to its PID and FileObject, maps it
