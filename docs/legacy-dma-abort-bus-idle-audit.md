@@ -330,3 +330,17 @@ traffic is empirical containment, not a universal retirement proof, unless
 FPGA/bridge documentation also defines engine acknowledgement and retirement
 of already accepted posted writes. Clearing PCI Bus Master Enable is not a
 posted-write flush and is not authorized by this plan.
+
+## Batch 13 external analyzer specification
+
+The unresolved experiment requires a conventional 32-bit, 33-MHz PCI
+analyzer/interposer placed so that U3 bus-master transactions are observable.
+Capture REQ#, GNT#, FRAME#, IRDY#, TRDY#, DEVSEL#, STOP#, AD[31:0], C/BE#[3:0],
+PAR, INTA# and RST#. Decode configuration accesses, descriptor reads and all
+memory reads/writes initiated by U3. Use distinct MAM and MTT runs, guarded
+host buffers and retained mappings. Trigger on each GO write and preserve
+pre-trigger setup, the final descriptor fetch, the last host-memory write,
+INTA assertion/deassertion, any proposed stop/idle observation and a bounded
+post-condition window. A transaction accepted or completed after the proposed
+idle point disproves that predicate. No suitable analyzer is currently
+identified on this host, so the physical retirement proof remains blocked.

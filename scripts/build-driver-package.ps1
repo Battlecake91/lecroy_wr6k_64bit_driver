@@ -292,7 +292,7 @@ function Assert-ManifestComplete {
         $Manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
         $configurationModes.Count -ne 1 -or
         $configurationModes[0] -ne [bool]$Manifest.Build.PnpStatusDiagnostics -or
-        $Manifest.Regression.FunctionalTestsPassed -ne 397 -or
+        $Manifest.Regression.FunctionalTestsPassed -ne 776 -or
         $Manifest.Regression.TotalStressIterations -ne 66000 -or
         ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
         @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
@@ -520,9 +520,11 @@ try {
 
     $expectedRegressionEvidence = [ordered]@{
         $transcriptPath = @(
-            'DRY REGRESSION: 64/64 passed; 0 failed.'
+            'DRY REGRESSION: 69/69 passed; 0 failed.'
+            'PRE-GO SIDE EFFECTS: 10/10 passed; 0 failed.'
             'REGRESSION SUITE PASS: Dry'
-            'LECDIAG COMMAND CHAIN: 16/16 passed; 0 failed.'
+            'LECDIAG COMMAND CHAIN: 17/17 passed; 0 failed.'
+            'NO-LAUNCH PREPARATION TESTS: 3/3 passed; 0 failed.'
             'RUNTIME LIFETIME AUDIT: 19/19 passed; 0 failed.'
             'PROCESS DMA LIFETIME MODEL: 23/23 passed; 0 failed.'
             'RUNTIME BASELINE TESTS: 6/6 passed; 0 failed.'
@@ -532,7 +534,7 @@ try {
             'DMA LAYOUT: 13/13 passed; 0 failed.'
             'DMA OWNERSHIP: 17/17 passed; 0 failed.'
             'SG BRIDGE MOCK: 27/27 passed; 0 failed.'
-            'SG SYNC V3: 149/149 passed; 0 failed.'
+            'SG SYNC V3: 157/157 passed; 0 failed.'
             'PNP PUBLICATION: 38/38 passed; 0 failed.'
             'PNP IRP LIFETIME: 10/10 passed; 0 failed.'
             'DMA COMPLETION: 39/39 passed; 0 failed.'
@@ -772,7 +774,7 @@ try {
         Regression = [ordered]@{
             CompleteDry = 'PASS'
             Expanded = 'PASS'
-            FunctionalTestsPassed = 397
+            FunctionalTestsPassed = 776
             FunctionalTestsFailed = 0
             DefaultDmaStressIterations = 5000
             DefaultIntenStressIterations = 1000

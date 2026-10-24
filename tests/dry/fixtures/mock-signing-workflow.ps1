@@ -166,7 +166,7 @@ $manifest = [ordered]@{
     Regression = [ordered]@{
         CompleteDry = 'PASS'
         Expanded = 'PASS'
-        FunctionalTestsPassed = 397
+        FunctionalTestsPassed = 776
         FunctionalTestsFailed = 0
         TotalStressIterations = 66000
     }

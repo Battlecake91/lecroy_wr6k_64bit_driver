@@ -1048,6 +1048,21 @@ bearing IOCTL example would bypass the ownership and safety gates.
 Each active row requires a new explicit authorization and immutable artifact
 identity. See [DMA architecture](dma-architecture.md).
 
+## Batch 13 qualification gates
+
+The Batch 13 order is fixed: immutable-tree offline validation and signing;
+one captured installation; one complete R0/R1 matrix; one captured PnP
+restart; then, only while the exact installed identity remains healthy, the
+bounded no-launch preparation runner. Each active stage has one attempt and no
+automatic retry. The no-launch runner's accepted result is
+`ERROR_NOT_SUPPORTED`, not acquisition success. Any timeout, device error,
+interface loss, new relevant kernel error or `UnknownActive` evidence stops
+the remaining hardware stages.
+
+Physical idle is explicitly outside this sequence. A successful restart or
+successful mapping preparation cannot prove descriptor-fetch termination,
+last posted-write retirement or safe post-GO mapping release.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

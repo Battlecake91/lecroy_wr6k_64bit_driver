@@ -640,3 +640,15 @@ The manifest records `RebuildPerformed=false`, exact source manifest
 and the unchanged driver/include trees. The package is installed as
 `oem102.inf`, version `0.2026.1022.1`, and its loaded SYS matches the signed
 hash. This is a locally test-signed development package, not WHQL/WHCP output.
+
+## Batch 13 candidate identity
+
+The next isolated no-launch candidate uses
+`DriverVer=10/24/2026,0.2026.1024.1`, Release x64,
+`PnpStatusDiagnostics=true`, SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. Its
+reviewed driver tree must remain exactly the tree from Batch 12 commit
+`fba434344d82817f9f517f4ddcc97a0b60310571`; repository tooling and
+documentation may advance around that immutable tree. Signing is limited to
+the existing local test certificate and does not imply Microsoft or production
+signing. Artifact hashes are recorded only after the one authorized workflow
+finishes.

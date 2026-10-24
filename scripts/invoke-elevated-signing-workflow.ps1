@@ -167,7 +167,7 @@ function Assert-PackageManifest {
         $configurationModes[0] -ne $ExpectedPnpStatusDiagnostics -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
-        $manifest.Regression.FunctionalTestsPassed -ne 397 -or
+        $manifest.Regression.FunctionalTestsPassed -ne 776 -or
         $manifest.Regression.FunctionalTestsFailed -ne 0 -or
         $manifest.Regression.TotalStressIterations -ne 66000 -or
         $manifest.PackageIdentity.DriverVer -ne $ExpectedDriverVer -or

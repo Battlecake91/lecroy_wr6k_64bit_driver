@@ -135,7 +135,7 @@ if ($sourceManifestValue.Schema -ne 2 -or
     $release.Count -ne 1 -or
     $release[0].SYS.SHA256 -ne $expected.SYS -or
     $release[0].PDB.SHA256 -ne $expected.PDB -or
-    $sourceManifestValue.Regression.FunctionalTestsPassed -ne 397 -or
+    $sourceManifestValue.Regression.FunctionalTestsPassed -ne 776 -or
     $sourceManifestValue.Regression.TotalStressIterations -ne 66000 -or
     -not $markerText.Contains('PNP_STATUS:')) {
     throw 'Frozen source manifest or diagnostic identity is inconsistent.'
@@ -152,7 +152,7 @@ $validation = [ordered]@{
     IncludeTree = $sourceManifestValue.Source.IncludeTree
     DriverVer = $sourceManifestValue.PackageIdentity.DriverVer
     PnpStatusDiagnostics = $true
-    FunctionalTests = 397
+    FunctionalTests = 776
     StressIterations = 66000
     SourceHashes = $sourceSnapshot
 }

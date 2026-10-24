@@ -499,6 +499,12 @@
 - Unknown-active hardware DMA remains quarantined. No software test establishes
   physical WR6k bus-idle, safe removal of an active mapping or complete real PnP
   teardown.
+- Batch 13 offline preparation adds a machine-readable side-effect allowlist,
+  exact-source contracts and a one-shot `CFDC2124`/`CFDC2138`/`CFDC2128`
+  diagnostic. The reviewed Batch 12 driver/include trees remain unchanged;
+  the default production branch contains no reachable MMIO or GO operation in
+  the selected no-launch sequence. Runtime qualification is not claimed until
+  the separately frozen package and authorized stages complete.
 
 ## Hardware status
 

@@ -73,6 +73,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & $drySuite
     }
 
+    Invoke-Step "Pre-GO side-effect allowlist contracts (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-pre-go-side-effects.ps1")
+    }
+
     Invoke-Step "DMA logical descriptor layout unit tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-layout.ps1")
     }
@@ -107,6 +111,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
 
     Invoke-Step "lecdiag command-chain mock tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-lecdiag-command-chain.ps1")
+    }
+
+    Invoke-Step "Bounded no-launch preparation runner mocks (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-no-launch-preparation.ps1")
     }
 
     Invoke-Step "Legacy event and interface lifetime audit (no hardware)" {

@@ -297,7 +297,7 @@ exit 0
             )
         }
         Regression = [ordered]@{
-            FunctionalTestsPassed = 397
+            FunctionalTestsPassed = 776
             TotalStressIterations = 66000
         }
         Artifacts = $artifacts

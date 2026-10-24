@@ -10,6 +10,9 @@
 #pragma comment(lib, "setupapi.lib")
 
 #define LECS65_IOCTL_CFDC2110          ((DWORD)0xCFDC2110)
+#define LECS65_IOCTL_REGISTER_TRANSFER ((DWORD)0xCFDC2124)
+#define LECS65_IOCTL_UNREGISTER_TRANSFER ((DWORD)0xCFDC2128)
+#define LECS65_IOCTL_ACQUIRE_BUFFERED  ((DWORD)0xCFDC2138)
 #define LECS65_IOCTL_GET_DRIVER_BUILD  ((DWORD)0xCFDC21C8)
 #define LECS65_IOCTL_REGISTER_READ     ((DWORD)0xCFDC21C0)
 #define LECS65_IOCTL_GET_DALLAS_ID     ((DWORD)0x00223080)
@@ -590,6 +593,103 @@ static int query_build(HANDLE h)
         (unsigned long)build,
         (unsigned long)returned);
     return 0;
+}
+
+static void* allocate_legacy_low_buffer(SIZE_T bytes)
+{
+    uintptr_t address;
+
+    /* The public legacy registration ABI carries a 32-bit user pointer. */
+    for (address = UINT32_C(0x10000000);
+         address <= UINT32_C(0x70000000);
+         address += UINT32_C(0x04000000)) {
+        void* buffer = VirtualAlloc(
+            (void*)address,
+            bytes,
+            MEM_RESERVE | MEM_COMMIT,
+            PAGE_READWRITE);
+        if (buffer != NULL && (uintptr_t)buffer <= UINT32_MAX &&
+            bytes - 1 <= UINT32_MAX - (uintptr_t)buffer) {
+            return buffer;
+        }
+        if (buffer != NULL) {
+            VirtualFree(buffer, 0, MEM_RELEASE);
+        }
+    }
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    return NULL;
+}
+
+static int no_launch_prepare(HANDLE h)
+{
+    enum { DATA_BYTES = 0x1000, TOTAL_BYTES = DATA_BYTES + sizeof(DWORD) };
+    BYTE acquire[15];
+    DWORD registration[3];
+    DWORD token = 0;
+    DWORD output = 0;
+    DWORD returned = 0;
+    DWORD acquireError = ERROR_SUCCESS;
+    DWORD unregisterReturned = 0;
+    BOOL acquireOk;
+    BOOL unregisterOk;
+    void* buffer = allocate_legacy_low_buffer(TOTAL_BYTES);
+    int result = 1;
+
+    if (buffer == NULL) {
+        print_error("low-address no-launch buffer allocation");
+        return 1;
+    }
+    ZeroMemory(buffer, TOTAL_BYTES);
+    registration[0] = (DWORD)(uintptr_t)buffer;
+    registration[1] = TOTAL_BYTES;
+    registration[2] = 0;
+    if (!DeviceIoControl(h, LECS65_IOCTL_REGISTER_TRANSFER,
+            registration, sizeof(registration), &token, sizeof(token),
+            &returned, NULL) || returned != sizeof(token) || token == 0) {
+        print_error("CFDC2124 no-launch registration");
+        goto Done;
+    }
+    printf("NO_LAUNCH registration: token=%lu data-bytes=%u returned=%lu\n",
+        (unsigned long)token, DATA_BYTES, (unsigned long)returned);
+
+    ZeroMemory(acquire, sizeof(acquire));
+    memcpy(acquire, &token, sizeof(token));
+    acquire[4] = 1;
+    acquire[5] = 1;
+    acquire[6] = 0;
+    /* Config remains zero and is software-only in the production branch. */
+    {
+        DWORD requested = DATA_BYTES;
+        memcpy(acquire + 11, &requested, sizeof(requested));
+    }
+    SetLastError(ERROR_SUCCESS);
+    acquireOk = DeviceIoControl(h, LECS65_IOCTL_ACQUIRE_BUFFERED,
+        acquire, sizeof(acquire), &output, sizeof(output), &returned, NULL);
+    acquireError = acquireOk ? ERROR_SUCCESS : GetLastError();
+    printf("NO_LAUNCH prepare: success=%u error=%lu returned=%lu output=%lu\n",
+        acquireOk ? 1U : 0U, (unsigned long)acquireError,
+        (unsigned long)returned, (unsigned long)output);
+
+    unregisterOk = DeviceIoControl(h, LECS65_IOCTL_UNREGISTER_TRANSFER,
+        &token, sizeof(token), NULL, 0, &unregisterReturned, NULL);
+    if (!unregisterOk || unregisterReturned != 0) {
+        print_error("CFDC2128 no-launch cleanup");
+        goto Done;
+    }
+    printf("NO_LAUNCH cleanup: token=%lu returned=%lu\n",
+        (unsigned long)token, (unsigned long)unregisterReturned);
+    if (acquireOk || acquireError != ERROR_NOT_SUPPORTED || returned != 0 ||
+        output != 0) {
+        fprintf(stderr,
+            "CFDC2138 did not return the exact launch-disabled contract.\n");
+        goto Done;
+    }
+    printf("NO_LAUNCH PASS: mapping prepared and released; hardware launch disabled.\n");
+    result = 0;
+
+Done:
+    VirtualFree(buffer, 0, MEM_RELEASE);
+    return result;
 }
 
 static int query_stats(HANDLE h)
@@ -1577,6 +1677,7 @@ static void usage(const char* exe)
     printf("  %s error-status (CFDC2194 read-and-clear; close XStream)\n", exe);
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
+    printf("  %s no-launch-prepare (bounded CFDC2124/CFDC2138/CFDC2128)\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
     printf("  %s legacy-prepoll-replay\n", exe);
     printf("\nExamples:\n");
@@ -1691,6 +1792,9 @@ int main(int argc, char** argv)
                 argv[3],
                 (DWORD)outputLength);
         }
+    }
+    else if (_stricmp(argv[1], "no-launch-prepare") == 0 && argc == 2) {
+        result = no_launch_prepare(h);
     }
     else if (_stricmp(argv[1], "legacy-jtag-poll") == 0 && argc == 2) {
         result = legacy_jtag_poll(h);

@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "scope": "Batch 12 one-channel CFDC2124/CFDC2138 production no-launch path",
+  "reviewedDriverCommit": "fba434344d82817f9f517f4ddcc97a0b60310571",
+  "compileGate": {
+    "symbol": "LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA",
+    "requiredValue": 0,
+    "unsafeBranchLiveAllowed": false
+  },
+  "operations": [
+    {
+      "symbol": "LecDispatchDeviceControl",
+      "category": "software-only",
+      "effects": ["remove-lock acquisition", "IOCTL admission accounting", "METHOD_BUFFERED dispatch"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecRegisterTransfer",
+      "category": "memory-locking",
+      "effects": ["nonpaged allocation", "IoAllocateMdl", "MmProbeAndLockPages", "legacy PFN descriptor construction in ordinary RAM", "token publication"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecIoctlAcquireBufferedOneChannel",
+      "category": "software-only",
+      "effects": ["ABI validation", "owner lookup", "transfer mutex", "PnP publication reference", "no-launch status reporting"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecDmaPnpPrepareLegacyNoLaunch",
+      "category": "software-only",
+      "effects": ["transaction state changes", "bounded nonpaged scratch allocation", "DMA-logical descriptor construction in common buffer", "memory barrier", "launch rejection", "cleanup"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecSgSyncMapNoLaunch",
+      "category": "windows-dma-api",
+      "effects": ["InitializeDmaTransferContext", "GetScatterGatherListEx with DMA_SYNCHRONOUS_CALLBACK", "PDO reference", "SG-list validation"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false,
+      "note": "The Windows DMA subsystem may establish platform/IOMMU mapping state; the driver does not program WR6k registers and does not submit work to the device."
+    },
+    {
+      "symbol": "LecSgSyncCopySegments",
+      "category": "software-only",
+      "effects": ["copy DMA-logical SG elements under owner lock"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecDmaTransactionBuildDescriptors",
+      "category": "common-buffer-memory",
+      "effects": ["write validated DMA-logical descriptor entries to allocated common-buffer memory"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecDmaTransactionPublish",
+      "category": "software-only",
+      "effects": ["KeMemoryBarrier", "software publication state"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecDmaTransactionCommitHardwareLaunch",
+      "category": "software-only",
+      "effects": ["return LecDmaTxLaunchDisabled", "increment launch-rejected diagnostic"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecSgSyncReleaseNoLaunch",
+      "category": "windows-dma-api",
+      "effects": ["FreeAdapterObject", "PDO dereference", "free software stage"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    },
+    {
+      "symbol": "LecUnregisterTransfer",
+      "category": "memory-locking",
+      "effects": ["token unlink", "MmUnlockPages", "IoFreeMdl", "free ordinary descriptor storage"],
+      "hardwareRead": false,
+      "hardwareWrite": false,
+      "uncertain": false
+    }
+  ],
+  "forbiddenReachableEffects": [
+    "READ_REGISTER_*",
+    "WRITE_REGISTER_*",
+    "READ_PORT_*",
+    "WRITE_PORT_*",
+    "LecSelectDmaTransfer",
+    "LecArmSelectedDma",
+    "LecLaunchSelectedDma",
+    "LecUpdateInterruptMask",
+    "MAMRGO",
+    "MTTRGO",
+    "SGTA MMIO",
+    "IIMTC MMIO",
+    "IIMCL MMIO",
+    "acquisition-control MMIO"
+  ]
+}

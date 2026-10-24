@@ -57,6 +57,10 @@ try {
         @{ Name='r0-9-delay-zero'; Args=@('raw-ioctl','0x00222C00','00000000','0'); Calls=@('ioctl=0x00222C00 input=4 output=0 input-hex=00000000') },
         @{ Name='r1-pci'; Args=@('pci'); Calls=@('ioctl=0x80006014 input=0 output=84') },
         @{ Name='r1-start-register'; Args=@('start-register'); Calls=@('ioctl=0x00223044 input=0 output=4','ioctl=0xCFDC21C0 input=5 output=4 input-hex=0000000000') }
+        @{ Name='no-launch-prepare'; Args=@('no-launch-prepare'); Calls=@(
+            'ioctl=0xCFDC2124 input=12 output=4',
+            'ioctl=0xCFDC2138 input=15 output=4',
+            'ioctl=0xCFDC2128 input=4 output=0 input-hex=07000000') }
     )
 
     $passed = 0
