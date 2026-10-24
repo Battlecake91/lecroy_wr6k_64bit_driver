@@ -463,8 +463,9 @@ try {
         }
         Write-StateCheck 'post-r1' $executableHash | Out-Null
         $attempts = @(Get-ChildItem $EvidenceRoot -Filter '*.attempted')
-        if ($attempts.Count -ne $selectedCommands.Count) {
-            throw "Expected $($selectedCommands.Count) attempt markers; found $($attempts.Count)."
+        $selectedCount = @($selectedCommands).Count
+        if ($attempts.Count -ne $selectedCount) {
+            throw "Expected $selectedCount attempt markers; found $($attempts.Count)."
         }
         $outcome = 'PASS'
     }
