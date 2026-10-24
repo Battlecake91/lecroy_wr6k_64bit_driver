@@ -171,3 +171,23 @@ while `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is zero.
 The precise lifetime state machine is maintained in
 [DMA lifetime and timeout](dma-lifetime-and-timeout.md); original x86 evidence
 is maintained in [the legacy abort audit](legacy-dma-abort-bus-idle-audit.md).
+
+## Batch 13 pre-GO side-effect boundary
+
+The complete production path from `CFDC2124` through the one-channel
+`CFDC2138` no-launch result is recorded in the machine-readable
+[`dma-pre-go-side-effect-allowlist.json`](dma-pre-go-side-effect-allowlist.json).
+The reachable driver operations are memory allocation/locking, ordinary PFN
+compatibility-table construction, owner and PnP rundown, synchronous WDM-v3
+scatter/gather mapping, DMA-logical descriptor construction in the START-time
+common buffer, a memory barrier, unconditional software launch rejection and
+never-launched mapping release. The driver issues no register or port read or
+write on this path. Windows may establish platform/IOMMU mapping state through
+`GetScatterGatherListEx`; that is not a WR6k command and is released through
+`FreeAdapterObject` before the request returns.
+
+The excluded `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` branch remains visibly
+hardware-active and contains GPIODAT, MAM, SGTA, IIMTC, INTEN, IIMCL and GO
+operations. It is zero by default and is forbidden by the Batch 13 source
+contract. The no-launch evidence therefore cannot qualify acquisition or
+physical DMA idle.

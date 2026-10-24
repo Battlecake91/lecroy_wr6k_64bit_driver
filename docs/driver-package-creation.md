@@ -640,3 +640,26 @@ The manifest records `RebuildPerformed=false`, exact source manifest
 and the unchanged driver/include trees. The package is installed as
 `oem102.inf`, version `0.2026.1022.1`, and its loaded SYS matches the signed
 hash. This is a locally test-signed development package, not WHQL/WHCP output.
+
+## Batch 13 candidate identity
+
+The next isolated no-launch candidate uses
+`DriverVer=10/24/2026,0.2026.1024.1`, Release x64,
+`PnpStatusDiagnostics=true`, SDK/WDK 10.0.28000.0 and MSVC 14.41.34120. Its
+reviewed driver tree must remain exactly the tree from Batch 12 commit
+`fba434344d82817f9f517f4ddcc97a0b60310571`; repository tooling and
+documentation may advance around that immutable tree. Signing is limited to
+the existing local test certificate and does not imply Microsoft or production
+signing.
+
+The single authorized attempt from workflow commit
+`20e6bbac2b4224da6ccb9310a5d2ee221bcfefd1` stopped before package staging,
+Inf2Cat or any private-key operation. The actual crash-dump readiness suite
+passed 14/14, but the package workflow still required the obsolete literal
+13/13 result. Debug and Release builds, the complete Dry regression and the
+expanded 50,000 DMA plus 10,000 INTEN stress run had passed before the
+fail-closed mismatch. No INF/CAT/SYS/PDB candidate or manifest was produced,
+so there are no Batch 13 signed artifact hashes. The workflow now requires
+14/14 and its compatibility test rejects the stale predicate. A new real
+package attempt requires new explicit signing authorization and a new output
+root; the retained failed output root must never be reused.

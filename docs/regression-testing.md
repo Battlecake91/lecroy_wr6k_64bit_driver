@@ -1095,6 +1095,20 @@ the result JSON SHA-256 is
 `EBDE8743716EBE8A2087255F3BB5F88916A9737CCC0AC3A41A4A2CBFF8ACC0EE`.
 Source contracts pass 64/64.
 
+## Batch 13 no-launch contracts
+
+`tests/dry/test-pre-go-side-effects.ps1` consumes the machine-readable
+allowlist and checks the exact production functions, compile gate, synchronous
+DMA API choice, unconditional launch rejection and cleanup boundary. It fails
+if a register/port primitive or hardware-launch helper becomes reachable.
+
+`tests/dry/test-no-launch-preparation.ps1` runs the exact one-shot launcher
+through the mocked `lecdiag` Win32 boundary and verifies `CFDC2124`, expected
+launch-disabled `CFDC2138`, `CFDC2128`, non-overwriting evidence and hash
+rejection. The command-chain matrix is now 17/17, the side-effect contract is
+10/10 and the runner contract is 3/3. The package workflow's current aggregate
+is 776 hardware-independent checks plus 66,000 stress iterations.
+
 After integrating the exact PR #27 driver tree, focused tests pass:
 
 - process/file DMA lifetime: 23/23;

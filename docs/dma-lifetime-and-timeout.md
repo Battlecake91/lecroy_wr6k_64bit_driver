@@ -1165,3 +1165,19 @@ keeps new mapping admission closed in QUERY, PowerDownPending, Dx and failed
 resume. These are offline admission primitives, not live POWER-IRP wiring.
 Live system-power policy, D0/Dx hardware save/restore, explicit v3 channel/map/
 flush/free orchestration and physical abort/drain remain deployment blockers.
+
+## Batch 13 bounded no-launch runner
+
+`lecdiag no-launch-prepare` allocates one 4-KiB destination plus the legacy
+four-byte registration trailer below the 32-bit user-VA ABI ceiling. It issues
+exactly one `CFDC2124`, one 15-byte `CFDC2138` and one `CFDC2128`. Success means
+that `CFDC2138` returns Win32 `ERROR_NOT_SUPPORTED` with zero output, followed
+by successful unregister. The repository launcher gives the child five
+seconds, uses a fresh evidence directory and refuses identity mismatch or
+reuse. Its deterministic Win32 mock proves the exact three-call sequence.
+
+This runner is not an acquisition runner. It cannot accept successful
+`CFDC2138`, alternate buffers or retries, and it never authorizes GO. If the
+legacy registration's inert PFN compatibility table cannot represent the
+host pages below 4 GiB, the live attempt must fail and stop rather than alter
+the reviewed Batch 12 driver tree.

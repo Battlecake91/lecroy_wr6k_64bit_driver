@@ -11,6 +11,9 @@
 #define IOCTL_DEBUG_BARS      ((DWORD)0x80006008)
 #define IOCTL_DEBUG_TRACE     ((DWORD)0x8000600C)
 #define IOCTL_DEBUG_PCI       ((DWORD)0x80006014)
+#define IOCTL_REGISTER_TRANSFER ((DWORD)0xCFDC2124)
+#define IOCTL_UNREGISTER_TRANSFER ((DWORD)0xCFDC2128)
+#define IOCTL_ACQUIRE_BUFFERED ((DWORD)0xCFDC2138)
 
 typedef struct MOCK_STATS {
     uint32_t Version;
@@ -164,6 +167,18 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
     }
 
     switch (IoControlCode) {
+    case IOCTL_REGISTER_TRANSFER:
+        if (InputLength != 12 || OutputLength != sizeof(DWORD)) return fail_request(ERROR_INVALID_PARAMETER);
+        *(DWORD*)OutputBuffer = 7;
+        *BytesReturned = sizeof(DWORD);
+        return TRUE;
+    case IOCTL_ACQUIRE_BUFFERED:
+        if (InputLength != 15 || OutputLength != sizeof(DWORD)) return fail_request(ERROR_INVALID_PARAMETER);
+        return fail_request(ERROR_NOT_SUPPORTED);
+    case IOCTL_UNREGISTER_TRANSFER:
+        if (InputLength != sizeof(DWORD) || OutputLength != 0 ||
+            *(const DWORD*)InputBuffer != 7) return fail_request(ERROR_INVALID_PARAMETER);
+        return TRUE;
     case IOCTL_GET_BUILD:
         if (InputLength != 0 || OutputLength != sizeof(DWORD)) return fail_request(ERROR_INVALID_PARAMETER);
         *(DWORD*)OutputBuffer = 1002;
