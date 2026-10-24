@@ -1109,6 +1109,13 @@ rejection. The command-chain matrix is now 17/17, the side-effect contract is
 10/10 and the runner contract is 3/3. The package workflow's current aggregate
 is 776 hardware-independent checks plus 66,000 stress iterations.
 
+Batch 14 retains that observed aggregate but no longer treats `776` as a
+separate signing constant. The package manifest records 23 named suite
+outcomes and derives its functional total from them. The launcher verifies the
+exact suite identities, per-suite success and recomputed totals. Windows
+PowerShell 5.1 package compatibility remains 26/26; the full elevated no-key
+launcher path passes 36/36.
+
 After integrating the exact PR #27 driver tree, focused tests pass:
 
 - process/file DMA lifetime: 23/23;

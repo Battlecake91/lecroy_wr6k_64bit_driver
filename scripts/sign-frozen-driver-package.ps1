@@ -119,6 +119,25 @@ $sourceManifestValue = Get-Content -Raw -LiteralPath $sourceManifest |
     ConvertFrom-Json
 $release = @($sourceManifestValue.Build.Configurations |
     Where-Object Configuration -eq 'Release')
+$expectedSuiteIds = @(
+    'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+    'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
+    'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
+    'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
+    'runtime-baseline', 'frozen-package-signing', 'crash-dump-readiness',
+    'system-image-readiness', 'recovery-layout', 'codex-continuation',
+    'dma-completion', 'dma-interleavings', 'inten-functional'
+) | Sort-Object
+$suites = @($sourceManifestValue.Regression.Suites)
+$actualSuiteIds = @($suites | ForEach-Object Id | Sort-Object)
+$functionalPassed = ($suites | ForEach-Object { [int]$_.Passed } |
+    Measure-Object -Sum).Sum
+$functionalFailed = ($suites | ForEach-Object { [int]$_.Failed } |
+    Measure-Object -Sum).Sum
+$stressTotal = [int]$sourceManifestValue.Regression.DefaultDmaStressIterations +
+    [int]$sourceManifestValue.Regression.DefaultIntenStressIterations +
+    [int]$sourceManifestValue.Regression.ExpandedDmaStressIterations +
+    [int]$sourceManifestValue.Regression.ExpandedIntenStressIterations
 $markerText = [Text.Encoding]::ASCII.GetString(
     [IO.File]::ReadAllBytes($sourceSys))
 if ($sourceManifestValue.Schema -ne 2 -or
@@ -135,8 +154,15 @@ if ($sourceManifestValue.Schema -ne 2 -or
     $release.Count -ne 1 -or
     $release[0].SYS.SHA256 -ne $expected.SYS -or
     $release[0].PDB.SHA256 -ne $expected.PDB -or
-    $sourceManifestValue.Regression.FunctionalTestsPassed -ne 776 -or
-    $sourceManifestValue.Regression.TotalStressIterations -ne 66000 -or
+    $sourceManifestValue.Regression.SuiteContract -ne 'batch14-regression-v1' -or
+    ($actualSuiteIds -join ',') -ne ($expectedSuiteIds -join ',') -or
+    @($actualSuiteIds | Select-Object -Unique).Count -ne $expectedSuiteIds.Count -or
+    @($suites | Where-Object {
+        $_.Passed -ne $_.Total -or $_.Failed -ne 0 -or $_.Total -lt 1
+    }).Count -ne 0 -or
+    $sourceManifestValue.Regression.FunctionalTestsPassed -ne $functionalPassed -or
+    $sourceManifestValue.Regression.FunctionalTestsFailed -ne $functionalFailed -or
+    $sourceManifestValue.Regression.TotalStressIterations -ne $stressTotal -or
     -not $markerText.Contains('PNP_STATUS:')) {
     throw 'Frozen source manifest or diagnostic identity is inconsistent.'
 }
@@ -152,8 +178,8 @@ $validation = [ordered]@{
     IncludeTree = $sourceManifestValue.Source.IncludeTree
     DriverVer = $sourceManifestValue.PackageIdentity.DriverVer
     PnpStatusDiagnostics = $true
-    FunctionalTests = 776
-    StressIterations = 66000
+    FunctionalTests = $functionalPassed
+    StressIterations = $stressTotal
     SourceHashes = $sourceSnapshot
 }
 if ($Mode -eq 'ValidateSource') {

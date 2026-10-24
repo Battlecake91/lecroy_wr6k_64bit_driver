@@ -663,3 +663,12 @@ so there are no Batch 13 signed artifact hashes. The workflow now requires
 14/14 and its compatibility test rejects the stale predicate. A new real
 package attempt requires new explicit signing authorization and a new output
 root; the retained failed output root must never be reused.
+
+Batch 14 removes the detached global functional-test constant from the
+production workflow. The manifest now carries `batch14-regression-v1` and one
+machine-readable outcome for each of 23 exact suite identities. The package
+workflow derives the aggregate from those outcomes; both signing launchers
+independently require the exact identity set, complete success for every suite
+and internally consistent functional and stress totals. The elevated Windows
+PowerShell 5.1 no-key launcher path passes 36/36 mocks before the authorized
+real signing attempt.
