@@ -34,11 +34,13 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - The current x64 test package is `oem103.inf`, version `0.2026.1024.1`, with
   loaded SYS SHA-256
   `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`.
-  Its captured installation passed and the device remains problem-free with
-  five interfaces. The Batch 14 R0/R1 launcher was externally interrupted
-  after its passive preflight and before its first command; the last completed
-  runtime baseline remains 9/9 R0 plus 2/2 R1 on `oem102.inf`. Real DMA and
-  acquisition remain unqualified.
+  Its 9/9 R0, 2/2 R1 and one captured PnP restart passed; the device remains
+  problem-free with five interfaces. One bounded no-launch attempt stopped at
+  `CFDC2124` with `ERROR_NOT_SUPPORTED`, before `CFDC2138`, because production
+  registration still built the legacy 32-bit PFN table. The development tree
+  now confines that table to the unsafe compile branch; the fix is built and
+  Dry-qualified but not signed or installed. Real DMA and acquisition remain
+  unqualified.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to WDM-v3 DMA-logical mapping and descriptor preparation, but the production hardware-launch gate remains unconditionally closed pending physical DMA-idle proof.

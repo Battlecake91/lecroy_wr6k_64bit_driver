@@ -708,6 +708,7 @@ Test-Contract "legacy PFN DMA launches are fail-closed by default" {
     $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
     $pnpDmaText -match 'Result->LaunchDenied' -and
     $pnpDmaText -match 'status = STATUS_NOT_SUPPORTED;' -and
+    $acquisitionText -match '(?s)#if LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA\s*/\*.*?LecBuildDescriptorTable\(transfer\);.*?#endif' -and
     $acquisitionText -match 'MmGetMdlByteOffset\(Transfer->DescriptorMdl\) != 0' -and
     $acquisitionText -match 'physical & \(sizeof\(ULONG\) - 1\)'
 }

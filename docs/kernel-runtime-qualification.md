@@ -1095,6 +1095,34 @@ no-retry semantics. PnP restart remains gated on 9/9 R0 plus 2/2 R1, and the
 no-launch preparation remains gated on both. Neither this installation nor its
 successful START supplies physical DMA-idle or post-GO retirement evidence.
 
+## Batch 15 completed runtime matrix and no-launch stop
+
+The persistent stage ledger replaced the externally vulnerable monolithic
+runner. It completed the installed `oem103.inf` matrix with 9/9 R0 and 2/2 R1,
+one dispatch per command and no retries. The observed PCI identity was
+`1570:0005`; BDF `5:1.0` is evidence only. The two bounded START-register reads
+matched at `0xFFFFFFFF`. The device remained problem-free after every stage.
+
+One captured restart then completed with PnPUtil exit zero. The kernel log
+contains 48 `PNP_STATUS` records and shows successful REMOVE/re-enumeration,
+interrupt reconnection, DMA-parent START, five interface publications and
+final START. The installed INF, version and SYS hash were unchanged. The
+capture SHA-256 is
+`3028C922047976077CC23A45BFC1FDDAC5F1C167FE1E586DD9D46BA22BB89866`.
+
+The conditional no-launch runner was dispatched exactly once. `CFDC2124`
+returned Win32 `ERROR_NOT_SUPPORTED` before a token was published, so
+`CFDC2138` and `CFDC2128` were not sent. This is not proof of WDM-v3 mapping or
+rollback: the installed source still invoked the legacy 32-bit PFN descriptor
+builder during registration. The development fix removes that builder from
+the production registration branch and is offline-qualified only. A new
+signed candidate and installation are prerequisites for another separately
+authorized no-launch attempt.
+
+No GO, acquisition, DMA-control MMIO or physical DMA occurred. Physical
+bus-idle and safe post-GO retirement remain unresolved and still require an
+authoritative hardware contract or external PCI evidence.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

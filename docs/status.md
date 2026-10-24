@@ -1,26 +1,32 @@
 # Current project status
 
-## Batch 14 signed no-launch candidate
+## Batch 15 installed no-launch runtime qualification
 
-- One Release x64 package was built and signed from the unchanged reviewed
-  driver/include trees. It uses `DriverVer=10/24/2026,0.2026.1024.1`, retains
-  `PnpStatusDiagnostics=true` and passed all 23 named Dry-suite contracts,
-  776/776 aggregate functional checks and 66,000/66,000 stress iterations.
-  The frozen INF, CAT, signed SYS, PDB and manifest SHA-256 values are recorded
-  in the Batch 14 handoff.
-- One captured installation passed without retry and published `oem103.inf`.
-  The device is `OK` with problem code zero, `LecS65AcqDrv` is running, all five
-  interfaces are published and the loaded SYS SHA-256 is
+- The installed baseline remains `oem103.inf`, version `0.2026.1024.1`, with
+  loaded SYS SHA-256
   `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`.
-  The preceding `oem102.inf` package was retained.
-- The Batch 14 R0/R1 passive preflight passed. The subsequently authorized
-  launcher process was externally terminated after writing that preflight but
-  before creating any command-attempt marker. Consequently no Batch 14 R0 or
-  R1 command ran. The one-shot authorization was not reused, and the dependent
-  captured PnP restart and live no-launch preparation were skipped.
-- The latest completed runtime matrix therefore remains the earlier 9/9 R0,
-  2/2 R1 and captured PnP restart on `oem102.inf`. Physical DMA bus-idle,
-  post-GO retirement, real DMA and acquisition remain unproved.
+  The device is `OK`, problem code zero, the service is running and all five
+  interfaces remain published. The `oem102.inf` rollback package is retained.
+- The repository-controlled exact-once ledger completed 9/9 R0 and 2/2 R1.
+  Trace size was `0x110`, register-list size was `0x2CAE`, PCI identity was
+  `1570:0005`, observed BDF was `5:1.0`, and both bounded START reads returned
+  `0xFFFFFFFF`. Device health remained unchanged after every stage.
+- One captured PnP restart passed. The trace contains 48 `PNP_STATUS` records
+  covering REMOVE, re-enumeration, IRQ reconnection, DMA-parent START, five
+  interface enables and final START. Forwarded lower-stack query statuses of
+  `0xC00000BB` remain visible; final device state is healthy and D0.
+- The single authorized no-launch attempt dispatched `CFDC2124` once and
+  stopped with Win32 `ERROR_NOT_SUPPORTED` before `CFDC2138`. The installed
+  binary's production registration still built the legacy 32-bit PFN table;
+  either its descriptor allocation or a source page was above 4 GiB. No
+  WDM-v3 mapping, SG copy, descriptor publication, GO or DMA occurred.
+- The development tree now compiles the legacy PFN table only when
+  `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is enabled. Debug and Release x64 build
+  with zero warnings/errors; focused pre-GO 10/10, source 69/69 and no-launch
+  3/3 tests pass. The fix is not signed or installed.
+- Physical DMA bus-idle, post-GO retirement, real DMA and acquisition remain
+  unproved. A new signed candidate, installation and no-launch attempt each
+  require separate authorization.
 
 ## Batch 12 legacy acquisition integration
 

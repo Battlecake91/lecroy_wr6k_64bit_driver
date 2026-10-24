@@ -72,9 +72,10 @@ Test-Case 'production CFDC2138 branch has no register or port access primitive' 
     $safeAcquire -notmatch 'Lec(?:Select|Arm|Launch)Dma|LecUpdateInterruptMask' -and
     $safeAcquire -match 'LecDmaPnpPrepareLegacyNoLaunch'
 }
-Test-Case 'CFDC2124 registration only locks memory and builds ordinary descriptors' {
+Test-Case 'CFDC2124 production registration locks memory without building PFN descriptors' {
     $register -match 'LecBuildSourceMdlChain' -and
     $register -match 'LecBuildDescriptorTable' -and
+    $register -match '(?s)#if\s+LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA.*?LecBuildDescriptorTable' -and
     $register -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
     $register -notmatch 'LecLaunchSelectedDma|LecUpdateInterruptMask'
 }
