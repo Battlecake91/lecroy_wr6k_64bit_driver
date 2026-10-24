@@ -528,7 +528,7 @@ try {
             'RUNTIME LIFETIME AUDIT: 19/19 passed; 0 failed.'
             'PROCESS DMA LIFETIME MODEL: 23/23 passed; 0 failed.'
             'RUNTIME BASELINE TESTS: 6/6 passed; 0 failed.'
-            'CRASH DUMP READINESS: 13/13 passed; 0 failed.'
+            'CRASH DUMP READINESS: 14/14 passed; 0 failed.'
         )
         $dryLog = @(
             'DMA LAYOUT: 13/13 passed; 0 failed.'

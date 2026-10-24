@@ -336,8 +336,12 @@ exit 0
     }
 
     $workflowText = Get-Content -LiteralPath $workflow -Raw
-    Test-Condition 'workflow no longer calls Path.GetRelativePath' (
-        -not $workflowText.Contains('[System.IO.Path]::GetRelativePath'))
+    Test-Condition 'workflow keeps PowerShell 5.1 path and current regression guards' (
+        -not $workflowText.Contains('[System.IO.Path]::GetRelativePath') -and
+        $workflowText.Contains(
+            "'CRASH DUMP READINESS: 14/14 passed; 0 failed.'") -and
+        -not $workflowText.Contains(
+            "'CRASH DUMP READINESS: 13/13 passed; 0 failed.'"))
 }
 finally {
     $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)

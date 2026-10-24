@@ -1063,6 +1063,14 @@ Physical idle is explicitly outside this sequence. A successful restart or
 successful mapping preparation cannot prove descriptor-fetch termination,
 last posted-write retirement or safe post-GO mapping release.
 
+The first Batch 13 package attempt stopped at the initial signing gate before
+artifact staging or private-key use: the package evidence predicate expected
+the obsolete crash-dump summary 13/13 while the current suite passed 14/14.
+That attempt consumed its authorization. Consequently none of the dependent
+installation, R0/R1, PnP-restart or live no-launch stages ran. The corrected
+offline workflow must receive a new explicit signing authorization before the
+ordered qualification sequence can resume.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

@@ -503,8 +503,14 @@
   exact-source contracts and a one-shot `CFDC2124`/`CFDC2138`/`CFDC2128`
   diagnostic. The reviewed Batch 12 driver/include trees remain unchanged;
   the default production branch contains no reachable MMIO or GO operation in
-  the selected no-launch sequence. Runtime qualification is not claimed until
-  the separately frozen package and authorized stages complete.
+  the selected no-launch sequence. The one authorized package attempt built
+  both configurations and passed the complete Dry and expanded stress suites,
+  then failed closed before staging or signing because the workflow expected
+  the obsolete crash-dump result `13/13` instead of the current `14/14`.
+  The predicate and its compatibility contract are corrected offline. No
+  Batch 13 package exists, the signing authorization is consumed, and the
+  installed `oem102.inf` baseline remains unchanged. Runtime qualification is
+  not claimed.
 
 ## Hardware status
 
