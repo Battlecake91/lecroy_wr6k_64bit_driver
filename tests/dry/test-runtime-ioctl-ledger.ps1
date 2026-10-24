@@ -100,7 +100,15 @@ function Complete-Next([string]$Evidence,[switch]$Authorized,[string]$Scenario) 
         $old=$ErrorActionPreference
         try { $ErrorActionPreference='Continue'; $out=@(& $ps51 @args 2>&1); $code=$LASTEXITCODE }
         finally { $ErrorActionPreference=$old }
-        if ($code -eq 0) { return $out }
+        if ($code -eq 0) {
+            $latest=Get-ChildItem $Evidence -Recurse -Filter completion.json |
+                Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            $completion=Get-Content $latest.FullName -Raw | ConvertFrom-Json
+            if ($completion.Classification -ne 'Pass') {
+                throw "stage classified $($completion.Classification): $($completion.Message)"
+            }
+            return $out
+        }
         if ($code -ne 2) { throw "collect failed: $($out -join ' ')" }
         Start-Sleep -Milliseconds 100
     } while ([datetime]::UtcNow -lt $deadline)
@@ -176,7 +184,7 @@ try {
             if ($code -ne 2) { break }; Start-Sleep -Milliseconds 100
         } while([datetime]::UtcNow -lt $deadline)
         if ($code -ne 0) { throw "collect exit=$code" }
-        $completion=Get-ChildItem $e -Recurse -Filter completion.json | ForEach-Object { Get-Content $_ -Raw|ConvertFrom-Json }
+        $completion=Get-ChildItem $e -Recurse -Filter completion.json | ForEach-Object { Get-Content $_.FullName -Raw|ConvertFrom-Json }
         if ($completion.Classification -ne 'NoHardwareDispatch') { throw 'preflight was not classified as no dispatch' }
         Write-Json $statePath (New-State)
     }
@@ -220,7 +228,7 @@ try {
         finally { $ErrorActionPreference=$old }
         if ($code -ne 97) { throw "injection exit=$code" }
         [void](Invoke-Ledger $e Collect)
-        $completion=Get-ChildItem $e -Recurse -Filter completion.json | ForEach-Object {Get-Content $_ -Raw|ConvertFrom-Json}
+        $completion=Get-ChildItem $e -Recurse -Filter completion.json | ForEach-Object {Get-Content $_.FullName -Raw|ConvertFrom-Json}
         if ($completion.Classification -ne 'NoHardwareDispatch') { throw 'wrong classification' }
     }
 
@@ -236,7 +244,8 @@ try {
     }
 }
 finally {
-    if (Test-Path $root) { Remove-Item $root -Recurse -Force }
+    if ($failed -eq 0 -and (Test-Path $root)) { Remove-Item $root -Recurse -Force }
+    elseif (Test-Path $root) { Write-Host "Retained failed evidence: $root" }
 }
 
 Write-Host "RUNTIME LEDGER: $passed/$($passed + $failed) passed; $failed failed."
