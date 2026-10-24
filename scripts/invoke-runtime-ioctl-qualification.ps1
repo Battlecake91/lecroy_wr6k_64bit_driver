@@ -16,6 +16,11 @@ param(
     [switch]$OwnerAuthorized,
     [ValidateSet('All','Batch3Remaining')]
     [string]$CommandSet = 'All',
+    [ValidateSet('','r0-1-build','r0-2-stats','r0-3-bars','r0-4-trace',
+        'r0-5-noop','r0-6-noop','r0-7-trace-size','r0-8-register-size',
+        'r0-9-delay-zero','r1-pci','r1-start-register')]
+    [string]$CommandName = '',
+    [switch]$PreflightOnly,
     [string]$MockStatePath,
     [string]$MockExecutablePath,
     [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$MockExecutableSha256,
@@ -82,7 +87,9 @@ $commands = @(
         MockCalls=@('ioctl=0x00223044 input=0 output=4 input-hex=',
             'ioctl=0xCFDC21C0 input=5 output=4 input-hex=0000000000') }
 )
-$selectedCommands = if ($CommandSet -eq 'Batch3Remaining') {
+$selectedCommands = if (-not [string]::IsNullOrWhiteSpace($CommandName)) {
+    @($commands | Where-Object Name -eq $CommandName)
+} elseif ($CommandSet -eq 'Batch3Remaining') {
     @($commands | Where-Object { $_.Name -in @(
         'r0-8-register-size','r0-9-delay-zero','r1-pci','r1-start-register') })
 } else { @($commands) }
@@ -414,13 +421,13 @@ try {
         Mode=$Mode; StartedUtc=$script:startedUtc.ToString('o'); GitHead=$head
         GitDirty=@($dirty); PowerShell=$PSVersionTable.PSVersion.ToString()
         Executable=$executable; ExecutableSha256=$executableHash
-        CommandSet=$CommandSet
+        CommandSet=$CommandSet; CommandName=$CommandName; PreflightOnly=[bool]$PreflightOnly
         ApprovedCommands=@($selectedCommands | ForEach-Object {
             [ordered]@{ Name=$_.Name; Phase=$_.Phase; Arguments=@($_.Args) }
         })
     })
     $preflight = Write-StateCheck 'preflight' $executableHash
-    if ($Mode -eq 'Preflight') {
+    if ($Mode -eq 'Preflight' -or $PreflightOnly) {
         $outcome = 'PASS'
     } else {
         $outputs = [ordered]@{}
@@ -431,19 +438,29 @@ try {
         foreach ($command in @($selectedCommands | Where-Object Phase -eq 'R1')) {
             $outputs[$command.Name] = Invoke-ApprovedCommand $command $executable $executableHash
         }
-        $pci = [regex]::Match($outputs['r1-pci'], '(?im)^BDF:\s+([0-9]+:[0-9]+\.[0-9]+)\s*$')
-        $legacy = [regex]::Match($outputs['r1-start-register'],
-            '(?im)^0x00223044 START/FVER:\s+(0x[0-9A-F]+)\s*$')
-        $physical = [regex]::Match($outputs['r1-start-register'],
-            '(?im)^BAR0\+0x000 reference:\s+(0x[0-9A-F]+)\s*$')
-        if (-not $pci.Success -or -not $legacy.Success -or -not $physical.Success -or
-            $legacy.Groups[1].Value -ne $physical.Groups[1].Value) {
-            throw 'R1 structured output validation failed.'
+        if ($outputs.Contains('r1-pci')) {
+            $pci = [regex]::Match($outputs['r1-pci'],
+                '(?im)^BDF:\s+([0-9]+:[0-9]+\.[0-9]+)\s*$')
+            if (-not $pci.Success) { throw 'R1 PCI structured output validation failed.' }
         }
-        Write-ExclusiveJson (Join-Path $EvidenceRoot 'r1-values.json') ([ordered]@{
-            ObservedBdf=$pci.Groups[1].Value; VendorDevice='1570:0005'
-            LegacyStart=$legacy.Groups[1].Value; PhysicalStart=$physical.Groups[1].Value
-        })
+        if ($outputs.Contains('r1-start-register')) {
+            $legacy = [regex]::Match($outputs['r1-start-register'],
+                '(?im)^0x00223044 START/FVER:\s+(0x[0-9A-F]+)\s*$')
+            $physical = [regex]::Match($outputs['r1-start-register'],
+                '(?im)^BAR0\+0x000 reference:\s+(0x[0-9A-F]+)\s*$')
+            if (-not $legacy.Success -or -not $physical.Success -or
+                $legacy.Groups[1].Value -ne $physical.Groups[1].Value) {
+                throw 'R1 START structured output validation failed.'
+            }
+        }
+        if ($outputs.Contains('r1-pci') -or $outputs.Contains('r1-start-register')) {
+            Write-ExclusiveJson (Join-Path $EvidenceRoot 'r1-values.json') ([ordered]@{
+                ObservedBdf=if ($outputs.Contains('r1-pci')) { $pci.Groups[1].Value } else { $null }
+                VendorDevice=if ($outputs.Contains('r1-pci')) { '1570:0005' } else { $null }
+                LegacyStart=if ($outputs.Contains('r1-start-register')) { $legacy.Groups[1].Value } else { $null }
+                PhysicalStart=if ($outputs.Contains('r1-start-register')) { $physical.Groups[1].Value } else { $null }
+            })
+        }
         Write-StateCheck 'post-r1' $executableHash | Out-Null
         $attempts = @(Get-ChildItem $EvidenceRoot -Filter '*.attempted')
         if ($attempts.Count -ne $selectedCommands.Count) {
