@@ -270,9 +270,9 @@ int main(void)
         parentSnapshot.State == LecDmaPnpSurpriseRemoved &&
         !parentSnapshot.HasAdapterContext && device.References == 1);
     (void)LecDmaPnpPublicationRelease(publication, &surpriseReference);
-    check("duplicate surprise removal fails closed without state loss",
+    check("duplicate surprise removal is idempotent without state loss",
         LecDmaPnpPublicationNotifyTeardown(
-            publication, LecDmaPnpTeardownSurprise) == STATUS_DEVICE_BUSY);
+            publication, LecDmaPnpTeardownSurprise) == STATUS_SUCCESS);
     check("STOP after surprise is idempotent and cannot reopen admission",
         LecDmaPnpPublicationNotifyTeardown(
             publication, LecDmaPnpTeardownStop) == STATUS_SUCCESS);

@@ -544,6 +544,9 @@ int main(void)
     LONG commonFreesAtQuarantine;
     LONG putsAtQuarantine;
     LONG poolBeforeQuarantineRace;
+    LECS65_DMA_PREPARE_RESULT prepareResult;
+    BOOLEAN cancelRequested;
+    LONG getCallsBeforePrepare;
 
     setup();
     LecSgSyncOwnerConstruct(&owner);
@@ -1110,6 +1113,29 @@ int main(void)
     check("one parent cannot create a second adapter context",
         LecDmaPnpStartNoLaunch(pnpStage, 0x100000, 4096) ==
             STATUS_DEVICE_BUSY && commonAllocateCalls == commonFreesBefore);
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpPrepareLegacyNoLaunch(
+        pnpStage, mdls, 128, 1, 2, NULL, &prepareResult);
+    check("legacy integration maps builds publishes and denies launch",
+        status == STATUS_NOT_SUPPORTED && prepareResult.LaunchDenied &&
+        prepareResult.MappingReleased && prepareResult.MappingToken != 0 &&
+        prepareResult.SegmentCount == 2 &&
+        prepareResult.DescriptorEntries != 0);
+    check("legacy no-launch preparation releases mapping exactly once",
+        pnpStage->SyncOwner.Outstanding == 0 && pnpDevice.References == 1);
+    cancelRequested = TRUE;
+    getCallsBeforePrepare = getCalls;
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpPrepareLegacyNoLaunch(
+        pnpStage, mdls, 128, 1, 2,
+        &cancelRequested, &prepareResult);
+    check("pre-GO cancellation never allocates a DMA mapping",
+        status == STATUS_CANCELLED && getCalls == getCallsBeforePrepare &&
+        !prepareResult.LaunchDenied && !prepareResult.MappingReleased);
+    check("legacy integration rejects absent stable identities",
+        LecDmaPnpPrepareLegacyNoLaunch(
+            pnpStage, mdls, 128, 0, 2, NULL, &prepareResult) ==
+                STATUS_INVALID_PARAMETER);
     status = LecDmaPnpMapNoLaunch(
         pnpStage, mdls, 128, &firstGenerationToken);
     check("PnP parent maps through the actual no-launch owner",

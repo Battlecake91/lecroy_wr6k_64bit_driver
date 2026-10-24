@@ -308,3 +308,25 @@ keep WDM v3 live staging disabled.
 External WDM contracts:
 [CancelMappedTransfer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pcancel_mapped_transfer),
 [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex).
+
+## Batch 12 proof-obligation result
+
+No defensible physical-idle predicate was found in the available x86 image,
+schematics or local FPGA material. Normal MAM/MTT launch writes SGTA, IIMTC,
+INTEN.bit0 and IIMCL before MAMRGO/MTTRGO. ISR/DPC completion proves only the
+software notification path. MAM post-processing performs one IIMST read;
+timeout performs no abort or drain. Unregister and final process cleanup rely
+on software activity state, while STOP/REMOVE/power/reset mask interrupts or
+write control registers without polling descriptor fetches or PCI writes to
+retirement. These shipped behaviors are evidence, not a safe contract.
+
+The minimum external experiment needs a conventional-PCI analyzer/interposer
+that observes U3-initiated descriptor reads and host-memory writes together
+with REQ#, GNT#, FRAME#, IRDY#, TRDY#, DEVSEL#, STOP#, AD/CBE#, INTA# and RST#.
+MAM and MTT must be characterized separately with one guarded buffer while all
+mapping/pages remain retained. Any transaction after IRQ or after a proposed
+stop predicate disproves that predicate. Even repeated absence of later bus
+traffic is empirical containment, not a universal retirement proof, unless
+FPGA/bridge documentation also defines engine acknowledgement and retirement
+of already accepted posted writes. Clearing PCI Bus Master Enable is not a
+posted-write flush and is not authorized by this plan.

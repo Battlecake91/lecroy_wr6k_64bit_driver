@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DmaSyncStage.h"
+#include "DmaTransaction.h"
 
 /*
  * INACTIVE software-only parent for the staged DMA implementation.
@@ -131,6 +132,7 @@ NTSTATUS LecDmaPnpStartNoLaunch(
 NTSTATUS LecDmaPnpBeginQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
 NTSTATUS LecDmaPnpCancelQuery(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
 NTSTATUS LecDmaPnpBeginPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
+NTSTATUS LecDmaPnpCancelPowerDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
 NTSTATUS LecDmaPnpRecordPoweredDown(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
 NTSTATUS LecDmaPnpBeginResumeD0(_Inout_ PLECS65_DMA_PNP_STAGE Stage);
 NTSTATUS LecDmaPnpCompleteResumeD0(
@@ -171,6 +173,31 @@ NTSTATUS LecDmaPnpCopySegments(
 NTSTATUS LecDmaPnpReleaseNoLaunch(
     _Inout_ PLECS65_DMA_PNP_STAGE Stage,
     _In_ ULONGLONG Token);
+
+typedef struct _LECS65_DMA_PREPARE_RESULT {
+    LECS65_DMA_TRANSACTION_RESULT TransactionResult;
+    ULONG SegmentCount;
+    ULONG DescriptorEntries;
+    ULONGLONG MappingToken;
+    BOOLEAN LaunchDenied;
+    BOOLEAN MappingReleased;
+} LECS65_DMA_PREPARE_RESULT, *PLECS65_DMA_PREPARE_RESULT;
+
+/*
+ * Production integration point for the bounded legacy CFDC2138 path.
+ * The caller supplies an already locked, process-independent MDL chain and
+ * stable nonzero request identities. The complete Windows DMA mapping and
+ * descriptor transaction is exercised, but CommitHardwareLaunch is a closed
+ * gate. No MMIO operation is available through this function.
+ */
+NTSTATUS LecDmaPnpPrepareLegacyNoLaunch(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage,
+    _In_ PMDL LockedMdlChain,
+    _In_ ULONG Length,
+    _In_ ULONG_PTR OwnerId,
+    _In_ ULONG_PTR FileId,
+    _In_opt_ volatile BOOLEAN* CancelRequested,
+    _Out_ PLECS65_DMA_PREPARE_RESULT Result);
 
 /* Terminal fail-closed transition; never drains or releases child resources. */
 NTSTATUS LecDmaPnpQuarantineUnknownActive(

@@ -38,6 +38,7 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   captured PnP restart. Real DMA and acquisition remain unqualified.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
+- The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to WDM-v3 DMA-logical mapping and descriptor preparation, but the production hardware-launch gate remains unconditionally closed pending physical DMA-idle proof.
 - A compiled WDM-v3 software transaction covers ownership, logical-address descriptor construction, POWER/PnP admission, completion and quarantine; production hardware launch remains hard-disabled pending physical bus-idle proof.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 

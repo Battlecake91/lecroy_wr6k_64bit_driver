@@ -420,13 +420,13 @@ Test-Contract "IRQ DPC and timer quiescence precedes resource cleanup" {
     $acquisitionText -match 'LegacyMamSeqShadowInitialized = FALSE'
 }
 
-Test-Contract "uncertain DMA is latched after both launch paths" {
+Test-Contract "uncertain DMA or mapping ownership is latched on every path" {
     $driverText -match 'volatile LONG DmaUnknownActive' -and
     $driverText -match 'BOOLEAN DmaUnsafeToFree' -and
     $acquisitionText -match 'Transfer->DmaUnsafeToFree = TRUE' -and
     $acquisitionText -match 'LecQuarantineInterruptAdmission\(DevExt\)' -and
     $interruptText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
-    ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 4) -and
+    ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 5) -and
     ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishWait\(').Count -eq 2) -and
     ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishCleanup\(').Count -eq 2) -and
     ([regex]::Matches($ioctlText, 'LecArmSelectedDma\(').Count -eq 2) -and
@@ -590,17 +590,19 @@ Test-Contract "synthetic completion bit cannot satisfy a DMA wait" {
     $acquisitionText -match 'LecInjectLegacyPendingAndDispatch'
 }
 
-Test-Contract "adapter-logical descriptor encoder is compiled but not activated" {
+Test-Contract "adapter-logical descriptor encoder is active only behind no-launch gate" {
     $driverProjectText -match 'ClCompile Include="DmaLayout.c"' -and
     $layoutHeaderText -match 'LecDmaEncodeMappedSegments' -and
     $layoutText -match 'LECS65_DMA_LAYOUT_SLOTS_PER_PAGE' -and
     $layoutText -match 'TableDeviceAddress' -and
     $layoutText -notmatch 'MmGetMdlPfnArray|MmGetPhysicalAddress' -and
+    $pnpDmaText -match 'LecDmaTransactionBuildDescriptors' -and
+    $pnpDmaText -match 'LecDmaTransactionCommitHardwareLaunch' -and
     $acquisitionText -match 'MmGetMdlPfnArray' -and
     $ioctlText -notmatch 'LecDmaEncodeMappedSegments'
 }
 
-Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisitions" {
+Test-Contract "WDM DMA adapter ownership is centralized under the PnP parent" {
     $driverProjectText -match 'ClCompile Include="DmaAdapterStage.c"' -and
     $adapterHeaderText -match 'LecDmaCreateAdapterContext' -and
     $adapterText -match 'IoGetDmaAdapter\(' -and
@@ -613,6 +615,8 @@ Test-Contract "WDM DMA adapter stage is compiled but cannot alter active acquisi
     $adapterText -match 'LecDmaClaimSynchronousOwner' -and
     $adapterText -match 'Context->TableAllocationPending' -and
     $adapterText -match 'Context->Quarantined = TRUE;' -and
+    $deviceText -match 'LecDmaPnpPublicationStartNoLaunch' -and
+    $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
     $acquisitionText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $deviceText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable' -and
     $ioctlText -notmatch 'LecDmaCreateAdapterContext|LecDmaAllocateCommonTable'
@@ -671,10 +675,11 @@ Test-Contract "sync DMA v3 no-launch owner drains before teardown" {
     $syncText -notmatch 'LecMapOwnerLaunch' -and
     $acquisitionText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
     $deviceText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
-    $ioctlText -notmatch 'LecSgSync|GetScatterGatherListEx'
+    $ioctlText -notmatch 'LecSgSync|GetScatterGatherListEx' -and
+    $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch'
 }
 
-Test-Contract "PnP DMA parent publishes lifetime only and cannot activate DMA" {
+Test-Contract "PnP DMA parent owns the live no-launch preparation path" {
     $driverProjectText -match 'ClCompile Include="DmaPnpStage.c"' -and
     $driverProjectText -match 'ClInclude Include="DmaPnpStage.h"' -and
     $driverProjectText -match 'ClCompile Include="DmaPnpPublication.c"' -and
@@ -687,9 +692,12 @@ Test-Contract "PnP DMA parent publishes lifetime only and cannot activate DMA" {
     $pnpDmaText -notmatch 'LecMapOwnerLaunch' -and
     $driverSourceText -match 'LecDmaPnpPublicationCreate' -and
     $acquisitionText -match 'LecDmaPnpPublicationRetainLegacyTransfer' -and
+    $deviceText -match 'LecDmaPnpPublicationStartNoLaunch' -and
     $deviceText -match 'LecDmaPnpPublicationRemove' -and
-    ($driverSourceText + $acquisitionText + $deviceText + $ioctlText) -notmatch
-        'LecDmaPnpStartNoLaunch|LecDmaPnpMapNoLaunch|LecSgSyncMapNoLaunch|LecDmaCreateAdapterContext' -and
+    $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $pnpDmaText -match 'LecDmaTransactionCommitHardwareLaunch' -and
+    $pnpDmaText -match 'LecDmaTxLaunchDisabled' -and
+    $pnpDmaText -notmatch 'WRITE_REGISTER|READ_REGISTER|MAMRGO|MTTRGO' -and
     $acquisitionText -match 'MmGetMdlPfnArray'
 }
 
@@ -697,8 +705,9 @@ Test-Contract "legacy PFN DMA launches are fail-closed by default" {
     $driverText -match '#define LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA 0' -and
     ([regex]::Matches($ioctlText,
         '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA').Count -eq 2) -and
-    ([regex]::Matches($ioctlText,
-        '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA(?s:.*?)return STATUS_NOT_SUPPORTED;').Count -eq 2) -and
+    $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $pnpDmaText -match 'Result->LaunchDenied' -and
+    $pnpDmaText -match 'status = STATUS_NOT_SUPPORTED;' -and
     $acquisitionText -match 'MmGetMdlByteOffset\(Transfer->DescriptorMdl\) != 0' -and
     $acquisitionText -match 'physical & \(sizeof\(ULONG\) - 1\)'
 }

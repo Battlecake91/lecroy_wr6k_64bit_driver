@@ -1133,3 +1133,20 @@ Default stress passes 5,000/5,000 DMA and 1,000/1,000 INTEN; the independent
 expanded run passes 50,000/50,000 DMA and 10,000/10,000 INTEN. These results
 prove only software state, ordering and fail-closed behavior. They do not
 authorize hardware launch, mapping flush after GO or acquisition.
+
+## Batch 12 acquisition-integration qualification
+
+The production `CFDC2138` preparation call is now compiled into the driver and
+exercised by the same fake WDM-v3 DDIs used by the synchronous owner. Focused
+coverage validates successful map/build/publish/hard-launch-denial/release,
+pre-map cancellation, stable owner identities, query and power admission,
+STOP/REMOVE/surprise rundown and irreversible quarantine. Synchronous SG/PnP
+coverage is 157/157; publication is 38/38; source contracts are 69/69; exact-
+session continuation is 17/17.
+
+SDK/WDK 10.0.28000.0 and MSVC 14.41.34120 build Debug and Release x64 with
+zero warnings and zero errors. The complete Dry runner passes. The expanded
+run passes DMA 50,000/50,000 and INTEN 10,000/10,000; an additional DMA race
+run passes 250,000/250,000 observations. All are hardware-independent. They do
+not qualify GO, acquisition MMIO, physical DMA retirement or installed-driver
+behavior.

@@ -48,6 +48,14 @@ state validation, task registration and cleanup, executable/prompt/evidence
 drift, one-shot success, nonzero child exit, timeout and persistent failure
 evidence. A live reboot/resume test requires separate authorization.
 
+Batch 12 retains the same schema-2 exact-session mechanism. Its mock harness
+now deliberately collects Windows PowerShell 5.1 native stderr for expected
+negative cases before evaluating the child exit code; redirected
+`ErrorRecord` objects therefore cannot abort the harness before the fail-
+closed assertion runs. All 17 cases pass. A future prepared manifest must pin
+the then-current Batch 12 descendant HEAD and absolute worktree; this document
+does not authorize live task registration or reboot.
+
 ## Operator boundary
 
 Preparation does not authorize task registration or reboot. Registration and

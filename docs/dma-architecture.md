@@ -1,7 +1,7 @@
 # WR6k DMA and acquisition architecture
 
 This document is the canonical end-to-end architecture and proof-boundary
-reference. It describes the development tree after Batch 10. It does not claim
+reference. It describes the development tree after Batch 12. It does not claim
 that acquisition DMA is release-ready.
 
 ## Evidence classes
@@ -22,7 +22,8 @@ that acquisition DMA is release-ready.
   `UnknownActive` quarantine harden CPU-side ownership. They do not tag a
   hardware interrupt or prove physical retirement.
 - The WDM-v3 adapter, common-buffer, scatter/gather and ownership modules are
-  compiled no-launch staging. They have no production acquisition call site.
+  connected to the bounded one-channel `CFDC2138` production preparation path.
+  That call site has no hardware-launch or MMIO operation.
 - The current development build defines
   `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA=0`. Both legacy MAM and MTT launch
   functions therefore return `STATUS_NOT_SUPPORTED` before DMA-related MMIO.
@@ -86,9 +87,10 @@ the last host-memory access.
 6. Historical normal IRQ completion allowed later unregister/CLOSE cleanup.
    That is an unverified compatibility assumption, so the Batch 10 development
    build blocks GO instead.
-7. A future WDM-v3 transaction must obtain adapter-logical SG addresses,
-   serialize descriptor publication, launch once, establish physical idle and
-   only then release its mapping, common buffer and locked pages exactly once.
+7. Batch 12 obtains adapter-logical SG addresses and serializes descriptor
+   publication for one exact request shape. The launch gate remains closed;
+   future work still needs an independently proved physical-idle predicate
+   before any possible GO can be admitted or a post-GO mapping released.
 
 ## Batch 11 software transaction
 
@@ -110,8 +112,12 @@ GO hook, so the driver binary has no transaction transition to DeviceActive.
 The staged PnP parent now tracks an independent D0/Dx generation. QUERY and
 power-down close new-mapping admission; only a successful Started+D0 restore
 may reopen it. Existing no-launch mappings remain releasable during rundown.
-These APIs model the required admission rules but are not wired to live POWER
-IRPs or acquisition, so the currently loaded driver is unaffected.
+Batch 12 wires these rules to live source paths: START owns adapter creation,
+QUERY_STOP/QUERY_REMOVE close preparation, cancellation reopens only the exact
+Started+D0 state, STOP/REMOVE/surprise removal drain never-launched mappings,
+and device SET_POWER completion records D0/Dx without blocking or changing
+hardware sequencing. The currently loaded driver is unaffected because this
+development build was neither signed nor installed.
 
 `DmaV3Transfer` now implements the explicit no-launch WDM-v3 sequence through
 `GetDmaTransferInfo`, `InitializeDmaTransferContext`,
@@ -140,6 +146,27 @@ Real DMA remains blocked until all of the following exist:
 Batch 11 completes every transition that can be justified without those
 hardware facts. It does not claim that IRQ observation, DPC drain, INTEN
 masking, D0 exit or original-x86 cleanup proves physical retirement.
+
+## Batch 12 selected acquisition path
+
+The initial production integration is limited to the observed one-channel MAM
+shape: a process registers a destination buffer with `CFDC2124`, then submits
+the 15-byte METHOD_BUFFERED `CFDC2138` request `{token, channelCount=1,
+pairMarker=1, channel<=0x3f, config, requestedBytes}`. The byte count must equal
+the registered data length, stay below 16 MiB and retain the legacy 0x400-byte
+alignment rule. The persistent MDL chain was probed and locked for device-to-
+host access at registration, so preparation never dereferences user virtual
+memory after registration.
+
+DeviceControl already owns the IRP RemoveLock and active-IOCTL admission.
+`TransferMutex` holds the token, MDL and process registration stable against
+unregister, CLOSE and process cleanup. A publication reference holds the per-
+PDO parent. `LecDmaPnpPrepareLegacyNoLaunch` binds the owner PID and FileObject,
+maps synchronously, copies and validates the complete SG list, encodes only DMA
+logical addresses, publishes behind a memory barrier, calls the permanently
+closed launch gate, cancels and releases exactly once. No legacy PFN address is
+used by this path. The legacy PFN table remains inert compatibility storage
+while `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is zero.
 
 The precise lifetime state machine is maintained in
 [DMA lifetime and timeout](dma-lifetime-and-timeout.md); original x86 evidence

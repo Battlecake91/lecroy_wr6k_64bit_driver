@@ -16,9 +16,20 @@ function Test-Case([string]$Name, [scriptblock]$Body) {
 }
 
 function Invoke-Workflow([string[]]$Arguments, [int]$ExpectedExit) {
-    $output = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath @Arguments 2>&1)
-    if ($LASTEXITCODE -ne $ExpectedExit) {
-        throw "exit=$LASTEXITCODE expected=$ExpectedExit output=$($output -join ' ')"
+    $savedPreference = $ErrorActionPreference
+    try {
+        # Expected negative cases write diagnostics to stderr. Windows
+        # PowerShell surfaces redirected native stderr as ErrorRecord objects;
+        # collect them without letting the harness terminate prematurely.
+        $ErrorActionPreference = 'Continue'
+        $output = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $savedPreference
+    }
+    if ($exitCode -ne $ExpectedExit) {
+        throw "exit=$exitCode expected=$ExpectedExit output=$($output -join ' ')"
     }
     $output
 }
