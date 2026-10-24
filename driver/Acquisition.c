@@ -761,11 +761,20 @@ LecRegisterTransfer(
         return status;
     }
 
+#if LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA
+    /*
+     * Only the explicitly unsafe legacy launch path consumes CPU-PFN
+     * descriptors. The production no-launch path maps SourceMdlChain through
+     * the WDM-v3 DMA API when CFDC2138 is issued. Building the legacy table
+     * here would reject otherwise valid pages or descriptor storage above
+     * 4 GiB before that safe path can run.
+     */
     status = LecBuildDescriptorTable(transfer);
     if (!NT_SUCCESS(status)) {
         LecFreeTransfer(DevExt, transfer);
         return status;
     }
+#endif
 
     KeWaitForSingleObject(
         &DevExt->TransferMutex,

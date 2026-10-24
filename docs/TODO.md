@@ -4,6 +4,15 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
+- [ ] **Package and deploy the corrected production registration path.** The
+  installed `oem103.inf` no-launch attempt stopped at `CFDC2124` because the
+  supposedly safe registration branch still built a 32-bit CPU-PFN descriptor
+  table. The development fix confines that table to the explicitly unsafe
+  compile branch and passes focused builds/contracts. Review, sign and install
+  a new package under separate gates before authorizing one new bounded
+  `CFDC2124`/`CFDC2138`/`CFDC2128` no-launch attempt. Do not treat that future
+  preparation as physical DMA-idle evidence.
+
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
   certificate and evidence set to positively identified off-C: storage; create

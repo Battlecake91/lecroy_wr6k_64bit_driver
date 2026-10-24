@@ -8,8 +8,9 @@ that acquisition DMA is release-ready.
 
 ### Verified replacement-source facts
 
-- `CFDC2124` registers a user buffer, locks its pages, builds the legacy
-  descriptor chain and returns an opaque token. `CFDC2128` unregisters it.
+- `CFDC2124` registers a user buffer, locks its pages and returns an opaque
+  token. Production defers descriptor construction to WDM-v3 `CFDC2138`
+  preparation; `CFDC2128` unregisters the buffer.
 - `CFDC2138` selects a registered token, prepares one-channel MAM state, writes
   `SGTA`/`IIMTC`, enables completion interrupt bit 0, writes `IIMCL=1`, writes
   `MAMRGO`, waits up to five seconds and performs completion cleanup.
@@ -75,8 +76,9 @@ the last host-memory access.
 
 1. A process opens one of the five compatible interfaces. CREATE associates
    the file object with its process owner.
-2. Registration probes and locks the user pages, constructs source MDLs and a
-   legacy descriptor table, then publishes the token under `TransferMutex`.
+2. Registration probes and locks the user pages, constructs source MDLs and
+   publishes the token under `TransferMutex`. The legacy PFN descriptor table
+   exists only behind the explicitly unsafe compile gate.
 3. An acquisition request resolves the token to the file/process owner and
    serializes the selected transfer.
 4. In the historical active path, setup MMIO precedes synchronized completion
@@ -165,8 +167,8 @@ PDO parent. `LecDmaPnpPrepareLegacyNoLaunch` binds the owner PID and FileObject,
 maps synchronously, copies and validates the complete SG list, encodes only DMA
 logical addresses, publishes behind a memory barrier, calls the permanently
 closed launch gate, cancels and releases exactly once. No legacy PFN address is
-used by this path. The legacy PFN table remains inert compatibility storage
-while `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is zero.
+used by this path. The legacy PFN table is not built while
+`LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is zero.
 
 The precise lifetime state machine is maintained in
 [DMA lifetime and timeout](dma-lifetime-and-timeout.md); original x86 evidence
@@ -177,8 +179,8 @@ is maintained in [the legacy abort audit](legacy-dma-abort-bus-idle-audit.md).
 The complete production path from `CFDC2124` through the one-channel
 `CFDC2138` no-launch result is recorded in the machine-readable
 [`dma-pre-go-side-effect-allowlist.json`](dma-pre-go-side-effect-allowlist.json).
-The reachable driver operations are memory allocation/locking, ordinary PFN
-compatibility-table construction, owner and PnP rundown, synchronous WDM-v3
+The reachable driver operations are memory allocation/locking, owner and PnP
+rundown, synchronous WDM-v3
 scatter/gather mapping, DMA-logical descriptor construction in the START-time
 common buffer, a memory barrier, unconditional software launch rejection and
 never-launched mapping release. The driver issues no register or port read or
@@ -191,3 +193,20 @@ hardware-active and contains GPIODAT, MAM, SGTA, IIMTC, INTEN, IIMCL and GO
 operations. It is zero by default and is forbidden by the Batch 13 source
 contract. The no-launch evidence therefore cannot qualify acquisition or
 physical DMA idle.
+
+## Batch 15 installed no-launch finding
+
+The installed Batch 14 binary passed 9/9 R0, 2/2 R1 and one captured PnP
+restart. Its single authorized no-launch attempt then returned Win32
+`ERROR_NOT_SUPPORTED` from `CFDC2124`, before `CFDC2138` or unregister was
+issued. The source has exactly two matching registration-time statuses: the
+legacy descriptor table or a source PFN above 4 GiB. The retained evidence
+does not distinguish which allocation triggered the status, and neither is a
+WDM-v3 mapping failure because that path was never reached.
+
+The development fix keeps MDL creation and token publication in production
+registration but compiles `LecBuildDescriptorTable` only when
+`LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is enabled. Debug and Release x64 builds
+and the focused contracts pass. The fix is not installed, so no live evidence
+yet proves WDM-v3 mapping, SG construction, common-buffer descriptor
+publication or rollback on this hardware.

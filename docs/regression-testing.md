@@ -11,6 +11,32 @@ The replacement driver now has one front-end regression runner:
 
 XStream end-to-end automation is now implemented as the third regression layer.
 
+## Batch 15 exact-once runtime ledger
+
+`scripts/invoke-runtime-ioctl-ledger.ps1` separates passive preflight from each
+bounded runtime command. Its immutable plan pins repository HEAD, worktree,
+installed driver identity and diagnostic executable. Every child stage writes
+an exclusive dispatch marker before launch and a durable completion record
+before the next stage becomes eligible. A missing completion after dispatch is
+`UNCERTAIN` and cannot be retried. This avoids coupling the complete matrix to
+an outer automation process lifetime.
+
+The production flow was qualified with 10/10 ledger failure-injection cases
+and the existing runtime harness with 21/21 cases. The installed Batch 14
+package then completed 9/9 R0 and 2/2 R1 with exactly one dispatch per command.
+The evidence plan SHA-256 is
+`70F877EA95AD0EBF86C3FEC84D56B7C072144EB489529CC915511069CD5BE949`;
+the final supervisor-result SHA-256 is
+`1615F7D1EC6B64E36DD8DFC6F04BE2B488E83F7B137D3A15988DCCB2A2C8D884`.
+
+The installed no-launch attempt exposed a separate source defect:
+`CFDC2124` reached the legacy PFN descriptor builder and returned
+`ERROR_NOT_SUPPORTED` before WDM-v3 preparation. Production registration now
+builds only the MDL chain; the legacy PFN table is compiled only behind
+`LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA`. Debug and Release x64 build cleanly;
+pre-GO contracts pass 10/10, source contracts 69/69 and no-launch mock tests
+3/3. No installed package contains this correction yet.
+
 ## Dry mode
 
 Dry is safe to run on a development PC without the LeCroy PCI hardware. By default

@@ -1177,7 +1177,12 @@ seconds, uses a fresh evidence directory and refuses identity mismatch or
 reuse. Its deterministic Win32 mock proves the exact three-call sequence.
 
 This runner is not an acquisition runner. It cannot accept successful
-`CFDC2138`, alternate buffers or retries, and it never authorizes GO. If the
-legacy registration's inert PFN compatibility table cannot represent the
-host pages below 4 GiB, the live attempt must fail and stop rather than alter
-the reviewed Batch 12 driver tree.
+`CFDC2138`, alternate buffers or retries, and it never authorizes GO.
+
+The installed Batch 14 binary failed its single Batch 15 attempt at
+registration with Win32 `ERROR_NOT_SUPPORTED`: production `CFDC2124` still
+built the legacy PFN table and rejected either descriptor storage or a source
+page above 4 GiB. The development fix confines that table to the unsafe
+compile branch, leaving only the locked MDL chain for WDM-v3 preparation. The
+fix is offline-built and tested but is not installed; another live attempt
+requires a newly signed and separately authorized replacement package.
