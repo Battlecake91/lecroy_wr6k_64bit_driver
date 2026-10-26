@@ -1123,6 +1123,37 @@ No GO, acquisition, DMA-control MMIO or physical DMA occurred. Physical
 bus-idle and safe post-GO retirement remain unresolved and still require an
 authoritative hardware contract or external PCI evidence.
 
+## Batch 16 installed MDL-only candidate
+
+One signed Release x64 package, version `0.2026.1026.1`, was installed once as
+`oem104.inf`. The loaded SYS SHA-256 is
+`32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
+The captured installation completed with one capture and one installation,
+no retry, and left the device problem-free with the service running and five
+interfaces.
+
+The exact-once runtime ledger passed all 9 R0 and 2 R1 stages. It observed
+trace size `0x110`, register-list size `0x2CAE`, PCI `1570:0005`, BDF `5:1.0`,
+command `0x0006`, the three expected BAR values, IRQ line 19 and matching
+START reads of `0x00000002`. This resolves the Batch 15 `0xFFFFFFFF` result as
+an untrustworthy all-ones bus response in that earlier state, not as a valid
+functional START value. The tooling now rejects that response.
+
+One captured PnP restart passed. Its 48 `PNP_STATUS` records prove five
+interface disables and enables, IRQ disconnect/reconnect, three BAR
+unmaps/remaps, REMOVE, Unload, DMA-parent START and final successful START.
+The raw capture SHA-256 is
+`8D87D586910E01705810D5ABECD94F7B4493C94E6EEB50843EF5F9DCA236DE66`.
+
+The subsequent no-launch capture wrapper failed before any device command.
+It checked the raw DebugView log for readiness, but that file remained buffered
+until the 180-second capture exited. The final capture SHA-256 is
+`780B64493791FE9DEFC377CE53B111B2DEBDF4B095D842DE5833235935E99F10`
+and contains attributable StorNVMe kernel messages. No runner evidence root or
+attempt marker exists, so `CFDC2124`, `CFDC2138` and cleanup were not sent.
+No retry followed. A future separately authorized attempt must use the
+qualified live-stdout readiness mechanism rather than raw-log visibility.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

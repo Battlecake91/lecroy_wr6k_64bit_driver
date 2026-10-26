@@ -1202,3 +1202,20 @@ run passes DMA 50,000/50,000 and INTEN 10,000/10,000; an additional DMA race
 run passes 250,000/250,000 observations. All are hardware-independent. They do
 not qualify GO, acquisition MMIO, physical DMA retirement or installed-driver
 behavior.
+
+## Batch 16 MDL-only and START-read gates
+
+`tests/dry/test-mdl-only-registration.ps1` adds 15 focused contracts for the
+production compile gate, MDL-chain construction, above-4-GiB CPU pages,
+multi-MDL ownership, invalid lengths, rollback, repeated registration,
+mapping failure, unregister serialization, process/FileObject lifetime,
+generation handling, PnP/POWER teardown and unconditional launch rejection.
+The package suite contract is now `batch16-regression-v1` with 24 named suites.
+
+The qualified package passed 792/792 functional checks and 66,000/66,000
+stress iterations. Debug and Release x64 both built with zero warnings and
+errors. The focused runtime harness passed 22/22 mocks, including a new case
+that rejects matching `0xFFFFFFFF` START reads. `lecdiag start-register` also
+returns failure for that all-ones bus value even when both read paths agree.
+This prevents a mapped-resource or inaccessible-device response from opening
+dependent runtime gates.
