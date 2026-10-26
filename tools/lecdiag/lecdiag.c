@@ -1194,6 +1194,12 @@ static int query_legacy_start_register(HANDLE h)
         return 1;
     }
 
+    if (legacy == 0xFFFFFFFFUL) {
+        fprintf(stderr,
+            "UNTRUSTWORTHY: both START reads returned the all-ones bus value\n");
+        return 1;
+    }
+
     printf("PASS: legacy 4-byte output matches physical register read.\n");
     return 0;
 }

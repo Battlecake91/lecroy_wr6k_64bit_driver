@@ -1,32 +1,45 @@
 # Current project status
 
-## Batch 15 installed no-launch runtime qualification
+## Batch 16 MDL-only runtime qualification
 
-- The installed baseline remains `oem103.inf`, version `0.2026.1024.1`, with
+- The signed Release x64 candidate is installed as `oem104.inf`, version
+  `0.2026.1026.1`, with
   loaded SYS SHA-256
-  `73B235BD4D19354612752A87BA499C06D15336F63A6B73EDDC0C674C3086D908`.
+  `32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
   The device is `OK`, problem code zero, the service is running and all five
-  interfaces remain published. The `oem102.inf` rollback package is retained.
+  interfaces remain published. The `oem102.inf` and `oem103.inf` rollback
+  packages remain retained.
+- Production `CFDC2124` now retains only its locked MDL chain; legacy CPU-PFN
+  descriptor construction is confined to the disabled unsafe compile branch.
+  The safe `CFDC2138` path validates `DataBytes` and no longer depends on
+  absent legacy `TotalDwords` metadata. Process-owned cross-handle ABI behavior
+  is unchanged, preparation and unregister remain serialized by
+  `TransferMutex`, and hardware launch remains unconditionally disabled.
+- Debug and Release x64 built with zero warnings and errors. The package
+  workflow passed 792/792 functional checks and 66,000/66,000 stress
+  iterations. Focused MDL-only contracts passed 15/15; runtime qualification
+  mocks passed 22/22; the elevated signing launcher passed 36/36 without key
+  use before the single successful signing run.
 - The repository-controlled exact-once ledger completed 9/9 R0 and 2/2 R1.
   Trace size was `0x110`, register-list size was `0x2CAE`, PCI identity was
-  `1570:0005`, observed BDF was `5:1.0`, and both bounded START reads returned
-  `0xFFFFFFFF`. Device health remained unchanged after every stage.
+  `1570:0005`, observed BDF was `5:1.0`, PCI command was `0x0006`, IRQ line was
+  19, and both bounded START reads returned `0x00000002`. Device health remained
+  unchanged after every stage. Matching `0xFFFFFFFF` reads are now rejected as
+  an untrustworthy all-ones bus response rather than accepted as success.
 - One captured PnP restart passed. The trace contains 48 `PNP_STATUS` records
-  covering REMOVE, re-enumeration, IRQ reconnection, DMA-parent START, five
-  interface enables and final START. Forwarded lower-stack query statuses of
-  `0xC00000BB` remain visible; final device state is healthy and D0.
-- The single authorized no-launch attempt dispatched `CFDC2124` once and
-  stopped with Win32 `ERROR_NOT_SUPPORTED` before `CFDC2138`. The installed
-  binary's production registration still built the legacy 32-bit PFN table;
-  either its descriptor allocation or a source page was above 4 GiB. No
-  WDM-v3 mapping, SG copy, descriptor publication, GO or DMA occurred.
-- The development tree now compiles the legacy PFN table only when
-  `LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA` is enabled. Debug and Release x64 build
-  with zero warnings/errors; focused pre-GO 10/10, source 69/69 and no-launch
-  3/3 tests pass. The fix is not signed or installed.
+  and proves five interface withdrawals/publications, one IRQ disconnect and
+  reconnect, three BAR unmaps/remaps, REMOVE, Unload and successful START.
+  Forwarded lower-stack query statuses of `0xC00000BB` remain visible; final
+  device state is healthy and D0.
+- The bounded no-launch device sequence was **not dispatched**. Its auxiliary
+  capture wrapper polled DebugView's buffered raw-log file, which remained
+  invisible until capture exit although the final file contained attributable
+  StorNVMe kernel records. No no-launch evidence directory, device-attempt
+  marker, `lecdiag` process, `CFDC2124`, `CFDC2138` or cleanup request exists.
+  No retry was made.
 - Physical DMA bus-idle, post-GO retirement, real DMA and acquisition remain
-  unproved. A new signed candidate, installation and no-launch attempt each
-  require separate authorization.
+  unproved. The next live no-launch attempt requires separate authorization
+  and must use the already-qualified live-stdout capture readiness predicate.
 
 ## Batch 12 legacy acquisition integration
 

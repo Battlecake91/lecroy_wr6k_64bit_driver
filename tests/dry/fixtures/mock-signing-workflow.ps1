@@ -144,7 +144,8 @@ $artifacts = @($artifactPaths | ForEach-Object {
     }
 })
 $suiteIds = @(
-    'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+    'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
+    'dma-layout', 'dma-ownership',
     'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
     'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
     'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
@@ -178,7 +179,7 @@ $manifest = [ordered]@{
     Regression = [ordered]@{
         CompleteDry = 'PASS'
         Expanded = 'PASS'
-        SuiteContract = 'batch14-regression-v1'
+        SuiteContract = 'batch16-regression-v1'
         Suites = $suiteOutcomes
         FunctionalTestsPassed = $suiteOutcomes.Count
         FunctionalTestsFailed = 0

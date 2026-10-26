@@ -305,7 +305,7 @@ exit 0
         Regression = [ordered]@{
             CompleteDry = 'PASS'
             Expanded = 'PASS'
-            SuiteContract = 'batch14-regression-v1'
+            SuiteContract = 'batch16-regression-v1'
             Suites = $suiteOutcomes
             FunctionalTestsPassed = $suiteOutcomes.Count
             FunctionalTestsFailed = 0
@@ -351,8 +351,9 @@ exit 0
     }
 
     $suiteText = @'
-DRY REGRESSION: 69/69 passed; 0 failed.
+DRY REGRESSION: 70/70 passed; 0 failed.
 PRE-GO SIDE EFFECTS: 10/10 passed; 0 failed.
+MDL-ONLY REGISTRATION: 15/15 passed; 0 failed.
 DMA LAYOUT: 13/13 passed; 0 failed.
 DMA OWNERSHIP: 17/17 passed; 0 failed.
 DMA transaction tests: 134/134 checks passed; hardware launch unavailable
@@ -385,12 +386,12 @@ INTEN functional: 49 PASS, 0 FAIL, 0 SKIP
     $workflowText = Get-Content -LiteralPath $workflow -Raw
     Test-Condition 'workflow keeps PowerShell 5.1 path and current regression guards' (
         -not $workflowText.Contains('[System.IO.Path]::GetRelativePath') -and
-        $workflowText.Contains("SuiteContract = 'batch14-regression-v1'") -and
+        $workflowText.Contains("SuiteContract = 'batch16-regression-v1'") -and
         $workflowText.Contains('Get-RegressionSuiteOutcomes') -and
         -not $workflowText.Contains('FunctionalTestsPassed -ne 776') -and
         -not $workflowText.Contains('FunctionalTestsPassed = 776') -and
-        $parsedSuites.Count -eq 23 -and $parsedTotal -eq 776 -and
-        $changedTotal -eq 777)
+        $parsedSuites.Count -eq 24 -and $parsedTotal -eq 792 -and
+        $changedTotal -eq 793)
 }
 finally {
     $resolvedTemp = [System.IO.Path]::GetFullPath($tempRoot)

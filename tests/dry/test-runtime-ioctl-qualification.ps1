@@ -235,6 +235,11 @@ try {
             Name='r1-pci';Type='Fail';Ioctl='80006014'})}
         [void](Invoke-HarnessCase 'r1-fail' (New-MockState) 1 10 $scenario)
     }
+    Test-Case 'matching all-ones START reads fail the R1 trust gate' {
+        $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
+            Name='r1-start-register';Type='AllOnesStart';Ioctl='00223044'})}
+        [void](Invoke-HarnessCase 'r1-all-ones' (New-MockState) 1 11 $scenario)
+    }
     Test-Case 'timeout is bounded and never retried' {
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r0-5-noop';Type='Timeout';Ioctl='00222400'})}

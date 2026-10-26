@@ -77,6 +77,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-pre-go-side-effects.ps1")
     }
 
+    Invoke-Step "MDL-only registration contracts (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-mdl-only-registration.ps1")
+    }
+
     Invoke-Step "DMA logical descriptor layout unit tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-dma-layout.ps1")
     }

@@ -1186,3 +1186,26 @@ page above 4 GiB. The development fix confines that table to the unsafe
 compile branch, leaving only the locked MDL chain for WDM-v3 preparation. The
 fix is offline-built and tested but is not installed; another live attempt
 requires a newly signed and separately authorized replacement package.
+
+## Batch 16 MDL-only registration status
+
+The installed `oem104.inf` production path no longer calls the legacy PFN
+descriptor builder from `CFDC2124`. Registration locks and owns the MDL chain,
+records its process-owned token and byte count, and leaves device DMA-logical
+address creation exclusively to the later WDM-v3 mapping API. The safe
+`CFDC2138` path validates `DataBytes`; it does not require legacy
+`TotalDwords`, descriptor storage or CPU physical addresses.
+
+Preparation and unregister both hold `TransferMutex`. A successful no-launch
+preparation returns only after the never-launched mapping is released. A
+release uncertainty irreversibly marks the transfer and DMA parent unsafe, so
+unregister returns busy instead of unlocking pages. No asynchronous mapping
+transaction survives a successful no-launch return. These are software and
+source guarantees, not physical bus-idle proof.
+
+The first Batch 16 live no-launch wrapper failed its independent capture-ready
+gate before the repository runner was invoked. DebugView buffered the selected
+raw-log path until exit; the final log contains independently attributable
+kernel messages, but there is no device-attempt marker and no `CFDC2124` or
+`CFDC2138` trace. Consequently MDL-only registration and WDM-v3 mapping remain
+unqualified on real hardware. No retry was made.

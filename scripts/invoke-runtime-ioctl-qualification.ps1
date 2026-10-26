@@ -320,7 +320,8 @@ function Get-MockBehavior([string]$Name) {
 
 function Set-MockEnvironment([object]$Behavior) {
     foreach ($name in @('LECS65_MOCK_FAIL_IOCTL','LECS65_MOCK_DELAY_IOCTL',
-        'LECS65_MOCK_DELAY_MS','LECS65_MOCK_MISSING_OUTPUT_IOCTL')) {
+        'LECS65_MOCK_DELAY_MS','LECS65_MOCK_MISSING_OUTPUT_IOCTL',
+        'LECS65_MOCK_START_VALUE')) {
         [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
     if ($null -eq $Behavior) { return }
@@ -331,6 +332,8 @@ function Set-MockEnvironment([object]$Behavior) {
         [Environment]::SetEnvironmentVariable('LECS65_MOCK_DELAY_MS', '7000', 'Process')
     } elseif ($Behavior.Type -eq 'MissingOutput') {
         [Environment]::SetEnvironmentVariable('LECS65_MOCK_MISSING_OUTPUT_IOCTL', [string]$Behavior.Ioctl, 'Process')
+    } elseif ($Behavior.Type -eq 'AllOnesStart') {
+        [Environment]::SetEnvironmentVariable('LECS65_MOCK_START_VALUE', 'FFFFFFFF', 'Process')
     } else { throw "Unknown mock behavior: $($Behavior.Type)" }
 }
 
@@ -451,6 +454,9 @@ try {
             if (-not $legacy.Success -or -not $physical.Success -or
                 $legacy.Groups[1].Value -ne $physical.Groups[1].Value) {
                 throw 'R1 START structured output validation failed.'
+            }
+            if ($legacy.Groups[1].Value -eq '0xFFFFFFFF') {
+                throw 'R1 START returned the untrustworthy all-ones bus value.'
             }
         }
         if ($outputs.Contains('r1-pci') -or $outputs.Contains('r1-start-register')) {
