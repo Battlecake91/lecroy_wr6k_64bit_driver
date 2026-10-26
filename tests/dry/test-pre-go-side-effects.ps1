@@ -70,6 +70,7 @@ Test-Case 'production CFDC2138 branch has no register or port access primitive' 
     -not [string]::IsNullOrWhiteSpace($safeAcquire) -and
     $safeAcquire -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
     $safeAcquire -notmatch 'Lec(?:Select|Arm|Launch)Dma|LecUpdateInterruptMask' -and
+    $safeAcquire -notmatch 'TotalDwords|DescriptorTablePhysical|DescriptorBuffer' -and
     $safeAcquire -match 'LecDmaPnpPrepareLegacyNoLaunch'
 }
 Test-Case 'CFDC2124 production registration locks memory without building PFN descriptors' {

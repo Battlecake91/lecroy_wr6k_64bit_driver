@@ -277,7 +277,8 @@ function Assert-PackageSignatureState {
 
 function Get-ExpectedRegressionSuiteIds {
     return @(
-        'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+        'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
+        'dma-layout', 'dma-ownership',
         'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
         'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
         'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
@@ -293,6 +294,7 @@ function Get-RegressionSuiteOutcomes {
     $definitions = @(
         @{ Id='source-abi'; Pattern='(?m)^DRY REGRESSION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
         @{ Id='pre-go-side-effects'; Pattern='(?m)^PRE-GO SIDE EFFECTS: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
+        @{ Id='mdl-only-registration'; Pattern='(?m)^MDL-ONLY REGISTRATION: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
         @{ Id='dma-layout'; Pattern='(?m)^DMA LAYOUT: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
         @{ Id='dma-ownership'; Pattern='(?m)^DMA OWNERSHIP: (?<passed>\d+)/(?<total>\d+) passed; (?<failed>\d+) failed\.\r?$' }
         @{ Id='dma-transaction'; Pattern='(?m)^DMA transaction tests: (?<passed>\d+)/(?<total>\d+) checks passed; hardware launch unavailable\r?$' }
@@ -366,7 +368,7 @@ function Assert-RegressionManifest {
         [int]$Regression.DefaultIntenStressIterations +
         [int]$Regression.ExpandedDmaStressIterations +
         [int]$Regression.ExpandedIntenStressIterations
-    if ($Regression.SuiteContract -ne 'batch14-regression-v1' -or
+    if ($Regression.SuiteContract -ne 'batch16-regression-v1' -or
         ($actualIds -join ',') -ne ($expectedIds -join ',') -or
         @($actualIds | Select-Object -Unique).Count -ne $expectedIds.Count -or
         @($suites | Where-Object {
@@ -866,7 +868,7 @@ try {
         Regression = [ordered]@{
             CompleteDry = 'PASS'
             Expanded = 'PASS'
-            SuiteContract = 'batch14-regression-v1'
+            SuiteContract = 'batch16-regression-v1'
             Suites = $suiteOutcomes
             FunctionalTestsPassed = $functionalTestsPassed
             FunctionalTestsFailed = $functionalTestsFailed

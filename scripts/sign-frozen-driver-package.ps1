@@ -120,7 +120,8 @@ $sourceManifestValue = Get-Content -Raw -LiteralPath $sourceManifest |
 $release = @($sourceManifestValue.Build.Configurations |
     Where-Object Configuration -eq 'Release')
 $expectedSuiteIds = @(
-    'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+    'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
+    'dma-layout', 'dma-ownership',
     'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
     'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
     'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
@@ -154,7 +155,7 @@ if ($sourceManifestValue.Schema -ne 2 -or
     $release.Count -ne 1 -or
     $release[0].SYS.SHA256 -ne $expected.SYS -or
     $release[0].PDB.SHA256 -ne $expected.PDB -or
-    $sourceManifestValue.Regression.SuiteContract -ne 'batch14-regression-v1' -or
+    $sourceManifestValue.Regression.SuiteContract -ne 'batch16-regression-v1' -or
     ($actualSuiteIds -join ',') -ne ($expectedSuiteIds -join ',') -or
     @($actualSuiteIds | Select-Object -Unique).Count -ne $expectedSuiteIds.Count -or
     @($suites | Where-Object {

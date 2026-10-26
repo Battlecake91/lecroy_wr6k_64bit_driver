@@ -102,6 +102,17 @@ static DWORD environment_delay_ms(void)
     return (DWORD)parsed;
 }
 
+static DWORD environment_start_value(void)
+{
+    char value[32];
+    unsigned long parsed;
+    DWORD length = GetEnvironmentVariableA(
+        "LECS65_MOCK_START_VALUE", value, ARRAYSIZE(value));
+    if (length == 0 || length >= ARRAYSIZE(value)) return 0x12345678UL;
+    if (sscanf_s(value, "%lx", &parsed) != 1) return 0x12345678UL;
+    return (DWORD)parsed;
+}
+
 HANDLE WINAPI LecdiagMockCreateFileW(
     LPCWSTR FileName,
     DWORD DesiredAccess,
@@ -132,7 +143,7 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
     LPOVERLAPPED Overlapped)
 {
     DWORD i;
-    const DWORD startValue = 0x12345678UL;
+    const DWORD startValue = environment_start_value();
 
     UNREFERENCED_PARAMETER(Device);
     UNREFERENCED_PARAMETER(Overlapped);

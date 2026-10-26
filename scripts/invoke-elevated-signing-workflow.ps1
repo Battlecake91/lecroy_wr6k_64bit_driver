@@ -152,7 +152,8 @@ function Assert-PackageManifest {
     $configurationModes = @($manifest.Build.Configurations |
         ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
     $expectedSuiteIds = @(
-        'source-abi', 'pre-go-side-effects', 'dma-layout', 'dma-ownership',
+        'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
+        'dma-layout', 'dma-ownership',
         'dma-transaction', 'dma-v3-transfer', 'sg-bridge', 'sg-sync-v3',
         'pnp-publication', 'pnp-irp-lifetime', 'lecdiag-command-chain',
         'no-launch-preparation', 'runtime-lifetime', 'process-dma-lifetime',
@@ -186,7 +187,7 @@ function Assert-PackageManifest {
         $configurationModes[0] -ne $ExpectedPnpStatusDiagnostics -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
-        $manifest.Regression.SuiteContract -ne 'batch14-regression-v1' -or
+        $manifest.Regression.SuiteContract -ne 'batch16-regression-v1' -or
         ($actualSuiteIds -join ',') -ne ($expectedSuiteIds -join ',') -or
         @($actualSuiteIds | Select-Object -Unique).Count -ne $expectedSuiteIds.Count -or
         @($suites | Where-Object {

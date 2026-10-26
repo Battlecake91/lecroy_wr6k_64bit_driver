@@ -3558,9 +3558,7 @@ LecIoctlAcquireBufferedOneChannel(
         goto NoLaunchExit;
     }
     transfer = LecFindTransferOwned(DevExt, token, OwnerProcessId);
-    if (transfer == NULL ||
-        transfer->DataBytes != requestedBytes ||
-        transfer->TotalDwords != requestedBytes / sizeof(ULONG)) {
+    if (transfer == NULL || transfer->DataBytes != requestedBytes) {
         status = transfer == NULL ?
             STATUS_INVALID_PARAMETER : STATUS_INVALID_BUFFER_SIZE;
         goto NoLaunchExit;

@@ -706,6 +706,8 @@ Test-Contract "legacy PFN DMA launches are fail-closed by default" {
     ([regex]::Matches($ioctlText,
         '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA').Count -eq 2) -and
     $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $ioctlText -match '(?s)#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA.*?transfer->DataBytes != requestedBytes.*?LecDmaPnpPrepareLegacyNoLaunch' -and
+    $ioctlText -notmatch '(?s)#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA.*?transfer->TotalDwords != requestedBytes.*?#else' -and
     $pnpDmaText -match 'Result->LaunchDenied' -and
     $pnpDmaText -match 'status = STATUS_NOT_SUPPORTED;' -and
     $acquisitionText -match '(?s)#if LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA\s*/\*.*?LecBuildDescriptorTable\(transfer\);.*?#endif' -and
@@ -855,6 +857,11 @@ Test-Contract "lecdiag raw IOCTL parser accepts an explicit zero-length input" {
     $lecdiagText -match '\*lengthOut\s*=\s*0\s*;' -and
     $lecdiagText -match "(?s)if\s*\(text\[0\]\s*==\s*'\\0'\)\s*\{\s*return\s+0\s*;\s*\}" -and
     $lecdiagText -match 'digits\s*==\s*0\s*\|\|'
+}
+
+Test-Contract "lecdiag rejects matching all-ones START reads as untrustworthy" {
+    $lecdiagText -match 'legacy == 0xFFFFFFFFUL' -and
+    $lecdiagText -match 'UNTRUSTWORTHY: both START reads returned the all-ones bus value'
 }
 
 Test-Contract "package workflow pins reviewed source and toolchain" {
