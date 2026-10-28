@@ -1,13 +1,15 @@
 #pragma once
 
 /*
- * Hardware-independent owner for one future WDM-v3 acquisition transaction.
+ * Hardware-independent owner for one WDM-v3 acquisition generation.
  *
  * This module deliberately has no MMIO or hardware-launch entry point.  The
  * production driver can validate, map, build and publish a transaction, but
- * cannot transition it to DeviceActive.  Host tests may define
- * LECS65_DMA_TRANSACTION_TEST_HOOKS to model post-GO races without making a
- * launch primitive available to the driver binary.
+ * cannot transition it to DeviceActive in the default build.  A reviewed
+ * development build may define LECS65_ENABLE_WDM_V3_MAM_DMA=1 and
+ * supply one explicit hardware-commit callback.  The default is zero and the
+ * production caller supplies no callback, so this module cannot launch DMA in
+ * the installed configuration.
  *
  * Callers serialize access at <= DISPATCH_LEVEL.  Mapping/allocation DDIs and
  * waits remain outside that lock and at their documented IRQL.  OwnerId and
@@ -15,6 +17,10 @@
  */
 #include <stdint.h>
 #include "DmaLayout.h"
+
+#ifndef LECS65_ENABLE_WDM_V3_MAM_DMA
+#define LECS65_ENABLE_WDM_V3_MAM_DMA 0
+#endif
 
 typedef enum _LECS65_DMA_TRANSACTION_RESULT {
     LecDmaTxOk = 0,
@@ -42,6 +48,7 @@ typedef enum _LECS65_DMA_TRANSACTION_PHASE {
     LecDmaTxArming,
     LecDmaTxDeviceActive,
     LecDmaTxCompletionObserved,
+    LecDmaTxCompletionRetired,
     LecDmaTxIdleProved,
     LecDmaTxCancelled,
     LecDmaTxReleased,
@@ -56,6 +63,7 @@ typedef struct _LECS65_DMA_TRANSACTION_DIAGNOSTICS {
     uint64_t DescriptorBuilds;
     uint64_t Publications;
     uint64_t LaunchAdmissions;
+    uint64_t LaunchCommits;
     uint64_t LaunchRejected;
     uint64_t CompletionObserved;
     uint64_t DuplicateOrStaleCompletion;
@@ -88,6 +96,9 @@ typedef struct _LECS65_DMA_TRANSACTION {
 } LECS65_DMA_TRANSACTION;
 
 typedef void (*LECS65_DMA_PUBLICATION_BARRIER)(void* Context);
+typedef unsigned (*LECS65_DMA_HARDWARE_COMMIT)(
+    void* Context,
+    uint64_t Generation);
 
 void LecDmaTransactionInitialize(LECS65_DMA_TRANSACTION* Transaction);
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionSetLifecycle(
@@ -136,14 +147,25 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionBeginArm(
     LECS65_DMA_TRANSACTION* Transaction,
     uint64_t Generation);
 
-/* Always fails closed and rolls the software-only Arming state back. */
+/*
+ * The default build always fails closed and rolls Arming back.  With the
+ * development gate enabled, PossibleGo is committed before invoking the
+ * callback.  A callback failure is therefore terminal UnknownActive rather
+ * than a reason to release resources.
+ */
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionCommitHardwareLaunch(
     LECS65_DMA_TRANSACTION* Transaction,
-    uint64_t Generation);
+    uint64_t Generation,
+    LECS65_DMA_HARDWARE_COMMIT HardwareCommit,
+    void* HardwareContext);
 
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionObserveCompletion(
     LECS65_DMA_TRANSACTION* Transaction,
     uint64_t Generation);
+LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionRetireNormalCompletion(
+    LECS65_DMA_TRANSACTION* Transaction,
+    uint64_t Generation,
+    unsigned CompletionCleanupSucceeded);
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionProvePhysicalIdle(
     LECS65_DMA_TRANSACTION* Transaction,
     uint64_t Generation,
@@ -167,10 +189,3 @@ int LecDmaTransactionMayRelease(const LECS65_DMA_TRANSACTION* Transaction);
 void LecDmaTransactionSnapshot(
     const LECS65_DMA_TRANSACTION* Transaction,
     LECS65_DMA_TRANSACTION* Snapshot);
-
-#ifdef LECS65_DMA_TRANSACTION_TEST_HOOKS
-/* Model-only evidence injection. Never compiled into the driver project. */
-LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionTestRecordPossibleGo(
-    LECS65_DMA_TRANSACTION* Transaction,
-    uint64_t Generation);
-#endif

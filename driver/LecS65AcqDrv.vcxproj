@@ -49,6 +49,7 @@
     <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)x64\$(Configuration)\obj\</IntDir>
     <LecPnpStatusDiagnostics Condition="'$(LecPnpStatusDiagnostics)'==''">false</LecPnpStatusDiagnostics>
+    <LecWdmV3MamDma Condition="'$(LecWdmV3MamDma)'==''">false</LecWdmV3MamDma>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -110,6 +111,12 @@
   <ItemDefinitionGroup Condition="'$(LecPnpStatusDiagnostics)'=='true'">
     <ClCompile>
       <PreprocessorDefinitions>LECS65_PNP_STATUS_DIAGNOSTICS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(LecWdmV3MamDma)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>LECS65_ENABLE_WDM_V3_MAM_DMA=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 

@@ -78,6 +78,13 @@ typedef struct _LECS65_DMA_PNP_STAGE {
     BOOLEAN LateQuarantine;
     BOOLEAN QueryPending;
     LECS65_DMA_POWER_STATE PowerState;
+    /* Persistent serialized owner for the development-gated MAM path. */
+    LECS65_DMA_TRANSACTION LegacyTransferTransaction;
+    ULONG_PTR LegacyTransferOwnerId;
+    ULONG_PTR LegacyTransferFileId;
+    ULONGLONG LegacyTransferMappingToken;
+    BOOLEAN LegacyTransferActive;
+    ULONGLONG CompletedTransferCount;
 } LECS65_DMA_PNP_STAGE, *PLECS65_DMA_PNP_STAGE;
 
 typedef struct _LECS65_DMA_PNP_SNAPSHOT {
@@ -97,6 +104,9 @@ typedef struct _LECS65_DMA_PNP_SNAPSHOT {
     BOOLEAN QueryPending;
     LECS65_DMA_POWER_STATE PowerState;
     LECS65_DMA_PNP_CLEANUP_PHASE CleanupPhase;
+    BOOLEAN LegacyTransferActive;
+    ULONGLONG CompletedTransferCount;
+    LECS65_DMA_TRANSACTION_PHASE LegacyTransferPhase;
 } LECS65_DMA_PNP_SNAPSHOT, *PLECS65_DMA_PNP_SNAPSHOT;
 
 /*
@@ -181,7 +191,27 @@ typedef struct _LECS65_DMA_PREPARE_RESULT {
     ULONGLONG MappingToken;
     BOOLEAN LaunchDenied;
     BOOLEAN MappingReleased;
+    BOOLEAN GoPossible;
+    BOOLEAN CompletionObserved;
+    BOOLEAN Quarantined;
 } LECS65_DMA_PREPARE_RESULT, *PLECS65_DMA_PREPARE_RESULT;
+
+#define LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES 0x10UL
+
+typedef struct _LECS65_DMA_LEGACY_TRANSFER_OUTCOME {
+    NTSTATUS Status;
+    BOOLEAN GoCommitted;
+    BOOLEAN CompletionObserved;
+} LECS65_DMA_LEGACY_TRANSFER_OUTCOME,
+    *PLECS65_DMA_LEGACY_TRANSFER_OUTCOME;
+
+typedef NTSTATUS (*LECS65_DMA_LEGACY_TRANSFER_EXECUTE)(
+    _Inout_ PVOID Context,
+    _In_ ULONGLONG Generation,
+    _In_ PHYSICAL_ADDRESS DescriptorTable,
+    _In_ ULONG DescriptorEntries,
+    _In_ ULONG TransferBytes,
+    _Out_ PLECS65_DMA_LEGACY_TRANSFER_OUTCOME Outcome);
 
 /*
  * Production integration point for the bounded legacy CFDC2138 path.
@@ -197,6 +227,23 @@ NTSTATUS LecDmaPnpPrepareLegacyNoLaunch(
     _In_ ULONG_PTR OwnerId,
     _In_ ULONG_PTR FileId,
     _In_opt_ volatile BOOLEAN* CancelRequested,
+    _Out_ PLECS65_DMA_PREPARE_RESULT Result);
+
+/*
+ * Persistent owner for the development-gated single-channel MAM path. The
+ * default build gate prevents Execute from being called. Exact normal
+ * completion permits WDM mapping retirement and another generation; timeout,
+ * cancellation or uncertain post-GO state permanently quarantines ownership.
+ */
+NTSTATUS LecDmaPnpExecuteLegacyTransfer(
+    _Inout_ PLECS65_DMA_PNP_STAGE Stage,
+    _In_ PMDL LockedMdlChain,
+    _In_ ULONG Length,
+    _In_ ULONG_PTR OwnerId,
+    _In_ ULONG_PTR FileId,
+    _In_opt_ volatile BOOLEAN* CancelRequested,
+    _In_ LECS65_DMA_LEGACY_TRANSFER_EXECUTE Execute,
+    _Inout_ PVOID ExecuteContext,
     _Out_ PLECS65_DMA_PREPARE_RESULT Result);
 
 /* Terminal fail-closed transition; never drains or releases child resources. */

@@ -1,10 +1,10 @@
-#define LECS65_DMA_TRANSACTION_TEST_HOOKS 1
 #include "../../driver/DmaTransaction.h"
 #include <stdio.h>
 #include <string.h>
 
 static unsigned checks;
 static unsigned barrier_calls;
+static unsigned commit_calls;
 #define CHECK(x) do { checks++; if (!(x)) { \
     printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 
@@ -13,6 +13,21 @@ static void Barrier(void* context)
     unsigned* value = (unsigned*)context;
     (*value)++;
     barrier_calls++;
+}
+
+static unsigned CommitGo(void* context, uint64_t generation)
+{
+    uint64_t* expected = (uint64_t*)context;
+    commit_calls++;
+    return expected != 0 && generation == *expected;
+}
+
+static unsigned FailCommit(void* context, uint64_t generation)
+{
+    (void)context;
+    (void)generation;
+    commit_calls++;
+    return 0;
 }
 
 static int PrepareMapped(LECS65_DMA_TRANSACTION* tx, uint64_t* generation)
@@ -93,7 +108,8 @@ static int TestDescriptorsAndGate(void)
     CHECK(LecDmaTransactionPublish(&tx, generation, Barrier, &localBarrier) == LecDmaTxOk);
     CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionObserveCompletion(&tx, generation) == LecDmaTxNotReady);
-    CHECK(LecDmaTransactionCommitHardwareLaunch(&tx, generation) == LecDmaTxLaunchDisabled);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, 0, 0) == LecDmaTxLaunchDisabled);
     CHECK(tx.Phase == LecDmaTxPublished);
     CHECK(tx.EverPossiblyLaunched == 0);
     CHECK(tx.Diagnostics.LaunchRejected == 1);
@@ -134,7 +150,8 @@ static int TestPostGoQuarantine(void)
     uint64_t generation;
     if (PreparePublished(&tx, &generation)) return 1;
     CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
-    CHECK(LecDmaTransactionTestRecordPossibleGo(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionObserveCompletion(&tx, generation - 1) == LecDmaTxStaleGeneration);
     CHECK(tx.Phase == LecDmaTxDeviceActive);
     CHECK(LecDmaTransactionObserveCompletion(&tx, generation) == LecDmaTxOk);
@@ -156,7 +173,8 @@ static int TestIdleProofAndRepeat(void)
     uint64_t generation;
     if (PreparePublished(&tx, &generation)) return 1;
     CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
-    CHECK(LecDmaTransactionTestRecordPossibleGo(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionObserveCompletion(&tx, generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionProvePhysicalIdle(&tx, generation, 1) == LecDmaTxOk);
     CHECK(LecDmaTransactionMayRelease(&tx));
@@ -176,16 +194,52 @@ static int TestSurpriseAndPowerAfterGo(void)
     uint64_t generation;
     if (PreparePublished(&tx, &generation)) return 1;
     CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
-    CHECK(LecDmaTransactionTestRecordPossibleGo(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionBeginPnpTeardown(&tx, 1) == LecDmaTxMustQuarantine);
     CHECK(tx.Phase == LecDmaTxUnknownActive);
     CHECK(tx.Diagnostics.PnpTeardowns == 1);
 
     if (PreparePublished(&tx, &generation)) return 1;
     CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
-    CHECK(LecDmaTransactionTestRecordPossibleGo(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxOk);
     CHECK(LecDmaTransactionBeginPowerDown(&tx) == LecDmaTxMustQuarantine);
     CHECK(tx.Diagnostics.PowerTeardowns == 1);
+    return 0;
+}
+
+static int TestCommitFailureIsTerminal(void)
+{
+    LECS65_DMA_TRANSACTION tx;
+    uint64_t generation;
+    if (PreparePublished(&tx, &generation)) return 1;
+    CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, FailCommit, 0) == LecDmaTxMustQuarantine);
+    CHECK(tx.Phase == LecDmaTxUnknownActive && tx.EverPossiblyLaunched);
+    CHECK(!LecDmaTransactionMayRelease(&tx));
+    CHECK(LecDmaTransactionReleaseMapping(
+        &tx, generation) == LecDmaTxMustQuarantine);
+    return 0;
+}
+
+static int TestGoOrderingAndLateCompletion(void)
+{
+    LECS65_DMA_TRANSACTION tx;
+    uint64_t generation;
+    if (PrepareMapped(&tx, &generation)) return 1;
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxNotReady);
+
+    if (PreparePublished(&tx, &generation)) return 1;
+    CHECK(LecDmaTransactionBeginArm(&tx, generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCommitHardwareLaunch(
+        &tx, generation, CommitGo, &generation) == LecDmaTxOk);
+    CHECK(LecDmaTransactionCancel(&tx, generation, 1) == LecDmaTxMustQuarantine);
+    CHECK(LecDmaTransactionObserveCompletion(
+        &tx, generation) == LecDmaTxNotReady);
+    CHECK(!LecDmaTransactionMayRelease(&tx));
     return 0;
 }
 
@@ -197,6 +251,8 @@ int main(void)
     if (TestPostGoQuarantine()) return 1;
     if (TestIdleProofAndRepeat()) return 1;
     if (TestSurpriseAndPowerAfterGo()) return 1;
+    if (TestCommitFailureIsTerminal()) return 1;
+    if (TestGoOrderingAndLateCompletion()) return 1;
     CHECK(barrier_calls >= 4);
     printf("DMA transaction tests: %u/%u checks passed; hardware launch unavailable\n",
         checks, checks);

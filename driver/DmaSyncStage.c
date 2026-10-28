@@ -495,10 +495,11 @@ Done:
     return status;
 }
 
-NTSTATUS
-LecSgSyncReleaseNoLaunch(
+static NTSTATUS
+LecSgSyncReleaseQualified(
     _Inout_ PLECS65_SG_SYNC_OWNER Owner,
-    _In_ ULONGLONG Token)
+    _In_ ULONGLONG Token,
+    _In_ BOOLEAN RequireCompleted)
 {
     PLECS65_SG_SYNC_STAGE stage, *link;
     KIRQL irql;
@@ -524,6 +525,12 @@ LecSgSyncReleaseNoLaunch(
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_INVALID_PARAMETER;
     }
+    if ((RequireCompleted &&
+         (!stage->PossibleGo || !stage->CompletionObserved)) ||
+        (!RequireCompleted && stage->PossibleGo)) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
     if (!LecSgSyncCommitReleaseLocked(Owner)) {
         KeReleaseSpinLock(&Owner->Lock, irql);
         return STATUS_DEVICE_BUSY;
@@ -531,14 +538,73 @@ LecSgSyncReleaseNoLaunch(
     *link = stage->Next;
     KeReleaseSpinLock(&Owner->Lock, irql);
 
-    /*
-     * This stage has no device launch capability. Only its synchronous
-     * v3 no-launch allocation may be released. Do not use for any
-     * actual/unknown-active WR6k DMA transaction.
-     */
     LecSgSyncFreeStage(stage);
     LecSgSyncCompleteRelease(Owner);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LecSgSyncReleaseNoLaunch(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token)
+{
+    return LecSgSyncReleaseQualified(Owner, Token, FALSE);
+}
+
+NTSTATUS
+LecSgSyncMarkPossibleGo(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token)
+{
+    PLECS65_SG_SYNC_STAGE stage;
+    KIRQL irql;
+    if (Owner == NULL || Token == 0) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    if (LecSgSyncQuarantineRequested(Owner) ||
+        Owner->State != LecSgSyncOwnerActive) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_DEVICE_BUSY;
+    }
+    for (stage = Owner->Mappings; stage != NULL; stage = stage->Next) {
+        if (stage->Token == Token) break;
+    }
+    if (stage == NULL || stage->PossibleGo) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    stage->PossibleGo = TRUE;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LecSgSyncObserveCompletion(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token)
+{
+    PLECS65_SG_SYNC_STAGE stage;
+    KIRQL irql;
+    if (Owner == NULL || Token == 0) return STATUS_INVALID_PARAMETER;
+    KeAcquireSpinLock(&Owner->Lock, &irql);
+    for (stage = Owner->Mappings; stage != NULL; stage = stage->Next) {
+        if (stage->Token == Token) break;
+    }
+    if (stage == NULL || !stage->PossibleGo || stage->CompletionObserved ||
+        LecSgSyncQuarantineRequested(Owner)) {
+        KeReleaseSpinLock(&Owner->Lock, irql);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    stage->CompletionObserved = TRUE;
+    KeReleaseSpinLock(&Owner->Lock, irql);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LecSgSyncReleaseCompleted(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token)
+{
+    return LecSgSyncReleaseQualified(Owner, Token, TRUE);
 }
 
 NTSTATUS

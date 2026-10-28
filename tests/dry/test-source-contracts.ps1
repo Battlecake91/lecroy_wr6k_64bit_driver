@@ -427,11 +427,11 @@ Test-Contract "uncertain DMA or mapping ownership is latched on every path" {
     $acquisitionText -match 'LecQuarantineInterruptAdmission\(DevExt\)' -and
     $interruptText -match 'InterlockedExchange\(&DevExt->DmaUnknownActive, 1\)' -and
     ([regex]::Matches($ioctlText, 'LecMarkDmaUnknownActive\(').Count -eq 5) -and
-    ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishWait\(').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishCleanup\(').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'LecArmSelectedDma\(').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'LecLaunchSelectedDma\(').Count -eq 2) -and
-    ([regex]::Matches($ioctlText, 'LecCancelSelectedDmaArm\(').Count -eq 2) -and
+    ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishWait\(').Count -eq 3) -and
+    ([regex]::Matches($ioctlText, 'LecDmaCompletionFinishCleanup\(').Count -eq 3) -and
+    ([regex]::Matches($ioctlText, 'LecArmSelectedDma\(').Count -eq 3) -and
+    ([regex]::Matches($ioctlText, 'LecLaunchSelectedDma\(').Count -eq 3) -and
+    ([regex]::Matches($ioctlText, 'LecCancelSelectedDmaArm\(').Count -eq 3) -and
     $deviceText -match 'DmaUnknownActive'
 }
 
@@ -704,7 +704,8 @@ Test-Contract "PnP DMA parent owns the live no-launch preparation path" {
 Test-Contract "legacy PFN DMA launches are fail-closed by default" {
     $driverText -match '#define LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA 0' -and
     ([regex]::Matches($ioctlText,
-        '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA').Count -eq 2) -and
+        '#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA').Count -ge 2) -and
+    $driverProjectText -match '<LecWdmV3MamDma Condition=.*?>false</LecWdmV3MamDma>' -and
     $ioctlText -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
     $ioctlText -match '(?s)#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA.*?transfer->DataBytes != requestedBytes.*?LecDmaPnpPrepareLegacyNoLaunch' -and
     $ioctlText -notmatch '(?s)#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA.*?transfer->TotalDwords != requestedBytes.*?#else' -and
@@ -958,13 +959,17 @@ Test-Contract "process DMA model covers file association and irreversible quaran
     $processDmaModelText -match 'CREATE serialized after removal is rejected without association'
 }
 
-Test-Contract "WDM-v3 transaction is built but exposes no production GO path" {
+Test-Contract "WDM-v3 MAM transaction has an explicit default-off development gate" {
     $driverProjectText -match 'DmaTransaction\.c' -and
     $transactionHeaderText -match 'LecDmaTransactionCommitHardwareLaunch' -and
+    $transactionHeaderText -match '#define LECS65_ENABLE_WDM_V3_MAM_DMA 0' -and
+    $transactionText -match '#if !LECS65_ENABLE_WDM_V3_MAM_DMA' -and
     $transactionText -match 'return LecDmaTxLaunchDisabled' -and
     $transactionText -notmatch 'WRITE_REGISTER|READ_REGISTER|DeviceIoControl|MapTransferEx' -and
-    $transactionHeaderText -match '#ifdef LECS65_DMA_TRANSACTION_TEST_HOOKS' -and
-    $driverProjectText -notmatch 'LECS65_DMA_TRANSACTION_TEST_HOOKS'
+    $driverProjectText -match '<LecWdmV3MamDma Condition=.*?>false</LecWdmV3MamDma>' -and
+    $driverProjectText -match 'LECS65_ENABLE_WDM_V3_MAM_DMA=1' -and
+    $ioctlText -match 'LecDmaPnpExecuteLegacyTransfer' -and
+    $ioctlText -match 'WRITE_REGISTER_ULONG\(sgta, DescriptorTable.LowPart\)'
 }
 
 Test-Contract "DMA transaction keeps IRQ evidence separate from physical idle" {

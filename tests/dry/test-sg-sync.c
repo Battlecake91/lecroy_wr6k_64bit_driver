@@ -4,6 +4,10 @@
 #include "../../driver/DmaPnpStage.h"
 #include "../../driver/DmaLayout.h"
 
+#ifndef STATUS_IO_TIMEOUT
+#define STATUS_IO_TIMEOUT ((NTSTATUS)0xC00000B5L)
+#endif
+
 enum {
     MODE_NORMAL,
     MODE_GET_RESOURCE_FAILURE,
@@ -46,6 +50,10 @@ static LECS65_SG_SYNC_OWNER owner, otherOwner;
 static MDL mdls[2];
 static SCATTER_GATHER_LIST sg;
 static char bytes[128];
+static volatile LONG firstTransferCalls;
+static BOOLEAN firstTransferCompletion;
+static BOOLEAN firstTransferCommit;
+static NTSTATUS firstTransferStatus;
 
 void* FakeExAllocatePool2(ULONG flags, size_t size, ULONG tag)
 {
@@ -92,6 +100,30 @@ static void check(const char* label, int ok)
     else {
         ++failed;
     }
+}
+
+static NTSTATUS
+fakeFirstTransferExecute(
+    PVOID context,
+    ULONGLONG generation,
+    PHYSICAL_ADDRESS descriptorTable,
+    ULONG descriptorEntries,
+    ULONG transferBytes,
+    PLECS65_DMA_LEGACY_TRANSFER_OUTCOME outcome)
+{
+    UNREFERENCED_PARAMETER(context);
+    InterlockedIncrement(&firstTransferCalls);
+    if (generation == 0 || descriptorTable.QuadPart != commonLogical.QuadPart ||
+        descriptorEntries == 0 ||
+        transferBytes != LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES ||
+        outcome == NULL) {
+        InterlockedIncrement(&badDdiArguments);
+        return STATUS_INVALID_PARAMETER;
+    }
+    outcome->Status = firstTransferStatus;
+    outcome->GoCommitted = firstTransferCommit;
+    outcome->CompletionObserved = firstTransferCompletion;
+    return firstTransferStatus;
 }
 
 static NTSTATUS fakeInit(PDMA_ADAPTER dmaAdapter, void* context)
@@ -522,6 +554,8 @@ int main(void)
     PLECS65_DMA_PNP_STAGE startQuarantineStage = NULL;
     PLECS65_DMA_PNP_STAGE stopQuarantineStage = NULL;
     PLECS65_DMA_PNP_STAGE finishQuarantineStage = NULL;
+    PLECS65_DMA_PNP_STAGE firstTransferStage = NULL;
+    PLECS65_DMA_PNP_STAGE missingIrqStage = NULL;
     LECS65_DMA_PNP_SNAPSHOT pnpSnapshot;
     FAKE_DEVICE pnpDevice;
     FAKE_DEVICE failedPnpDevice;
@@ -537,6 +571,8 @@ int main(void)
     FAKE_DEVICE startQuarantineDevice;
     FAKE_DEVICE stopQuarantineDevice;
     FAKE_DEVICE finishQuarantineDevice;
+    FAKE_DEVICE firstTransferDevice;
+    FAKE_DEVICE missingIrqDevice;
     PNP_MAP_THREAD pnpMapRace;
     PNP_RELEASE_THREAD pnpReleaseRace;
     PNP_ACTION_THREAD pnpActionA, pnpActionB;
@@ -1628,6 +1664,86 @@ int main(void)
         pnpSnapshot.LateQuarantine &&
         commonFreeCalls == commonFreesAtQuarantine &&
         putCalls == putsAtQuarantine && finishQuarantineDevice.References == 1);
+
+    /* Exact production integration: possible GO always retains ownership. */
+    sg.NumberOfElements = 2;
+    sg.Elements[0].Address.QuadPart = 0x10000;
+    sg.Elements[0].Length = 8;
+    sg.Elements[1].Address.QuadPart = 0x20000;
+    sg.Elements[1].Length = 8;
+    firstTransferCalls = 0;
+    firstTransferCommit = TRUE;
+    firstTransferCompletion = TRUE;
+    firstTransferStatus = STATUS_SUCCESS;
+    memset(&firstTransferDevice, 0, sizeof(firstTransferDevice));
+    check("first-transfer persistent owner starts",
+        LecDmaPnpStageCreate(&firstTransferDevice, &firstTransferStage) ==
+            STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            firstTransferStage, 0x100000, 4096) == STATUS_SUCCESS);
+    cancelRequested = TRUE;
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpExecuteLegacyTransfer(
+        firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
+        1, 2, &cancelRequested, fakeFirstTransferExecute, NULL,
+        &prepareResult);
+    LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
+    check("pre-GO cancellation does not map call or poison repeat admission",
+        status == STATUS_CANCELLED && firstTransferCalls == 0 &&
+        !prepareResult.GoPossible && !prepareResult.Quarantined &&
+        !pnpSnapshot.LegacyTransferActive &&
+        firstTransferStage->SyncOwner.Outstanding == 0 &&
+        pnpSnapshot.AdmissionOpen && !pnpSnapshot.UnknownActive);
+    cancelRequested = FALSE;
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpExecuteLegacyTransfer(
+        firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
+        1, 2, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
+    LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
+    check("normal IRQ completion retires the WDM mapping",
+        status == STATUS_SUCCESS && firstTransferCalls == 1 &&
+        prepareResult.GoPossible && prepareResult.CompletionObserved &&
+        !prepareResult.Quarantined && prepareResult.MappingReleased &&
+        !pnpSnapshot.LegacyTransferActive &&
+        pnpSnapshot.LegacyTransferPhase == LecDmaTxReleased &&
+        pnpSnapshot.CompletedTransferCount == 1 &&
+        !pnpSnapshot.UnknownActive && pnpSnapshot.AdmissionOpen &&
+        firstTransferStage->SyncOwner.Outstanding == 0);
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    check("a second generation is admitted only after normal retirement",
+        LecDmaPnpExecuteLegacyTransfer(
+            firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
+            1, 2, NULL, fakeFirstTransferExecute, NULL, &prepareResult) ==
+                STATUS_SUCCESS &&
+        firstTransferCalls == 2 && prepareResult.MappingReleased &&
+        !prepareResult.Quarantined);
+    LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
+    check("repeated normal completion advances the persistent generation",
+        pnpSnapshot.CompletedTransferCount == 2 &&
+        pnpSnapshot.LegacyTransferPhase == LecDmaTxReleased &&
+        firstTransferStage->SyncOwner.Outstanding == 0);
+
+    firstTransferCommit = TRUE;
+    firstTransferCompletion = FALSE;
+    firstTransferStatus = STATUS_IO_TIMEOUT;
+    memset(&missingIrqDevice, 0, sizeof(missingIrqDevice));
+    check("missing-IRQ persistent owner starts",
+        LecDmaPnpStageCreate(&missingIrqDevice, &missingIrqStage) ==
+            STATUS_SUCCESS &&
+        LecDmaPnpStartNoLaunch(
+            missingIrqStage, 0x100000, 4096) == STATUS_SUCCESS);
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpExecuteLegacyTransfer(
+        missingIrqStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
+        3, 4, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
+    LecDmaPnpSnapshot(missingIrqStage, &pnpSnapshot);
+    check("missing IRQ retains mapping and permanently closes admission",
+        status == STATUS_IO_TIMEOUT && firstTransferCalls == 3 &&
+        prepareResult.GoPossible && !prepareResult.CompletionObserved &&
+        prepareResult.Quarantined && !prepareResult.MappingReleased &&
+        pnpSnapshot.UnknownActive && !pnpSnapshot.AdmissionOpen &&
+        missingIrqStage->SyncOwner.Outstanding == 1 &&
+        LecDmaPnpBeginPowerDown(missingIrqStage) != STATUS_SUCCESS);
 
     CloseHandle(getEntered);
     CloseHandle(allowGet);
