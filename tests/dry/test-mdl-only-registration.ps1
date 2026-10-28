@@ -80,7 +80,8 @@ Test-Contract 'safe preparation has no legacy descriptor dependency' {
     $safeAcquire -notmatch 'TotalDwords|DescriptorTablePhysical|DescriptorBuffer|MmGetMdlPfnArray'
 }
 Test-Contract 'Windows DMA API is the only safe device-address provider' {
-    $safeAcquire -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $acquire -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $acquire -match 'LecDmaPnpExecuteLegacyTransfer' -and
     $pnp -match 'LecSgSyncMapNoLaunch' -and
     $pnp -match 'LecSgSyncCopySegments' -and
     $safeAcquire -notmatch 'MmGetPhysicalAddress|MmGetMdlPfnArray'

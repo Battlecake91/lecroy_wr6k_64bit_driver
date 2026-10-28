@@ -724,6 +724,101 @@ Done:
     return result;
 }
 
+/*
+ * One-shot harness for the separately authorized first physical MAM test.
+ * The conspicuous acknowledgement is intentional: this command reaches the
+ * development-gated CFDC2138 GO path and must never be used as a health test.
+ */
+static int mam_dma_once(HANDLE h, const char* acknowledgement)
+{
+    static const char required[] = "I-AUTHORIZE-ONE-MAM-GO";
+    enum { DATA_BYTES = 0x10, TOTAL_BYTES = DATA_BYTES + sizeof(DWORD) };
+    BYTE acquire[15];
+    DWORD registration[3];
+    DWORD token = 0;
+    DWORD completed = 0;
+    DWORD returned = 0;
+    DWORD unregisterReturned = 0;
+    BOOL registered = FALSE;
+    BOOL safeToRelease = FALSE;
+    void* buffer;
+    int result = 1;
+    unsigned i;
+
+    if (acknowledgement == NULL || strcmp(acknowledgement, required) != 0) {
+        fprintf(stderr,
+            "mam-dma-once requires the exact acknowledgement: %s\n",
+            required);
+        return 1;
+    }
+    buffer = allocate_legacy_low_buffer(TOTAL_BYTES);
+    if (buffer == NULL) {
+        print_error("low-address MAM DMA buffer allocation");
+        return 1;
+    }
+    ZeroMemory(buffer, TOTAL_BYTES);
+    registration[0] = (DWORD)(uintptr_t)buffer;
+    registration[1] = TOTAL_BYTES;
+    registration[2] = 0;
+    if (!DeviceIoControl(h, LECS65_IOCTL_REGISTER_TRANSFER,
+            registration, sizeof(registration), &token, sizeof(token),
+            &returned, NULL) || returned != sizeof(token) || token == 0) {
+        print_error("CFDC2124 one-shot registration");
+        goto Done;
+    }
+    registered = TRUE;
+
+    ZeroMemory(acquire, sizeof(acquire));
+    memcpy(acquire, &token, sizeof(token));
+    acquire[4] = 1;
+    acquire[5] = 1;
+    acquire[6] = 0x30;
+    {
+        DWORD config = 0x00000C00UL;
+        DWORD requested = DATA_BYTES;
+        memcpy(acquire + 7, &config, sizeof(config));
+        memcpy(acquire + 11, &requested, sizeof(requested));
+    }
+    printf("MAM_DMA_ONCE input: token=%lu data=%u channel=0x30 "
+           "config=0x00000C00 hex=",
+        (unsigned long)token, DATA_BYTES);
+    for (i = 0; i < sizeof(acquire); ++i) printf("%02X", acquire[i]);
+    printf("\n");
+
+    returned = 0;
+    if (!DeviceIoControl(h, LECS65_IOCTL_ACQUIRE_BUFFERED,
+            acquire, sizeof(acquire), &completed, sizeof(completed),
+            &returned, NULL)) {
+        print_error("CFDC2138 one-shot MAM DMA");
+        fprintf(stderr,
+            "MAM_DMA_ONCE STOP: registration and buffer intentionally "
+            "retained because post-GO state is not known.\n");
+        goto Done;
+    }
+    if (returned != sizeof(completed) || completed != DATA_BYTES) {
+        fprintf(stderr,
+            "MAM_DMA_ONCE STOP: invalid completion returned=%lu bytes=%lu; "
+            "registration retained.\n",
+            (unsigned long)returned, (unsigned long)completed);
+        goto Done;
+    }
+
+    if (!DeviceIoControl(h, LECS65_IOCTL_UNREGISTER_TRANSFER,
+            &token, sizeof(token), NULL, 0, &unregisterReturned, NULL) ||
+        unregisterReturned != 0) {
+        print_error("CFDC2128 completed MAM cleanup");
+        goto Done;
+    }
+    safeToRelease = TRUE;
+    printf("MAM_DMA_ONCE PASS: completed=%lu returned=%lu; token unregistered.\n",
+        (unsigned long)completed, (unsigned long)returned);
+    result = 0;
+
+Done:
+    if (!registered || safeToRelease) VirtualFree(buffer, 0, MEM_RELEASE);
+    return result;
+}
+
 static int query_stats(HANDLE h)
 {
     LECS65_DEBUG_STATS s;
@@ -1716,6 +1811,7 @@ static void usage(const char* exe)
     printf("  %s read <bar 0..2> <offset>\n", exe);
     printf("  %s raw-ioctl <code> <input-hex> <output-bytes>\n", exe);
     printf("  %s no-launch-prepare (bounded CFDC2124/CFDC2138/CFDC2128)\n", exe);
+    printf("  %s mam-dma-once I-AUTHORIZE-ONE-MAM-GO (development gate; one GO)\n", exe);
     printf("  %s legacy-jtag-poll\n", exe);
     printf("  %s legacy-prepoll-replay\n", exe);
     printf("\nExamples:\n");
@@ -1731,6 +1827,15 @@ int main(int argc, char** argv)
 
     if (argc < 2) {
         usage(argv[0]);
+        return 2;
+    }
+
+    /* Reject a malformed hazardous command before opening any device handle. */
+    if (_stricmp(argv[1], "mam-dma-once") == 0 &&
+        (argc != 3 || strcmp(argv[2], "I-AUTHORIZE-ONE-MAM-GO") != 0)) {
+        fprintf(stderr,
+            "mam-dma-once requires the exact acknowledgement: "
+            "I-AUTHORIZE-ONE-MAM-GO\n");
         return 2;
     }
 
@@ -1833,6 +1938,9 @@ int main(int argc, char** argv)
     }
     else if (_stricmp(argv[1], "no-launch-prepare") == 0 && argc == 2) {
         result = no_launch_prepare(h);
+    }
+    else if (_stricmp(argv[1], "mam-dma-once") == 0 && argc == 3) {
+        result = mam_dma_once(h, argv[2]);
     }
     else if (_stricmp(argv[1], "legacy-jtag-poll") == 0 && argc == 2) {
         result = legacy_jtag_poll(h);

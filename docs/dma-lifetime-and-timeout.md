@@ -1,5 +1,19 @@
 # WR6k DMA completion, timeout and memory lifetime
 
+## Current normal-completion boundary
+
+The development-gated WDM-v3 MAM path uses a matching generation, accepted
+physical bit-0 IRQ, DPC event delivery, successful wait, successful INTEN
+cleanup and successful transaction retirement as the normal compatibility
+boundary. Only that complete sequence releases the per-call WDM mapping. The
+process-owned `CFDC2124` registration remains reusable.
+
+This boundary is backed by thousands of historical acquisitions, but is not a
+general proof of PCI write retirement. Timeout, missing completion, failed
+cleanup, post-GO cancellation, CLOSE/PnP/power ambiguity or mapping mismatch
+retains resources and permanently closes DMA admission. The original x86
+timeout-and-free behavior is deliberately not reproduced.
+
 Status: **fail-closed development path; not deployment-qualified**, 2026-10-23.
 Implementation base: `fix/p0-irq-start-dma-gating` at merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
 Final PR #10 source-review parent: `fae8a50bb2b622628cd57e18723c3037698f06b5`; the merge tree is identical.

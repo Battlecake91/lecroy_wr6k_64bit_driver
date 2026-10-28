@@ -3,9 +3,11 @@
 #include "DmaAdapterStage.h"
 
 /*
- * INACTIVE v3 synchronous no-callback staging only. No hardware launch
- * function exists here. The parent owns its DMA adapter, the PDO and the
- * pinned MDL buffers for as long as outstanding mappings remain.
+ * Synchronous no-callback WDM-v3 mapping owner. Hardware launch is controlled
+ * by the parent transaction, never by this module. The parent owns its DMA
+ * adapter, the PDO and pinned MDLs while mappings remain. A possible-GO
+ * mapping can be released only after an exact normal-completion observation;
+ * every other post-GO state is quarantined.
  *
  * Stage allocations are never exposed as raw pointers. A monotonically
  * increasing token plus the parent lock protects copy versus release.
@@ -43,6 +45,8 @@ typedef struct _LECS65_SG_SYNC_STAGE {
     PSCATTER_GATHER_LIST List;       /* v3 allocation, no device launch */
     ULONG RequestedLength;
     ULONGLONG Token;
+    BOOLEAN PossibleGo;
+    BOOLEAN CompletionObserved;
     ULONG_PTR TransferContext[
         (DMA_TRANSFER_CONTEXT_SIZE_V1 + sizeof(ULONG_PTR) - 1U) /
         sizeof(ULONG_PTR)];
@@ -100,5 +104,20 @@ NTSTATUS LecSgSyncCopySegments(
  * Releases only mappings from this strictly no-launch interface.
  */
 NTSTATUS LecSgSyncReleaseNoLaunch(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token);
+
+/* Commit ordering: call immediately before the parent may write GO. */
+NTSTATUS LecSgSyncMarkPossibleGo(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token);
+
+/* Records matching IRQ/DPC/wait completion; it does not release by itself. */
+NTSTATUS LecSgSyncObserveCompletion(
+    _Inout_ PLECS65_SG_SYNC_OWNER Owner,
+    _In_ ULONGLONG Token);
+
+/* Release only after the parent's exact normal-completion cleanup succeeded. */
+NTSTATUS LecSgSyncReleaseCompleted(
     _Inout_ PLECS65_SG_SYNC_OWNER Owner,
     _In_ ULONGLONG Token);

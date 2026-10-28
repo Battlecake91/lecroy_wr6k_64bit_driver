@@ -4,14 +4,12 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Package and deploy the corrected production registration path.** The
-  installed `oem103.inf` no-launch attempt stopped at `CFDC2124` because the
-  supposedly safe registration branch still built a 32-bit CPU-PFN descriptor
-  table. The development fix confines that table to the explicitly unsafe
-  compile branch and passes focused builds/contracts. Review, sign and install
-  a new package under separate gates before authorizing one new bounded
-  `CFDC2124`/`CFDC2138`/`CFDC2128` no-launch attempt. Do not treat that future
-  preparation as physical DMA-idle evidence.
+- [ ] **Package and qualify the development-gated WDM-v3 MAM path.** Batch 17
+  proved live MDL registration, one DMA-logical segment, two descriptors and
+  safe pre-GO release. Batch 18 connects that owner to the original single-
+  channel MAM/IRQ sequence behind default-off `LecWdmV3MamDma`. Review, sign
+  and install a separately identifiable gated package, then authorize exactly
+  one no-XStream 16-byte experiment. Do not reuse the ordinary no-launch build.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
@@ -22,8 +20,12 @@ This file tracks unfinished work and deferred features. The current, verified ca
   [recovery and backup readiness](recovery-and-backup.md).
 
 - [ ] **P0: complete live STOP/SURPRISE_REMOVE/REMOVE and failed-START proof.** The active path closes IOCTL admission, drains synchronous requests, disconnects IRQ, flushes DPCs, cancels the waited timer and releases normal transfers before BAR teardown. AddDevice publishes one independently allocated, PDO-referencing lifetime wrapper/parent without starting staged DMA; duplicate publication/retention is rejected, REMOVE unpublishes after remove-lock rundown, clean owners are freed and unknown-active legacy transfers commit to independent ownership before parent notification. Software fault injection covers allocation rollback, notification failure/REMOVE overlap, repeated transitions, IRP/remove-lock forwarding and generation-checked completion versus teardown. A queued MAM request now rechecks terminal DMA failure after serialization and before MMIO. Still required: join every future staged borrowed MDL/request to that rundown, exclude unknown-active notification before irreversible active-mapping release, and validate malformed real PnP, power transitions and remove races under Driver Verifier on a recoverable target. No software-quiescence flag may be treated as DMA bus-idle. Evidence and staged plan: [DMA lifetime and timeout](dma-lifetime-and-timeout.md).
-- [ ] **P0: establish a provable DMA abort/idle before opening the hardware launch gate.** Batch 12 connects one-channel `CFDC2138` preparation to the per-PDO WDM-v3 adapter, locked MDLs, DMA-logical descriptors, RemoveLock/publication and PnP/power admission, but GO remains unconditionally denied. Original x86 paths lack verified DMA idle on timeout, process exit, STOP, REMOVE and power-down. `UnknownActive` therefore remains irreversible and retains ownership. Obtain an authoritative engine/bridge retirement contract or the bounded external PCI evidence defined in the [legacy bus-idle audit](legacy-dma-abort-bus-idle-audit.md), then validate IOMMU and post-GO lifetime on separately authorized isolated hardware. See [DMA architecture](dma-architecture.md) and [DMA lifetime and timeout](dma-lifetime-and-timeout.md).
-- [ ] **Obtain the Batch 13 conventional-PCI analyzer evidence.** No suitable analyzer is currently identified. Capture U3 descriptor fetches, host-memory transactions and PCI handshake/interrupt/reset signals for MAM and MTT separately, and reject any proposed idle predicate if traffic remains after it. No GO experiment is authorized by the offline no-launch result.
+- [ ] **P0: qualify normal and abnormal post-GO lifetime.** The normal matching
+  IRQ/DPC/cleanup path now retires the per-call mapping and permits repeats;
+  timeout and every uncertain post-GO state remain irreversible quarantine.
+  Run the bounded first experiment, then qualify cancellation, CLOSE, PnP and
+  power separately before XStream. An external PCI analyzer is useful evidence
+  but is not a prerequisite for the first isolated development transfer.
 - [ ] **P1: restore lifecycle and ABI parity.** Add PnP/power state transitions and MAM/IRQ cache restoration; file/process CLEANUP ownership; coherent INTEN/ERRM/SPICTL register shadows and cached type-2 readback; CFDC2180 pending-event replay. Then address missing CFDC2110 opcodes and multi-channel acquisition. Dallas WRITE and serial FPGA programming remain required but hardware-gated until safe isolated validation. See [gap audit](legacy-x86-x64-gap-audit.md).
 
 - [ ] **Compare original WDM lifetime/dispatch semantics against the native x64 implementation.** The static original-driver audit now establishes **527** internal functions and **28** exact `IRP_MJ` dispatch slots: `CREATE=0x10E3A`, `CLOSE=0x10EAF`, `CLEANUP=0x10F30`, `READ/WRITE=0x118E4`, `DEVICE_CONTROL=0x11018`, `POWER=0x1B096`, `SYSTEM_CONTROL=0x10CEA`, `PNP=0x1A6EA`; the remaining 19 majors use `0x10C18` (STATUS_NOT_IMPLEMENTED). Align actual IRP ownership, queued cancel/completion, PnP/power transitions and unknown-IOCTL hardening with the new reference [architecture](legacy-driver-architecture.md). Review the exact PnP/power minor policy flags and the three 32-byte hardware helper records when necessary. This is a documentation/ABI comparison task before any source changes or hardware regression.

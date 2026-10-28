@@ -192,6 +192,11 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
         return TRUE;
     case IOCTL_ACQUIRE_BUFFERED:
         if (InputLength != 15 || OutputLength != sizeof(DWORD)) return fail_request(ERROR_INVALID_PARAMETER);
+        if (GetEnvironmentVariableA("LECS65_MOCK_MAM_SUCCESS", NULL, 0) != 0) {
+            *(DWORD*)OutputBuffer = 0x10;
+            *BytesReturned = sizeof(DWORD);
+            return TRUE;
+        }
         return fail_request(ERROR_NOT_SUPPORTED);
     case IOCTL_UNREGISTER_TRANSFER:
         if (InputLength != sizeof(DWORD) || OutputLength != 0 ||

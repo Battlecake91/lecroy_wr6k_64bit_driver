@@ -233,3 +233,23 @@ MAM/MTT producer quiescence, final PCI write completion, bus-master retirement
 and posted-write drain before pages, mappings or descriptor storage can be
 reused. No existing IRQ, timeout, STOP, reset or software completion proves
 that boundary.
+
+## Batch 18 development-gated MAM transaction
+
+The new path replaces only the unsafe addressing and lifetime parts of the
+historically working implementation. `CFDC2124` retains the process-owned MDL
+chain. `CFDC2138` obtains a synchronous WDM-v3 scatter/gather list, copies its
+DMA logical segments, encodes the original descriptor format in the common
+buffer and publishes that table before arming hardware.
+
+`LecWdmV3MamDma` defaults to `false`. When explicitly enabled, the callback
+preserves the original order: clear `GPIODAT` bit 16; program five `MAMDAT`
+values, `MAMPGO` and `MAMSEQ`; write the common-buffer logical address to
+`SGTA` and byte-count/4 to `IIMTC`; reset/select/arm; enable INTEN bit 0;
+synchronize `IIMCL=1` and one `MAMRGO`; wait at most five seconds; mask INTEN;
+finalize completion; deselect; then perform the IIMST/IIMCL/ERRS postlude.
+
+Normal return requires a matching physical IRQ/DPC observation and successful
+cleanup. The caller then retires the WDM mapping and permits another generation
+with the same registration. Every uncertain post-GO state is terminal
+quarantine. See [x86/x64 acquisition parity](x86-x64-acquisition-parity.md).

@@ -54,6 +54,9 @@
 #ifndef STATUS_CANCELLED
 #define STATUS_CANCELLED ((NTSTATUS)0xC0000120L)
 #endif
+#ifndef STATUS_IO_TIMEOUT
+#define STATUS_IO_TIMEOUT ((NTSTATUS)0xC00000B5L)
+#endif
 
 typedef unsigned long KIRQL;
 /* The Windows user header already typedefs KSPIN_LOCK. Substitute a

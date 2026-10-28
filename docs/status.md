@@ -1,5 +1,27 @@
 # Current project status
 
+## Batch 18 offline MAM DMA restoration
+
+- The legacy `CFDC2124 -> CFDC2138 -> IRQ/DPC -> completion` ABI is connected
+  to the persistent WDM-v3 mapping and transaction owner. Descriptors contain
+  Windows DMA logical addresses; the PFN-derived live path remains disabled.
+- Normal completion requires a matching physical IRQ, DPC event delivery and
+  successful INTEN cleanup before the per-call mapping is retired and another
+  generation admitted. Uncertain post-GO results are quarantined.
+- `LecWdmV3MamDma=true` is the development-only gate and defaults to `false`.
+  Ordinary Debug and Release builds therefore remain no-launch.
+- `lecdiag mam-dma-once I-AUTHORIZE-ONE-MAM-GO` prepares one future 16-byte,
+  channel-`0x30`, config-`0x00000C00` experiment with no retry.
+- Debug and Release x64 driver/`lecdiag` builds completed with zero warnings and
+  errors. Focused results: transaction 176/176, default gate 16/16,
+  synchronous WDM-v3/PnP 164/164, pre-GO contracts 11/11 and lecdiag command
+  chain 19/19. The full Windows PowerShell 5.1 Dry runner passed; expanded
+  stress passed DMA 50,000/50,000 and INTEN 10,000/10,000.
+- This batch performed no device open, IOCTL, MMIO, GO, DMA, installation,
+  PnP transition or XStream acquisition. Passive metadata reverified
+  `oem104.inf`, version `0.2026.1026.1`, service Running, problem code zero and
+  loaded SYS SHA-256 `32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
+
 ## Batch 17 live no-launch qualification
 
 - The signed Release x64 candidate is installed as `oem104.inf`, version

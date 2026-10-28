@@ -22,7 +22,11 @@ $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
     Push-Location $outDir
     try {
-        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC "/Fe:$exe" $test $source $adapterSource $pnpSource $transactionSource $layoutSource
+        & $cl.Source /nologo /W4 /WX /DLECS65_SG_HOST_TEST `
+            /DLECS65_SG_TEST_ALLOCATION_HOOKS `
+            /DLECS65_ENABLE_WDM_V3_MAM_DMA=1 /TC `
+            "/Fe:$exe" $test $source $adapterSource $pnpSource `
+            $transactionSource $layoutSource
         if ($LASTEXITCODE -ne 0) { throw "SG v3 synchronous test build failed." }
     }
     finally {
@@ -36,7 +40,7 @@ else {
     if (-not $vs) { throw "Visual Studio C++ tools not found." }
     $vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvars64.bat"
     if (-not (Test-Path $vcvars)) { throw "vcvars64.bat not found." }
-    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /TC /Fe:`"$exe`" `"$test`" `"$source`" `"$adapterSource`" `"$pnpSource`" `"$transactionSource`" `"$layoutSource`""
+    $cmd = "`"$vcvars`" >nul && cd /d `"$outDir`" && cl /nologo /W4 /WX /DLECS65_SG_HOST_TEST /DLECS65_SG_TEST_ALLOCATION_HOOKS /DLECS65_ENABLE_WDM_V3_MAM_DMA=1 /TC /Fe:`"$exe`" `"$test`" `"$source`" `"$adapterSource`" `"$pnpSource`" `"$transactionSource`" `"$layoutSource`""
     & $env:ComSpec /d /s /c $cmd
     if ($LASTEXITCODE -ne 0) { throw "SG v3 synchronous test build failed." }
 }

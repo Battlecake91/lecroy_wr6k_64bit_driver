@@ -3506,6 +3506,202 @@ Exit:
     return status;
 }
 
+#if !LECS65_ENABLE_UNSAFE_LEGACY_PFN_DMA && \
+    LECS65_ENABLE_WDM_V3_MAM_DMA
+typedef struct _LECS65_WDM_MAM_EXECUTE_CONTEXT {
+    PLECS65_DEVICE_EXTENSION DevExt;
+    PLECS65_TRANSFER Transfer;
+    UCHAR Channel;
+    ULONG Config;
+} LECS65_WDM_MAM_EXECUTE_CONTEXT,
+    *PLECS65_WDM_MAM_EXECUTE_CONTEXT;
+
+static
+NTSTATUS
+LecExecuteWdmMamTransfer(
+    _Inout_ PVOID Context,
+    _In_ ULONGLONG TransactionGeneration,
+    _In_ PHYSICAL_ADDRESS DescriptorTable,
+    _In_ ULONG DescriptorEntries,
+    _In_ ULONG TransferBytes,
+    _Out_ PLECS65_DMA_LEGACY_TRANSFER_OUTCOME Outcome)
+{
+    PLECS65_WDM_MAM_EXECUTE_CONTEXT execute =
+        (PLECS65_WDM_MAM_EXECUTE_CONTEXT)Context;
+    PLECS65_DEVICE_EXTENSION devExt;
+    PLECS65_TRANSFER transfer;
+    volatile ULONG* gpioData;
+    volatile ULONG* mamData;
+    volatile ULONG* mamPgo;
+    volatile ULONG* mamSeq;
+    volatile ULONG* mamRgo;
+    volatile ULONG* sgta;
+    volatile ULONG* iimtc;
+    volatile ULONG* iimcl;
+    volatile ULONG* iimst;
+    volatile ULONG* errs;
+    ULONG mamValues[5];
+    ULONG gpioValue;
+    ULONG blockBytes;
+    ULONG launchCount;
+    ULONG iimStatus;
+    ULONG i;
+    USHORT sequenceValue;
+    ULONGLONG dmaGeneration = 0;
+    LARGE_INTEGER timeout;
+    NTSTATUS status;
+    NTSTATUS disableStatus = STATUS_SUCCESS;
+    BOOLEAN transferSelected = FALSE;
+    BOOLEAN transferArmed = FALSE;
+    BOOLEAN interruptEnabled = FALSE;
+    BOOLEAN dmaLaunched = FALSE;
+    BOOLEAN cleanupUncertain = FALSE;
+
+    UNREFERENCED_PARAMETER(TransactionGeneration);
+    if (execute == NULL || execute->DevExt == NULL ||
+        execute->Transfer == NULL || Outcome == NULL ||
+        DescriptorEntries < 2 || TransferBytes == 0 ||
+        DescriptorTable.QuadPart < 0 ||
+        (ULONGLONG)DescriptorTable.QuadPart > MAXULONG) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    RtlZeroMemory(Outcome, sizeof(*Outcome));
+    Outcome->Status = STATUS_INTERNAL_ERROR;
+    devExt = execute->DevExt;
+    transfer = execute->Transfer;
+
+    status = LecResolveRegister(devExt, 1, 0x0C4, &gpioData);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 1, 0x040, &mamData);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 1, 0x044, &mamPgo);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 1, 0x060, &mamSeq);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 1, 0x064, &mamRgo);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 0, 0x040, &sgta);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 0, 0x044, &iimtc);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 0, 0x048, &iimcl);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 0, 0x04C, &iimst);
+    if (!NT_SUCCESS(status)) goto Done;
+    status = LecResolveRegister(devExt, 0, 0x004, &errs);
+    if (!NT_SUCCESS(status)) goto Done;
+
+    /* Preserve the original x86/x64 MAM setup order exactly. */
+    gpioValue = READ_REGISTER_ULONG(gpioData);
+    WRITE_REGISTER_ULONG(gpioData, gpioValue & 0xFFFEFFFFUL);
+    blockBytes = min(TransferBytes, 0x400UL);
+    launchCount = TransferBytes / blockBytes;
+    if (launchCount == 0) {
+        status = STATUS_INVALID_PARAMETER;
+        goto Done;
+    }
+    mamValues[0] = 0x0E00UL | (ULONG)execute->Channel;
+    mamValues[1] = execute->Config & 0xFFFFUL;
+    mamValues[2] = (execute->Config >> 16) & 0xFFFFUL;
+    mamValues[3] = blockBytes & 0xFFFFUL;
+    mamValues[4] = (blockBytes >> 16) & 0xFFFFUL;
+
+    if (!devExt->LegacyMamShadowInitialized) {
+        RtlFillMemory(devExt->LegacyMamShadow,
+            sizeof(devExt->LegacyMamShadow), 0xFF);
+        devExt->LegacyMamShadowInitialized = TRUE;
+    }
+    for (i = 0; i < RTL_NUMBER_OF(mamValues); ++i) {
+        USHORT data = (USHORT)mamValues[i];
+        if (devExt->LegacyMamShadow[i] != data) {
+            devExt->LegacyMamShadow[i] = data;
+            WRITE_REGISTER_ULONG(mamData, (i << 16) | (ULONG)data);
+        }
+    }
+    WRITE_REGISTER_ULONG(mamPgo, 0x105UL);
+
+    sequenceValue = (USHORT)(0x40U | execute->Channel);
+    if (!devExt->LegacyMamSeqShadowInitialized) {
+        RtlFillMemory(devExt->LegacyMamSeqShadow,
+            sizeof(devExt->LegacyMamSeqShadow), 0xFF);
+        devExt->LegacyMamSeqShadowInitialized = TRUE;
+    }
+    if (devExt->LegacyMamSeqShadow[0] != sequenceValue) {
+        devExt->LegacyMamSeqShadow[0] = sequenceValue;
+        WRITE_REGISTER_ULONG(mamSeq, (ULONG)sequenceValue);
+    }
+
+    /* SGTA is now the WDM-v3 common-buffer logical address, never a PFN. */
+    WRITE_REGISTER_ULONG(sgta, DescriptorTable.LowPart);
+    WRITE_REGISTER_ULONG(iimtc, TransferBytes / sizeof(ULONG));
+    KeResetEvent(&transfer->CompletionEvent);
+    (VOID)InterlockedAnd(
+        (volatile LONG*)&devExt->InterruptPendingShadow, ~1L);
+
+    status = LecSelectDmaTransfer(devExt, transfer, &dmaGeneration);
+    if (!NT_SUCCESS(status)) goto Cleanup;
+    transferSelected = TRUE;
+    if (!LecArmSelectedDma(devExt, dmaGeneration)) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto Cleanup;
+    }
+    transferArmed = TRUE;
+    status = LecUpdateInterruptMask(devExt, 0, 0x01UL, TRUE);
+    if (!NT_SUCCESS(status)) goto Cleanup;
+    interruptEnabled = TRUE;
+
+    status = LecLaunchSelectedDma(
+        devExt, dmaGeneration, iimcl, mamRgo, launchCount, &dmaLaunched);
+    Outcome->GoCommitted = dmaLaunched;
+    if (!NT_SUCCESS(status)) goto Cleanup;
+
+    timeout.QuadPart = -50000000LL;
+    status = KeWaitForSingleObject(
+        &transfer->CompletionEvent, Executive, KernelMode, FALSE, &timeout);
+    if (status == STATUS_TIMEOUT) status = STATUS_IO_TIMEOUT;
+
+Cleanup:
+    if (transferArmed && !dmaLaunched &&
+        !LecCancelSelectedDmaArm(devExt, dmaGeneration)) {
+        (void)LecDmaCompletionFinishWait(
+            &devExt->DmaCompletion, dmaGeneration, FALSE);
+        status = STATUS_IO_DEVICE_ERROR;
+    }
+    if (interruptEnabled) {
+        disableStatus = LecUpdateInterruptMask(devExt, 0x01UL, 0, TRUE);
+        if (NT_SUCCESS(status) && !NT_SUCCESS(disableStatus)) {
+            status = disableStatus;
+        }
+    }
+    if (dmaLaunched) {
+        cleanupUncertain = LecDmaCompletionFinishCleanup(
+            &devExt->DmaCompletion,
+            dmaGeneration,
+            (BOOLEAN)(status == STATUS_SUCCESS),
+            (BOOLEAN)NT_SUCCESS(disableStatus));
+        Outcome->CompletionObserved = (BOOLEAN)(
+            status == STATUS_SUCCESS && !cleanupUncertain);
+        if (cleanupUncertain && NT_SUCCESS(status)) {
+            status = STATUS_IO_DEVICE_ERROR;
+        }
+    }
+    if (transferSelected) {
+        LecDeselectDmaTransfer(devExt, transfer, dmaGeneration);
+    }
+
+    iimStatus = READ_REGISTER_ULONG(iimst);
+    if ((iimStatus & 0x01UL) != 0) {
+        WRITE_REGISTER_ULONG(iimcl, 0UL);
+    }
+    (VOID)READ_REGISTER_ULONG(errs);
+
+Done:
+    Outcome->Status = status;
+    return status;
+}
+#endif
+
 static
 NTSTATUS
 LecIoctlAcquireBufferedOneChannel(
@@ -3524,11 +3720,15 @@ LecIoctlAcquireBufferedOneChannel(
     UCHAR channelCount;
     UCHAR pairMarker;
     UCHAR channel;
+    ULONG config;
     ULONG requestedBytes;
     PLECS65_TRANSFER transfer;
     LECS65_DMA_PNP_PUBLICATION_REFERENCE reference = { 0 };
     LECS65_DMA_PREPARE_RESULT prepareResult;
     NTSTATUS status;
+#if LECS65_ENABLE_WDM_V3_MAM_DMA
+    LECS65_WDM_MAM_EXECUTE_CONTEXT executeContext;
+#endif
 
     if (SystemBuffer == NULL || Information == NULL ||
         InputLength != 15 || OutputLength != sizeof(ULONG)) {
@@ -3542,6 +3742,7 @@ LecIoctlAcquireBufferedOneChannel(
     channelCount = SystemBuffer[4];
     pairMarker = SystemBuffer[5];
     channel = SystemBuffer[6];
+    config = LecReadU32(SystemBuffer + 7);
     requestedBytes = LecReadU32(SystemBuffer + 11);
     if (channelCount != 1 || pairMarker != 1 || channel > 0x3FU ||
         requestedBytes == 0 || requestedBytes >= 0x01000000UL ||
@@ -3570,6 +3771,23 @@ LecIoctlAcquireBufferedOneChannel(
     status = LecDmaPnpPublicationAcquire(
         DevExt->DmaPnpPublication, &reference);
     if (!NT_SUCCESS(status)) goto NoLaunchExit;
+#if LECS65_ENABLE_WDM_V3_MAM_DMA
+    RtlZeroMemory(&executeContext, sizeof(executeContext));
+    executeContext.DevExt = DevExt;
+    executeContext.Transfer = transfer;
+    executeContext.Channel = channel;
+    executeContext.Config = config;
+    status = LecDmaPnpExecuteLegacyTransfer(
+        reference.Parent,
+        transfer->SourceMdlChain,
+        requestedBytes,
+        (ULONG_PTR)OwnerProcessId,
+        (ULONG_PTR)FileObject,
+        CancelRequested,
+        LecExecuteWdmMamTransfer,
+        &executeContext,
+        &prepareResult);
+#else
     status = LecDmaPnpPrepareLegacyNoLaunch(
         reference.Parent,
         transfer->SourceMdlChain,
@@ -3578,6 +3796,7 @@ LecIoctlAcquireBufferedOneChannel(
         (ULONG_PTR)FileObject,
         CancelRequested,
         &prepareResult);
+#endif
     if (prepareResult.MappingToken != 0 &&
         !prepareResult.MappingReleased) {
         /*
@@ -3589,14 +3808,20 @@ LecIoctlAcquireBufferedOneChannel(
     }
     (void)LecDmaPnpPublicationRelease(
         DevExt->DmaPnpPublication, &reference);
+    if (prepareResult.GoPossible) {
+        LecWriteU32(SystemBuffer, requestedBytes);
+        *Information = sizeof(ULONG);
+    }
     LecTrace(
-        "CFDC2138 WDM-v3 prepare: token=%lu bytes=%lu segments=%lu descriptors=%lu launchDenied=%u released=%u status=0x%08X\n",
+        "CFDC2138 WDM-v3 transaction: token=%lu bytes=%lu segments=%lu descriptors=%lu launchDenied=%u completed=%u released=%u quarantined=%u status=0x%08X\n",
         token,
         requestedBytes,
         prepareResult.SegmentCount,
         prepareResult.DescriptorEntries,
         prepareResult.LaunchDenied,
+        prepareResult.CompletionObserved,
         prepareResult.MappingReleased,
+        prepareResult.Quarantined,
         status);
 
 NoLaunchExit:

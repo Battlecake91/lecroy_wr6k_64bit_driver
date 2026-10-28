@@ -29,6 +29,7 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionSetLifecycle(
 {
     if (tx == 0 || tx->QuarantineLatched) return LecDmaTxInvalid;
     if ((!started || !poweredD0) && tx->EverPossiblyLaunched &&
+        tx->Phase != LecDmaTxCompletionRetired &&
         tx->Phase != LecDmaTxIdleProved && tx->Phase != LecDmaTxReleased) {
         LecDmaTxMakeUnknown(tx);
         return LecDmaTxMustQuarantine;
@@ -191,28 +192,37 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionBeginArm(
 }
 
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionCommitHardwareLaunch(
-    LECS65_DMA_TRANSACTION* tx, uint64_t generation)
+    LECS65_DMA_TRANSACTION* tx, uint64_t generation,
+    LECS65_DMA_HARDWARE_COMMIT hardwareCommit, void* hardwareContext)
 {
     if (LecDmaTxCheckGeneration(tx, generation) != LecDmaTxOk)
         return LecDmaTxStaleGeneration;
     if (tx->Phase != LecDmaTxArming) return LecDmaTxNotReady;
+
+#if !LECS65_ENABLE_WDM_V3_MAM_DMA
+    (void)hardwareCommit;
+    (void)hardwareContext;
     tx->Phase = LecDmaTxPublished;
     tx->Diagnostics.LaunchRejected++;
     return LecDmaTxLaunchDisabled;
-}
+#else
+    if (hardwareCommit == 0) {
+        tx->Phase = LecDmaTxPublished;
+        tx->Diagnostics.LaunchRejected++;
+        return LecDmaTxLaunchDisabled;
+    }
 
-#ifdef LECS65_DMA_TRANSACTION_TEST_HOOKS
-LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionTestRecordPossibleGo(
-    LECS65_DMA_TRANSACTION* tx, uint64_t generation)
-{
-    if (LecDmaTxCheckGeneration(tx, generation) != LecDmaTxOk)
-        return LecDmaTxStaleGeneration;
-    if (tx->Phase != LecDmaTxArming) return LecDmaTxNotReady;
+    /* From this point forward, release is forbidden even if commit fails. */
     tx->EverPossiblyLaunched = 1;
     tx->Phase = LecDmaTxDeviceActive;
+    if (!hardwareCommit(hardwareContext, generation)) {
+        LecDmaTxMakeUnknown(tx);
+        return LecDmaTxMustQuarantine;
+    }
+    tx->Diagnostics.LaunchCommits++;
     return LecDmaTxOk;
-}
 #endif
+}
 
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionObserveCompletion(
     LECS65_DMA_TRANSACTION* tx, uint64_t generation)
@@ -241,6 +251,18 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionProvePhysicalIdle(
     return LecDmaTxOk;
 }
 
+LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionRetireNormalCompletion(
+    LECS65_DMA_TRANSACTION* tx, uint64_t generation, unsigned cleanupSucceeded)
+{
+    if (LecDmaTxCheckGeneration(tx, generation) != LecDmaTxOk)
+        return LecDmaTxStaleGeneration;
+    if (!cleanupSucceeded || tx->Phase != LecDmaTxCompletionObserved ||
+        !tx->CompletionDelivered || !tx->EverPossiblyLaunched)
+        return LecDmaTxNotReady;
+    tx->Phase = LecDmaTxCompletionRetired;
+    return LecDmaTxOk;
+}
+
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionCancel(
     LECS65_DMA_TRANSACTION* tx, uint64_t generation, unsigned timeout)
 {
@@ -249,6 +271,7 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionCancel(
     tx->Diagnostics.Cancellations++;
     if (timeout) tx->Diagnostics.Timeouts++;
     if (tx->EverPossiblyLaunched && tx->Phase != LecDmaTxIdleProved &&
+        tx->Phase != LecDmaTxCompletionRetired &&
         tx->Phase != LecDmaTxReleased) {
         LecDmaTxMakeUnknown(tx);
         return LecDmaTxMustQuarantine;
@@ -267,6 +290,7 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionBeginPowerDown(
     tx->PoweredD0 = 0;
     tx->Diagnostics.PowerTeardowns++;
     if (tx->EverPossiblyLaunched && tx->Phase != LecDmaTxIdleProved &&
+        tx->Phase != LecDmaTxCompletionRetired &&
         tx->Phase != LecDmaTxReleased) {
         LecDmaTxMakeUnknown(tx);
         return LecDmaTxMustQuarantine;
@@ -285,6 +309,7 @@ LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionBeginPnpTeardown(
     tx->DeviceStarted = 0;
     tx->Diagnostics.PnpTeardowns++;
     if (tx->EverPossiblyLaunched && tx->Phase != LecDmaTxIdleProved &&
+        tx->Phase != LecDmaTxCompletionRetired &&
         tx->Phase != LecDmaTxReleased) {
         LecDmaTxMakeUnknown(tx);
         return LecDmaTxMustQuarantine;
@@ -298,10 +323,13 @@ int LecDmaTransactionMayRelease(const LECS65_DMA_TRANSACTION* tx)
 {
     if (tx == 0 || !tx->MappingOwned || tx->MappingCallbackPending ||
         tx->QuarantineLatched || (tx->EverPossiblyLaunched &&
+        tx->Phase != LecDmaTxCompletionRetired &&
         tx->Phase != LecDmaTxIdleProved)) return 0;
     return tx->Phase == LecDmaTxMapped || tx->Phase == LecDmaTxDescriptorsReady ||
         tx->Phase == LecDmaTxPublished || tx->Phase == LecDmaTxArming ||
-        tx->Phase == LecDmaTxCancelled || tx->Phase == LecDmaTxIdleProved;
+        tx->Phase == LecDmaTxCancelled ||
+        tx->Phase == LecDmaTxCompletionRetired ||
+        tx->Phase == LecDmaTxIdleProved;
 }
 
 LECS65_DMA_TRANSACTION_RESULT LecDmaTransactionReleaseMapping(

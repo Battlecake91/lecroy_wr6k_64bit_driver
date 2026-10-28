@@ -1,0 +1,65 @@
+# Original x86, historical x64 and current acquisition parity
+
+## Established compatibility reference
+
+The original x86 driver registers a process-owned user buffer through
+`CFDC2124`, keeps that registration across acquisitions, accepts a 15-byte
+single-channel `CFDC2138` request, programs MAM and DMA registers, waits for
+interrupt/DPC completion and returns the requested byte count in a four-byte
+output. `CFDC2128` or final process close releases the registration.
+
+Its descriptor entries are `{ count_dwords, address }`, split at 4-KiB
+boundaries, page-chained through slot 511 and terminated by `{0,0}`. The x86
+driver derives addresses directly from MDL PFNs. That describes the legacy
+format but is not a correct x64 DMA-remapping contract.
+
+## Historically working x64 evidence
+
+Commit `6cc5a238684c217f1238aae2069950ec99a39672` is the first precisely
+identified waveform-capable implementation. The immediately following
+evidence records 3,134 successful acquisitions with visible waveforms. Later
+evidence records 43,157 successful acquisitions and normal scope controls; the
+last precisely identified extensively exercised code line is
+`34907090820a582ac360d02120316c8792d7c888`.
+
+That line preserved the original MAM/IRQ sequence, but also preserved the PFN
+address assumption. Commit `4682976add715b642339405f847c6d58861bf709`
+disabled that path by default. Historical success is therefore strong evidence
+for register and XStream semantics, not approval to restore PFN addressing.
+
+## Current WDM-v3 implementation
+
+The current path preserves the public IOCTL shapes, process/FileObject
+ownership, five-interface discovery, MAM register order, interrupt mask,
+generation-specific physical IRQ/DPC completion, four-byte result and reusable
+registration. It replaces source/table PFNs with Windows DMA logical addresses
+and a WDM common-buffer descriptor table.
+
+Normal completion retires the per-call mapping and allows a repeat. A timeout
+or other uncertain post-GO result retains the mapping and locked pages and
+closes admission. The old x86 behavior did not provide this safe abnormal
+boundary.
+
+## Minimal XStream-compatible sequence
+
+XStream discovers the main PCI interface class, registers legacy event handles,
+uses `CFDC2124` to obtain a persistent token, and issues synchronous
+`CFDC2138` requests. The request is:
+
+```text
+DWORD token, BYTE 1, BYTE 1, BYTE channel,
+DWORD config, DWORD requested_bytes
+```
+
+The smallest historically observed success used 16 data bytes, channel
+`0x30`, config `0x00000C00` and a `CFDC2124` total size of 20 bytes. This is a
+first-test vector, not proof of a universal minimum or a complete XStream
+front-end/trigger setup. Visible waveform qualification still requires a later
+separately authorized XStream run.
+
+## Remaining runtime gap
+
+The development MAM gate has not been signed, installed or exercised. The next
+bounded milestone is one no-XStream transfer using the exact 16-byte vector,
+one DMA-logical segment and two descriptors, followed by passive device-health
+checks. No retry is allowed. A separate authorization is required.

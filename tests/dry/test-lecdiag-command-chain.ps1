@@ -61,10 +61,18 @@ try {
             'ioctl=0xCFDC2124 input=12 output=4',
             'ioctl=0xCFDC2138 input=15 output=4',
             'ioctl=0xCFDC2128 input=4 output=0 input-hex=07000000') }
+        @{ Name='mam-dma-once-mock'; Args=@('mam-dma-once','I-AUTHORIZE-ONE-MAM-GO'); MamSuccess=$true; Calls=@(
+            'ioctl=0xCFDC2124 input=12 output=4',
+            'ioctl=0xCFDC2138 input=15 output=4 input-hex=07000000010130000C000010000000',
+            'ioctl=0xCFDC2128 input=4 output=0 input-hex=07000000') }
     )
 
     $passed = 0
     foreach ($case in $cases) {
+        if ($case.ContainsKey('MamSuccess') -and $case.MamSuccess) {
+            $env:LECS65_MOCK_MAM_SUCCESS = '1'
+        }
+        else { Remove-Item Env:LECS65_MOCK_MAM_SUCCESS -ErrorAction SilentlyContinue }
         $result = Invoke-LecS65NativeProcess -Name $case.Name -FilePath $mockExe `
             -Arguments $case.Args -WorkingDirectory $tempRoot `
             -LogPath (Join-Path $logs ($case.Name + '.log')) -TimeoutSeconds 5
@@ -88,15 +96,19 @@ try {
         @{ Name='separator-only'; Args=@('raw-ioctl','0x00222400','--','0') },
         @{ Name='odd-hex'; Args=@('raw-ioctl','0x00222400','0','0') },
         @{ Name='invalid-code'; Args=@('raw-ioctl','not-a-code','','0') },
-        @{ Name='oversize-output'; Args=@('raw-ioctl','0x00222400','','65537') }
+        @{ Name='oversize-output'; Args=@('raw-ioctl','0x00222400','','65537') },
+        @{ Name='mam-wrong-ack'; Args=@('mam-dma-once','NO') }
     )
+    Remove-Item Env:LECS65_MOCK_MAM_SUCCESS -ErrorAction SilentlyContinue
     foreach ($case in $negative) {
         $result = Invoke-LecS65NativeProcess -Name $case.Name -FilePath $mockExe `
             -Arguments $case.Args -WorkingDirectory $tempRoot `
             -LogPath (Join-Path $logs ($case.Name + '.log')) -TimeoutSeconds 5 `
             -ReturnOnNonZeroExit
         if ($result.ExitCode -eq 0 -or $result.TimedOut -or
-            $result.StdOut -match 'MOCK_DEVICE_IO_CONTROL') {
+            $result.StdOut -match 'MOCK_DEVICE_IO_CONTROL' -or
+            ($case.Name -eq 'mam-wrong-ack' -and
+             $result.StdOut -match 'MOCK_CREATE_FILE')) {
             throw "$($case.Name) did not fail before the mocked DeviceIoControl boundary."
         }
         ++$passed
@@ -124,6 +136,7 @@ try {
     Write-Host "LECDIAG COMMAND CHAIN: $passed/$($cases.Count + $negative.Count) passed; 0 failed."
 }
 finally {
+    Remove-Item Env:LECS65_MOCK_MAM_SUCCESS -ErrorAction SilentlyContinue
     if (-not $preserveEvidence -and (Test-Path -LiteralPath $tempRoot)) {
         Remove-Item -LiteralPath $tempRoot -Recurse -Force
     }

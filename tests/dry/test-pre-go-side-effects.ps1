@@ -12,6 +12,7 @@ $syncPath = Join-Path $repo 'driver\DmaSyncStage.c'
 $transactionPath = Join-Path $repo 'driver\DmaTransaction.c'
 $headerPath = Join-Path $repo 'driver\LecS65Drv.h'
 $acquisitionPath = Join-Path $repo 'driver\Acquisition.c'
+$projectPath = Join-Path $repo 'driver\LecS65AcqDrv.vcxproj'
 $script:passed = 0
 $script:failed = 0
 
@@ -40,10 +41,13 @@ $sync = Get-Content -LiteralPath $syncPath -Raw
 $transaction = Get-Content -LiteralPath $transactionPath -Raw
 $header = Get-Content -LiteralPath $headerPath -Raw
 $acquisition = Get-Content -LiteralPath $acquisitionPath -Raw
+$project = Get-Content -LiteralPath $projectPath -Raw
 $acquire = Get-FunctionText $ioctl 'LecIoctlAcquireBufferedOneChannel'
+$wdmMam = Get-FunctionText $ioctl 'LecExecuteWdmMamTransfer'
 $prepare = Get-FunctionText $pnp 'LecDmaPnpPrepareLegacyNoLaunch'
 $map = Get-FunctionText $sync 'LecSgSyncMapNoLaunch'
 $release = Get-FunctionText $sync 'LecSgSyncReleaseNoLaunch'
+$releaseQualified = Get-FunctionText $sync 'LecSgSyncReleaseQualified'
 $commit = Get-FunctionText $transaction 'LecDmaTransactionCommitHardwareLaunch'
 $register = Get-FunctionText $acquisition 'LecRegisterTransfer'
 $unregister = Get-FunctionText $acquisition 'LecUnregisterTransfer'
@@ -71,7 +75,8 @@ Test-Case 'production CFDC2138 branch has no register or port access primitive' 
     $safeAcquire -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
     $safeAcquire -notmatch 'Lec(?:Select|Arm|Launch)Dma|LecUpdateInterruptMask' -and
     $safeAcquire -notmatch 'TotalDwords|DescriptorTablePhysical|DescriptorBuffer' -and
-    $safeAcquire -match 'LecDmaPnpPrepareLegacyNoLaunch'
+    $acquire -match 'LecDmaPnpPrepareLegacyNoLaunch' -and
+    $acquire -match 'LecDmaPnpExecuteLegacyTransfer'
 }
 Test-Case 'CFDC2124 production registration locks memory without building PFN descriptors' {
     $register -match 'LecBuildSourceMdlChain' -and
@@ -94,15 +99,46 @@ Test-Case 'mapping uses only synchronous WDM v3 SG allocation' {
     $map -match 'InitializeDmaTransferContext' -and
     $map -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_'
 }
-Test-Case 'hardware launch commit is an unconditional software rejection' {
+Test-Case 'hardware launch commit remains default-closed' {
+    $commit -match '#if\s+!LECS65_ENABLE_WDM_V3_MAM_DMA' -and
     $commit -match 'tx->Phase\s*=\s*LecDmaTxPublished' -and
     $commit -match 'LaunchRejected\+\+' -and
     $commit -match 'return\s+LecDmaTxLaunchDisabled' -and
-    $commit -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_|EverPossiblyLaunched\s*=\s*1'
+    $commit -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
+    $project -match '<LecWdmV3MamDma\s+Condition=.*?>false</LecWdmV3MamDma>' -and
+    $project.Contains(
+        '<ItemDefinitionGroup Condition="''$(LecWdmV3MamDma)''==''true''">')
+}
+Test-Case 'development MAM callback uses WDM logical SGTA and original register order' {
+    $ordered = @(
+        'gpioValue = READ_REGISTER_ULONG',
+        'WRITE_REGISTER_ULONG(gpioData',
+        'WRITE_REGISTER_ULONG(mamPgo, 0x105UL)',
+        'WRITE_REGISTER_ULONG(mamSeq',
+        'WRITE_REGISTER_ULONG(sgta, DescriptorTable.LowPart)',
+        'WRITE_REGISTER_ULONG(iimtc, TransferBytes / sizeof(ULONG))',
+        'KeResetEvent(&transfer->CompletionEvent)',
+        'LecSelectDmaTransfer',
+        'LecUpdateInterruptMask(devExt, 0, 0x01UL, TRUE)',
+        'LecLaunchSelectedDma',
+        'KeWaitForSingleObject',
+        'LecUpdateInterruptMask(devExt, 0x01UL, 0, TRUE)',
+        'LecDmaCompletionFinishCleanup',
+        'LecDeselectDmaTransfer')
+    $position = -1
+    foreach ($needle in $ordered) {
+        $next = $wdmMam.IndexOf($needle, $position + 1,
+            [StringComparison]::Ordinal)
+        if ($next -lt 0) { return $false }
+        $position = $next
+    }
+    $wdmMam -notmatch 'DescriptorTablePhysical|MmGetMdlPfnArray' -and
+    $wdmMam -match 'DescriptorTable\.QuadPart.*?>\s*MAXULONG'
 }
 Test-Case 'cleanup can only release never-launched mapping and locked memory' {
-    $release -match 'LecSgSyncFreeStage' -and
-    $release -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
+    $release -match 'LecSgSyncReleaseQualified' -and
+    $releaseQualified -match 'LecSgSyncFreeStage' -and
+    $releaseQualified -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_' -and
     $unregister -match 'LecFreeTransfer' -and
     $unregister -notmatch '(?:READ|WRITE)_(?:REGISTER|PORT)_'
 }

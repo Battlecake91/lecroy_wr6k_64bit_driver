@@ -3505,7 +3505,7 @@ MAMDAT[3] = min(requested_bytes,0x400) low 16
 MAMDAT[4] = same block size high 16
 MAMPGO    = 0x105
 MAMSEQ[0] = 0x40 | channel
-SGTA      = first descriptor-table physical address
+SGTA      = first descriptor-table device address
 IIMTC     = requested_bytes / 4
 IIMCL     = 1
 MAMRGO    = requested_bytes / min(requested_bytes,0x400)
@@ -3515,9 +3515,12 @@ INTEN bit 0 gates the selected transfer's completion interrupt. The handler
 waits at most five seconds, then disables bit 0, performs IIMST/IIMCL cleanup,
 reads ERRS and returns the requested byte count in the four-byte output.
 
-The x64 implementation requires a process-owned token that was successfully
-created by CFDC2124. That registration rejects all source and descriptor-table
-physical addresses above 4 GiB before the board can see them.
+The original driver derives this device address from CPU PFNs. The current x64
+development path instead requires a process-owned `CFDC2124` token and obtains
+32-bit Windows DMA logical addresses through WDM-v3. It publishes the common
+buffer's logical address to SGTA and rejects any source or table range that the
+board's 32-bit descriptor ABI cannot represent. Hardware launch remains behind
+the default-off `LecWdmV3MamDma` gate.
 
 Only the observed one-channel form is enabled. CFDD219F and unobserved
 multi-channel CFDC2138 remain gated.

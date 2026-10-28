@@ -1,5 +1,26 @@
 # Regression test architecture
 
+## Batch 18 MAM DMA integration contracts
+
+Focused tests compile the transaction with the MAM gate both enabled and at
+its default zero value. The default build proves that the hardware callback is
+unreachable. The enabled host build covers WDM-v3 mapping, logical descriptor
+publication, exact-once commit, normal completion retirement, a second
+successful generation and missing-IRQ quarantine. Transaction tests cover
+stale/duplicate completion, timeout, cancellation and PnP/power admission.
+Source contracts verify the original register order and logical `SGTA` value.
+
+The mocked `lecdiag mam-dma-once` path verifies the exact 15-byte request, one
+`CFDC2138`, four-byte completion and unregister-after-success rule. A wrong
+acknowledgement fails before any IOCTL. These are hardware-independent tests.
+
+Verified Batch 18 results are transaction **176/176**, production gate
+**16/16**, synchronous WDM-v3/PnP **164/164**, pre-GO/source-order **11/11**,
+MDL registration **15/15**, lecdiag command chain **19/19**, DMA completion
+**39/39** and completion interleavings **2/2**. Debug and Release x64 builds
+completed with zero warnings/errors. Expanded stress passed DMA
+**50,000/50,000** and INTEN **10,000/10,000**.
+
 Date: 2026-10-13
 
 The replacement driver now has one front-end regression runner:
