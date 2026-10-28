@@ -676,6 +676,13 @@ static int no_launch_prepare(HANDLE h)
         printf("%02X", acquire[i]);
     }
     printf("\n");
+    /*
+     * Win32 does not define lpBytesReturned on a failed synchronous call.
+     * Clear both observations so a launch-disabled failure cannot inherit the
+     * successful registration's four-byte result.
+     */
+    returned = 0;
+    output = 0;
     SetLastError(ERROR_SUCCESS);
     acquireOk = DeviceIoControl(h, LECS65_IOCTL_ACQUIRE_BUFFERED,
         acquire, sizeof(acquire), &output, sizeof(output), &returned, NULL);
