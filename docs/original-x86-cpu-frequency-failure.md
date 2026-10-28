@@ -31,3 +31,17 @@ No production change is justified without a localized timing or ordering fault. 
 ## Evidence level
 
 User-reported, not independently reproduced. Investigation pending.
+
+## Targeted decompiled-code verification
+
+Source: `ghidra_exports/selected/` from the original x86 binary.
+
+- `FUN_0001286e` (legacy delay/control IOCTL) invokes `FUN_0001557c` using the input millisecond count and subsequently reports success. It does not propagate a delay completion status.
+- `FUN_0001557c` constructs a negative relative NT time (`param_1 * -10000`) and calls `KeDelayExecutionThread(0,0,&local_c)` between `FUN_00015536(this,1)` and `FUN_00015536(this,0)`. This **disproves a CPU-cycle-count busy-wait in this particular helper**, not elsewhere in the driver. The delay return value is ignored. Note that `param_1 * -10000` is performed in 32-bit arithmetic in the decompilation, so extreme durations warrant separate overflow analysis, not an assumed explanation for normal requests.
+- `FUN_00015536` updates register shadow word +0x24 and issues `WRITE_REGISTER_ULONG` with a boolean value. It contains no explicit readback or extra wait.
+- `FUN_0001259a` (SetOneRegister) invokes `FUN_000107fe`; the latter stores a value in the descriptor shadow and invokes `WRITE_REGISTER_ULONG`. No local readback, status polling or wait is present. No conclusion about its caller's complete sequencing or hardware requirements follows from this alone.
+- `FUN_0001236e` also routes cached enabled-descriptor values through `FUN_000107fe`.
+
+The old runtime notes at `docs/runtime-trace.md` already record the i5-3450 frequency sensitivity and that synchronous per-call tracer flushing introduced severe timing perturbation. This independent historical observation strengthens the case for a timing-sensitive *system path* but does not uniquely implicate driver internals.
+
+**Updated priority:** examine trigger-threshold transport and request sequencing across callers (including user-mode XStream and device firmware), then command completion/timeout logic. The inspected delay helper is not the expected naive CPU-dependent spin loop. No blanket delays or production changes justified.
