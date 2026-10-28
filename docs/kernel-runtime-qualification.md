@@ -1154,6 +1154,41 @@ attempt marker exists, so `CFDC2124`, `CFDC2138` and cleanup were not sent.
 No retry followed. A future separately authorized attempt must use the
 qualified live-stdout readiness mechanism rather than raw-log visibility.
 
+## Batch 17 bounded live no-launch result
+
+The single authorized Batch 17 run used the installed `oem104.inf`, version
+`0.2026.1026.1`, loaded SYS SHA-256
+`32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
+Preflight verified test-signing, disabled Secure Boot and VBS/HVCI, no Driver
+Verifier target, the exact PCI instance, a running service, five interfaces and
+no acquisition client. The device remained `OK`, problem code zero, before and
+after the attempt.
+
+The live-stdout kernel-capture gate became ready before DebugView flushed its
+raw file. Exactly one `CFDC2124` then registered 4 KiB, followed by exactly one
+15-byte `CFDC2138`. Kernel diagnostics directly attribute the preparation:
+one WDM-v3 SG segment covered the request, two hardware-format descriptors were
+encoded, the hard launch gate denied GO, the never-launched mapping was
+released, and the IOCTL completed `STATUS_NOT_SUPPORTED` with zero information.
+No acquisition control, DMA-control MMIO, interrupt manipulation or physical
+transfer occurred.
+
+The original live tool incorrectly retained the preceding call's byte-count
+observation after the failed Win32 preparation call. It reported a contract
+mismatch and correctly suppressed explicit unregister. This is a harness
+false-negative, not a driver failure: the trace supplies the authoritative IRP
+information value. CLOSE followed immediately; the inactive registration was
+eligible for final-handle cleanup, with no `UnknownActive` transition. The
+tool now zeroes the observation before the call and its mock reproduces stale
+failure output. No hardware retry was performed.
+
+This result qualifies MDL-only registration, real WDM-v3 logical mapping,
+descriptor construction, closed launch gating and never-launched mapping
+release on this WR6k host. It does not qualify GO, MAM/MTT quiescence,
+descriptor-fetch retirement, final PCI writes, posted-write drain, safe
+post-GO unmapping, real DMA or acquisition. Repeating the no-launch request
+cannot resolve those physical questions.
+
 ## Batch 11 next DMA authorization boundary
 
 The software transaction, closed launch gate and explicit no-launch WDM-v3

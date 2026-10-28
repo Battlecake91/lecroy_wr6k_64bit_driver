@@ -35,11 +35,10 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   loaded SYS SHA-256
   `32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
   Its 9/9 R0, 2/2 R1 and one captured PnP restart passed; the device remains
-  problem-free with five interfaces. MDL-only registration is installed and
-  Dry-qualified, but the Batch 16 live no-launch command was not dispatched:
-  its separate capture wrapper failed readiness on DebugView's buffered raw
-  log before creating a device-attempt marker. Real DMA and acquisition remain
-  unqualified.
+  problem-free with five interfaces. Batch 17 proved live MDL-only registration,
+  one-segment WDM-v3 DMA-logical mapping, two-descriptor preparation, the closed
+  launch gate and never-launched mapping release. No GO, DMA-control MMIO or
+  acquisition occurred. Physical DMA idle and acquisition remain unqualified.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to WDM-v3 DMA-logical mapping and descriptor preparation, but the production hardware-launch gate remains unconditionally closed pending physical DMA-idle proof.
