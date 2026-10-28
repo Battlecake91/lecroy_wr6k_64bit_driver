@@ -896,15 +896,19 @@ Test-Contract "package signing is opt-in and thumbprint-bound" {
     $packageBuildText -match 'UnsignedValidationOnly'
 }
 
-Test-Contract "diagnostic launcher keeps capture installation and restart explicitly gated" {
+Test-Contract "diagnostic launcher keeps every active capture mode explicitly gated" {
     $diagnosticLauncherText -match "'RestartWithCapture'" -and
+    $diagnosticLauncherText -match "'NoLaunchWithCapture'" -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeKernelCapture' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeInstallation' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizePnpRestart' -and
+    $diagnosticLauncherText -match '\[switch\]\$AuthorizeNoLaunch' -and
     $diagnosticLauncherText -match 'Preflight forbids active authorization switches' -and
     $diagnosticLauncherText -match 'CAPTURE READY' -and
     $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
     $diagnosticLauncherText -match 'PnpRestartInvocations\+\+' -and
+    $diagnosticLauncherText -match 'NoLaunchInvocations\+\+' -and
+    $diagnosticLauncherText -match 'No-launch runner result contract mismatch' -and
     $diagnosticLauncherText -match '-Arguments @\(''/restart-device'', \$DeviceInstanceId\)' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
     $diagnosticLauncherText -notmatch 'scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'

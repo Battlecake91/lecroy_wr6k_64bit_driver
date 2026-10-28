@@ -2,18 +2,20 @@
 .SYNOPSIS
   Validate or execute one diagnostic capture/installation attempt.
 .DESCRIPTION
-  This fail-closed launcher has four explicit modes. Preflight is passive.
+  This fail-closed launcher has five explicit modes. Preflight is passive.
   CaptureQualification may start only the pinned capture executable.
   InstallWithCapture may invoke the pinned PnPUtil executable at most once,
   and only after capture readiness. RestartWithCapture may invoke exactly one
-  pinned PnPUtil restart for the exact device instance. The launcher never
-  elevates itself, retries, rolls back, opens a device or changes system policy.
+  pinned PnPUtil restart for the exact device instance. NoLaunchWithCapture
+  may invoke exactly one pinned no-launch runner after live kernel capture is
+  ready. The launcher never elevates itself, retries, rolls back or changes
+  system policy.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('Preflight', 'CaptureQualification', 'InstallWithCapture',
-        'RestartWithCapture')]
+        'RestartWithCapture', 'NoLaunchWithCapture')]
     [string]$Mode,
     [Parameter(Mandatory=$true)][string]$RepositoryRoot,
     [Parameter(Mandatory=$true)]
@@ -48,8 +50,15 @@ param(
     [switch]$AuthorizeKernelCapture,
     [switch]$AuthorizeInstallation,
     [switch]$AuthorizePnpRestart,
+    [switch]$AuthorizeNoLaunch,
     [string]$PnPUtilPath = "$env:SystemRoot\System32\pnputil.exe",
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedPnPUtilHash,
+    [string]$NoLaunchRunnerPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedNoLaunchRunnerHash,
+    [string]$NoLaunchExecutablePath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedNoLaunchExecutableHash,
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
     [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
     [ValidateRange(1, 120)][int]$CaptureShutdownGraceSeconds = 15,
@@ -63,6 +72,7 @@ param(
         'F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D',
     [switch]$TestMode,
     [string]$MockStatePath,
+    [switch]$MockExistingCollector,
     [ValidateSet('', 'AfterEvidenceInitialization', 'BeforeCaptureStart')]
     [string]$FailureInjection = ''
 )
@@ -81,6 +91,7 @@ $script:CaptureLogPath = $null
 $script:InstallInvocations = 0
 $script:PnpRestartInvocations = 0
 $script:CaptureInvocations = 0
+$script:NoLaunchInvocations = 0
 
 function Get-AbsolutePath {
     param([string]$Path, [string]$Label)
@@ -139,6 +150,7 @@ function Write-Result {
         CaptureInvocations = $script:CaptureInvocations
         InstallInvocations = $script:InstallInvocations
         PnpRestartInvocations = $script:PnpRestartInvocations
+        NoLaunchInvocations = $script:NoLaunchInvocations
     }
     $json = $result | ConvertTo-Json -Depth 4
     [IO.File]::WriteAllText($script:ResultPath,
@@ -193,6 +205,12 @@ function Get-CurrentDriverState {
         ServiceStatus = (Get-Service -Name $serviceName).Status.ToString()
         LoadedSysHash = $loadedSysHash
     }
+}
+
+function Test-DebugViewCollectorRunning {
+    if ($TestMode) { return [bool]$MockExistingCollector }
+    return @(Get-Process -Name 'dbgview', 'dbgview64', 'dbgviewcli64' `
+        -ErrorAction SilentlyContinue).Count -ne 0
 }
 
 function Assert-PassiveIdentity {
@@ -281,10 +299,9 @@ function Assert-PassiveIdentity {
         if ($blocked.Count -ne 0) {
             throw "Blocked acquisition client is running: $($blocked.Name -join ', ')"
         }
-        if (@(Get-Process -Name 'dbgview', 'dbgview64', 'dbgviewcli64' `
-                -ErrorAction SilentlyContinue).Count -ne 0) {
-            throw 'A DebugView process is already running.'
-        }
+    }
+    if (Test-DebugViewCollectorRunning) {
+        throw 'A DebugView process is already running.'
     }
     return $state
 }
@@ -433,21 +450,21 @@ try {
 
     if ($Mode -eq 'Preflight') {
         if ($AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
             -not [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'Preflight forbids active authorization switches.'
         }
     }
     elseif ($Mode -eq 'CaptureQualification') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'CaptureQualification requires only explicit capture authorization.'
         }
     }
     elseif ($Mode -eq 'InstallWithCapture') {
         if (-not $AuthorizeKernelCapture -or -not $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'InstallWithCapture requires explicit capture and installation authorization.'
         }
@@ -455,15 +472,36 @@ try {
             throw 'InstallWithCapture requires ExpectedPnPUtilHash.'
         }
     }
-    else {
+    elseif ($Mode -eq 'RestartWithCapture') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            -not $AuthorizePnpRestart -or
+            -not $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'RestartWithCapture requires explicit capture and PnP restart authorization.'
         }
         if ([string]::IsNullOrWhiteSpace($ExpectedPnPUtilHash)) {
             throw 'RestartWithCapture requires ExpectedPnPUtilHash.'
         }
+    }
+    else {
+        if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
+            $AuthorizePnpRestart -or -not $AuthorizeNoLaunch -or
+            [string]::IsNullOrWhiteSpace($AuthorizationId)) {
+            throw 'NoLaunchWithCapture requires explicit capture and no-launch authorization.'
+        }
+        if ([string]::IsNullOrWhiteSpace($NoLaunchRunnerPath) -or
+            [string]::IsNullOrWhiteSpace($ExpectedNoLaunchRunnerHash) -or
+            [string]::IsNullOrWhiteSpace($NoLaunchExecutablePath) -or
+            [string]::IsNullOrWhiteSpace($ExpectedNoLaunchExecutableHash)) {
+            throw 'NoLaunchWithCapture requires pinned runner and executable identities.'
+        }
+        $noLaunchRunner = Get-AbsolutePath $NoLaunchRunnerPath `
+            'NoLaunchRunnerPath'
+        $noLaunchExecutable = Get-AbsolutePath $NoLaunchExecutablePath `
+            'NoLaunchExecutablePath'
+        Assert-FileHash -Path $noLaunchRunner `
+            -Expected $ExpectedNoLaunchRunnerHash -Label 'No-launch runner'
+        Assert-FileHash -Path $noLaunchExecutable `
+            -Expected $ExpectedNoLaunchExecutableHash -Label 'No-launch executable'
     }
 
     Write-LauncherOutput "BEGIN $Mode $([DateTime]::UtcNow.ToString('o'))"
@@ -482,7 +520,9 @@ try {
     $captureMarker = Join-Path $evidence 'capture-attempt.marker'
     $installMarker = Join-Path $evidence 'install-attempt.marker'
     $restartMarker = Join-Path $evidence 'pnp-restart-attempt.marker'
-    foreach ($marker in @($captureMarker, $installMarker, $restartMarker)) {
+    $noLaunchMarker = Join-Path $evidence 'no-launch-attempt.marker'
+    foreach ($marker in @($captureMarker, $installMarker, $restartMarker,
+            $noLaunchMarker)) {
         if (Test-Path -LiteralPath $marker) {
             throw "Attempt marker already exists: $marker"
         }
@@ -633,6 +673,58 @@ try {
             throw "PnPUtil restart exited with code $($restartResult.ExitCode); no retry was attempted."
         }
         Write-LauncherOutput 'PNP RESTART CHILD PASS'
+    }
+    elseif ($Mode -eq 'NoLaunchWithCapture') {
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'the no-launch marker'
+        Write-ExclusiveTextFile -Path $noLaunchMarker `
+            -Text ($markerText + "`r`nNoLaunchApproved=true`r`n")
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'no-launch dispatch'
+        $noLaunchEvidence = Join-Path $evidence 'no-launch-evidence'
+        if (Test-Path -LiteralPath $noLaunchEvidence) {
+            throw "No-launch evidence path already exists: $noLaunchEvidence"
+        }
+        $noLaunchMode = if ($TestMode) { 'OfflineMock' } else { 'RunAuthorized' }
+        $noLaunchArguments = @('-NoProfile', '-NonInteractive',
+            '-ExecutionPolicy', 'Bypass', '-File', $noLaunchRunner,
+            '-Mode', $noLaunchMode, '-EvidenceRoot', $noLaunchEvidence,
+            '-ExecutablePath', $noLaunchExecutable,
+            '-ExpectedExecutableHash', $ExpectedNoLaunchExecutableHash,
+            '-ExpectedInf', $ExpectedCurrentInf,
+            '-ExpectedVersion', $ExpectedCurrentVersion,
+            '-ExpectedSysHash', $ExpectedCurrentSysHash,
+            '-DeviceInstanceId', $DeviceInstanceId)
+        if ($TestMode) {
+            $noLaunchArguments += @('-MockStatePath', $MockStatePath)
+        }
+        else {
+            $noLaunchArguments += '-OwnerAuthorized'
+        }
+        $script:NoLaunchInvocations++
+        $noLaunchResult = Invoke-LecS65NativeProcess `
+            -Name 'Approved one-time no-launch preparation' `
+            -FilePath (Join-Path $PSHOME 'powershell.exe') `
+            -Arguments $noLaunchArguments `
+            -WorkingDirectory $repository `
+            -LogPath (Join-Path $evidence 'no-launch-runner.log') `
+            -TimeoutSeconds 30 -ReturnOnNonZeroExit
+        if ($noLaunchResult.ExitCode -ne 0) {
+            throw "No-launch runner exited with code $($noLaunchResult.ExitCode); no retry was attempted."
+        }
+        $noLaunchResultPath = Join-Path $noLaunchEvidence 'result.json'
+        if (-not (Test-Path -LiteralPath $noLaunchResultPath -PathType Leaf)) {
+            throw 'No-launch runner did not produce result.json.'
+        }
+        $noLaunchContract = Get-Content -Raw -LiteralPath $noLaunchResultPath |
+            ConvertFrom-Json
+        if ($noLaunchContract.Result -ne 'PASS' -or
+            [int]$noLaunchContract.InvocationCount -ne 1 -or
+            $noLaunchContract.HardwareLaunchAuthorized -ne $false -or
+            $noLaunchContract.HardwareLaunchObserved -ne $false) {
+            throw 'No-launch runner result contract mismatch.'
+        }
+        Write-LauncherOutput 'NO-LAUNCH CHILD PASS'
     }
 
     $script:CaptureResult = Complete-CaptureJob -Job $script:CaptureJob `
