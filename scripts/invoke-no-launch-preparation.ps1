@@ -142,9 +142,19 @@ try {
     Write-ExclusiveJson (Join-Path $EvidenceRoot 'attempt.marker') ([ordered]@{
         CreatedUtc=$startedUtc.ToString('o'); Mode=$Mode
         Command=@($executable,'no-launch-prepare')
+        RequestContract=[ordered]@{
+            RegistrationIoctl='0xCFDC2124';RegistrationBytes=12;RegistrationOutputBytes=4
+            PreparationIoctl='0xCFDC2138';PreparationBytes=15;PreparationOutputBytes=4
+            CleanupIoctl='0xCFDC2128';CleanupBytes=4;CleanupOutputBytes=0
+        }
+        ExpectedResult='LecDmaTxLaunchDisabled / Win32 ERROR_NOT_SUPPORTED (50)'
         ExecutableSha256=$actualExecutableHash; ExpectedInf=$ExpectedInf
         ExpectedVersion=$ExpectedVersion; ExpectedSysHash=$ExpectedSysHash.ToUpperInvariant()
         OwnerAuthorized=($Mode -eq 'RunAuthorized' -and [bool]$OwnerAuthorized)
+        OwnerIdentity=if($Mode -eq 'RunAuthorized') {
+            [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        } else { 'OfflineMock' }
+        OwnerProcessId=$PID
     })
     $native = Invoke-LecS65NativeProcess -Name 'Bounded no-launch preparation' `
         -FilePath $executable -Arguments @('no-launch-prepare') `
@@ -158,6 +168,8 @@ try {
     })
     if ($native.TimedOut -or $native.ExitCode -ne 0 -or
         -not [string]::IsNullOrEmpty($native.StdErr) -or
+        $native.StdOut -notmatch '(?m)^NO_LAUNCH registration-input: length=12 hex=[0-9A-F]{24}\r?$' -or
+        $native.StdOut -notmatch '(?m)^NO_LAUNCH prepare-input: length=15 hex=[0-9A-F]{30}\r?$' -or
         $native.StdOut -notmatch '(?m)^NO_LAUNCH prepare: success=0 error=50 returned=0 output=0\r?$' -or
         $native.StdOut -notmatch '(?m)^NO_LAUNCH cleanup: token=[1-9][0-9]* returned=0\r?$' -or
         $native.StdOut -notmatch '(?m)^NO_LAUNCH PASS: mapping prepared and released; hardware launch disabled\.\r?$') {

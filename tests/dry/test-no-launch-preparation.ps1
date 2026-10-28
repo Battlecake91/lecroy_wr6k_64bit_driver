@@ -36,6 +36,17 @@ try {
         throw 'Result contract mismatch.'
     }
     ++$passed
+    $lecdiagSource = Get-Content -Raw `
+        (Join-Path $repo 'tools\lecdiag\lecdiag.c')
+    $runnerSource = Get-Content -Raw $runner
+    if ($lecdiagSource -notmatch '(?s)NO_LAUNCH prepare: success=.*?if \(acquireOk \|\| acquireError != ERROR_NOT_SUPPORTED.*?goto Done;.*?LECS65_IOCTL_UNREGISTER_TRANSFER' -or
+        $lecdiagSource -notmatch 'explicit cleanup was not issued' -or
+        $lecdiagSource -notmatch '(?s)returned = 0;\s*output = 0;\s*SetLastError\(ERROR_SUCCESS\);\s*acquireOk = DeviceIoControl' -or
+        $runnerSource -notmatch 'registration-input: length=12 hex=' -or
+        $runnerSource -notmatch 'prepare-input: length=15 hex=') {
+        throw 'Conditional cleanup or exact request-evidence contract is missing.'
+    }
+    ++$passed
     try {
         & $runner -Mode OfflineMock -EvidenceRoot $runEvidence `
             -ExecutablePath $mockExe -ExpectedExecutableHash $mockHash `
@@ -57,7 +68,7 @@ try {
         if ($_.Exception.Message -notmatch 'hash mismatch') { throw }
     }
     ++$passed
-    Write-Host "NO-LAUNCH PREPARATION TESTS: $passed/3 passed; 0 failed."
+    Write-Host "NO-LAUNCH PREPARATION TESTS: $passed/4 passed; 0 failed."
 }
 finally {
     if (Test-Path -LiteralPath $temp) {

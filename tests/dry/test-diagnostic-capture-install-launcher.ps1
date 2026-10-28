@@ -29,6 +29,8 @@ $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $repo 'scripts\native-process.ps1')
 $launcherSource = Join-Path $repo 'scripts\invoke-diagnostic-capture-install.ps1'
 $runnerSource = Join-Path $repo 'scripts\native-process.ps1'
+$noLaunchRunnerSource = Join-Path $repo 'scripts\invoke-no-launch-preparation.ps1'
+$lecdiagMockTest = Join-Path $PSScriptRoot 'test-lecdiag-command-chain.ps1'
 $mockSource = Join-Path $PSScriptRoot 'fixtures\mock-diagnostic-native.cs'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) `
     ('lecroy-diagnostic-launcher-' + [guid]::NewGuid().ToString('N'))
@@ -53,6 +55,7 @@ function New-TestContext {
     [IO.Directory]::CreateDirectory($scripts) | Out-Null
     Copy-Item -LiteralPath $launcherSource -Destination $scripts
     Copy-Item -LiteralPath $runnerSource -Destination $scripts
+    Copy-Item -LiteralPath $noLaunchRunnerSource -Destination $scripts
     & git -C $fixture init --quiet
     & git -C $fixture config user.email 'offline-test@example.invalid'
     & git -C $fixture config user.name 'Offline Test'
@@ -91,13 +94,26 @@ function New-TestContext {
     Add-Type -TypeDefinition (Get-Content -Raw -LiteralPath $mockSource) `
         -OutputAssembly $mockExe -OutputType ConsoleApplication
     $mockHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $mockExe).Hash
+    $noLaunchBuild = Join-Path $tempRoot 'no-launch-mock-build'
+    & $lecdiagMockTest -EvidenceRoot $noLaunchBuild | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw 'No-launch mock executable qualification failed.'
+    }
+    $noLaunchExe = Join-Path $noLaunchBuild 'lecdiag-mock.exe'
+    $noLaunchHash = (Get-FileHash -Algorithm SHA256 `
+        -LiteralPath $noLaunchExe).Hash
+    $noLaunchRunner = Join-Path $scripts 'invoke-no-launch-preparation.ps1'
+    $noLaunchRunnerHash = (Get-FileHash -Algorithm SHA256 `
+        -LiteralPath $noLaunchRunner).Hash
     $statePath = Join-Path $tempRoot 'state.json'
-    [ordered]@{Inf='oem17.inf';Version='0.2026.1017.1';ProblemCode=0;DeviceStatus='OK';ServiceName='LecS65AcqDrv';ServiceStatus='Running';LoadedSysHash=('6'*64)} |
+    [ordered]@{InstanceId='PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0';Inf='oem17.inf';Version='0.2026.1017.1';ProblemCode=0;DeviceStatus='OK';ServiceName='LecS65AcqDrv';ServiceStatus='Running';LoadedSysHash=('6'*64);SysHash=('6'*64)} |
         ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
     return [pscustomobject]@{
         Repository=$fixture; Launcher=(Join-Path $scripts 'invoke-diagnostic-capture-install.ps1')
         Head=$head; Package=$package; ManifestPath=$manifestPath
         Artifacts=$artifacts; MockExe=$mockExe; MockHash=$mockHash; State=$statePath
+        NoLaunchExe=$noLaunchExe;NoLaunchHash=$noLaunchHash
+        NoLaunchRunner=$noLaunchRunner;NoLaunchRunnerHash=$noLaunchRunnerHash
     }
 }
 
@@ -107,7 +123,7 @@ function Invoke-Case {
     param(
         [string]$Name,
         [ValidateSet('Preflight','CaptureQualification','InstallWithCapture',
-            'RestartWithCapture')]
+            'RestartWithCapture','NoLaunchWithCapture')]
         [string]$Mode='Preflight',
         [string]$Scenario='Success',
         [string]$FailureInjection='',
@@ -116,6 +132,7 @@ function Invoke-Case {
         [string]$InfHash,
         [string]$DebugViewHash,
         [switch]$ExistingCaptureMarker,
+        [switch]$ExistingCollector,
         [switch]$EvidencePathIsFile,
         [int]$ReadinessTimeout=8,
         [int]$Duration=2
@@ -154,6 +171,7 @@ function Invoke-Case {
             '-TestMode','-MockStatePath',$context.State,
             '-CaptureReadinessTimeoutSeconds',$ReadinessTimeout,'-CaptureDurationSeconds',$Duration,
             '-CaptureShutdownGraceSeconds','2','-CaptureStabilityMilliseconds','250')
+        if ($ExistingCollector) { $arguments += '-MockExistingCollector' }
         if ($FailureInjection) { $arguments += @('-FailureInjection',$FailureInjection) }
         if ($Mode -ne 'Preflight') {
             $arguments += @('-AuthorizationId',"mock-$Name",'-AuthorizeKernelCapture')
@@ -165,6 +183,13 @@ function Invoke-Case {
         elseif ($Mode -eq 'RestartWithCapture') {
             $arguments += @('-AuthorizePnpRestart','-PnPUtilPath',$context.MockExe,
                 '-ExpectedPnPUtilHash',$context.MockHash)
+        }
+        elseif ($Mode -eq 'NoLaunchWithCapture') {
+            $arguments += @('-AuthorizeNoLaunch',
+                '-NoLaunchRunnerPath',$context.NoLaunchRunner,
+                '-ExpectedNoLaunchRunnerHash',$context.NoLaunchRunnerHash,
+                '-NoLaunchExecutablePath',$context.NoLaunchExe,
+                '-ExpectedNoLaunchExecutableHash',$context.NoLaunchHash)
         }
         $hostPath = Join-Path $PSHOME 'powershell.exe'
         $outerLog = Join-Path $tempRoot ("$Name-outer.log")
@@ -246,6 +271,15 @@ try {
         $afterReadyExit.ExitCode -ne 0 -and
         @($afterReadyExit.Records | Where-Object {$_ -eq 'restart'}).Count -eq 0)
 
+    $confirmedExit = Invoke-Case -Name 'exit-after-confirmed-readiness' `
+        -Mode CaptureQualification -Scenario ExitAfterConfirmedReadiness `
+        -ReadinessTimeout 3 -Duration 2
+    Add-Result 'collector exit after confirmed readiness is preserved as failure' (
+        $confirmedExit.ExitCode -ne 0 -and
+        (Test-Path (Join-Path $confirmedExit.Evidence 'capture-ready.json')) -and
+        (Get-Content -Raw (Join-Path $confirmedExit.Evidence `
+            'launcher.exception.txt')) -match 'exited with code 44')
+
     $install = Invoke-Case -Name 'install-success' -Mode InstallWithCapture
     Add-Result 'mock capture/install path invokes each child exactly once' (
         $install.ExitCode -eq 0 -and $install.Invocations -eq 2 -and
@@ -257,6 +291,20 @@ try {
         ($restart.Records -join ',') -eq 'capture,restart' -and
         (Get-Content -Raw (Join-Path $restart.Evidence 'result.json') |
             ConvertFrom-Json).PnpRestartInvocations -eq 1)
+
+    $noLaunch = Invoke-Case -Name 'no-launch-success' `
+        -Mode NoLaunchWithCapture -Scenario DelayedFileFlush
+    $noLaunchOuter = Get-Content -Raw `
+        (Join-Path $noLaunch.Evidence 'result.json') | ConvertFrom-Json
+    $noLaunchInner = Get-Content -Raw `
+        (Join-Path $noLaunch.Evidence 'no-launch-evidence\result.json') |
+        ConvertFrom-Json
+    Add-Result 'exact production no-launch path succeeds after live stdout readiness' (
+        $noLaunch.ExitCode -eq 0 -and $noLaunch.Invocations -eq 1 -and
+        ($noLaunch.Records -join ',') -eq 'capture' -and
+        $noLaunchOuter.NoLaunchInvocations -eq 1 -and
+        $noLaunchInner.Result -eq 'PASS' -and
+        $noLaunchInner.HardwareLaunchObserved -eq $false)
 
     $early = Invoke-Case -Name 'early-exception' -Mode CaptureQualification `
         -FailureInjection BeforeCaptureStart
@@ -305,6 +353,12 @@ try {
 
     $marker = Invoke-Case -Name 'existing-marker' -Mode CaptureQualification -ExistingCaptureMarker
     Add-Result 'existing attempt marker prevents capture' ($marker.ExitCode -ne 0 -and $marker.Invocations -eq 0)
+    $duplicate = Invoke-Case -Name 'duplicate-collector' `
+        -Mode CaptureQualification -ExistingCollector
+    Add-Result 'existing collector prevents duplicate capture' (
+        $duplicate.ExitCode -ne 0 -and $duplicate.Invocations -eq 0 -and
+        (Get-Content -Raw (Join-Path $duplicate.Evidence `
+            'launcher.exception.txt')) -match 'already running')
     $logFailure = Invoke-Case -Name 'log-failure' -EvidencePathIsFile
     Add-Result 'log creation failure stops before active work' ($logFailure.ExitCode -ne 0 -and $logFailure.Invocations -eq 0)
 

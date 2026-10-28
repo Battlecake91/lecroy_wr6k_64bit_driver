@@ -1209,3 +1209,28 @@ raw-log path until exit; the final log contains independently attributable
 kernel messages, but there is no device-attempt marker and no `CFDC2124` or
 `CFDC2138` trace. Consequently MDL-only registration and WDM-v3 mapping remain
 unqualified on real hardware. No retry was made.
+
+## Batch 17 live never-launched lifetime evidence
+
+One authorized live transaction exercised the intended pre-GO lifetime. A
+4-KiB registration remained owned by the process/FileObject while preparation
+held its serialized path. The real WDM-v3 mapping covered the request with one
+SG segment; two descriptors were built, publication reached the closed launch
+gate, and the trace records `released=1` before the request returned
+`STATUS_NOT_SUPPORTED`. No asynchronous mapping owner survived the return and
+no `UnknownActive` transition was observed.
+
+The live diagnostic tool then stopped before explicit unregister because its
+failed Win32 call retained a stale byte-count variable. CLOSE followed. Source
+inspection establishes that final owner-handle cleanup removes an inactive
+registration when it is not the current transfer and the transfer is not
+unsafe to free. The mapping release is directly traced; final registration
+cleanup is supported by the exact CLOSE control path rather than a dedicated
+unregister trace. The tool observation has been corrected offline without
+repeating the hardware operation.
+
+This closes only the `NeverLaunched` lifetime row on the tested hardware.
+After any possible GO, `UnknownActive` remains irreversible because neither the
+driver nor the available hardware evidence can prove the last descriptor fetch
+or PCI write has retired. Pages, mappings and common descriptor storage must
+remain retained until a separately established physical-idle contract exists.

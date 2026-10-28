@@ -599,3 +599,38 @@ Post-test state remained `oem101.inf`, version `0.2026.1018.1`, problem code
 zero, running service, five interfaces and the approved loaded SYS hash. No
 DebugView process remained. No installation, IOCTL, acquisition or physical
 DMA-idle experiment occurred.
+
+## Batch 17 live-stdout no-launch capture
+
+`NoLaunchWithCapture` is now a repository-controlled active mode in
+`invoke-diagnostic-capture-install.ps1`. It retains the qualified DebugView
+stdout collector and complete-record predicate used by the captured PnP path,
+but gives no-launch its own authorization switch, pinned runner identity,
+attempt marker and invocation counter. Capture, installation, restart and
+no-launch remain separate gates; mocks cannot reach PnPUtil or a real device.
+
+The single authorized run established readiness at
+`2026-10-28T17:47:39.5153589Z` from an independently attributable
+`STORMINI: StorNVMe - POWER: ACTIVE` record. At that instant the raw file had
+not been flushed. This directly validates the intended fix: active readiness
+depends on the live collector stream, not DebugView's delayed raw-file
+visibility. The final raw capture is 8,290,304 bytes with SHA-256
+`9D15FAF2FA9928C45279EB3613BCB581C705D9A5E20FC414A49E4900E756ABE2`;
+the preserved live stdout SHA-256 is
+`29C40726DB29149E3B8F23CA50BC16921DB3F1028967215470E68FDB4927AD4E`.
+
+The launcher invoked the bounded no-launch runner exactly once. It performed
+one registration and one preparation request, then stopped fail-closed because
+the live tool misread a stale Win32 byte count. No explicit unregister, retry,
+installation or PnP transition followed. The driver trace nevertheless proves
+the complete expected driver result: one SG segment, two descriptors,
+`launchDenied=1`, `released=1`, final `STATUS_NOT_SUPPORTED` and zero IRP
+information. CLOSE followed immediately. No GO, hardware register access or
+acquisition was reachable from this path.
+
+The tool bug was corrected only after the consumed live authorization: the
+byte-count and output observation are zeroed before the preparation call, and
+the mock deliberately preserves a stale byte count on failure. No second live
+run was made. Elevated Windows PowerShell 5.1 launcher tests pass 34/34 after
+the correction. No DebugView, `DBGV` or `lecdiag` process/service remained at
+completion, and the installed `oem104.inf` device stayed problem-free.

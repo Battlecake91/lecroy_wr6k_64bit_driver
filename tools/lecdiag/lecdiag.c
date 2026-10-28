@@ -632,8 +632,11 @@ static int no_launch_prepare(HANDLE h)
     DWORD unregisterReturned = 0;
     BOOL acquireOk;
     BOOL unregisterOk;
+    BOOL registered = FALSE;
+    BOOL cleanupComplete = FALSE;
     void* buffer = allocate_legacy_low_buffer(TOTAL_BYTES);
     int result = 1;
+    unsigned i;
 
     if (buffer == NULL) {
         print_error("low-address no-launch buffer allocation");
@@ -643,12 +646,18 @@ static int no_launch_prepare(HANDLE h)
     registration[0] = (DWORD)(uintptr_t)buffer;
     registration[1] = TOTAL_BYTES;
     registration[2] = 0;
+    printf("NO_LAUNCH registration-input: length=%u hex=", (unsigned)sizeof(registration));
+    for (i = 0; i < sizeof(registration); ++i) {
+        printf("%02X", ((const BYTE*)registration)[i]);
+    }
+    printf("\n");
     if (!DeviceIoControl(h, LECS65_IOCTL_REGISTER_TRANSFER,
             registration, sizeof(registration), &token, sizeof(token),
             &returned, NULL) || returned != sizeof(token) || token == 0) {
         print_error("CFDC2124 no-launch registration");
         goto Done;
     }
+    registered = TRUE;
     printf("NO_LAUNCH registration: token=%lu data-bytes=%u returned=%lu\n",
         (unsigned long)token, DATA_BYTES, (unsigned long)returned);
 
@@ -662,6 +671,18 @@ static int no_launch_prepare(HANDLE h)
         DWORD requested = DATA_BYTES;
         memcpy(acquire + 11, &requested, sizeof(requested));
     }
+    printf("NO_LAUNCH prepare-input: length=%u hex=", (unsigned)sizeof(acquire));
+    for (i = 0; i < sizeof(acquire); ++i) {
+        printf("%02X", acquire[i]);
+    }
+    printf("\n");
+    /*
+     * Win32 does not define lpBytesReturned on a failed synchronous call.
+     * Clear both observations so a launch-disabled failure cannot inherit the
+     * successful registration's four-byte result.
+     */
+    returned = 0;
+    output = 0;
     SetLastError(ERROR_SUCCESS);
     acquireOk = DeviceIoControl(h, LECS65_IOCTL_ACQUIRE_BUFFERED,
         acquire, sizeof(acquire), &output, sizeof(output), &returned, NULL);
@@ -670,25 +691,36 @@ static int no_launch_prepare(HANDLE h)
         acquireOk ? 1U : 0U, (unsigned long)acquireError,
         (unsigned long)returned, (unsigned long)output);
 
+    if (acquireOk || acquireError != ERROR_NOT_SUPPORTED || returned != 0 ||
+        output != 0) {
+        fprintf(stderr,
+            "CFDC2138 did not return the exact launch-disabled contract; "
+            "explicit cleanup was not issued.\n");
+        goto Done;
+    }
+
     unregisterOk = DeviceIoControl(h, LECS65_IOCTL_UNREGISTER_TRANSFER,
         &token, sizeof(token), NULL, 0, &unregisterReturned, NULL);
     if (!unregisterOk || unregisterReturned != 0) {
         print_error("CFDC2128 no-launch cleanup");
         goto Done;
     }
+    cleanupComplete = TRUE;
     printf("NO_LAUNCH cleanup: token=%lu returned=%lu\n",
         (unsigned long)token, (unsigned long)unregisterReturned);
-    if (acquireOk || acquireError != ERROR_NOT_SUPPORTED || returned != 0 ||
-        output != 0) {
-        fprintf(stderr,
-            "CFDC2138 did not return the exact launch-disabled contract.\n");
-        goto Done;
-    }
     printf("NO_LAUNCH PASS: mapping prepared and released; hardware launch disabled.\n");
     result = 0;
 
 Done:
-    VirtualFree(buffer, 0, MEM_RELEASE);
+    /*
+     * Preserve the registered address until Close runs if preparation returns
+     * an unexpected status. The driver owns the locked MDL at that point and
+     * its CLOSE/quarantine policy, not this tool, decides whether it is safe
+     * to release. A normal launch-disabled result explicitly unregisters first.
+     */
+    if (!registered || cleanupComplete) {
+        VirtualFree(buffer, 0, MEM_RELEASE);
+    }
     return result;
 }
 

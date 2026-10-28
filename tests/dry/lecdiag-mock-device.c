@@ -150,7 +150,14 @@ BOOL WINAPI LecdiagMockDeviceIoControl(
     if (BytesReturned == NULL) {
         return fail_request(ERROR_INVALID_PARAMETER);
     }
-    *BytesReturned = 0;
+    /*
+     * Model Win32's undefined lpBytesReturned value on a failed acquisition.
+     * The caller must clear its observation before CFDC2138 rather than rely
+     * on DeviceIoControl to overwrite the previous CFDC2124 byte count.
+     */
+    if (IoControlCode != IOCTL_ACQUIRE_BUFFERED) {
+        *BytesReturned = 0;
+    }
     printf("MOCK_DEVICE_IO_CONTROL ioctl=0x%08lX input=%lu output=%lu input-hex=",
         (unsigned long)IoControlCode,
         (unsigned long)InputLength,

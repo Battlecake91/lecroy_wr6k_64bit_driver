@@ -1219,3 +1219,26 @@ that rejects matching `0xFFFFFFFF` START reads. `lecdiag start-register` also
 returns failure for that all-ones bus value even when both read paths agree.
 This prevents a mapped-resource or inaccessible-device response from opening
 dependent runtime gates.
+
+## Batch 17 capture and no-launch harness
+
+The capture-launcher matrix now passes 34/34 under elevated Windows PowerShell
+5.1. It covers live stdout with an empty or delayed raw log, timestamped
+StorNVMe and `PNP_STATUS` records, split records, incorrect sources, large
+bursts, child exit before and after readiness, timeout, duplicate collectors,
+cleanup and orphan rejection. The exact production predicate is used in the
+tests; active readiness no longer depends on raw-file flush timing.
+
+The no-launch mock now preserves a stale `lpBytesReturned` value when the
+preparation DeviceIoControl fails, matching the Win32 behavior observed live.
+The tool clears its byte-count and output observations before that call, so the
+expected `ERROR_NOT_SUPPORTED` plus zero returned bytes is classified
+correctly. Focused no-launch tests pass 4/4, the command-chain matrix passes
+17/17 and source/ABI contracts pass 70/70. No driver source, DMA state machine
+or hardware path changed, so unrelated stress suites were not repeated.
+
+The live run itself was intentionally not retried. Its outer FAIL status is
+retained as evidence of the old tool observation defect; the kernel trace
+separately proves the driver-level no-launch result. The corrected x64
+`lecdiag.exe` SHA-256 is
+`CE0681F148B9CAD53134D7EED2CB814A7FE3CE762B4EB007D30D41639201BB6B`.

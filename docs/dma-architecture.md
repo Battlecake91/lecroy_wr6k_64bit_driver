@@ -210,3 +210,26 @@ registration but compiles `LecBuildDescriptorTable` only when
 and the focused contracts pass. The fix is not installed, so no live evidence
 yet proves WDM-v3 mapping, SG construction, common-buffer descriptor
 publication or rollback on this hardware.
+
+## Batch 17 real no-launch mapping evidence
+
+The installed MDL-only candidate completed one authorized production
+registration/preparation sequence. `CFDC2124` retained a 4-KiB locked MDL
+registration. `CFDC2138` then produced one Windows DMA-logical SG segment and
+two WR6k-format descriptors in the START-time common buffer. This proves that
+the real adapter accepted the bounded mapping and that address-range, coverage,
+alignment and descriptor-capacity validation passed. Exact logical addresses
+are private runtime evidence and are not needed for the architectural result.
+
+The launch gate remained closed. The trace records `launchDenied=1`,
+`released=1` and `STATUS_NOT_SUPPORTED`; therefore no descriptor pointer, MAM,
+MTT, GO or acquisition register was written. This is the first real-hardware
+proof of the selected WDM-v3 mapping and descriptor-preparation path, but it is
+deliberately not evidence of hardware consumption or physical bus idle.
+
+The remaining architecture boundary begins only after possible GO. A release
+design still needs authoritative evidence for descriptor-fetch retirement,
+MAM/MTT producer quiescence, final PCI write completion, bus-master retirement
+and posted-write drain before pages, mappings or descriptor storage can be
+reused. No existing IRQ, timeout, STOP, reset or software completion proves
+that boundary.

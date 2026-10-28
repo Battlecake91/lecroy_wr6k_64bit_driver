@@ -1,6 +1,6 @@
 # Current project status
 
-## Batch 16 MDL-only runtime qualification
+## Batch 17 live no-launch qualification
 
 - The signed Release x64 candidate is installed as `oem104.inf`, version
   `0.2026.1026.1`, with
@@ -31,15 +31,28 @@
   reconnect, three BAR unmaps/remaps, REMOVE, Unload and successful START.
   Forwarded lower-stack query statuses of `0xC00000BB` remain visible; final
   device state is healthy and D0.
-- The bounded no-launch device sequence was **not dispatched**. Its auxiliary
-  capture wrapper polled DebugView's buffered raw-log file, which remained
-  invisible until capture exit although the final file contained attributable
-  StorNVMe kernel records. No no-launch evidence directory, device-attempt
-  marker, `lecdiag` process, `CFDC2124`, `CFDC2138` or cleanup request exists.
-  No retry was made.
+- The repository-controlled capture launcher now uses its qualified live stdout
+  collector for readiness. The single authorized run reached readiness from an
+  attributable StorNVMe kernel record while the raw file was still unflushed,
+  proving that the Batch 16 buffering failure has been removed from the active
+  path. The capture completed once, with no retry or PnP transition.
+- Exactly one `CFDC2124` registered a 4-KiB destination and exactly one
+  `CFDC2138` reached the production WDM-v3 path. Kernel evidence records one SG
+  segment, two encoded descriptors, an unconditional launch denial,
+  `released=1` and final `STATUS_NOT_SUPPORTED` with zero IRP information. No
+  GO, acquisition, DMA-control register access or physical DMA occurred.
+- The live `lecdiag` build misclassified the expected result because the failed
+  Win32 call left its byte-count variable at the preceding registration value.
+  It therefore stopped safely without explicit `CFDC2128`. The kernel trace is
+  authoritative for the driver result; CLOSE then ran, and source inspection
+  shows that the final owner handle releases this inactive registration. The
+  byte-count reset and a stale-value mock are fixed offline; focused no-launch,
+  command-chain, source and elevated-launcher tests pass 4/4, 17/17, 70/70 and
+  34/34 respectively.
 - Physical DMA bus-idle, post-GO retirement, real DMA and acquisition remain
-  unproved. The next live no-launch attempt requires separate authorization
-  and must use the already-qualified live-stdout capture readiness predicate.
+  unproved. Repeating no-launch would not close that gap. A future GO-capable
+  test requires a separately reviewed physical bus-idle/abort proof method and
+  separate signing, installation and hardware authorization gates.
 
 ## Batch 12 legacy acquisition integration
 

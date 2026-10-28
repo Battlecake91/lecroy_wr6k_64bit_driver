@@ -68,6 +68,10 @@ public static class MockDiagnosticNative
             Thread.Sleep(100);
             return 43;
         }
+        if (scenario == "ExitAfterConfirmedReadiness") {
+            Thread.Sleep(700);
+            return 44;
+        }
         if (scenario == "CaptureTimeout" || scenario == "MissingCaptureReady" ||
             scenario == "IncorrectMessageSource")
             Thread.Sleep(15000);
