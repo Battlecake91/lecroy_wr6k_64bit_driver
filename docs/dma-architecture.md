@@ -283,3 +283,10 @@ The first Batch 20 installation launcher established kernel-capture readiness
 but failed before PnPUtil dispatch because its caller supplied a literal
 environment-variable expression rather than an absolute path. This is not DMA
 evidence: there was no installation, `CFDC2124`, `CFDC2138`, MMIO or GO.
+
+Batch 21 corrected only the launcher boundary and installed that immutable
+candidate as `oem106.inf`. The marker-bearing SYS hash is
+`647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+The complete safe R0/R1 matrix passed after installation. No registration,
+descriptor publication, MAM register programming or GO has yet occurred; the
+physical-disk and owner-authorization gates remain independent prerequisites.

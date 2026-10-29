@@ -14,6 +14,12 @@ cleanup, post-GO cancellation, CLOSE/PnP/power ambiguity or mapping mismatch
 retains resources and permanently closes DMA admission. The original x86
 timeout-and-free behavior is deliberately not reproduced.
 
+Batch 21 installed the exact-shape, exact-once development build and completed
+its 9/9 R0 plus 2/2 R1 compatibility matrix. No GO has occurred, so there is no
+new IRQ/DPC, retirement or `UnknownActive` evidence. The next experiment may
+release its per-call mapping only through the complete matching normal path
+described above; any timeout or uncertainty remains terminal quarantine.
+
 Status: **fail-closed development path; not deployment-qualified**, 2026-10-23.
 Implementation base: `fix/p0-irq-start-dma-gating` at merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
 Final PR #10 source-review parent: `fae8a50bb2b622628cd57e18723c3037698f06b5`; the merge tree is identical.

@@ -1,6 +1,24 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Current Batch 20 gate
+## Current Batch 21 gate
+
+The exact-shape candidate is installed as `oem106.inf`, version
+`0.2026.1029.1`, with loaded SYS SHA-256
+`647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+The corrected PowerShell 5.1 launcher resolved PnPUtil inside its elevated
+process and performed one captured installation with no retry. START, IRQ
+connection and all five interface publications succeeded. Device state is
+`OK`, problem code zero and service `LecS65AcqDrv` is running.
+
+The exact-once runtime runner then completed R0 9/9 and R1 2/2. It observed
+trace size `0x110`, register-list size `0x2CAE`, PCI `1570:0005` and matching
+START values `0x00000002`. Eleven attempt and eleven result records prove that
+no command was repeated. No real MAM GO has occurred. Software disk inventory
+alone cannot prove physical disconnection of the productive x86 disk, so the
+next active step remains blocked on explicit physical-isolation confirmation
+and a separate owner authorization for the exact diagnostic command.
+
+## Batch 20 gate
 
 The current installed development package is `oem105.inf`, version
 `0.2026.1028.1`, loaded SYS SHA-256
