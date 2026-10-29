@@ -303,11 +303,13 @@ LecDmaPnpStartNoLaunch(
 }
 
 typedef struct _LECS65_DMA_LEGACY_TRANSFER_BRIDGE {
+    LECS65_DMA_LEGACY_TRANSFER_VALIDATE Validate;
     LECS65_DMA_LEGACY_TRANSFER_EXECUTE Execute;
     PVOID ExecuteContext;
     PHYSICAL_ADDRESS DescriptorTable;
     ULONG DescriptorEntries;
     ULONG TransferBytes;
+    LECS65_FIRST_MAM_SHAPE Shape;
     PLECS65_SG_SYNC_OWNER MappingOwner;
     ULONGLONG MappingToken;
     NTSTATUS ExecuteStatus;
@@ -376,6 +378,7 @@ LecDmaPnpExecuteLegacyTransfer(
     _In_ ULONG_PTR OwnerId,
     _In_ ULONG_PTR FileId,
     _In_opt_ volatile BOOLEAN* CancelRequested,
+    _In_opt_ LECS65_DMA_LEGACY_TRANSFER_VALIDATE Validate,
     _In_ LECS65_DMA_LEGACY_TRANSFER_EXECUTE Execute,
     _Inout_ PVOID ExecuteContext,
     _Out_ PLECS65_DMA_PREPARE_RESULT Result)
@@ -399,7 +402,11 @@ LecDmaPnpExecuteLegacyTransfer(
     if (Stage == NULL || Result == NULL || LockedMdlChain == NULL ||
         Length == 0 || Length >= 0x01000000UL ||
         (Length >= 0x400UL && (Length & 0x3FFUL) != 0) || OwnerId == 0 ||
-        FileId == 0 || Execute == NULL) {
+        FileId == 0 || Execute == NULL
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+        || Validate == NULL
+#endif
+        ) {
         return STATUS_INVALID_PARAMETER;
     }
     RtlZeroMemory(Result, sizeof(*Result));
@@ -501,6 +508,23 @@ LecDmaPnpExecuteLegacyTransfer(
     if (CancelRequested != NULL && *CancelRequested) {
         status = STATUS_CANCELLED;
         goto CancelAndRelease;
+    }
+    bridge.Validate = Validate;
+    bridge.Shape.Channel = 0;
+    bridge.Shape.Config = 0;
+    bridge.Shape.TransferBytes = Length;
+    bridge.Shape.SegmentCount = count;
+    bridge.Shape.FirstDeviceAddress = segments[0].DeviceAddress;
+    bridge.Shape.FirstSegmentBytes = segments[0].LengthBytes;
+    bridge.Shape.DescriptorTableDeviceAddress =
+        Stage->AdapterContext->TableLogical.QuadPart;
+    bridge.Shape.DescriptorTable =
+        (const LECS65_DMA_LAYOUT_ENTRY*)Stage->AdapterContext->TableVirtual;
+    bridge.Shape.DescriptorTableBytes = Stage->AdapterContext->TableLength;
+    bridge.Shape.DescriptorEntries = transaction->DescriptorEntries;
+    if (bridge.Validate != NULL) {
+        status = bridge.Validate(ExecuteContext, &bridge.Shape);
+        if (!NT_SUCCESS(status)) goto CancelAndRelease;
     }
     txResult = LecDmaTransactionBeginArm(transaction, generation);
     if (txResult != LecDmaTxOk) goto TransactionFailure;

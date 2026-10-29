@@ -1266,3 +1266,10 @@ and repeats for a future first experiment; it does not alter the post-GO proof
 boundary. A successful IRQ/DPC/INTEN cleanup remains practical normal-operation
 evidence, not formal proof that the final physical PCI write retired. Any
 timeout or ambiguous cleanup remains terminal `UnknownActive` quarantine.
+
+Batch 20 expanded this validation to the actual single SG element, exact
+descriptor payload/address, common-buffer alignment and 32-bit range, and the
+terminator. The signed candidate was not installed: the captured launcher
+stopped before PnPUtil dispatch. Consequently no mapping entered DeviceActive,
+no latch was consumed by hardware execution, and there is no new retirement or
+UnknownActive state to classify.

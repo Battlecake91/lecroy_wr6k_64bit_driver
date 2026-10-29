@@ -1,40 +1,42 @@
 # Current project status
 
-## Batch 19 bounded MAM DMA qualification
+## Batch 20 first-transfer preparation
 
-- The signed development package was built once and installed once as
-  `oem105.inf`, version `0.2026.1028.1`. The loaded SYS SHA-256 is
-  `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
-  Device status is `OK`, problem code is zero, the service is running and all
-  five interfaces are published.
-- Package hashes are INF
-  `60C744B8C8BFC54C6585EA0571B1683C5FF9DA1580F20196EF376FA3A34DA657`,
-  CAT `3E7F9596E06638178998EC50D40BC3BB3374EB5EAB205A89F3280DC064D17026`,
-  signed SYS `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`,
-  PDB `B95CE60B010541C63EEF253F96BB9403C6B1FE25F16CDAC8E514FE4773AA1E74`
+- Source commit `389add8559c82a656e5e7a8b45bae12847f72bb5`
+  strengthens the first-MAM gate around the actual Windows DMA mapping and
+  encoded descriptor table. It requires channel `0x30`, config `0xC00`, 16
+  bytes, one complete SG segment, a 32-bit aligned/ranged logical address, two
+  exact descriptors including `{0,0}`, and atomically consumes one attempt per
+  loaded FDO before any acquisition MMIO. The default production build remains
+  no-launch.
+- Debug and Release x64 builds completed with zero warnings or errors. The
+  package workflow recorded 846/846 functional checks and 66,000/66,000 stress
+  iterations. The focused gate suite passed 17/17, including shape, descriptor,
+  range, repeat and concurrent-handle rejection.
+- The signed but uninstalled Release candidate is version `0.2026.1029.1`.
+  Its hashes are INF
+  `653622D71A7E4F62954A441947C691D090AC6ABF4B3FDC6BF342BEBF24F88B06`,
+  CAT `E28B7EC2870454CFF6B88747D4496C67FCF3F1F8D0045FDB57E22E6D7752DD83`,
+  SYS `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`,
+  PDB `AF8FF333B31BCA2FEBD40ACE87BE741296D46F028861D48EF40A95CB093ADCB3`
   and manifest
-  `91CE1ABA6036DAF4068BB395533CA60D0676DDA11CD54A95EFD8380953BFF991`.
-  Authenticode, local chain, CAT membership and SYS/PDB identity passed.
-- The one-shot runtime matrix passed 9/9 R0 and 2/2 R1. Trace size was `0x110`,
-  register-list size was `0x2CAE`, PCI identity was `1570:0005`, observed BDF
-  was `5:1.0`, IRQ was 19 and both START reads returned `0x00000002`.
-- The real GO was deliberately not issued. Final source review found that the
-  installed gate admitted otherwise valid MAM requests without enforcing the
-  authorized channel `0x30`, config `0xC00`, 16-byte, one-SG-segment shape or a
-  per-loaded-driver one-shot latch. No launch-attempt marker was created; there
-  is no IRQ, DPC, payload, completion, mapping-retirement or quarantine evidence
-  from a launched transfer.
-- The correction is offline only. A default-off `FirstMamExperimentOnly` mode
-  validates the exact request and two-entry descriptor table immediately before
-  MMIO, then atomically consumes a per-FDO latch. Debug and Release x64 builds
-  completed without warnings or errors; the full Dry suite, 5,000 DMA and 1,000
-  INTEN default stress, 50,000 DMA and 10,000 INTEN expanded stress, and the
-  PowerShell 5.1 package compatibility suite (28/28) passed. It has not been
-  signed, installed or exercised on hardware.
-- Software inventory exposed only the x64 NVMe system disk. Repository evidence
-  records the owner's separate-disk topology, but software cannot identify an
-  absent disk by model/serial. This evidence did not override the failed binary
-  gate. Keep XStream and acquisition clients closed while `oem105.inf` is active.
+  `000055E084E4554669ED8D74D2EB747FCA5393DF19415AB14EA0B57E486BE653`.
+  Authenticode, the local chain, CAT membership, SYS/PDB identity and all three
+  diagnostic/experiment markers passed.
+- The first `InstallWithCapture` launcher attempt established kernel-capture
+  readiness but failed closed before installation because its caller passed
+  the literal text `$env:SystemRoot\System32\pnputil.exe` instead of an absolute
+  path. Evidence records `CaptureInvocations=1`, `InstallInvocations=0` and no
+  install-attempt marker. DebugView was then stopped; no DBGV component remains.
+- The installed driver is therefore still `oem105.inf`, version
+  `0.2026.1028.1`, loaded SYS SHA-256
+  `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
+  Before/after passive baselines both show device `OK`, problem code zero, a
+  running service and five interfaces at observed BDF `5:1.0`. No Batch 20
+  R0/R1 matrix or GO was dispatched.
+- Software again enumerated only the x64 NVMe disk. Physical disconnection of
+  the productive x86 disk remains unconfirmed and independently blocks GO.
+  Keep XStream and all acquisition clients closed while `oem105.inf` is active.
 
 ## Batch 18 offline MAM DMA restoration
 

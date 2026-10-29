@@ -1,6 +1,6 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Current Batch 19 gate
+## Current Batch 20 gate
 
 The current installed development package is `oem105.inf`, version
 `0.2026.1028.1`, loaded SYS SHA-256
@@ -10,13 +10,17 @@ first DMA GO did not occur because final review found that this installed binary
 did not enforce the exact one-shot experiment shape inside the kernel. While it
 is loaded, keep XStream and all acquisition clients closed.
 
-The next active runtime stage is not XStream. It requires a newly authorized
-signing and installation of the offline-qualified exact-shape candidate, then a
-fresh passive preflight and a separately bounded first GO. The candidate must
-identify `FirstMamExperimentOnly=true` in its manifest and binary marker and
-must enforce channel `0x30`, config `0xC00`, 16 bytes, one SG segment plus
-terminator and a per-loaded-FDO atomic one-shot latch. No authorization from
-Batch 19 may be reused.
+The exact-shape candidate is now signed and hash-frozen as version
+`0.2026.1029.1`, but not installed. Its first captured installation launcher
+failed before PnPUtil dispatch because the caller passed a literal environment
+variable instead of an absolute executable path. The evidence contains no
+install-attempt marker and reports `InstallInvocations=0`; `oem105.inf` remains
+loaded and healthy. A corrected active launcher run requires explicit owner
+authorization. After installation, 9/9 R0 and 2/2 R1 must pass before GO.
+
+Physical isolation is an independent gate. Software enumerates only the x64
+NVMe system disk but cannot prove that the absent productive x86 disk is
+physically disconnected. Obtain an explicit owner confirmation before GO.
 
 This is the execution procedure for the Phase 2C WR6k test host. Kernel Runtime
 Qualification Batch 1 installed the frozen instrumented candidate once and

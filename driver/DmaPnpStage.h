@@ -2,6 +2,7 @@
 
 #include "DmaSyncStage.h"
 #include "DmaTransaction.h"
+#include "DmaExperimentGate.h"
 
 /*
  * INACTIVE software-only parent for the staged DMA implementation.
@@ -207,6 +208,10 @@ typedef struct _LECS65_DMA_LEGACY_TRANSFER_OUTCOME {
 } LECS65_DMA_LEGACY_TRANSFER_OUTCOME,
     *PLECS65_DMA_LEGACY_TRANSFER_OUTCOME;
 
+typedef NTSTATUS (*LECS65_DMA_LEGACY_TRANSFER_VALIDATE)(
+    _Inout_ PVOID Context,
+    _In_ const LECS65_FIRST_MAM_SHAPE* Shape);
+
 typedef NTSTATUS (*LECS65_DMA_LEGACY_TRANSFER_EXECUTE)(
     _Inout_ PVOID Context,
     _In_ ULONGLONG Generation,
@@ -244,6 +249,7 @@ NTSTATUS LecDmaPnpExecuteLegacyTransfer(
     _In_ ULONG_PTR OwnerId,
     _In_ ULONG_PTR FileId,
     _In_opt_ volatile BOOLEAN* CancelRequested,
+    _In_opt_ LECS65_DMA_LEGACY_TRANSFER_VALIDATE Validate,
     _In_ LECS65_DMA_LEGACY_TRANSFER_EXECUTE Execute,
     _Inout_ PVOID ExecuteContext,
     _Out_ PLECS65_DMA_PREPARE_RESULT Result);

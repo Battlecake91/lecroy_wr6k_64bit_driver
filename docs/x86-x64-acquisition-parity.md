@@ -15,6 +15,11 @@ the smallest reviewed single-channel experiment. Multi-channel requests,
 repeated transfers and XStream acquisition remain outside that gate and require
 later, separately authorized lifecycle qualification.
 
+Batch 20 produced the signed exact-shape candidate but did not install it. The
+captured installation launcher failed before PnPUtil dispatch, so the installed
+binary, R0/R1 status and absence of a real transfer remain those of Batch 19.
+This outcome adds no IRQ, DPC, payload or normal-retirement parity evidence.
+
 ## Established compatibility reference
 
 The original x86 driver registers a process-owned user buffer through

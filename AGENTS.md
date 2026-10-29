@@ -38,9 +38,11 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   problem-free with five interfaces. This installed development build can admit
   MAM DMA more broadly than the Batch 19 one-shot authorization required. The
   first real GO was therefore skipped. Keep XStream and all acquisition closed
-  until a separately reviewed exact-shape, exact-once build is signed and loaded
-  or an authorized rollback is performed. Physical DMA idle and acquisition
-  remain unqualified.
+  until the separately reviewed exact-shape, exact-once Batch 20 build is
+  loaded or an authorized rollback is performed. The signed Batch 20 candidate
+  exists, but its first installation launcher failed before PnPUtil dispatch;
+  the installed package is unchanged. Physical DMA idle and acquisition remain
+  unqualified.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to a compiled
@@ -49,7 +51,8 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   and abnormal quarantine. A separate default-off first-experiment build gate
   now restricts execution to channel `0x30`, config `0xC00`, 16 bytes, one SG
   segment plus terminator, and one attempt per loaded FDO. It is Dry-qualified
-  but not signed or installed; no live DMA result exists for this implementation.
+  and locally test-signed but not installed; no live DMA result exists for this
+  implementation.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.
