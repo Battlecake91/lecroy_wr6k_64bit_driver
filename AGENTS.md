@@ -31,18 +31,14 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- The current x64 test package is `oem105.inf`, version `0.2026.1028.1`, with
+- The current x64 test package is `oem106.inf`, version `0.2026.1029.1`, with
   loaded SYS SHA-256
-  `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
-  Its 9/9 R0, 2/2 R1 and one captured PnP restart passed; the device remains
-  problem-free with five interfaces. This installed development build can admit
-  MAM DMA more broadly than the Batch 19 one-shot authorization required. The
-  first real GO was therefore skipped. Keep XStream and all acquisition closed
-  until the separately reviewed exact-shape, exact-once Batch 20 build is
-  loaded or an authorized rollback is performed. The signed Batch 20 candidate
-  exists, but its first installation launcher failed before PnPUtil dispatch;
-  the installed package is unchanged. Physical DMA idle and acquisition remain
-  unqualified.
+  `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+  Its single captured installation and exact-once 9/9 R0 plus 2/2 R1 matrix
+  passed; the device remains problem-free with five interfaces. This is the
+  exact-shape, exact-once first-MAM experiment build. No real GO has occurred.
+  Keep XStream and all acquisition closed until physical isolation of the
+  productive x86 disk and a separate owner GO authorization are both recorded.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to a compiled
@@ -51,7 +47,7 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   and abnormal quarantine. A separate default-off first-experiment build gate
   now restricts execution to channel `0x30`, config `0xC00`, 16 bytes, one SG
   segment plus terminator, and one attempt per loaded FDO. It is Dry-qualified
-  and locally test-signed but not installed; no live DMA result exists for this
+  and locally test-signed and installed; no live DMA result exists for this
   implementation.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 

@@ -1,5 +1,19 @@
 # Regression test architecture
 
+## Batch 21 launcher and live compatibility qualification
+
+The production capture/install launcher resolves an omitted PnPUtil path in
+the elevated Windows PowerShell 5.1 process. Its exact resolver rejects literal
+`$env:`/`%VAR%` text, relative paths and missing files while retaining absolute
+path, identity and hash checks. Focused tests pass 41/41, including spaces,
+parent-process expansion, elevated serialization and zero-dispatch failures.
+
+The immutable candidate was then installed once. The permanent runtime runner
+completed R0 9/9 and R1 2/2 with eleven exclusive attempt markers and eleven
+results. Observed contracts were trace size `0x110`, register-list size
+`0x2CAE`, PCI `1570:0005`, and matching START reads `0x00000002`. These results
+do not exercise `CFDC2124`, `CFDC2138`, GO, IRQ/DPC completion or DMA cleanup.
+
 ## First-MAM experiment build contract
 
 `-FirstMamExperimentOnly` is valid only together with `-WdmV3MamDma`. The

@@ -1,5 +1,15 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 21 bounded first-transfer status
+
+The exact-shape, exact-once candidate is installed as `oem106.inf`, version
+`0.2026.1029.1`. One captured installation and the complete 9/9 R0 plus 2/2 R1
+matrix passed. PCI identity remains `1570:0005`, and both qualified START reads
+return `0x00000002`. No MAM GO has occurred, so this adds installed ABI and
+START evidence but no physical IRQ, DPC, payload or mapping-retirement parity.
+The next parity step remains one separately authorized 16-byte transfer after
+positive physical isolation of the productive x86 disk.
+
 ## Batch 19 bounded first-transfer conclusion
 
 The historical parity review supports a 16-byte, one-channel MAM request with
@@ -79,7 +89,7 @@ separately authorized XStream run.
 
 ## Remaining runtime gap
 
-The development MAM gate has not been signed, installed or exercised. The next
-bounded milestone is one no-XStream transfer using the exact 16-byte vector,
+The development MAM gate is signed and installed but has not been exercised.
+The next bounded milestone is one no-XStream transfer using the exact 16-byte vector,
 one DMA-logical segment and two descriptors, followed by passive device-health
 checks. No retry is allowed. A separate authorization is required.

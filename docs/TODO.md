@@ -4,15 +4,12 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Install and qualify the signed exact-shape candidate before acquisition.**
-  `oem105.inf` passed installation and 9/9 R0 plus 2/2 R1, but its final kernel
-  gate did not enforce the authorized exact request or one attempt per loaded
-  FDO, so GO was skipped. The corrected Batch 20 candidate is signed and
-  hash-frozen, but its first installation launcher failed before PnPUtil
-  dispatch because the caller supplied a non-absolute literal path. Keep
-  XStream closed. Obtain explicit authorization for one corrected captured
-  installation, run 9/9 R0 and 2/2 R1, and positively confirm physical x86-disk
-  disconnection before one 16-byte/channel-`0x30`/config-`0xC00` transfer.
+- [ ] **Execute the bounded first physical MAM transfer.** The exact-shape,
+  exact-once candidate is installed as `oem106.inf`; its captured installation
+  and 9/9 R0 plus 2/2 R1 matrix passed. Keep XStream closed. Positively confirm
+  that the productive x86 disk is physically disconnected and obtain the
+  separate owner GO authorization before the single 16-byte/channel-`0x30`/
+  config-`0xC00` experiment. Never retry an attempted or uncertain GO.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

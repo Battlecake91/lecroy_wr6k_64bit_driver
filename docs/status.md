@@ -1,5 +1,30 @@
 # Current project status
 
+## Batch 21 installed first-transfer gate
+
+- The Batch 20 frozen candidate was installed exactly once as `oem106.inf`,
+  version `0.2026.1029.1`. Loaded SYS SHA-256 is
+  `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+  The captured launcher reports one capture, one installation and no PnP
+  restart or retry. The device is `OK`, problem code is zero, the service is
+  running and all five interfaces are active.
+- The PowerShell 5.1 launcher now resolves an omitted PnPUtil path inside the
+  elevated process. It rejects literal environment-variable text, relative or
+  missing paths and retains absolute-path/hash validation. Focused production-
+  path tests pass 41/41.
+- The installed candidate completed the permanent exact-once runtime matrix:
+  R0 9/9 and R1 2/2 PASS. Trace size is `0x110`, register-list size is
+  `0x2CAE`, PCI identity is `1570:0005`, observed BDF is evidence-only `5:1.0`,
+  and both START reads are `0x00000002`. Eleven dispatch markers and eleven
+  completion records exist; no target failure event was observed.
+- The install trace proves the experiment markers, successful local START,
+  IRQ connection and five interface publications. Forwarded
+  `STATUS_NOT_SUPPORTED` values remain attributable to the lower stack.
+- Software inventory exposes only the healthy x64 NVMe disk
+  `HFM256GDHTNG-8510B`, serial `ACE4_2E00_9590_A2AA.`. This does not prove that
+  the productive x86 disk is physically disconnected. No MAM GO has occurred;
+  physical confirmation and a separate owner GO authorization remain required.
+
 ## Batch 20 first-transfer preparation
 
 - Source commit `389add8559c82a656e5e7a8b45bae12847f72bb5`
@@ -13,7 +38,7 @@
   package workflow recorded 846/846 functional checks and 66,000/66,000 stress
   iterations. The focused gate suite passed 17/17, including shape, descriptor,
   range, repeat and concurrent-handle rejection.
-- The signed but uninstalled Release candidate is version `0.2026.1029.1`.
+- The signed Release candidate is version `0.2026.1029.1`.
   Its hashes are INF
   `653622D71A7E4F62954A441947C691D090AC6ABF4B3FDC6BF342BEBF24F88B06`,
   CAT `E28B7EC2870454CFF6B88747D4496C67FCF3F1F8D0045FDB57E22E6D7752DD83`,
