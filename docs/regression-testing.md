@@ -10,10 +10,13 @@ must record the same boolean mode. The source contracts additionally require
 the 16-byte/channel-`0x30`/config-`0xC00` checks, two descriptor entries and the
 atomic per-FDO latch.
 
-The Batch 19 offline correction passed Debug and Release x64 builds with zero
-warnings/errors, the full Windows PowerShell 5.1 Dry runner, default DMA/INTEN
-stress of 5,000/1,000, expanded stress of 50,000/10,000 and package workflow
-compatibility 28/28. These tests do not prove real DMA, IRQ completion, payload
+The Batch 20 correction passed Debug and Release x64 builds with zero
+warnings/errors, 846/846 functional checks, default DMA/INTEN stress of
+5,000/1,000, expanded stress of 50,000/10,000 and package workflow
+compatibility 28/28. The production gate unit suite is 17/17 and includes wrong
+channel/config/length, multi-segment and partial mapping, misaligned or
+out-of-range addresses, malformed payload/terminator, repeat attempts and
+concurrent handles. These tests do not prove real DMA, IRQ completion, payload
 validity or physical mapping retirement.
 
 ## Batch 18 MAM DMA integration contracts

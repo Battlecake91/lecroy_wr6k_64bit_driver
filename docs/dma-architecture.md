@@ -273,5 +273,13 @@ mismatch returns `STATUS_NOT_SUPPORTED`; a consumed latch returns
 cannot authorize another GO in the same loaded FDO.
 
 The package workflow records and verifies this mode independently of the broad
-development MAM gate. The corrected binary is only offline-qualified. It must
+development MAM gate. Batch 20 additionally validates the actual SG element,
+encoded payload/address pair, common-buffer alignment/range and `{0,0}`
+terminator before consuming the latch. The corrected version `0.2026.1029.1`
+binary is locally test-signed and hash-frozen, but it is not installed. It must
 not be confused with installed `oem105.inf`, which lacks this final restriction.
+
+The first Batch 20 installation launcher established kernel-capture readiness
+but failed before PnPUtil dispatch because its caller supplied a literal
+environment-variable expression rather than an absolute path. This is not DMA
+evidence: there was no installation, `CFDC2124`, `CFDC2138`, MMIO or GO.

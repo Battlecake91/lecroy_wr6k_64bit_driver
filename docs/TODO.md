@@ -4,14 +4,15 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Replace the broad Batch 19 development build before any acquisition.**
+- [ ] **Install and qualify the signed exact-shape candidate before acquisition.**
   `oem105.inf` passed installation and 9/9 R0 plus 2/2 R1, but its final kernel
   gate did not enforce the authorized exact request or one attempt per loaded
-  FDO, so GO was skipped. Keep XStream closed. Review, sign and install the
-  offline-qualified `FirstMamExperimentOnly` build, verify its manifest and
-  binary marker, then obtain a new authorization for exactly one no-XStream
-  16-byte/channel-`0x30`/config-`0xC00`/one-segment experiment. Do not reuse any
-  consumed Batch 19 authorization.
+  FDO, so GO was skipped. The corrected Batch 20 candidate is signed and
+  hash-frozen, but its first installation launcher failed before PnPUtil
+  dispatch because the caller supplied a non-absolute literal path. Keep
+  XStream closed. Obtain explicit authorization for one corrected captured
+  installation, run 9/9 R0 and 2/2 R1, and positively confirm physical x86-disk
+  disconnection before one 16-byte/channel-`0x30`/config-`0xC00` transfer.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
