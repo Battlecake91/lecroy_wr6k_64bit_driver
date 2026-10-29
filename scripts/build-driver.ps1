@@ -4,10 +4,16 @@ param(
     [switch]$BuildLecdiag,
     [switch]$BuildLecwatch,
     [switch]$PnpStatusDiagnostics,
+    [switch]$WdmV3MamDma,
+    [switch]$FirstMamExperimentOnly,
     [switch]$Rebuild
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($FirstMamExperimentOnly -and -not $WdmV3MamDma) {
+    throw "FirstMamExperimentOnly requires WdmV3MamDma."
+}
 
 $repo = Split-Path -Parent $PSScriptRoot
 $solution = Join-Path $repo "LecS65AcqDrv.sln"
@@ -43,6 +49,8 @@ $target = if ($Rebuild) { 'Rebuild' } else { 'Build' }
 & $msbuild $solution /m "/t:$target" "/p:Configuration=$Configuration" `
     "/p:Platform=x64" `
     ("/p:LecPnpStatusDiagnostics={0}" -f $PnpStatusDiagnostics.IsPresent.ToString().ToLowerInvariant()) `
+    ("/p:LecWdmV3MamDma={0}" -f $WdmV3MamDma.IsPresent.ToString().ToLowerInvariant()) `
+    ("/p:LecFirstMamExperimentOnly={0}" -f $FirstMamExperimentOnly.IsPresent.ToString().ToLowerInvariant()) `
     /nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Driver build failed with exit code $LASTEXITCODE."

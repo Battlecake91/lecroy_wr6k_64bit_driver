@@ -31,21 +31,25 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- The current x64 test package is `oem104.inf`, version `0.2026.1026.1`, with
+- The current x64 test package is `oem105.inf`, version `0.2026.1028.1`, with
   loaded SYS SHA-256
-  `32878635FCA12750A1B4489A542E0F71A22D002A445E824A07B5AD160F4F3E4E`.
+  `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
   Its 9/9 R0, 2/2 R1 and one captured PnP restart passed; the device remains
-  problem-free with five interfaces. Batch 17 proved live MDL-only registration,
-  one-segment WDM-v3 DMA-logical mapping, two-descriptor preparation, the closed
-  launch gate and never-launched mapping release. No GO, DMA-control MMIO or
-  acquisition occurred. Physical DMA idle and acquisition remain unqualified.
+  problem-free with five interfaces. This installed development build can admit
+  MAM DMA more broadly than the Batch 19 one-shot authorization required. The
+  first real GO was therefore skipped. Keep XStream and all acquisition closed
+  until a separately reviewed exact-shape, exact-once build is signed and loaded
+  or an authorized rollback is performed. Physical DMA idle and acquisition
+  remain unqualified.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to a compiled
   WDM-v3 DMA-logical transaction covering the original register sequence,
   exact-once GO, IRQ/DPC completion, normal mapping retirement, repeat admission
-  and abnormal quarantine. `LecWdmV3MamDma` remains default-off; no live DMA
-  result exists for this implementation.
+  and abnormal quarantine. A separate default-off first-experiment build gate
+  now restricts execution to channel `0x30`, config `0xC00`, 16 bytes, one SG
+  segment plus terminator, and one attempt per loaded FDO. It is Dry-qualified
+  but not signed or installed; no live DMA result exists for this implementation.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

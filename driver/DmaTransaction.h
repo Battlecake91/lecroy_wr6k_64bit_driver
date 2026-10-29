@@ -22,6 +22,10 @@
 #define LECS65_ENABLE_WDM_V3_MAM_DMA 0
 #endif
 
+#ifndef LECS65_FIRST_MAM_EXPERIMENT_ONLY
+#define LECS65_FIRST_MAM_EXPERIMENT_ONLY 0
+#endif
+
 typedef enum _LECS65_DMA_TRANSACTION_RESULT {
     LecDmaTxOk = 0,
     LecDmaTxInvalid,

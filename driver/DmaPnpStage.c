@@ -483,6 +483,8 @@ LecDmaPnpExecuteLegacyTransfer(
         segments[i].LengthBytes = elements[i].Length;
     }
     Result->SegmentCount = count;
+    Result->FirstDeviceAddress = segments[0].DeviceAddress;
+    Result->FirstSegmentBytes = segments[0].LengthBytes;
     txResult = LecDmaTransactionBuildDescriptors(
         transaction,
         generation,

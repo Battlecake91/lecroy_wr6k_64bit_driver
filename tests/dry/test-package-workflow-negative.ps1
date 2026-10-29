@@ -162,7 +162,12 @@ try {
     $incompleteManifest = [pscustomobject]@{
         Schema = 2
         Source = [pscustomobject]@{ WorkflowCommit = ''; DriverTree = ''; IncludeTree = '' }
-        Build = [pscustomobject]@{ PnpStatusDiagnostics = $false; Configurations = @() }
+        Build = [pscustomobject]@{
+            PnpStatusDiagnostics = $false
+            WdmV3MamDma = $false
+            FirstMamExperimentOnly = $false
+            Configurations = @()
+        }
         Regression = [pscustomobject]@{ FunctionalTestsPassed = 0; TotalStressIterations = 0 }
         Artifacts = @()
         InstallAuthorized = $false

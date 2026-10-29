@@ -4,12 +4,14 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Package and qualify the development-gated WDM-v3 MAM path.** Batch 17
-  proved live MDL registration, one DMA-logical segment, two descriptors and
-  safe pre-GO release. Batch 18 connects that owner to the original single-
-  channel MAM/IRQ sequence behind default-off `LecWdmV3MamDma`. Review, sign
-  and install a separately identifiable gated package, then authorize exactly
-  one no-XStream 16-byte experiment. Do not reuse the ordinary no-launch build.
+- [ ] **Replace the broad Batch 19 development build before any acquisition.**
+  `oem105.inf` passed installation and 9/9 R0 plus 2/2 R1, but its final kernel
+  gate did not enforce the authorized exact request or one attempt per loaded
+  FDO, so GO was skipped. Keep XStream closed. Review, sign and install the
+  offline-qualified `FirstMamExperimentOnly` build, verify its manifest and
+  binary marker, then obtain a new authorization for exactly one no-XStream
+  16-byte/channel-`0x30`/config-`0xC00`/one-segment experiment. Do not reuse any
+  consumed Batch 19 authorization.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

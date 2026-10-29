@@ -883,9 +883,26 @@ Test-Contract "package identity is explicit and output is non-overwriting" {
     $packageBuildText -match 'PackageState = if \(\$Sign\)' -and
     $packageBuildText -match '\[switch\]\$PnpStatusDiagnostics' -and
     $packageBuildText -match 'Assert-PnpDiagnosticMarkerState' -and
+    $packageBuildText -match '\[switch\]\$WdmV3MamDma' -and
+    $packageBuildText -match 'Assert-WdmV3MamDmaMarkerState' -and
     $packageBuildText -match 'Rebuild = \$true' -and
     $packageBuildText -match "DiagnosticMarker = 'PNP_STATUS:'" -and
-    $packageBuildText -match 'PnpStatusDiagnostics = \[bool\]\$PnpStatusDiagnostics'
+    $packageBuildText -match 'PnpStatusDiagnostics = \[bool\]\$PnpStatusDiagnostics' -and
+    $packageBuildText -match 'WdmV3MamDma = \[bool\]\$WdmV3MamDma'
+}
+
+Test-Contract "first MAM experiment build is exact-once and narrowly shaped" {
+    $driverProjectText -match '<LecFirstMamExperimentOnly Condition=.*?>false</LecFirstMamExperimentOnly>' -and
+    $driverProjectText -match 'LECS65_FIRST_MAM_EXPERIMENT_ONLY=1' -and
+    $ioctlText -match '#if LECS65_FIRST_MAM_EXPERIMENT_ONLY' -and
+    $ioctlText -match 'execute->Channel != 0x30U' -and
+    $ioctlText -match 'execute->Config != 0x00000C00UL' -and
+    $ioctlText -match 'TransferBytes != 0x10UL' -and
+    $ioctlText -match 'DescriptorEntries != 2' -and
+    $ioctlText -match 'FirstMamExperimentConsumed, 1, 0' -and
+    $packageBuildText -match '\[switch\]\$FirstMamExperimentOnly' -and
+    $packageBuildText -match 'Assert-FirstMamExperimentMarkerState' -and
+    $packageBuildText -match 'FirstMamExperimentOnly requires WdmV3MamDma'
 }
 
 Test-Contract "package signing is opt-in and thumbprint-bound" {

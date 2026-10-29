@@ -1,5 +1,41 @@
 # Current project status
 
+## Batch 19 bounded MAM DMA qualification
+
+- The signed development package was built once and installed once as
+  `oem105.inf`, version `0.2026.1028.1`. The loaded SYS SHA-256 is
+  `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
+  Device status is `OK`, problem code is zero, the service is running and all
+  five interfaces are published.
+- Package hashes are INF
+  `60C744B8C8BFC54C6585EA0571B1683C5FF9DA1580F20196EF376FA3A34DA657`,
+  CAT `3E7F9596E06638178998EC50D40BC3BB3374EB5EAB205A89F3280DC064D17026`,
+  signed SYS `09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`,
+  PDB `B95CE60B010541C63EEF253F96BB9403C6B1FE25F16CDAC8E514FE4773AA1E74`
+  and manifest
+  `91CE1ABA6036DAF4068BB395533CA60D0676DDA11CD54A95EFD8380953BFF991`.
+  Authenticode, local chain, CAT membership and SYS/PDB identity passed.
+- The one-shot runtime matrix passed 9/9 R0 and 2/2 R1. Trace size was `0x110`,
+  register-list size was `0x2CAE`, PCI identity was `1570:0005`, observed BDF
+  was `5:1.0`, IRQ was 19 and both START reads returned `0x00000002`.
+- The real GO was deliberately not issued. Final source review found that the
+  installed gate admitted otherwise valid MAM requests without enforcing the
+  authorized channel `0x30`, config `0xC00`, 16-byte, one-SG-segment shape or a
+  per-loaded-driver one-shot latch. No launch-attempt marker was created; there
+  is no IRQ, DPC, payload, completion, mapping-retirement or quarantine evidence
+  from a launched transfer.
+- The correction is offline only. A default-off `FirstMamExperimentOnly` mode
+  validates the exact request and two-entry descriptor table immediately before
+  MMIO, then atomically consumes a per-FDO latch. Debug and Release x64 builds
+  completed without warnings or errors; the full Dry suite, 5,000 DMA and 1,000
+  INTEN default stress, 50,000 DMA and 10,000 INTEN expanded stress, and the
+  PowerShell 5.1 package compatibility suite (28/28) passed. It has not been
+  signed, installed or exercised on hardware.
+- Software inventory exposed only the x64 NVMe system disk. Repository evidence
+  records the owner's separate-disk topology, but software cannot identify an
+  absent disk by model/serial. This evidence did not override the failed binary
+  gate. Keep XStream and acquisition clients closed while `oem105.inf` is active.
+
 ## Batch 18 offline MAM DMA restoration
 
 - The legacy `CFDC2124 -> CFDC2138 -> IRQ/DPC -> completion` ABI is connected

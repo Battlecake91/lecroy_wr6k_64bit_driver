@@ -297,9 +297,13 @@ exit 0
             CleanRebuild = $true
             PnpStatusDiagnostics = $true
             DiagnosticMarker = 'PNP_STATUS:'
+            WdmV3MamDma = $true
+            WdmV3MamDmaMarker = 'LECS65_WDM_V3_MAM_DMA_ENABLED'
+            FirstMamExperimentOnly = $true
+            FirstMamExperimentMarker = 'LECS65_FIRST_MAM_EXPERIMENT_ONLY'
             Configurations = @(
-                [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = $true }
-                [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = $true }
+                [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true }
+                [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true }
             )
         }
         Regression = [ordered]@{
@@ -348,6 +352,18 @@ exit 0
     $ambiguous.Build.Configurations[1].PnpStatusDiagnostics = $false
     Expect-Rejection 'mixed diagnostic build modes are rejected' {
         Assert-ManifestComplete -Manifest $ambiguous
+    }
+
+    $ambiguousDma = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $ambiguousDma.Build.Configurations[1].WdmV3MamDma = $false
+    Expect-Rejection 'mixed WDM-v3 MAM DMA build modes are rejected' {
+        Assert-ManifestComplete -Manifest $ambiguousDma
+    }
+
+    $ambiguousExperiment = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $ambiguousExperiment.Build.Configurations[1].FirstMamExperimentOnly = $false
+    Expect-Rejection 'mixed first-MAM experiment modes are rejected' {
+        Assert-ManifestComplete -Manifest $ambiguousExperiment
     }
 
     $suiteText = @'

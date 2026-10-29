@@ -7,6 +7,8 @@ param(
     [Parameter(Mandatory=$true)][string]$DriverVer,
     [Parameter(Mandatory=$true)][string]$OutputRoot,
     [switch]$PnpStatusDiagnostics,
+    [switch]$WdmV3MamDma,
+    [switch]$FirstMamExperimentOnly,
     [switch]$Sign,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint
 )
@@ -47,7 +49,7 @@ if ($scenario -eq 'DescendantAlive') {
 
 Write-Output "MOCK WORKFLOW START scenario=$scenario"
 Write-Output "MOCK WORKING DIRECTORY: $((Get-Location).Path)"
-Write-Output "MOCK ARGUMENTS: configuration=$RuntimeConfiguration driverver=$DriverVer diagnostics=$([bool]$PnpStatusDiagnostics) signed=$([bool]$Sign) thumbprint=$CertificateThumbprint"
+Write-Output "MOCK ARGUMENTS: configuration=$RuntimeConfiguration driverver=$DriverVer diagnostics=$([bool]$PnpStatusDiagnostics) wdmv3mamdma=$([bool]$WdmV3MamDma) firstmamexperiment=$([bool]$FirstMamExperimentOnly) signed=$([bool]$Sign) thumbprint=$CertificateThumbprint"
 if ($Sign -and [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     throw 'Mock signing requires an explicit thumbprint.'
 }
@@ -171,9 +173,13 @@ $manifest = [ordered]@{
         CleanRebuild = $true
         PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
         DiagnosticMarker = 'PNP_STATUS:'
+        WdmV3MamDma = [bool]$WdmV3MamDma
+        WdmV3MamDmaMarker = 'LECS65_WDM_V3_MAM_DMA_ENABLED'
+        FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly
+        FirstMamExperimentMarker = 'LECS65_FIRST_MAM_EXPERIMENT_ONLY'
         Configurations = @(
-            [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics }
-            [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics }
+            [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly }
+            [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly }
         )
     }
     Regression = [ordered]@{

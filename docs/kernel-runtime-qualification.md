@@ -1,5 +1,23 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Current Batch 19 gate
+
+The current installed development package is `oem105.inf`, version
+`0.2026.1028.1`, loaded SYS SHA-256
+`09BCC6BCD7A3BE9DC4EFD4B12C66E125B3F9C4455D97AA35C10CDB356EF69AC6`.
+Its captured installation and 9/9 R0 plus 2/2 R1 matrix passed. The authorized
+first DMA GO did not occur because final review found that this installed binary
+did not enforce the exact one-shot experiment shape inside the kernel. While it
+is loaded, keep XStream and all acquisition clients closed.
+
+The next active runtime stage is not XStream. It requires a newly authorized
+signing and installation of the offline-qualified exact-shape candidate, then a
+fresh passive preflight and a separately bounded first GO. The candidate must
+identify `FirstMamExperimentOnly=true` in its manifest and binary marker and
+must enforce channel `0x30`, config `0xC00`, 16 bytes, one SG segment plus
+terminator and a per-loaded-FDO atomic one-shot latch. No authorization from
+Batch 19 may be reused.
+
 This is the execution procedure for the Phase 2C WR6k test host. Kernel Runtime
 Qualification Batch 1 installed the frozen instrumented candidate once and
 completed its installation-induced START. The current package is `oem101.inf`,
