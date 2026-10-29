@@ -287,6 +287,28 @@ evidence: there was no installation, `CFDC2124`, `CFDC2138`, MMIO or GO.
 Batch 21 corrected only the launcher boundary and installed that immutable
 candidate as `oem106.inf`. The marker-bearing SYS hash is
 `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
-The complete safe R0/R1 matrix passed after installation. No registration,
-descriptor publication, MAM register programming or GO has yet occurred; the
-physical-disk and owner-authorization gates remain independent prerequisites.
+The complete safe R0/R1 matrix passed after installation. At the end of Batch
+21 no registration, descriptor publication, MAM register programming or GO had
+occurred; Batch 23 later satisfied both independent gates and ran once.
+
+## Batch 23 first physical transfer
+
+One authorized 16-byte/channel-`0x30`/config-`0xC00` transfer exercised the
+installed WDM-v3 path. Runtime evidence contains one SG data segment, two
+gate-validated descriptors including `{0,0}`, one atomic gate consumption and
+one successful transaction summary: launch admitted, completion observed,
+mapping released, no quarantine and `STATUS_SUCCESS`. The client received a
+four-byte count of 16 and successfully unregistered the persistent token.
+
+On this implementation, `CompletionObserved` cannot be produced by successful
+dispatch alone. The ISR must observe enabled physical INTST bit 0 for the active
+generation; the DPC must consume that generation and signal the selected
+transfer; cleanup must then clear INTEN bit 0 without uncertainty. Only after
+that chain does the transaction retire and `LecSgSyncReleaseCompleted` release
+the Windows mapping. The capture did not emit one line per MMIO write, so the
+original MAM/SGTA/IIMTC/INTEN/IIMCL/MAMRGO order is source-proven and exercised
+as one path, not independently probed at every register.
+
+The diagnostic initialized but did not print or retain the 16-byte destination
+after completion. This result proves the bounded DMA/IRQ/DPC/lifetime path for
+the test shape, not waveform content, repeated operation or XStream parity.

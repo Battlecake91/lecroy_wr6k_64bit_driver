@@ -4,12 +4,14 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Execute the bounded first physical MAM transfer.** The exact-shape,
-  exact-once candidate is installed as `oem106.inf`; its captured installation
-  and 9/9 R0 plus 2/2 R1 matrix passed. Keep XStream closed. Positively confirm
-  that the productive x86 disk is physically disconnected and obtain the
-  separate owner GO authorization before the single 16-byte/channel-`0x30`/
-  config-`0xC00` experiment. Never retry an attempted or uncertain GO.
+- [ ] **Qualify one real XStream waveform without bypassing the consumed
+  experiment gate.** The bounded 16-byte MAM transfer passed with matching
+  IRQ/DPC completion and normal mapping retirement. Prepare a separately
+  signed/installed development candidate whose reviewed acquisition policy
+  supports the exact original-compatible XStream request lifecycle; do not
+  reuse or reset the consumed one-shot latch. Start with one waveform, verify
+  payload and completion semantics, then separately qualify rearming, repeated
+  acquisition, trigger control and normal Stop/restart.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

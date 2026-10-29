@@ -36,9 +36,11 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
   Its single captured installation and exact-once 9/9 R0 plus 2/2 R1 matrix
   passed; the device remains problem-free with five interfaces. This is the
-  exact-shape, exact-once first-MAM experiment build. No real GO has occurred.
-  Keep XStream and all acquisition closed until physical isolation of the
-  productive x86 disk and a separate owner GO authorization are both recorded.
+  exact-shape, exact-once first-MAM experiment build. One authorized 16-byte
+  MAM transfer completed through matching physical IRQ/DPC evidence, returned
+  16 bytes, retired its mapping normally and left the device healthy. The
+  one-shot gate is now consumed for this loaded FDO. Keep XStream closed until
+  the separately reviewed single-waveform stage is authorized.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to a compiled
@@ -47,8 +49,8 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   and abnormal quarantine. A separate default-off first-experiment build gate
   now restricts execution to channel `0x30`, config `0xC00`, 16 bytes, one SG
   segment plus terminator, and one attempt per loaded FDO. It is Dry-qualified
-  and locally test-signed and installed; no live DMA result exists for this
-  implementation.
+  and locally test-signed and installed. Its first bounded live transfer passed;
+  repeated DMA, timeout/cancellation and XStream acquisition remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

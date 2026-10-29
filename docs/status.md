@@ -1,5 +1,33 @@
 # Current project status
 
+## Batch 23 first physical MAM DMA
+
+- The owner confirmed that the productive x86 disk was physically disconnected
+  and authorized one 16-byte MAM GO. The authorization was recorded before the
+  exclusive dispatch marker. A PowerShell literal error stopped one orchestration
+  invocation before authorization recording, marker creation or process start;
+  it caused no device command and did not consume the hardware authorization.
+- The hash-pinned command
+  `lecdiag mam-dma-once I-AUTHORIZE-ONE-MAM-GO` was then dispatched exactly
+  once against installed `oem106.inf`. It returned exit code zero without
+  timeout: the four-byte result contained completed count 16, and the token was
+  unregistered.
+- Kernel evidence records exactly one `CFDC2124`, one exact-shape gate
+  consumption, one `CFDC2138` and one `CFDC2128`. The WDM-v3 transaction had
+  one 16-byte SG segment and two validated descriptors including the terminator.
+  It reports `launchDenied=0`, `completed=1`, `released=1`, `quarantined=0` and
+  `STATUS_SUCCESS`.
+- `completed=1` on this production path requires a matching physical bit-0 IRQ,
+  generation-matched DPC consumption and event delivery, followed by successful
+  INTEN cleanup. Normal retirement then released the Windows DMA mapping. No
+  `UnknownActive` quarantine exists. The capture does not log each register
+  write separately and the diagnostic did not retain or print the 16-byte
+  payload, so no waveform-content claim is made.
+- Passive post-test state remains `OK`, problem code zero, service running,
+  five interfaces and the exact loaded SYS hash. No new target Kernel-PnP,
+  Code Integrity or WHEA error was observed. DebugView and Dbgv were removed.
+  No second transfer is permitted in this batch.
+
 ## Batch 21 installed first-transfer gate
 
 - Batch 22 passive preflight reconfirmed the complete installed identity without
@@ -37,8 +65,8 @@
   `STATUS_NOT_SUPPORTED` values remain attributable to the lower stack.
 - Software inventory exposes only the healthy x64 NVMe disk
   `HFM256GDHTNG-8510B`, serial `ACE4_2E00_9590_A2AA.`. This does not prove that
-  the productive x86 disk is physically disconnected. No MAM GO has occurred;
-  physical confirmation and a separate owner GO authorization remain required.
+  the productive x86 disk is physically disconnected. This Batch 21 pre-GO
+  condition was later satisfied explicitly for the single Batch 23 transfer.
 
 ## Batch 20 first-transfer preparation
 
