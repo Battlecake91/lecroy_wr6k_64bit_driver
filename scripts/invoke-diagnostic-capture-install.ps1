@@ -51,7 +51,7 @@ param(
     [switch]$AuthorizeInstallation,
     [switch]$AuthorizePnpRestart,
     [switch]$AuthorizeNoLaunch,
-    [string]$PnPUtilPath = "$env:SystemRoot\System32\pnputil.exe",
+    [string]$PnPUtilPath,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedPnPUtilHash,
     [string]$NoLaunchRunnerPath,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
@@ -99,6 +99,28 @@ function Get-AbsolutePath {
         throw "$Label must be an absolute path: $Path"
     }
     return [IO.Path]::GetFullPath($Path)
+}
+
+function Resolve-PnPUtilPath {
+    param([AllowEmptyString()][string]$Path)
+
+    $candidate = $Path
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        if ([string]::IsNullOrWhiteSpace($env:SystemRoot) -or
+            -not [IO.Path]::IsPathRooted($env:SystemRoot)) {
+            throw 'SystemRoot is unavailable or is not an absolute path.'
+        }
+        $candidate = Join-Path $env:SystemRoot 'System32\pnputil.exe'
+    }
+    elseif ($candidate -match '(?i)\$env:|%[^%]+%') {
+        throw "PnPUtilPath contains an unexpanded environment variable: $candidate"
+    }
+
+    $absolute = Get-AbsolutePath $candidate 'PnPUtilPath'
+    if (-not (Test-Path -LiteralPath $absolute -PathType Leaf)) {
+        throw "PnPUtil executable is missing: $absolute"
+    }
+    return $absolute
 }
 
 function New-ExclusiveFile {
@@ -632,7 +654,7 @@ try {
         if ($script:CaptureJob.State -ne 'Running') {
             throw 'Capture ended before the installation gate.'
         }
-        $pnp = Get-AbsolutePath $PnPUtilPath 'PnPUtilPath'
+        $pnp = Resolve-PnPUtilPath -Path $PnPUtilPath
         Assert-FileHash -Path $pnp -Expected $ExpectedPnPUtilHash `
             -Label 'PnPUtil executable'
         Write-ExclusiveTextFile -Path $installMarker `
@@ -653,7 +675,7 @@ try {
     elseif ($Mode -eq 'RestartWithCapture') {
         Assert-CaptureJobRunning -Job $script:CaptureJob `
             -Boundary 'the PnP restart gate'
-        $pnp = Get-AbsolutePath $PnPUtilPath 'PnPUtilPath'
+        $pnp = Resolve-PnPUtilPath -Path $PnPUtilPath
         Assert-FileHash -Path $pnp -Expected $ExpectedPnPUtilHash `
             -Label 'PnPUtil executable'
         Assert-CaptureJobRunning -Job $script:CaptureJob `

@@ -36,6 +36,21 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) `
     ('lecroy-diagnostic-launcher-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($tempRoot) | Out-Null
 
+$tokens = $null
+$parseErrors = $null
+$launcherAst = [Management.Automation.Language.Parser]::ParseFile(
+    $launcherSource, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count -ne 0) {
+    throw "Launcher parser errors: $($parseErrors.Message -join '; ')"
+}
+foreach ($definition in @($launcherAst.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -in @('Get-AbsolutePath', 'Resolve-PnPUtilPath')
+}, $true) | Sort-Object { $_.Extent.StartOffset })) {
+    . ([scriptblock]::Create($definition.Extent.Text))
+}
+
 function Add-Result {
     param([string]$Name, [bool]$Passed)
     $script:Checks++
@@ -134,6 +149,8 @@ function Invoke-Case {
         [switch]$ExistingCaptureMarker,
         [switch]$ExistingCollector,
         [switch]$EvidencePathIsFile,
+        [AllowEmptyString()][string]$PnPUtilPath,
+        [switch]$OmitPnPUtilPath,
         [int]$ReadinessTimeout=8,
         [int]$Duration=2
     )
@@ -177,8 +194,16 @@ function Invoke-Case {
             $arguments += @('-AuthorizationId',"mock-$Name",'-AuthorizeKernelCapture')
         }
         if ($Mode -eq 'InstallWithCapture') {
-            $arguments += @('-AuthorizeInstallation','-PnPUtilPath',$context.MockExe,
+            $arguments += @('-AuthorizeInstallation',
                 '-ExpectedPnPUtilHash',$context.MockHash)
+            if (-not $OmitPnPUtilPath) {
+                $resolvedPnpPath = if ($PSBoundParameters.ContainsKey('PnPUtilPath')) {
+                    $PnPUtilPath
+                } else {
+                    $context.MockExe
+                }
+                $arguments += @('-PnPUtilPath',$resolvedPnpPath)
+            }
         }
         elseif ($Mode -eq 'RestartWithCapture') {
             $arguments += @('-AuthorizePnpRestart','-PnPUtilPath',$context.MockExe,
@@ -284,6 +309,81 @@ try {
     Add-Result 'mock capture/install path invokes each child exactly once' (
         $install.ExitCode -eq 0 -and $install.Invocations -eq 2 -and
         ($install.Records -join ',') -eq 'capture,install')
+
+    $literalEnvironment = Invoke-Case -Name 'literal-environment-path' `
+        -Mode InstallWithCapture -PnPUtilPath '$env:SystemRoot\System32\pnputil.exe'
+    $literalResult = Get-Content -Raw `
+        (Join-Path $literalEnvironment.Evidence 'result.json') | ConvertFrom-Json
+    Add-Result 'literal unexpanded environment-variable path fails before install' (
+        $literalEnvironment.ExitCode -ne 0 -and
+        $literalResult.InstallInvocations -eq 0 -and
+        @($literalEnvironment.Records | Where-Object { $_ -eq 'install' }).Count -eq 0)
+
+    $percentEnvironment = Invoke-Case -Name 'percent-environment-path' `
+        -Mode InstallWithCapture -PnPUtilPath '%SystemRoot%\System32\pnputil.exe'
+    $percentResult = Get-Content -Raw `
+        (Join-Path $percentEnvironment.Evidence 'result.json') | ConvertFrom-Json
+    Add-Result 'percent-style unexpanded environment path fails before install' (
+        $percentEnvironment.ExitCode -ne 0 -and
+        $percentResult.InstallInvocations -eq 0)
+
+    $relativePath = Invoke-Case -Name 'relative-pnputil-path' `
+        -Mode InstallWithCapture -PnPUtilPath '.\pnputil.exe'
+    $relativeResult = Get-Content -Raw `
+        (Join-Path $relativePath.Evidence 'result.json') | ConvertFrom-Json
+    Add-Result 'relative PnPUtil path fails before install' (
+        $relativePath.ExitCode -ne 0 -and
+        $relativeResult.InstallInvocations -eq 0)
+
+    $missingPath = Join-Path $tempRoot 'missing\pnputil.exe'
+    $missing = Invoke-Case -Name 'missing-pnputil-path' `
+        -Mode InstallWithCapture -PnPUtilPath $missingPath
+    $missingResult = Get-Content -Raw `
+        (Join-Path $missing.Evidence 'result.json') | ConvertFrom-Json
+    Add-Result 'missing absolute PnPUtil path fails before install' (
+        $missing.ExitCode -ne 0 -and
+        $missingResult.InstallInvocations -eq 0)
+
+    $spaceDirectory = Join-Path $tempRoot 'native tool with spaces'
+    [IO.Directory]::CreateDirectory($spaceDirectory) | Out-Null
+    $spacePnp = Join-Path $spaceDirectory 'mock pnputil.exe'
+    Copy-Item -LiteralPath $context.MockExe -Destination $spacePnp
+    $spacePath = Invoke-Case -Name 'space-pnputil-path' `
+        -Mode InstallWithCapture -PnPUtilPath $spacePnp
+    Add-Result 'absolute PnPUtil path containing spaces is serialized exactly once' (
+        $spacePath.ExitCode -eq 0 -and
+        ($spacePath.Records -join ',') -eq 'capture,install')
+
+    $oldParentPath = $env:LECS65_TEST_PNPUTIL
+    try {
+        $env:LECS65_TEST_PNPUTIL = $spacePnp
+        $expandedParentPath = [Environment]::ExpandEnvironmentVariables(
+            '%LECS65_TEST_PNPUTIL%')
+        $parentExpanded = Invoke-Case -Name 'parent-expanded-pnputil-path' `
+            -Mode InstallWithCapture -PnPUtilPath $expandedParentPath
+        Add-Result 'parent-expanded environment path crosses the child boundary exactly' (
+            $parentExpanded.ExitCode -eq 0 -and
+            ($parentExpanded.Records -join ',') -eq 'capture,install')
+    }
+    finally {
+        $env:LECS65_TEST_PNPUTIL = $oldParentPath
+    }
+
+    $mockWindowsRoot = Join-Path $tempRoot 'mock Windows root'
+    $mockSystem32 = Join-Path $mockWindowsRoot 'System32'
+    [IO.Directory]::CreateDirectory($mockSystem32) | Out-Null
+    Copy-Item -LiteralPath $context.MockExe `
+        -Destination (Join-Path $mockSystem32 'pnputil.exe')
+    $oldSystemRoot = $env:SystemRoot
+    try {
+        $env:SystemRoot = $mockWindowsRoot
+        $defaultResolved = Resolve-PnPUtilPath -Path ''
+    }
+    finally {
+        $env:SystemRoot = $oldSystemRoot
+    }
+    Add-Result 'omitted PnPUtil path resolves from SystemRoot in production code' (
+        $defaultResolved -eq (Join-Path $mockSystem32 'pnputil.exe'))
 
     $restart = Invoke-Case -Name 'restart-success' -Mode RestartWithCapture
     Add-Result 'mock capture/restart path invokes each child exactly once' (
