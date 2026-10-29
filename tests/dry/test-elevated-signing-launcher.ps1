@@ -78,6 +78,7 @@ function Invoke-LauncherCase {
         [string]$HostOverride,
         [switch]$LogInsideRepository,
         [bool]$Diagnostics = $true,
+        [bool]$WdmV3MamDma = $true,
         [int]$ChildTimeoutSeconds = 30
     )
 
@@ -128,6 +129,9 @@ function Invoke-LauncherCase {
         if ($Diagnostics) {
             $arguments += '-PnpStatusDiagnostics'
         }
+        if ($WdmV3MamDma) {
+            $arguments += '-WdmV3MamDma'
+        }
         if ($Mode -eq 'Sign' -and -not $OmitThumbprint) {
             $arguments += @('-CertificateThumbprint', ('A' * 40))
         }
@@ -175,7 +179,8 @@ try {
         $successLog.Contains("MOCK WORKING DIRECTORY: $($success.Fixture)") -and
         $successLog -match 'configuration=Release' -and
         $successLog -match 'driverver=10/17/2026,0.2026.1017.1' -and
-        $successLog -match 'diagnostics=True')
+        $successLog -match 'diagnostics=True' -and
+        $successLog -match 'wdmv3mamdma=True')
     Add-Result 'mock signing and package tools execute in order' (
         $successLog -match '(?s)InfVerif before catalog.*SignTool sign SYS.*Inf2Cat catalog generation.*SignTool sign CAT.*InfVerif final')
     Add-Result 'mock SYS CAT and membership verification is preserved' (
@@ -192,6 +197,10 @@ try {
         $successManifest.Build.PnpStatusDiagnostics -eq $true -and
         @($successManifest.Build.Configurations | Where-Object {
             $_.PnpStatusDiagnostics -ne $true
+        }).Count -eq 0 -and
+        $successManifest.Build.WdmV3MamDma -eq $true -and
+        @($successManifest.Build.Configurations | Where-Object {
+            $_.WdmV3MamDma -ne $true
         }).Count -eq 0)
     Add-Result 'attempt marker and combined child log are preserved' (
         (Test-Path -LiteralPath $success.Marker) -and
@@ -214,7 +223,7 @@ try {
         $unsignedLog -notmatch 'SignTool sign')
 
     $defaultMode = Invoke-LauncherCase -Name 'default-mode-success' `
-        -Mode UnsignedQualification -Diagnostics $false
+        -Mode UnsignedQualification -Diagnostics $false -WdmV3MamDma $false
     $defaultManifest = Get-Content -LiteralPath `
         (Join-Path $defaultMode.Output 'evidence\manifest.json') -Raw | ConvertFrom-Json
     Add-Result 'default launcher path preserves uninstrumented package identity' (
@@ -222,6 +231,10 @@ try {
         $defaultManifest.Build.PnpStatusDiagnostics -eq $false -and
         @($defaultManifest.Build.Configurations | Where-Object {
             $_.PnpStatusDiagnostics -ne $false
+        }).Count -eq 0 -and
+        $defaultManifest.Build.WdmV3MamDma -eq $false -and
+        @($defaultManifest.Build.Configurations | Where-Object {
+            $_.WdmV3MamDma -ne $false
         }).Count -eq 0)
 
     $stderrSuccess = Invoke-LauncherCase -Name 'stderr-success' `

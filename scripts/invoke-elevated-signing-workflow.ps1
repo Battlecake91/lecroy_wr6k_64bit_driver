@@ -22,6 +22,7 @@ param(
     [ValidatePattern('^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4}),([0-9]+\.){3}[0-9]+$')]
     [string]$DriverVer,
     [switch]$PnpStatusDiagnostics,
+    [switch]$WdmV3MamDma,
     [Parameter(Mandatory=$true)]
     [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
@@ -108,6 +109,7 @@ function Assert-PackageManifest {
         [Parameter(Mandatory=$true)][string]$ExpectedConfiguration,
         [Parameter(Mandatory=$true)][string]$ExpectedDriverVer,
         [Parameter(Mandatory=$true)][bool]$ExpectedPnpStatusDiagnostics,
+        [Parameter(Mandatory=$true)][bool]$ExpectedWdmV3MamDma,
         [Parameter(Mandatory=$true)][bool]$ExpectedSigned,
         [string]$ExpectedThumbprint
     )
@@ -151,6 +153,8 @@ function Assert-PackageManifest {
 
     $configurationModes = @($manifest.Build.Configurations |
         ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
+    $dmaModes = @($manifest.Build.Configurations |
+        ForEach-Object { [bool]$_.WdmV3MamDma } | Select-Object -Unique)
     $expectedSuiteIds = @(
         'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
         'dma-layout', 'dma-ownership',
@@ -185,6 +189,10 @@ function Assert-PackageManifest {
         [bool]$manifest.Build.PnpStatusDiagnostics -ne $ExpectedPnpStatusDiagnostics -or
         $configurationModes.Count -ne 1 -or
         $configurationModes[0] -ne $ExpectedPnpStatusDiagnostics -or
+        [bool]$manifest.Build.WdmV3MamDma -ne $ExpectedWdmV3MamDma -or
+        $manifest.Build.WdmV3MamDmaMarker -ne 'LECS65_WDM_V3_MAM_DMA_ENABLED' -or
+        $dmaModes.Count -ne 1 -or
+        $dmaModes[0] -ne $ExpectedWdmV3MamDma -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
         $manifest.Regression.SuiteContract -ne 'batch16-regression-v1' -or
@@ -313,6 +321,7 @@ try {
         "WorkflowCommit=$head"
         "Mode=$Mode"
         "PnpStatusDiagnostics=$([bool]$PnpStatusDiagnostics)"
+        "WdmV3MamDma=$([bool]$WdmV3MamDma)"
         "OutputRoot=$output"
     ) -join "`r`n"
     if ($Mode -eq 'Sign') {
@@ -339,6 +348,9 @@ try {
     )
     if ($PnpStatusDiagnostics) {
         $childArguments += '-PnpStatusDiagnostics'
+    }
+    if ($WdmV3MamDma) {
+        $childArguments += '-WdmV3MamDma'
     }
     if ($Mode -eq 'Sign') {
         $childArguments += @(
@@ -367,6 +379,7 @@ try {
         -ExpectedConfiguration $RuntimeConfiguration `
         -ExpectedDriverVer $DriverVer `
         -ExpectedPnpStatusDiagnostics ([bool]$PnpStatusDiagnostics) `
+        -ExpectedWdmV3MamDma ([bool]$WdmV3MamDma) `
         -ExpectedSigned ($Mode -eq 'Sign') `
         -ExpectedThumbprint $(if ($Mode -eq 'Sign') {
             $CertificateThumbprint.ToUpperInvariant()

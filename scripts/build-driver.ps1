@@ -4,6 +4,7 @@ param(
     [switch]$BuildLecdiag,
     [switch]$BuildLecwatch,
     [switch]$PnpStatusDiagnostics,
+    [switch]$WdmV3MamDma,
     [switch]$Rebuild
 )
 
@@ -43,6 +44,7 @@ $target = if ($Rebuild) { 'Rebuild' } else { 'Build' }
 & $msbuild $solution /m "/t:$target" "/p:Configuration=$Configuration" `
     "/p:Platform=x64" `
     ("/p:LecPnpStatusDiagnostics={0}" -f $PnpStatusDiagnostics.IsPresent.ToString().ToLowerInvariant()) `
+    ("/p:LecWdmV3MamDma={0}" -f $WdmV3MamDma.IsPresent.ToString().ToLowerInvariant()) `
     /nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Driver build failed with exit code $LASTEXITCODE."

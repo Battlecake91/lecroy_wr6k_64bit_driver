@@ -16,6 +16,9 @@
 .PARAMETER PnpStatusDiagnostics
   Build both configurations with the reviewed PnP status diagnostics enabled
   and require the selected SYS to contain the diagnostic marker.
+.PARAMETER WdmV3MamDma
+  Build both configurations with the development-only WDM-v3 MAM DMA launch
+  gate enabled and require the selected SYS and manifest to identify that mode.
 .PARAMETER Sign
   Opt in to SYS/CAT signing. Never use without separate owner authorization.
 .PARAMETER CertificateThumbprint
@@ -39,6 +42,8 @@ param(
     [string]$OutputRoot,
 
     [switch]$PnpStatusDiagnostics,
+
+    [switch]$WdmV3MamDma,
 
     [switch]$Sign,
 
@@ -160,6 +165,19 @@ function Assert-PnpDiagnosticMarkerState {
     $present = Test-AsciiMarker -Path $Path -Marker 'PNP_STATUS:'
     if ($present -ne $ExpectedEnabled) {
         throw "PnP diagnostic marker state mismatch for $Path; expected enabled=$ExpectedEnabled, found marker=$present."
+    }
+}
+
+function Assert-WdmV3MamDmaMarkerState {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][bool]$ExpectedEnabled
+    )
+
+    $present = Test-AsciiMarker -Path $Path `
+        -Marker 'LECS65_WDM_V3_MAM_DMA_ENABLED'
+    if ($present -ne $ExpectedEnabled) {
+        throw "WDM-v3 MAM DMA marker state mismatch in $Path. Expected=$ExpectedEnabled Actual=$present"
     }
 }
 
@@ -391,6 +409,8 @@ function Assert-ManifestComplete {
         'LecS65AcqDrv.pdb', 'LecS65AcqDrv.sys')
     $configurationModes = @($Manifest.Build.Configurations |
         ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
+    $dmaModes = @($Manifest.Build.Configurations |
+        ForEach-Object { [bool]$_.WdmV3MamDma } | Select-Object -Unique)
     if ($Manifest.Schema -ne 2 -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.WorkflowCommit) -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.DriverTree) -or
@@ -400,6 +420,8 @@ function Assert-ManifestComplete {
         $Manifest.Build.DiagnosticMarker -ne 'PNP_STATUS:' -or
         $configurationModes.Count -ne 1 -or
         $configurationModes[0] -ne [bool]$Manifest.Build.PnpStatusDiagnostics -or
+        $dmaModes.Count -ne 1 -or
+        $dmaModes[0] -ne [bool]$Manifest.Build.WdmV3MamDma -or
         ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
         @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
         $Manifest.InstallAuthorized -ne $false -or
@@ -600,6 +622,7 @@ try {
     Write-Host "Package identity: DriverVer=$DriverVer"
     Write-Host "Runtime configuration: $RuntimeConfiguration"
     Write-Host ("PnP status diagnostics: {0}" -f [bool]$PnpStatusDiagnostics)
+    Write-Host ("WDM-v3 MAM DMA gate: {0}" -f [bool]$WdmV3MamDma)
     Write-Host ("Signing requested: {0}" -f [bool]$Sign)
 
     $buildDriver = Join-Path $PSScriptRoot 'build-driver.ps1'
@@ -610,11 +633,11 @@ try {
 
     $null = Invoke-ScriptCaptured -Name 'Debug x64 driver and tools build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
+        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-debug.log')
     $null = Invoke-ScriptCaptured -Name 'Release x64 driver build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; Rebuild = $true } `
+        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-release.log')
     $null = Invoke-ScriptCaptured -Name 'Complete Dry regression' `
         -FilePath $dryRunner `
@@ -677,6 +700,8 @@ try {
         Assert-BuildPairPaths -SysPath $sys -PdbPath $pdb -Label $configuration
         Assert-PnpDiagnosticMarkerState -Path $sys `
             -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
+        Assert-WdmV3MamDmaMarkerState -Path $sys `
+            -ExpectedEnabled ([bool]$WdmV3MamDma)
         $pe = Get-PeEvidence -Path $sys -Label $configuration
         if ([System.IO.Path]::GetFileName($pe.EmbeddedPdbPath) -ne
             [System.IO.Path]::GetFileName($pdb)) {
@@ -697,6 +722,7 @@ try {
         $buildArtifacts += [ordered]@{
             Configuration = $configuration
             PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
+            WdmV3MamDma = [bool]$WdmV3MamDma
             SYS = [ordered]@{
                 Bytes = (Get-Item -LiteralPath $sys).Length
                 SHA256 = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
@@ -724,6 +750,8 @@ try {
     Copy-Item -LiteralPath $selectedPdb -Destination $evidencePdb
     Assert-PnpDiagnosticMarkerState -Path $packageSys `
         -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
+    Assert-WdmV3MamDmaMarkerState -Path $packageSys `
+        -ExpectedEnabled ([bool]$WdmV3MamDma)
     $infText = Get-Content -LiteralPath $sourceInf -Raw
     if ([regex]::Matches($infText, '(?m)^DriverVer=.*$').Count -ne 1) {
         throw 'Source INF must contain exactly one DriverVer line.'
@@ -822,6 +850,8 @@ try {
     $catSignature = Get-AuthenticodeSignature -LiteralPath $packageCat
     Assert-PnpDiagnosticMarkerState -Path $packageSys `
         -ExpectedEnabled ([bool]$PnpStatusDiagnostics)
+    Assert-WdmV3MamDmaMarkerState -Path $packageSys `
+        -ExpectedEnabled ([bool]$WdmV3MamDma)
     Assert-PackageSignatureState -SigningRequested ([bool]$Sign) `
         -SysSignature $sysSignature -CatSignature $catSignature `
         -ExpectedThumbprint $normalizedThumbprint
@@ -863,6 +893,8 @@ try {
             CleanRebuild = $true
             PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
             DiagnosticMarker = 'PNP_STATUS:'
+            WdmV3MamDma = [bool]$WdmV3MamDma
+            WdmV3MamDmaMarker = 'LECS65_WDM_V3_MAM_DMA_ENABLED'
             Configurations = $buildArtifacts
         }
         Regression = [ordered]@{
