@@ -3566,6 +3566,24 @@ LecExecuteWdmMamTransfer(
         return STATUS_INVALID_PARAMETER;
     }
 
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+    if (execute->Channel != 0x30U || execute->Config != 0x00000C00UL ||
+        TransferBytes != 0x10UL || DescriptorEntries != 2) {
+        return STATUS_NOT_SUPPORTED;
+    }
+    if (InterlockedCompareExchange(
+            &execute->DevExt->FirstMamExperimentConsumed, 1, 0) != 0) {
+        return STATUS_DEVICE_BUSY;
+    }
+    LecTrace(
+        "MAM_DMA_EXPERIMENT: exact-once gate consumed table=0x%08lX entries=%lu bytes=%lu channel=0x%02X config=0x%08lX\n",
+        DescriptorTable.LowPart,
+        DescriptorEntries,
+        TransferBytes,
+        execute->Channel,
+        execute->Config);
+#endif
+
     RtlZeroMemory(Outcome, sizeof(*Outcome));
     Outcome->Status = STATUS_INTERNAL_ERROR;
     devExt = execute->DevExt;
@@ -3813,11 +3831,13 @@ LecIoctlAcquireBufferedOneChannel(
         *Information = sizeof(ULONG);
     }
     LecTrace(
-        "CFDC2138 WDM-v3 transaction: token=%lu bytes=%lu segments=%lu descriptors=%lu launchDenied=%u completed=%u released=%u quarantined=%u status=0x%08X\n",
+        "CFDC2138 WDM-v3 transaction: token=%lu bytes=%lu segments=%lu descriptors=%lu firstDma=0x%I64X firstBytes=%lu launchDenied=%u completed=%u released=%u quarantined=%u status=0x%08X\n",
         token,
         requestedBytes,
         prepareResult.SegmentCount,
         prepareResult.DescriptorEntries,
+        prepareResult.FirstDeviceAddress,
+        prepareResult.FirstSegmentBytes,
         prepareResult.LaunchDenied,
         prepareResult.CompletionObserved,
         prepareResult.MappingReleased,

@@ -253,3 +253,25 @@ Normal return requires a matching physical IRQ/DPC observation and successful
 cleanup. The caller then retires the WDM mapping and permits another generation
 with the same registration. Every uncertain post-GO state is terminal
 quarantine. See [x86/x64 acquisition parity](x86-x64-acquisition-parity.md).
+
+## Batch 19 first-experiment boundary
+
+The first signed GO-capable package proved installation and the safe R0/R1
+baseline, but final review stopped before GO: its compile-time MAM gate did not
+itself restrict the request to the authorized 16-byte experiment and did not
+consume a per-loaded-FDO attempt latch. Relying only on the diagnostic command
+line would not make the kernel boundary fail closed.
+
+The offline successor adds `LECS65_FIRST_MAM_EXPERIMENT_ONLY`, controlled by
+the default-off `LecFirstMamExperimentOnly` build property. After the Windows
+DMA mapping and descriptor construction are known, but before any acquisition
+MMIO, it requires channel `0x30`, config `0x00000C00`, 16 transfer bytes and
+exactly two descriptor entries (one SG data entry plus the terminator). It then
+atomically changes `FirstMamExperimentConsumed` from zero to one. A shape
+mismatch returns `STATUS_NOT_SUPPORTED`; a consumed latch returns
+`STATUS_DEVICE_BUSY`. Failure after latch consumption remains fail closed and
+cannot authorize another GO in the same loaded FDO.
+
+The package workflow records and verifies this mode independently of the broad
+development MAM gate. The corrected binary is only offline-qualified. It must
+not be confused with installed `oem105.inf`, which lacks this final restriction.

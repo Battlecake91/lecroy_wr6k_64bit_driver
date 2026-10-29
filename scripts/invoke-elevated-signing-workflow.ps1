@@ -23,6 +23,7 @@ param(
     [string]$DriverVer,
     [switch]$PnpStatusDiagnostics,
     [switch]$WdmV3MamDma,
+    [switch]$FirstMamExperimentOnly,
     [Parameter(Mandatory=$true)]
     [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
@@ -110,6 +111,7 @@ function Assert-PackageManifest {
         [Parameter(Mandatory=$true)][string]$ExpectedDriverVer,
         [Parameter(Mandatory=$true)][bool]$ExpectedPnpStatusDiagnostics,
         [Parameter(Mandatory=$true)][bool]$ExpectedWdmV3MamDma,
+        [Parameter(Mandatory=$true)][bool]$ExpectedFirstMamExperimentOnly,
         [Parameter(Mandatory=$true)][bool]$ExpectedSigned,
         [string]$ExpectedThumbprint
     )
@@ -155,6 +157,8 @@ function Assert-PackageManifest {
         ForEach-Object { [bool]$_.PnpStatusDiagnostics } | Select-Object -Unique)
     $dmaModes = @($manifest.Build.Configurations |
         ForEach-Object { [bool]$_.WdmV3MamDma } | Select-Object -Unique)
+    $experimentModes = @($manifest.Build.Configurations |
+        ForEach-Object { [bool]$_.FirstMamExperimentOnly } | Select-Object -Unique)
     $expectedSuiteIds = @(
         'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
         'dma-layout', 'dma-ownership',
@@ -193,6 +197,11 @@ function Assert-PackageManifest {
         $manifest.Build.WdmV3MamDmaMarker -ne 'LECS65_WDM_V3_MAM_DMA_ENABLED' -or
         $dmaModes.Count -ne 1 -or
         $dmaModes[0] -ne $ExpectedWdmV3MamDma -or
+        [bool]$manifest.Build.FirstMamExperimentOnly -ne $ExpectedFirstMamExperimentOnly -or
+        $manifest.Build.FirstMamExperimentMarker -ne 'LECS65_FIRST_MAM_EXPERIMENT_ONLY' -or
+        $experimentModes.Count -ne 1 -or
+        $experimentModes[0] -ne $ExpectedFirstMamExperimentOnly -or
+        ($ExpectedFirstMamExperimentOnly -and -not $ExpectedWdmV3MamDma) -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
         $manifest.Regression.SuiteContract -ne 'batch16-regression-v1' -or
@@ -279,6 +288,9 @@ try {
     $marker = Get-AbsolutePath -Path $AttemptMarker -Label 'AttemptMarker'
     $stdoutLog = $log + '.stdout.txt'
     $stderrLog = $log + '.stderr.txt'
+    if ($FirstMamExperimentOnly -and -not $WdmV3MamDma) {
+        throw 'FirstMamExperimentOnly requires WdmV3MamDma.'
+    }
     if (-not (Test-Path -LiteralPath $repository -PathType Container)) {
         throw "RepositoryRoot does not exist: $repository"
     }
@@ -322,6 +334,7 @@ try {
         "Mode=$Mode"
         "PnpStatusDiagnostics=$([bool]$PnpStatusDiagnostics)"
         "WdmV3MamDma=$([bool]$WdmV3MamDma)"
+        "FirstMamExperimentOnly=$([bool]$FirstMamExperimentOnly)"
         "OutputRoot=$output"
     ) -join "`r`n"
     if ($Mode -eq 'Sign') {
@@ -352,6 +365,9 @@ try {
     if ($WdmV3MamDma) {
         $childArguments += '-WdmV3MamDma'
     }
+    if ($FirstMamExperimentOnly) {
+        $childArguments += '-FirstMamExperimentOnly'
+    }
     if ($Mode -eq 'Sign') {
         $childArguments += @(
             '-Sign'
@@ -380,6 +396,7 @@ try {
         -ExpectedDriverVer $DriverVer `
         -ExpectedPnpStatusDiagnostics ([bool]$PnpStatusDiagnostics) `
         -ExpectedWdmV3MamDma ([bool]$WdmV3MamDma) `
+        -ExpectedFirstMamExperimentOnly ([bool]$FirstMamExperimentOnly) `
         -ExpectedSigned ($Mode -eq 'Sign') `
         -ExpectedThumbprint $(if ($Mode -eq 'Sign') {
             $CertificateThumbprint.ToUpperInvariant()

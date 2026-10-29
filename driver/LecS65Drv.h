@@ -283,6 +283,8 @@ typedef struct _LECS65_DEVICE_EXTENSION {
      * prove that old bus-master reads/writes have stopped.
      */
     volatile LONG DmaUnknownActive;
+    /* Per-loaded-FDO exact-once latch for the bounded first MAM experiment. */
+    volatile LONG FirstMamExperimentConsumed;
 
     PKINTERRUPT InterruptObject;
     ULONG InterruptVector;

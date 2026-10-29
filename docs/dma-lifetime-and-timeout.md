@@ -1248,3 +1248,21 @@ After any possible GO, `UnknownActive` remains irreversible because neither the
 driver nor the available hardware evidence can prove the last descriptor fetch
 or PCI write has retired. Pages, mappings and common descriptor storage must
 remain retained until a separately established physical-idle contract exists.
+
+## Batch 19 GO gate result
+
+The installed `oem105.inf` development package passed installation and the
+complete safe R0/R1 matrix. No GO occurred. Immediately before the authorized
+experiment, source review established that the installed kernel boundary did
+not enforce the exact 16-byte request, one-SG-segment descriptor shape or one
+attempt per loaded FDO. The live test therefore stopped before creating a
+launch-attempt marker. There is no post-GO owner, mapping retirement or
+quarantine transition to classify for this batch.
+
+The offline correction consumes an atomic per-FDO latch only after mapping and
+descriptor validation and before the first acquisition MMIO. It requires one
+data descriptor plus the terminator. This closes accidental alternate requests
+and repeats for a future first experiment; it does not alter the post-GO proof
+boundary. A successful IRQ/DPC/INTEN cleanup remains practical normal-operation
+evidence, not formal proof that the final physical PCI write retired. Any
+timeout or ambiguous cleanup remains terminal `UnknownActive` quarantine.

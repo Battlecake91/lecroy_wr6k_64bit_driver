@@ -165,6 +165,7 @@ try {
         Build = [pscustomobject]@{
             PnpStatusDiagnostics = $false
             WdmV3MamDma = $false
+            FirstMamExperimentOnly = $false
             Configurations = @()
         }
         Regression = [pscustomobject]@{ FunctionalTestsPassed = 0; TotalStressIterations = 0 }

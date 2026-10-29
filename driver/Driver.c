@@ -94,6 +94,9 @@ DriverEntry(
 #if LECS65_ENABLE_WDM_V3_MAM_DMA
     LecTrace("LECS65_WDM_V3_MAM_DMA_ENABLED\n");
 #endif
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+    LecTrace("LECS65_FIRST_MAM_EXPERIMENT_ONLY\n");
+#endif
 
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; ++i) {
         DriverObject->MajorFunction[i] = LecS65PassThrough;

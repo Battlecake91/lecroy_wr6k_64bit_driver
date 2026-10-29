@@ -188,6 +188,8 @@ typedef struct _LECS65_DMA_PREPARE_RESULT {
     LECS65_DMA_TRANSACTION_RESULT TransactionResult;
     ULONG SegmentCount;
     ULONG DescriptorEntries;
+    ULONGLONG FirstDeviceAddress;
+    ULONG FirstSegmentBytes;
     ULONGLONG MappingToken;
     BOOLEAN LaunchDenied;
     BOOLEAN MappingReleased;

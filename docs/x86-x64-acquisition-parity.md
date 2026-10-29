@@ -1,5 +1,20 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 19 bounded first-transfer conclusion
+
+The historical parity review supports a 16-byte, one-channel MAM request with
+channel `0x30`, config `0x00000C00`, the original descriptor encoding and
+terminator, the established MAM/SGTA/IIMTC/INTEN/IIMCL/MAMRGO order, physical
+IRQ/DPC completion and a four-byte completed-count response. Historical x86 and
+x64 captures also show that registrations were reused across many transfers.
+
+Batch 19 did not test that path on the current WDM-v3 implementation. The
+installed candidate lacked an in-kernel exact-shape and exact-once boundary, so
+the authorized GO was skipped. The offline correction deliberately targets only
+the smallest reviewed single-channel experiment. Multi-channel requests,
+repeated transfers and XStream acquisition remain outside that gate and require
+later, separately authorized lifecycle qualification.
+
 ## Established compatibility reference
 
 The original x86 driver registers a process-owned user buffer through

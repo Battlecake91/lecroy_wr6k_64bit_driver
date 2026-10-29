@@ -1,5 +1,21 @@
 # Regression test architecture
 
+## First-MAM experiment build contract
+
+`-FirstMamExperimentOnly` is valid only together with `-WdmV3MamDma`. The
+driver, package workflow and elevated launcher fail closed on the invalid
+combination. Both Debug and Release binaries must contain the
+`LECS65_FIRST_MAM_EXPERIMENT_ONLY` marker, and every manifest configuration
+must record the same boolean mode. The source contracts additionally require
+the 16-byte/channel-`0x30`/config-`0xC00` checks, two descriptor entries and the
+atomic per-FDO latch.
+
+The Batch 19 offline correction passed Debug and Release x64 builds with zero
+warnings/errors, the full Windows PowerShell 5.1 Dry runner, default DMA/INTEN
+stress of 5,000/1,000, expanded stress of 50,000/10,000 and package workflow
+compatibility 28/28. These tests do not prove real DMA, IRQ completion, payload
+validity or physical mapping retirement.
+
 ## Batch 18 MAM DMA integration contracts
 
 Focused tests compile the transaction with the MAM gate both enabled and at
