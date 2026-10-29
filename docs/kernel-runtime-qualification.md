@@ -18,6 +18,16 @@ alone cannot prove physical disconnection of the productive x86 disk, so the
 next active step remains blocked on explicit physical-isolation confirmation
 and a separate owner authorization for the exact diagnostic command.
 
+Batch 22 passive preflight additionally verified D0 from
+`DEVPKEY_Device_PowerData`, the three compiled experiment markers, inactive
+Verifier, enabled test signing, retained crash-dump policy, no acquisition
+client and no stale DebugView process or driver. No device handle was opened.
+The exact diagnostic and capture executables are hash-pinned. The experiment
+latch has no direct public read interface; its unused state is supported by
+the uninterrupted post-install history, zero prior GO/attempt records and the
+absence of an acquisition client, not by a new hardware query. Kernel admission
+remains the independent enforcement at the eventual single dispatch.
+
 ## Batch 20 gate
 
 The current installed development package is `oem105.inf`, version

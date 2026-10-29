@@ -2,6 +2,21 @@
 
 ## Batch 21 installed first-transfer gate
 
+- Batch 22 passive preflight reconfirmed the complete installed identity without
+  opening a device handle: `oem106.inf`, version `0.2026.1029.1`, exact loaded
+  SYS hash, D0, problem code zero, running service and five interfaces. Test
+  signing remains enabled, Secure Boot and Driver Verifier are inactive, crash
+  dump policy is retained, and no acquisition or capture client is running.
+  The loaded SYS contains all three required diagnostic/experiment markers.
+- The frozen `lecdiag.exe` SHA-256 is
+  `0AF2D96B95D867EE6B0BCA2066BBE94D0F36E6DA743E81EA06AB078E594CDD34`;
+  the qualified DebugView 5.02 SHA-256 remains
+  `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`.
+  No Batch 22 dispatch marker exists and GO count remains zero. Software disk
+  inventory still exposes only the x64 NVMe, so the owner must explicitly
+  confirm physical x86-disk disconnection and authorize one GO before capture
+  and command dispatch.
+
 - The Batch 20 frozen candidate was installed exactly once as `oem106.inf`,
   version `0.2026.1029.1`. Loaded SYS SHA-256 is
   `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
