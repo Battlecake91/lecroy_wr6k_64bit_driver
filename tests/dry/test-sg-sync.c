@@ -1685,7 +1685,7 @@ int main(void)
     memset(&prepareResult, 0, sizeof(prepareResult));
     status = LecDmaPnpExecuteLegacyTransfer(
         firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
-        1, 2, &cancelRequested, fakeFirstTransferExecute, NULL,
+        1, 2, &cancelRequested, NULL, fakeFirstTransferExecute, NULL,
         &prepareResult);
     LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
     check("pre-GO cancellation does not map call or poison repeat admission",
@@ -1698,7 +1698,7 @@ int main(void)
     memset(&prepareResult, 0, sizeof(prepareResult));
     status = LecDmaPnpExecuteLegacyTransfer(
         firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
-        1, 2, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
+        1, 2, NULL, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
     LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
     check("normal IRQ completion retires the WDM mapping",
         status == STATUS_SUCCESS && firstTransferCalls == 1 &&
@@ -1713,7 +1713,7 @@ int main(void)
     check("a second generation is admitted only after normal retirement",
         LecDmaPnpExecuteLegacyTransfer(
             firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
-            1, 2, NULL, fakeFirstTransferExecute, NULL, &prepareResult) ==
+            1, 2, NULL, NULL, fakeFirstTransferExecute, NULL, &prepareResult) ==
                 STATUS_SUCCESS &&
         firstTransferCalls == 2 && prepareResult.MappingReleased &&
         !prepareResult.Quarantined);
@@ -1735,7 +1735,7 @@ int main(void)
     memset(&prepareResult, 0, sizeof(prepareResult));
     status = LecDmaPnpExecuteLegacyTransfer(
         missingIrqStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
-        3, 4, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
+        3, 4, NULL, NULL, fakeFirstTransferExecute, NULL, &prepareResult);
     LecDmaPnpSnapshot(missingIrqStage, &pnpSnapshot);
     check("missing IRQ retains mapping and permanently closes admission",
         status == STATUS_IO_TIMEOUT && firstTransferCalls == 3 &&

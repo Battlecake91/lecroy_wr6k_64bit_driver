@@ -130,6 +130,7 @@
   <ItemGroup>
     <ClInclude Include="LecS65Drv.h" />
     <ClInclude Include="DmaLayout.h" />
+    <ClInclude Include="DmaExperimentGate.h" />
     <ClInclude Include="DmaAdapterStage.h" />
     <ClInclude Include="DmaMappingOwner.h" />
     <ClInclude Include="DmaScatterGatherStage.h" />
@@ -149,6 +150,7 @@
     <ClCompile Include="DmaV3Transfer.c" />
     <ClCompile Include="InterruptControl.c" />
     <ClCompile Include="DmaLayout.c" />
+    <ClCompile Include="DmaExperimentGate.c" />
     <ClCompile Include="DmaAdapterStage.c" />
     <ClCompile Include="DmaMappingOwner.c" />
     <ClCompile Include="DmaScatterGatherStage.c" />

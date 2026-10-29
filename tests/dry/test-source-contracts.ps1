@@ -27,6 +27,8 @@ $v3TransferSource = Join-Path $repo "driver\DmaV3Transfer.c"
 $v3TransferHeader = Join-Path $repo "driver\DmaV3Transfer.h"
 $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
+$experimentGateSource = Join-Path $repo "driver\DmaExperimentGate.c"
+$experimentGateHeader = Join-Path $repo "driver\DmaExperimentGate.h"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
 $adapterHeader = Join-Path $repo "driver\DmaAdapterStage.h"
 $ownerSource = Join-Path $repo "driver\DmaMappingOwner.c"
@@ -54,7 +56,7 @@ $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
 $codexContinuation = Join-Path $repo "scripts\manage-codex-continuation.ps1"
 $mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -68,6 +70,7 @@ $deviceText = Get-Content -LiteralPath $deviceSource -Raw
 $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $completionText = Get-Content -LiteralPath $completionSource -Raw
 $interruptText = Get-Content -LiteralPath (Join-Path $repo "driver\InterruptControl.c") -Raw
+$experimentGateText = Get-Content -LiteralPath $experimentGateSource -Raw
 $completionHeaderText = Get-Content -LiteralPath $completionHeader -Raw
 $transactionText = Get-Content -LiteralPath $transactionSource -Raw
 $transactionHeaderText = Get-Content -LiteralPath $transactionHeader -Raw
@@ -894,12 +897,17 @@ Test-Contract "package identity is explicit and output is non-overwriting" {
 Test-Contract "first MAM experiment build is exact-once and narrowly shaped" {
     $driverProjectText -match '<LecFirstMamExperimentOnly Condition=.*?>false</LecFirstMamExperimentOnly>' -and
     $driverProjectText -match 'LECS65_FIRST_MAM_EXPERIMENT_ONLY=1' -and
+    $driverProjectText -match 'ClCompile Include="DmaExperimentGate.c"' -and
     $ioctlText -match '#if LECS65_FIRST_MAM_EXPERIMENT_ONLY' -and
-    $ioctlText -match 'execute->Channel != 0x30U' -and
-    $ioctlText -match 'execute->Config != 0x00000C00UL' -and
-    $ioctlText -match 'TransferBytes != 0x10UL' -and
-    $ioctlText -match 'DescriptorEntries != 2' -and
-    $ioctlText -match 'FirstMamExperimentConsumed, 1, 0' -and
+    $ioctlText -match 'LecFirstMamValidateAndConsume' -and
+    $ioctlText -match 'LecValidateFirstMamExperiment' -and
+    $pnpDmaText -match 'bridge\.Validate\(ExecuteContext, &bridge\.Shape\)' -and
+    $experimentGateText -match 'Shape->Channel != LECS65_FIRST_MAM_CHANNEL' -and
+    $experimentGateText -match 'Shape->SegmentCount != 1U' -and
+    $experimentGateText -match 'Shape->FirstSegmentBytes != Shape->TransferBytes' -and
+    $experimentGateText -match 'Shape->DescriptorEntries != 2U' -and
+    $experimentGateText -match 'descriptors\[1\]\.DeviceAddress != 0' -and
+    $experimentGateText -match 'CompareExchange\(Consumed, 1, 0\)' -and
     $packageBuildText -match '\[switch\]\$FirstMamExperimentOnly' -and
     $packageBuildText -match 'Assert-FirstMamExperimentMarkerState' -and
     $packageBuildText -match 'FirstMamExperimentOnly requires WdmV3MamDma'

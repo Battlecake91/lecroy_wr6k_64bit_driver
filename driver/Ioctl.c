@@ -3516,6 +3516,54 @@ typedef struct _LECS65_WDM_MAM_EXECUTE_CONTEXT {
 } LECS65_WDM_MAM_EXECUTE_CONTEXT,
     *PLECS65_WDM_MAM_EXECUTE_CONTEXT;
 
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+static long
+LecFirstMamCompareExchange(
+    volatile long* Target,
+    long Exchange,
+    long Comparand)
+{
+    return InterlockedCompareExchange(
+        (volatile LONG*)Target, (LONG)Exchange, (LONG)Comparand);
+}
+
+static NTSTATUS
+LecValidateFirstMamExperiment(
+    _Inout_ PVOID Context,
+    _In_ const LECS65_FIRST_MAM_SHAPE* Shape)
+{
+    PLECS65_WDM_MAM_EXECUTE_CONTEXT execute =
+        (PLECS65_WDM_MAM_EXECUTE_CONTEXT)Context;
+    LECS65_FIRST_MAM_SHAPE exactShape;
+    LECS65_FIRST_MAM_GATE_RESULT result;
+
+    if (execute == NULL || execute->DevExt == NULL || Shape == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    exactShape = *Shape;
+    exactShape.Channel = execute->Channel;
+    exactShape.Config = execute->Config;
+    result = LecFirstMamValidateAndConsume(
+        &exactShape,
+        (volatile long*)&execute->DevExt->FirstMamExperimentConsumed,
+        LecFirstMamCompareExchange);
+    if (result == LecFirstMamGateAlreadyConsumed) {
+        return STATUS_DEVICE_BUSY;
+    }
+    if (result != LecFirstMamGateAccepted) {
+        return STATUS_NOT_SUPPORTED;
+    }
+    LecTrace(
+        "MAM_DMA_EXPERIMENT: exact-once gate consumed entries=%lu bytes=%lu segments=%lu channel=0x%02X config=0x%08lX\n",
+        exactShape.DescriptorEntries,
+        exactShape.TransferBytes,
+        exactShape.SegmentCount,
+        exactShape.Channel,
+        exactShape.Config);
+    return STATUS_SUCCESS;
+}
+#endif
+
 static
 NTSTATUS
 LecExecuteWdmMamTransfer(
@@ -3565,24 +3613,6 @@ LecExecuteWdmMamTransfer(
         (ULONGLONG)DescriptorTable.QuadPart > MAXULONG) {
         return STATUS_INVALID_PARAMETER;
     }
-
-#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
-    if (execute->Channel != 0x30U || execute->Config != 0x00000C00UL ||
-        TransferBytes != 0x10UL || DescriptorEntries != 2) {
-        return STATUS_NOT_SUPPORTED;
-    }
-    if (InterlockedCompareExchange(
-            &execute->DevExt->FirstMamExperimentConsumed, 1, 0) != 0) {
-        return STATUS_DEVICE_BUSY;
-    }
-    LecTrace(
-        "MAM_DMA_EXPERIMENT: exact-once gate consumed table=0x%08lX entries=%lu bytes=%lu channel=0x%02X config=0x%08lX\n",
-        DescriptorTable.LowPart,
-        DescriptorEntries,
-        TransferBytes,
-        execute->Channel,
-        execute->Config);
-#endif
 
     RtlZeroMemory(Outcome, sizeof(*Outcome));
     Outcome->Status = STATUS_INTERNAL_ERROR;
@@ -3802,6 +3832,11 @@ LecIoctlAcquireBufferedOneChannel(
         (ULONG_PTR)OwnerProcessId,
         (ULONG_PTR)FileObject,
         CancelRequested,
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+        LecValidateFirstMamExperiment,
+#else
+        NULL,
+#endif
         LecExecuteWdmMamTransfer,
         &executeContext,
         &prepareResult);
