@@ -13,10 +13,9 @@ connection and all five interface publications succeeded. Device state is
 The exact-once runtime runner then completed R0 9/9 and R1 2/2. It observed
 trace size `0x110`, register-list size `0x2CAE`, PCI `1570:0005` and matching
 START values `0x00000002`. Eleven attempt and eleven result records prove that
-no command was repeated. No real MAM GO has occurred. Software disk inventory
-alone cannot prove physical disconnection of the productive x86 disk, so the
-next active step remains blocked on explicit physical-isolation confirmation
-and a separate owner authorization for the exact diagnostic command.
+no command was repeated. At that gate, software inventory could not prove
+physical x86-disk isolation. The owner later supplied both confirmations for
+the single Batch 23 transfer documented below.
 
 Batch 22 passive preflight additionally verified D0 from
 `DEVPKEY_Device_PowerData`, the three compiled experiment markers, inactive
@@ -27,6 +26,27 @@ latch has no direct public read interface; its unused state is supported by
 the uninterrupted post-install history, zero prior GO/attempt records and the
 absence of an acquisition client, not by a new hardware query. Kernel admission
 remains the independent enforcement at the eventual single dispatch.
+
+### Batch 23 physical MAM result
+
+The owner explicitly confirmed physical disconnection of the productive x86
+disk and authorized one GO. After verified live-stdout capture readiness, an
+exclusive attempt marker was written and the exact diagnostic command was
+dispatched once. It exited zero without timeout, returned four bytes containing
+16 and unregistered token 1. No retry or second command occurred.
+
+The kernel trace records one registration, one atomic exact-shape gate
+consumption, one acquisition and one unregister. The transaction reports one
+16-byte segment, two descriptors, launch admitted, completion observed, mapping
+released, no quarantine and success. Source correlation establishes that this
+success requires physical ISR observation and a generation-matched DPC signal;
+a mere IOCTL return cannot set this state. Post-test passive baseline passed and
+no target Kernel-PnP, Code Integrity or WHEA error was found.
+
+The diagnostic did not capture destination contents, and tracing intentionally
+omits the individual DMA addresses and register values from public evidence.
+The result therefore qualifies one bounded transfer and its normal lifetime,
+not waveform validity, repeat admission or abnormal cleanup.
 
 ## Batch 20 gate
 

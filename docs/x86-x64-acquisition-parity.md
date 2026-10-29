@@ -1,14 +1,29 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 23 first physical parity evidence
+
+The current WDM-v3 implementation completed one real 16-byte MAM transfer with
+the historically observed channel `0x30` and config `0x00000C00`. Evidence
+shows one logical SG segment, the exact two-entry descriptor shape, admitted
+GO, physical-IRQ/DPC completion, a four-byte completed count of 16, normal
+mapping retirement and successful unregister. Device health remained intact.
+
+This closes the first-transfer transport/lifetime gap against the original x86
+sequence. It does not yet prove that the 16 destination bytes represent a valid
+waveform because the one-shot diagnostic did not preserve or print them. It
+also does not qualify XStream's persistent registration reuse, rearming,
+trigger configuration, repeated acquisition or Stop/restart behavior. The next
+milestone is one separately authorized XStream waveform acquisition using a
+reviewed candidate that does not bypass or reset the consumed one-shot gate.
+
 ## Batch 21 bounded first-transfer status
 
 The exact-shape, exact-once candidate is installed as `oem106.inf`, version
 `0.2026.1029.1`. One captured installation and the complete 9/9 R0 plus 2/2 R1
 matrix passed. PCI identity remains `1570:0005`, and both qualified START reads
-return `0x00000002`. No MAM GO has occurred, so this adds installed ABI and
-START evidence but no physical IRQ, DPC, payload or mapping-retirement parity.
-The next parity step remains one separately authorized 16-byte transfer after
-positive physical isolation of the productive x86 disk.
+return `0x00000002`. At that stage no MAM GO had occurred, so it added installed
+ABI and START evidence but no physical IRQ, DPC, payload or mapping-retirement
+parity. Batch 23 later completed the separately authorized transfer.
 
 ## Batch 19 bounded first-transfer conclusion
 
@@ -89,7 +104,6 @@ separately authorized XStream run.
 
 ## Remaining runtime gap
 
-The development MAM gate is signed and installed but has not been exercised.
-The next bounded milestone is one no-XStream transfer using the exact 16-byte vector,
-one DMA-logical segment and two descriptors, followed by passive device-health
-checks. No retry is allowed. A separate authorization is required.
+The development MAM gate is signed, installed and has completed its one allowed
+bounded transfer. It must not be reset or reused for another diagnostic GO.
+The next milestone is a separately reviewed single XStream waveform stage.

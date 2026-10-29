@@ -15,10 +15,21 @@ retains resources and permanently closes DMA admission. The original x86
 timeout-and-free behavior is deliberately not reproduced.
 
 Batch 21 installed the exact-shape, exact-once development build and completed
-its 9/9 R0 plus 2/2 R1 compatibility matrix. No GO has occurred, so there is no
-new IRQ/DPC, retirement or `UnknownActive` evidence. The next experiment may
-release its per-call mapping only through the complete matching normal path
-described above; any timeout or uncertainty remains terminal quarantine.
+its 9/9 R0 plus 2/2 R1 compatibility matrix. At that point no GO had occurred,
+so there was no new IRQ/DPC, retirement or `UnknownActive` evidence. Batch 23
+subsequently exercised the complete matching normal path described below.
+
+Batch 23 supplied the first live normal-completion evidence for this WDM-v3
+path. One physical transfer returned through the matching IRQ/DPC event path;
+INTEN cleanup remained certain, the transaction retired normally, the mapping
+was released and the registration was subsequently unregistered. The summary
+is `completed=1`, `released=1`, `quarantined=0`, `STATUS_SUCCESS`.
+
+This does not weaken the abnormal boundary. No timeout, cancellation, CLOSE,
+power or PnP race was exercised. Every future uncertain post-GO result must
+still enter irreversible `UnknownActive` and retain all potentially referenced
+resources. The one successful case is practical normal-path evidence, not a
+general PCI retirement certificate.
 
 Status: **fail-closed development path; not deployment-qualified**, 2026-10-23.
 Implementation base: `fix/p0-irq-start-dma-gating` at merge commit `69ad853d2d48419f88be98935fdf879def417b43`.
