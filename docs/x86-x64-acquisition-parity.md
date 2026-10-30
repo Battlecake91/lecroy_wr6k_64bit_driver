@@ -1,5 +1,27 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 25 single-waveform execution boundary
+
+The historically used XStream installation is LeCroy XStream DSO 8.5.1.1.
+Its registered 32-bit COM local server is
+`C:\Program Files (x86)\LeCroy\XStream\lecroyxstreamdso.exe`, SHA-256
+`27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F`.
+Creating `LeCroy.XStreamDSO` starts the application and may automatically begin
+acquisition, so COM activation itself is the hardware-attempt boundary.
+
+The Batch 25 observer deliberately does not call `Acquisition.Acquire`, change
+trigger/timebase/vertical CVARs or start a second application process. After
+the pinned capture is ready, it creates the COM server once and polls the
+existing `Acquisition/C1/Out/Result` hierarchy for a non-empty finite
+`DataArray`. It records channel configuration, sample counts, compact sample
+statistics and a SHA-256 over the returned double values. Raw waveform values
+remain private. A second XStream request may be generated automatically, but
+the installed kernel limit rejects it before acquisition MMIO.
+
+This mode passed 9/9 focused mock cases and the complete capture-launcher suite
+passed 44/44. Live XStream execution remains blocked on fresh physical
+x86-disk-isolation confirmation and separate one-GO authorization.
+
 ## Batch 24 automatic-rearm conclusion
 
 The reference waveform trace reaches `CFDC2138` about 18.31 seconds after

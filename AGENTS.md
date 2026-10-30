@@ -34,26 +34,18 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - The current x64 test package is `oem107.inf`, version `0.2026.1030.1`, with
   loaded SYS SHA-256
   `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`.
-  Batch 24 installed a regular-MAM candidate with a separate kernel launch
-  admission limit of one; its 9/9 R0 and 2/2 R1 matrix passed. No Batch 24
-  XStream launch or DMA GO has occurred; XStream remains separately gated.
-  Its single captured installation and exact-once 9/9 R0 plus 2/2 R1 matrix
-  passed; the device remains problem-free with five interfaces. This is the
-  prior exact-shape, exact-once first-MAM experiment build. One authorized 16-byte
-  MAM transfer completed through matching physical IRQ/DPC evidence, returned
-  16 bytes, retired its mapping normally and left the device healthy. The
-  one-shot gate is now consumed for this loaded FDO. Keep XStream closed until
-  the separately reviewed single-waveform stage is authorized.
+  It has a separate regular-MAM kernel admission limit of one; its 9/9 R0 and
+  2/2 R1 matrix passed. The current loaded FDO has not admitted a MAM launch.
+  Keep XStream closed until the owner freshly confirms physical x86-disk
+  isolation and explicitly authorizes the single-waveform stage.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
-- The one-channel `CFDC2124`/`CFDC2138` MAM request is connected to a compiled
-  WDM-v3 DMA-logical transaction covering the original register sequence,
-  exact-once GO, IRQ/DPC completion, normal mapping retirement, repeat admission
-  and abnormal quarantine. A separate default-off first-experiment build gate
-  now restricts execution to channel `0x30`, config `0xC00`, 16 bytes, one SG
-  segment plus terminator, and one attempt per loaded FDO. It is Dry-qualified
-  and locally test-signed and installed. Its first bounded live transfer passed;
-  repeated DMA, timeout/cancellation and XStream acquisition remain unqualified.
+- The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical
+  addresses and preserves the original register/completion sequence. One
+  bounded 16-byte transfer passed with physical IRQ/DPC evidence and normal
+  retirement. The installed regular-MAM candidate permits at most one launch
+  admission; repeated acquisition, timeout/cancellation and XStream waveform
+  delivery remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

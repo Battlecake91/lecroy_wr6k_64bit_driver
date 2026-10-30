@@ -9,6 +9,13 @@ arm, interrupt enable or acquisition MMIO. Exhaustion returns
 admission. This private build gate is separate from and mutually exclusive
 with `FirstMamExperimentOnly`. The default WDM-v3 launch gate remains closed.
 
+Batch 25 does not broaden that kernel gate. Its XStream observer performs one
+COM activation and no explicit `Acquire()` call. If XStream automatically
+submits a later `CFDC2138`, `LecMamLaunchLimitTryConsume` returns exhausted
+before arm, interrupt enable or acquisition MMIO. The first completed request
+keeps its own generation and retirement state; rejection of a later request
+does not reset, deselect or free the first transaction.
+
 This document is the canonical end-to-end architecture and proof-boundary
 reference. It describes the development tree after Batch 12. It does not claim
 that acquisition DMA is release-ready.

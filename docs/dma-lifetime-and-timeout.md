@@ -14,6 +14,14 @@ cleanup, post-GO cancellation, CLOSE/PnP/power ambiguity or mapping mismatch
 retains resources and permanently closes DMA admission. The original x86
 timeout-and-free behavior is deliberately not reproduced.
 
+For the first XStream waveform attempt, automatic application rearming does
+not expand hardware ownership. The installed per-FDO limit admits at most one
+validated transaction. A later request returns `STATUS_DEVICE_BUSY` before
+acquisition MMIO and cannot retire or corrupt the first mapping. An admitted
+pre-GO failure still consumes the limit. Any uncertain post-GO state continues
+to retain mappings/pages and close admission through `UnknownActive`; neither
+application exit nor a rejected second request proves hardware idle.
+
 Batch 21 installed the exact-shape, exact-once development build and completed
 its 9/9 R0 plus 2/2 R1 compatibility matrix. At that point no GO had occurred,
 so there was no new IRQ/DPC, retirement or `UnknownActive` evidence. Batch 23

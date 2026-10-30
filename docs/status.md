@@ -1,5 +1,31 @@
 # Current project status
 
+## Batch 25 single-waveform preparation
+
+- The installed baseline was passively reverified: `oem107.inf`, version
+  `0.2026.1030.1`, loaded SYS SHA-256
+  `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`,
+  problem code zero, running service and all five interfaces published. No
+  acquisition or DebugView process and no residual `DBGV` service were present.
+- XStream DSO 8.5.1.1 is registered as the 32-bit COM local server
+  `lecroyxstreamdso.exe`. The executable has SHA-256
+  `27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F`
+  and valid Teledyne LeCroy Authenticode. DebugView CLI 5.02 remains pinned to
+  `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`.
+- A repository-controlled `XStreamWithCapture` mode now requires capture
+  readiness, explicit owner authorization, physical-disk-isolation
+  confirmation, the exact one-admission package and pinned runner/application
+  hashes. Its child starts the COM server once, never invokes `Acquire()`, does
+  not change CVARs, observes automatic C1 waveform data and stores only compact
+  statistics plus a payload hash. It never retries or force-kills XStream.
+- Offline evidence passes: single-waveform runner 9/9, MAM gate 21/21,
+  source/ABI contracts 73/73 and complete launcher failure injection 44/44
+  under Windows PowerShell 5.1. The launcher suite used its test-only
+  non-elevated override; real active mode still requires an elevated token.
+- Software inventory again sees only x64 NVMe `HFM256GDHTNG-8510B`, serial
+  `ACE4_2E00_9590_A2AA.`. This is not physical-disconnection proof. No XStream
+  process, device handle, DMA request or hardware GO was started in Batch 25.
+
 ## Batch 24 regular-MAM candidate preparation
 
 - Historical x64 traces prove that XStream automatically rearms MAM DMA: the
