@@ -24,6 +24,7 @@ param(
     [switch]$PnpStatusDiagnostics,
     [switch]$WdmV3MamDma,
     [switch]$FirstMamExperimentOnly,
+    [ValidateRange(0, 1000000)][int]$MamLaunchLimit = 0,
     [Parameter(Mandatory=$true)]
     [ValidateSet('Sign', 'UnsignedQualification')][string]$Mode,
     [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
@@ -112,6 +113,7 @@ function Assert-PackageManifest {
         [Parameter(Mandatory=$true)][bool]$ExpectedPnpStatusDiagnostics,
         [Parameter(Mandatory=$true)][bool]$ExpectedWdmV3MamDma,
         [Parameter(Mandatory=$true)][bool]$ExpectedFirstMamExperimentOnly,
+        [Parameter(Mandatory=$true)][int]$ExpectedMamLaunchLimit,
         [Parameter(Mandatory=$true)][bool]$ExpectedSigned,
         [string]$ExpectedThumbprint
     )
@@ -159,6 +161,8 @@ function Assert-PackageManifest {
         ForEach-Object { [bool]$_.WdmV3MamDma } | Select-Object -Unique)
     $experimentModes = @($manifest.Build.Configurations |
         ForEach-Object { [bool]$_.FirstMamExperimentOnly } | Select-Object -Unique)
+    $launchLimits = @($manifest.Build.Configurations |
+        ForEach-Object { [int]$_.MamLaunchLimit } | Select-Object -Unique)
     $expectedSuiteIds = @(
         'source-abi', 'pre-go-side-effects', 'mdl-only-registration',
         'dma-layout', 'dma-ownership',
@@ -201,7 +205,15 @@ function Assert-PackageManifest {
         $manifest.Build.FirstMamExperimentMarker -ne 'LECS65_FIRST_MAM_EXPERIMENT_ONLY' -or
         $experimentModes.Count -ne 1 -or
         $experimentModes[0] -ne $ExpectedFirstMamExperimentOnly -or
+        [int]$manifest.Build.MamLaunchLimit -ne $ExpectedMamLaunchLimit -or
+        $manifest.Build.MamLaunchLimitMarker -ne $(if ($ExpectedMamLaunchLimit -gt 0) {
+            "LECS65_MAM_LAUNCH_LIMIT=$ExpectedMamLaunchLimit"
+        } else { $null }) -or
+        $launchLimits.Count -ne 1 -or
+        $launchLimits[0] -ne $ExpectedMamLaunchLimit -or
         ($ExpectedFirstMamExperimentOnly -and -not $ExpectedWdmV3MamDma) -or
+        ($ExpectedMamLaunchLimit -gt 0 -and
+            (-not $ExpectedWdmV3MamDma -or $ExpectedFirstMamExperimentOnly)) -or
         $manifest.Regression.CompleteDry -ne 'PASS' -or
         $manifest.Regression.Expanded -ne 'PASS' -or
         $manifest.Regression.SuiteContract -ne 'batch16-regression-v1' -or
@@ -291,6 +303,12 @@ try {
     if ($FirstMamExperimentOnly -and -not $WdmV3MamDma) {
         throw 'FirstMamExperimentOnly requires WdmV3MamDma.'
     }
+    if ($MamLaunchLimit -gt 0 -and -not $WdmV3MamDma) {
+        throw 'MamLaunchLimit requires WdmV3MamDma.'
+    }
+    if ($MamLaunchLimit -gt 0 -and $FirstMamExperimentOnly) {
+        throw 'MamLaunchLimit and FirstMamExperimentOnly are mutually exclusive.'
+    }
     if (-not (Test-Path -LiteralPath $repository -PathType Container)) {
         throw "RepositoryRoot does not exist: $repository"
     }
@@ -335,6 +353,7 @@ try {
         "PnpStatusDiagnostics=$([bool]$PnpStatusDiagnostics)"
         "WdmV3MamDma=$([bool]$WdmV3MamDma)"
         "FirstMamExperimentOnly=$([bool]$FirstMamExperimentOnly)"
+        "MamLaunchLimit=$MamLaunchLimit"
         "OutputRoot=$output"
     ) -join "`r`n"
     if ($Mode -eq 'Sign') {
@@ -368,6 +387,9 @@ try {
     if ($FirstMamExperimentOnly) {
         $childArguments += '-FirstMamExperimentOnly'
     }
+    if ($MamLaunchLimit -gt 0) {
+        $childArguments += @('-MamLaunchLimit', $MamLaunchLimit.ToString())
+    }
     if ($Mode -eq 'Sign') {
         $childArguments += @(
             '-Sign'
@@ -397,6 +419,7 @@ try {
         -ExpectedPnpStatusDiagnostics ([bool]$PnpStatusDiagnostics) `
         -ExpectedWdmV3MamDma ([bool]$WdmV3MamDma) `
         -ExpectedFirstMamExperimentOnly ([bool]$FirstMamExperimentOnly) `
+        -ExpectedMamLaunchLimit $MamLaunchLimit `
         -ExpectedSigned ($Mode -eq 'Sign') `
         -ExpectedThumbprint $(if ($Mode -eq 'Sign') {
             $CertificateThumbprint.ToUpperInvariant()

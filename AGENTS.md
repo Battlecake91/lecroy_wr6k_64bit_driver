@@ -31,12 +31,15 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- The current x64 test package is `oem106.inf`, version `0.2026.1029.1`, with
+- The current x64 test package is `oem107.inf`, version `0.2026.1030.1`, with
   loaded SYS SHA-256
-  `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+  `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`.
+  Batch 24 installed a regular-MAM candidate with a separate kernel launch
+  admission limit of one; its 9/9 R0 and 2/2 R1 matrix passed. No Batch 24
+  XStream launch or DMA GO has occurred; XStream remains separately gated.
   Its single captured installation and exact-once 9/9 R0 plus 2/2 R1 matrix
   passed; the device remains problem-free with five interfaces. This is the
-  exact-shape, exact-once first-MAM experiment build. One authorized 16-byte
+  prior exact-shape, exact-once first-MAM experiment build. One authorized 16-byte
   MAM transfer completed through matching physical IRQ/DPC evidence, returned
   16 bytes, retired its mapping normally and left the device healthy. The
   one-shot gate is now consumed for this loaded FDO. Keep XStream closed until

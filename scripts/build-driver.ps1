@@ -6,6 +6,8 @@ param(
     [switch]$PnpStatusDiagnostics,
     [switch]$WdmV3MamDma,
     [switch]$FirstMamExperimentOnly,
+    [ValidateRange(0, 1000000)]
+    [int]$MamLaunchLimit = 0,
     [switch]$Rebuild
 )
 
@@ -13,6 +15,12 @@ $ErrorActionPreference = "Stop"
 
 if ($FirstMamExperimentOnly -and -not $WdmV3MamDma) {
     throw "FirstMamExperimentOnly requires WdmV3MamDma."
+}
+if ($MamLaunchLimit -gt 0 -and -not $WdmV3MamDma) {
+    throw "MamLaunchLimit requires WdmV3MamDma."
+}
+if ($MamLaunchLimit -gt 0 -and $FirstMamExperimentOnly) {
+    throw "MamLaunchLimit and FirstMamExperimentOnly are mutually exclusive."
 }
 
 $repo = Split-Path -Parent $PSScriptRoot
@@ -51,6 +59,7 @@ $target = if ($Rebuild) { 'Rebuild' } else { 'Build' }
     ("/p:LecPnpStatusDiagnostics={0}" -f $PnpStatusDiagnostics.IsPresent.ToString().ToLowerInvariant()) `
     ("/p:LecWdmV3MamDma={0}" -f $WdmV3MamDma.IsPresent.ToString().ToLowerInvariant()) `
     ("/p:LecFirstMamExperimentOnly={0}" -f $FirstMamExperimentOnly.IsPresent.ToString().ToLowerInvariant()) `
+    ("/p:LecMamLaunchLimit={0}" -f $MamLaunchLimit) `
     /nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Driver build failed with exit code $LASTEXITCODE."

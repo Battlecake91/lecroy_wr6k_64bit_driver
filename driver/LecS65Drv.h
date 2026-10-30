@@ -285,6 +285,8 @@ typedef struct _LECS65_DEVICE_EXTENSION {
     volatile LONG DmaUnknownActive;
     /* Per-loaded-FDO exact-once latch for the bounded first MAM experiment. */
     volatile LONG FirstMamExperimentConsumed;
+    /* Separate development-only admission counter for regular MAM launches. */
+    volatile LONG MamLaunchAdmissions;
 
     PKINTERRUPT InterruptObject;
     ULONG InterruptVector;

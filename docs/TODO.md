@@ -9,7 +9,8 @@ This file tracks unfinished work and deferred features. The current, verified ca
   IRQ/DPC completion and normal mapping retirement. Prepare a separately
   signed/installed development candidate whose reviewed acquisition policy
   supports the exact original-compatible XStream request lifecycle; do not
-  reuse or reset the consumed one-shot latch. Start with one waveform, verify
+  reuse or reset the consumed one-shot latch. Batch 24 uses a separate kernel
+  admission limit of one potential MAM launch. Start with one waveform, verify
   payload and completion semantics, then separately qualify rearming, repeated
   acquisition, trigger control and normal Stop/restart.
 

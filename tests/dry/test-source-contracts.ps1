@@ -913,6 +913,19 @@ Test-Contract "first MAM experiment build is exact-once and narrowly shaped" {
     $packageBuildText -match 'FirstMamExperimentOnly requires WdmV3MamDma'
 }
 
+Test-Contract "regular MAM acquisition has a separate kernel launch limit" {
+    $driverProjectText -match '<LecMamLaunchLimit Condition=.*?>0</LecMamLaunchLimit>' -and
+    $driverProjectText -match 'LECS65_MAM_LAUNCH_LIMIT=\$\(LecMamLaunchLimit\)' -and
+    $transactionHeaderText -match '#define LECS65_MAM_LAUNCH_LIMIT 0' -and
+    $transactionHeaderText -match 'LECS65_MAM_LAUNCH_LIMIT and LECS65_FIRST_MAM_EXPERIMENT_ONLY are mutually exclusive' -and
+    $experimentGateText -match 'LecMamLaunchLimitTryConsume' -and
+    $ioctlText -match 'LecValidateMamLaunchLimit' -and
+    $ioctlText -match 'MamLaunchAdmissions' -and
+    $packageBuildText -match '\[int\]\$MamLaunchLimit = 0' -and
+    $packageBuildText -match 'Assert-MamLaunchLimitMarkerState' -and
+    $packageBuildText -match 'MamLaunchLimit and FirstMamExperimentOnly are mutually exclusive'
+}
+
 Test-Contract "package signing is opt-in and thumbprint-bound" {
     $packageBuildText -match '\[switch\]\$Sign' -and
     $packageBuildText -match 'CertificateThumbprint is required with -Sign' -and

@@ -28,10 +28,23 @@ typedef long (*LECS65_FIRST_MAM_COMPARE_EXCHANGE)(
     long Exchange,
     long Comparand);
 
+typedef enum _LECS65_MAM_LAUNCH_LIMIT_RESULT {
+    LecMamLaunchLimitAccepted = 0,
+    LecMamLaunchLimitExhausted,
+    LecMamLaunchLimitInvalid
+} LECS65_MAM_LAUNCH_LIMIT_RESULT;
+
 LECS65_FIRST_MAM_GATE_RESULT
 LecFirstMamValidateAndConsume(
     const LECS65_FIRST_MAM_SHAPE* Shape,
     volatile long* Consumed,
     LECS65_FIRST_MAM_COMPARE_EXCHANGE CompareExchange);
+
+LECS65_MAM_LAUNCH_LIMIT_RESULT
+LecMamLaunchLimitTryConsume(
+    volatile long* Consumed,
+    long Limit,
+    LECS65_FIRST_MAM_COMPARE_EXCHANGE CompareExchange,
+    long* AdmissionNumber);
 
 #endif

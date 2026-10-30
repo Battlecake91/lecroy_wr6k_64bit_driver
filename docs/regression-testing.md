@@ -1,5 +1,12 @@
 # Regression test architecture
 
+## Regular-MAM launch-limit coverage
+
+The gate suite verifies first admission, exhaustion, invalid zero and
+concurrent exact-one admission. Source/package contracts verify default-off,
+WDM-v3 dependency, mutual exclusion from `FirstMamExperimentOnly`, binary
+marker identity and elevated-launcher manifest propagation.
+
 ## Batch 21 launcher and live compatibility qualification
 
 The production capture/install launcher resolves an omitted PnPUtil path in

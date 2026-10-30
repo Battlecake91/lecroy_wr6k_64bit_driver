@@ -50,12 +50,32 @@ typedef struct _THREAD_CONTEXT {
     LECS65_FIRST_MAM_GATE_RESULT Result;
 } THREAD_CONTEXT;
 
+typedef struct _LIMIT_THREAD_CONTEXT {
+    HANDLE StartEvent;
+    volatile long* Counter;
+    long Limit;
+    LECS65_MAM_LAUNCH_LIMIT_RESULT Result;
+    long AdmissionNumber;
+} LIMIT_THREAD_CONTEXT;
+
 static DWORD WINAPI GateThread(void* parameter)
 {
     THREAD_CONTEXT* context = (THREAD_CONTEXT*)parameter;
     WaitForSingleObject(context->StartEvent, INFINITE);
     context->Result = LecFirstMamValidateAndConsume(
         context->Shape, context->Latch, CompareExchange);
+    return 0;
+}
+
+static DWORD WINAPI LimitThread(void* parameter)
+{
+    LIMIT_THREAD_CONTEXT* context = (LIMIT_THREAD_CONTEXT*)parameter;
+    WaitForSingleObject(context->StartEvent, INFINITE);
+    context->Result = LecMamLaunchLimitTryConsume(
+        context->Counter,
+        context->Limit,
+        CompareExchange,
+        &context->AdmissionNumber);
     return 0;
 }
 
@@ -71,6 +91,8 @@ int main(void)
     HANDLE startEvent;
     unsigned accepted;
     unsigned busy;
+    long admissionNumber;
+    LIMIT_THREAD_CONTEXT limitContexts[2];
 
     shape = ValidShape(descriptors);
     latch = 0;
@@ -177,6 +199,48 @@ int main(void)
     busy = (contexts[0].Result == LecFirstMamGateAlreadyConsumed) +
         (contexts[1].Result == LecFirstMamGateAlreadyConsumed);
     Check("concurrent handles admit exactly one attempt",
+        accepted == 1 && busy == 1 && latch == 1);
+    CloseHandle(threads[0]);
+    CloseHandle(threads[1]);
+    CloseHandle(startEvent);
+
+    latch = 0;
+    admissionNumber = 0;
+    Check("regular MAM launch limit admits the first request",
+        LecMamLaunchLimitTryConsume(
+            &latch, 1, CompareExchange, &admissionNumber) ==
+            LecMamLaunchLimitAccepted &&
+        admissionNumber == 1 && latch == 1);
+    admissionNumber = 0;
+    Check("regular MAM launch limit rejects a repeated request",
+        LecMamLaunchLimitTryConsume(
+            &latch, 1, CompareExchange, &admissionNumber) ==
+            LecMamLaunchLimitExhausted &&
+        admissionNumber == 0 && latch == 1);
+    latch = 0;
+    Check("zero regular MAM launch limit is invalid",
+        LecMamLaunchLimitTryConsume(
+            &latch, 0, CompareExchange, &admissionNumber) ==
+            LecMamLaunchLimitInvalid && latch == 0);
+
+    latch = 0;
+    startEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    ZeroMemory(limitContexts, sizeof(limitContexts));
+    limitContexts[0].StartEvent = startEvent;
+    limitContexts[1].StartEvent = startEvent;
+    limitContexts[0].Counter = &latch;
+    limitContexts[1].Counter = &latch;
+    limitContexts[0].Limit = 1;
+    limitContexts[1].Limit = 1;
+    threads[0] = CreateThread(NULL, 0, LimitThread, &limitContexts[0], 0, NULL);
+    threads[1] = CreateThread(NULL, 0, LimitThread, &limitContexts[1], 0, NULL);
+    SetEvent(startEvent);
+    WaitForMultipleObjects(2, threads, TRUE, INFINITE);
+    accepted = (limitContexts[0].Result == LecMamLaunchLimitAccepted) +
+        (limitContexts[1].Result == LecMamLaunchLimitAccepted);
+    busy = (limitContexts[0].Result == LecMamLaunchLimitExhausted) +
+        (limitContexts[1].Result == LecMamLaunchLimitExhausted);
+    Check("regular MAM limit admits one concurrent request",
         accepted == 1 && busy == 1 && latch == 1);
     CloseHandle(threads[0]);
     CloseHandle(threads[1]);
