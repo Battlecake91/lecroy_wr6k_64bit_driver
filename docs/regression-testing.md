@@ -1,5 +1,21 @@
 # Regression test architecture
 
+## CFDC2110 family-2 opcode-0x03 coverage
+
+`tests/dry/test-cfdc2110-opcode03.ps1` compiles the production framing helper
+with `/W4 /WX` and exercises the six observed identical calls, exact 130/14
+shape, opaque body, truncation, wrong lengths/opcode/fetch, insufficient output,
+fixed five-/ten-second timeout policy, transport-timeout and failure framing,
+cancellation-status preservation and concurrent stateless validation. It passes
+20/20. The production source contracts additionally verify that the helper is
+used by the real dispatcher, the whole-batch mutex remains in place, the
+extended wait is one-use, and the branch contains no DMA admission.
+
+Debug and Release x64 rebuilds pass with zero warnings/errors. The complete Dry
+runner passes under 64-bit Windows PowerShell 5.1; default stress remains DMA
+5,000/5,000 and INTEN 1,000/1,000. These tests do not access the device or prove
+that board firmware accepts the opaque payload.
+
 ## Batch 25 single-waveform runner
 
 `scripts/invoke-xstream-single-waveform.ps1` is distinct from the broad

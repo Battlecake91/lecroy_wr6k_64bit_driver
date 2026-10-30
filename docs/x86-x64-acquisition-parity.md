@@ -1,5 +1,23 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 26 opcode-0x03 parity
+
+The missing family-2 opcode `0x03` is a board-message transaction, not an
+acquisition or DMA command. The x86 driver sends the A5FB bytes through the
+common BAR1 transport, returns direct protocol status zero, and gives the
+immediately following `85FB 40 00` response fetch one ten-second initial wait.
+The default and continuation waits remain five seconds. The new x64 path binds
+that timeout locally to the exact 130-byte/two-record request and preserves the
+existing whole-batch mutex. It performs no MAM/MTT launch, buffer registration
+or DMA mapping.
+
+Offline qualification establishes dispatch, bounds, output length, timeout and
+failure framing, but not live firmware acceptance. The Batch 25 private capture
+retained only an input preview, not all 130 bytes, so a standalone reproducer
+must not invent the opaque command body. The next runtime gate is either one
+exact request supplied from a newly captured/known source or one separately
+authorized XStream activation with the existing one-launch kernel limit.
+
 ## Batch 25 first XStream execution result
 
 The historically used XStream installation is LeCroy XStream DSO 8.5.1.1.
@@ -27,11 +45,10 @@ The kernel trace proves that startup progressed through four device handles and
 511 initialization IOCTLs. It proves equally clearly that acquisition did not
 begin: there is no `CFDC2124`, `CFDC2138`, mapping, descriptor, GO, IRQ or DPC
 record. Six identical family-2 opcode-`0x03` `CFDC2110` chains were the only
-requests to fail at NTSTATUS level. The native validated gate does not yet admit
-that opcode, while original-driver analysis assigns it common-transport send
-and extended response-timeout semantics. This is the leading compatibility gap
-to resolve before another separately authorized waveform attempt. No waveform
-data or completion length exists for Batch 25.
+requests to fail at NTSTATUS level. Batch 26 now implements the recovered
+common-transport and extended-response-timeout semantics offline. Live firmware
+acceptance and sole-cause attribution remain unproved. No waveform data or
+completion length exists for Batch 25.
 
 ## Batch 24 automatic-rearm conclusion
 

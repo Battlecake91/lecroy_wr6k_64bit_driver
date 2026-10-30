@@ -4,15 +4,15 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Restore XStream startup through `CFDC2110` family-2 opcode `0x03`, then
-  requalify one waveform with a new candidate.** The one authorized Batch 25
-  COM activation failed before DMA after six identical opcode-`0x03` requests
-  were rejected with `STATUS_INVALID_DEVICE_REQUEST`. Compare the complete
-  request and response contract with original traces and the recovered
-  common-transport/extended-timeout behavior; implement only the proven
-  semantics and add focused tests. A later live attempt needs a new signed
-  candidate, physical-disk confirmation and fresh one-GO authorization. Do not
-  retry the installed candidate or bypass its kernel limit.
+- [ ] **Runtime-qualify restored `CFDC2110` family-2 opcode `0x03`, then
+  requalify one waveform.** The original contract is recovered and the native
+  exact-shape transport path is Dry-qualified. The smallest next operation is
+  one captured execution of the complete 130-byte XStream request against the
+  new signed candidate, with a ten-second response bound and no DMA. The full
+  private 130-byte request was not retained in public evidence, so do not
+  fabricate a standalone diagnostic body. A later XStream activation needs
+  separate authorization, physical-disk confirmation and a fresh one-GO
+  boundary.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

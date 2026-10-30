@@ -1,5 +1,43 @@
 # Current project status
 
+## Batch 26 opcode-0x03 compatibility preparation
+
+- Original x86 analysis establishes that CFDC2110 family 2 opcode `0x03`
+  forwards the complete A5FB record through the existing BAR1 message
+  transport, marks a response pending and changes only the next response wait
+  from the five-second default to ten seconds. The historical constant `0x19`
+  is a nonzero pending-response selector, not a timeout value.
+- The six Batch 25 calls have one observed shape: 130 input bytes, 14 output
+  bytes, a six-byte-output A5FB record with a 112-byte payload beginning
+  `40 02 03`, followed immediately by the eight-byte-output `85FB 40 00`
+  fetch record. The 109-byte opcode body is intentionally opaque.
+- The native implementation now admits only that complete two-record shape,
+  sends 114 bytes from `record + 6`, binds a one-use ten-second wait to its
+  companion fetch, and then restores the default timeout. It reuses the
+  existing whole-batch `TransferMutex`; it adds no DMA, MAM, MTT or acquisition
+  admission. A failed transport is returned in the legacy response record,
+  including `0x102` for response timeout.
+- Debug and Release x64 rebuilds completed with zero warnings and errors using
+  WDK/SDK `10.0.28000.0` and MSVC `14.41.34120`. Focused opcode tests pass
+  20/20, source/ABI contracts 74/74, and the complete Windows PowerShell 5.1
+  Dry suite passes, including DMA stress 5,000/5,000 and INTEN stress
+  1,000/1,000. No live request, XStream start, installation or PnP transition
+  was performed.
+- The one authorized package run produced signed Release x64 candidate
+  `0.2026.1030.2` from source/workflow commit
+  `414f18e6c4f8072b05e7d60d8ef2a5c1218ada42`. Package regression is 849/849
+  functional and 66,000/66,000 stress iterations. PnP diagnostics, WDM-v3 MAM
+  and `MamLaunchLimit=1` are present; unsafe PFN DMA remains disabled.
+  Authenticode, the local test chain, CAT membership and SYS/PDB identity pass.
+  Frozen hashes are INF `BC7734C1...976CF4`, CAT `28BFF32C...A5617`, signed
+  SYS `2F0F53A7...C68653`, PDB `78D8D941...2710B` and manifest
+  `F615EA1F...5D116`. Installation is not authorized and `oem107.inf` remains
+  installed and started.
+- The 32-bit COM registration remains present and points
+  `LeCroy.XStreamDSO`/CLSID `{03960F1A-A888-4335-AB08-6F8BE55F0D9B}` to the
+  expected local server. This weakens a missing-registration hypothesis but
+  does not prove that opcode `0x03` was the sole Batch 25 startup failure.
+
 ## Batch 25 first XStream attempt
 
 - The authorized `XStreamWithCapture` attempt used `oem107.inf`, version

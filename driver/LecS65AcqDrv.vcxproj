@@ -147,6 +147,7 @@
     <ClInclude Include="DmaCompletion.h" />
     <ClInclude Include="DmaTransaction.h" />
     <ClInclude Include="DmaV3Transfer.h" />
+    <ClInclude Include="CfDc2110Protocol.h" />
     <ClCompile Include="Driver.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="PnpIrpLifetime.c" />
@@ -155,6 +156,7 @@
     <ClCompile Include="DmaCompletion.c" />
     <ClCompile Include="DmaTransaction.c" />
     <ClCompile Include="DmaV3Transfer.c" />
+    <ClCompile Include="CfDc2110Protocol.c" />
     <ClCompile Include="InterruptControl.c" />
     <ClCompile Include="DmaLayout.c" />
     <ClCompile Include="DmaExperimentGate.c" />
