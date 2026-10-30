@@ -2,20 +2,21 @@
 .SYNOPSIS
   Validate or execute one diagnostic capture/installation attempt.
 .DESCRIPTION
-  This fail-closed launcher has five explicit modes. Preflight is passive.
+  This fail-closed launcher has six explicit modes. Preflight is passive.
   CaptureQualification may start only the pinned capture executable.
   InstallWithCapture may invoke the pinned PnPUtil executable at most once,
   and only after capture readiness. RestartWithCapture may invoke exactly one
   pinned PnPUtil restart for the exact device instance. NoLaunchWithCapture
   may invoke exactly one pinned no-launch runner after live kernel capture is
-  ready. The launcher never elevates itself, retries, rolls back or changes
-  system policy.
+  ready. XStreamWithCapture may invoke exactly one pinned single-waveform
+  runner after live kernel capture is ready. The launcher never elevates
+  itself, retries, rolls back or changes system policy.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('Preflight', 'CaptureQualification', 'InstallWithCapture',
-        'RestartWithCapture', 'NoLaunchWithCapture')]
+        'RestartWithCapture', 'NoLaunchWithCapture', 'XStreamWithCapture')]
     [string]$Mode,
     [Parameter(Mandatory=$true)][string]$RepositoryRoot,
     [Parameter(Mandatory=$true)]
@@ -51,6 +52,8 @@ param(
     [switch]$AuthorizeInstallation,
     [switch]$AuthorizePnpRestart,
     [switch]$AuthorizeNoLaunch,
+    [switch]$AuthorizeXStream,
+    [switch]$ConfirmPhysicalDiskDisconnected,
     [string]$PnPUtilPath,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedPnPUtilHash,
     [string]$NoLaunchRunnerPath,
@@ -59,6 +62,13 @@ param(
     [string]$NoLaunchExecutablePath,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
     [string]$ExpectedNoLaunchExecutableHash,
+    [string]$XStreamRunnerPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamRunnerHash,
+    [string]$XStreamExecutablePath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamExecutableHash,
+    [ValidateRange(30, 600)][int]$XStreamTimeoutSeconds = 240,
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
     [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
     [ValidateRange(1, 120)][int]$CaptureShutdownGraceSeconds = 15,
@@ -71,6 +81,7 @@ param(
     [string]$ExpectedCurrentSysHash =
         'F760E77BF4DF973379207F2130362E6E16A05FF17C3F4B81441CC0802B02F25D',
     [switch]$TestMode,
+    [switch]$AllowNonElevatedTestMode,
     [string]$MockStatePath,
     [switch]$MockExistingCollector,
     [ValidateSet('', 'AfterEvidenceInitialization', 'BeforeCaptureStart')]
@@ -92,6 +103,7 @@ $script:InstallInvocations = 0
 $script:PnpRestartInvocations = 0
 $script:CaptureInvocations = 0
 $script:NoLaunchInvocations = 0
+$script:XStreamInvocations = 0
 
 function Get-AbsolutePath {
     param([string]$Path, [string]$Label)
@@ -173,6 +185,7 @@ function Write-Result {
         InstallInvocations = $script:InstallInvocations
         PnpRestartInvocations = $script:PnpRestartInvocations
         NoLaunchInvocations = $script:NoLaunchInvocations
+        XStreamInvocations = $script:XStreamInvocations
     }
     $json = $result | ConvertTo-Json -Depth 4
     [IO.File]::WriteAllText($script:ResultPath,
@@ -313,7 +326,8 @@ function Assert-PassiveIdentity {
     }
 
     if (-not $TestMode) {
-        $blockedNames = @('XStream.exe', 'lecdiag.exe', 'lecwatch.exe',
+        $blockedNames = @('XStream.exe', 'lecroyxstreamdso.exe',
+            'lecdiag.exe', 'lecwatch.exe',
             'Acquisition.exe', 'WaveStudio.exe', 'ScopeExplorer.exe')
         $blocked = @(Get-CimInstance Win32_Process | Where-Object {
             $blockedNames -contains $_.Name
@@ -411,7 +425,8 @@ try {
     $principal = [Security.Principal.WindowsPrincipal](
         [Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole(
-            [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            [Security.Principal.WindowsBuiltInRole]::Administrator) -and
+        -not ($TestMode -and $AllowNonElevatedTestMode)) {
         throw 'The diagnostic launcher requires an elevated token.'
     }
     if ($PSVersionTable.PSVersion.Major -ne 5 -or
@@ -472,21 +487,24 @@ try {
 
     if ($Mode -eq 'Preflight') {
         if ($AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or $AuthorizeXStream -or
+            $ConfirmPhysicalDiskDisconnected -or
             -not [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'Preflight forbids active authorization switches.'
         }
     }
     elseif ($Mode -eq 'CaptureQualification') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or $AuthorizeXStream -or
+            $ConfirmPhysicalDiskDisconnected -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'CaptureQualification requires only explicit capture authorization.'
         }
     }
     elseif ($Mode -eq 'InstallWithCapture') {
         if (-not $AuthorizeKernelCapture -or -not $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or $AuthorizeXStream -or
+            $ConfirmPhysicalDiskDisconnected -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'InstallWithCapture requires explicit capture and installation authorization.'
         }
@@ -496,7 +514,8 @@ try {
     }
     elseif ($Mode -eq 'RestartWithCapture') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            -not $AuthorizePnpRestart -or $AuthorizeNoLaunch -or
+            -not $AuthorizePnpRestart -or $AuthorizeNoLaunch -or $AuthorizeXStream -or
+            $ConfirmPhysicalDiskDisconnected -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'RestartWithCapture requires explicit capture and PnP restart authorization.'
         }
@@ -504,9 +523,10 @@ try {
             throw 'RestartWithCapture requires ExpectedPnPUtilHash.'
         }
     }
-    else {
+    elseif ($Mode -eq 'NoLaunchWithCapture') {
         if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
-            $AuthorizePnpRestart -or -not $AuthorizeNoLaunch -or
+            $AuthorizePnpRestart -or -not $AuthorizeNoLaunch -or $AuthorizeXStream -or
+            $ConfirmPhysicalDiskDisconnected -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
             throw 'NoLaunchWithCapture requires explicit capture and no-launch authorization.'
         }
@@ -524,6 +544,34 @@ try {
             -Expected $ExpectedNoLaunchRunnerHash -Label 'No-launch runner'
         Assert-FileHash -Path $noLaunchExecutable `
             -Expected $ExpectedNoLaunchExecutableHash -Label 'No-launch executable'
+    }
+    else {
+        if (-not $AuthorizeKernelCapture -or $AuthorizeInstallation -or
+            $AuthorizePnpRestart -or $AuthorizeNoLaunch -or -not $AuthorizeXStream -or
+            -not $ConfirmPhysicalDiskDisconnected -or
+            [string]::IsNullOrWhiteSpace($AuthorizationId)) {
+            throw 'XStreamWithCapture requires explicit capture, physical-isolation and XStream authorization.'
+        }
+        if ([string]::IsNullOrWhiteSpace($XStreamRunnerPath) -or
+            [string]::IsNullOrWhiteSpace($ExpectedXStreamRunnerHash) -or
+            [string]::IsNullOrWhiteSpace($XStreamExecutablePath) -or
+            [string]::IsNullOrWhiteSpace($ExpectedXStreamExecutableHash)) {
+            throw 'XStreamWithCapture requires pinned runner and executable identities.'
+        }
+        $xstreamRunner = Get-AbsolutePath $XStreamRunnerPath 'XStreamRunnerPath'
+        $xstreamExecutable = Get-AbsolutePath $XStreamExecutablePath `
+            'XStreamExecutablePath'
+        Assert-FileHash -Path $xstreamRunner -Expected $ExpectedXStreamRunnerHash `
+            -Label 'XStream single-waveform runner'
+        Assert-FileHash -Path $xstreamExecutable `
+            -Expected $ExpectedXStreamExecutableHash -Label 'XStream executable'
+        $xstreamManifest = Get-Content -Raw -LiteralPath `
+            (Join-Path $package 'evidence\manifest.json') | ConvertFrom-Json
+        if ($xstreamManifest.Build.WdmV3MamDma -ne $true -or
+            $xstreamManifest.Build.FirstMamExperimentOnly -ne $false -or
+            [int]$xstreamManifest.Build.MamLaunchLimit -ne 1) {
+            throw 'XStream package is not the reviewed one-admission regular-MAM build.'
+        }
     }
 
     Write-LauncherOutput "BEGIN $Mode $([DateTime]::UtcNow.ToString('o'))"
@@ -543,8 +591,9 @@ try {
     $installMarker = Join-Path $evidence 'install-attempt.marker'
     $restartMarker = Join-Path $evidence 'pnp-restart-attempt.marker'
     $noLaunchMarker = Join-Path $evidence 'no-launch-attempt.marker'
+    $xstreamMarker = Join-Path $evidence 'xstream-attempt.marker'
     foreach ($marker in @($captureMarker, $installMarker, $restartMarker,
-            $noLaunchMarker)) {
+            $noLaunchMarker, $xstreamMarker)) {
         if (Test-Path -LiteralPath $marker) {
             throw "Attempt marker already exists: $marker"
         }
@@ -747,6 +796,57 @@ try {
             throw 'No-launch runner result contract mismatch.'
         }
         Write-LauncherOutput 'NO-LAUNCH CHILD PASS'
+    }
+    elseif ($Mode -eq 'XStreamWithCapture') {
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'the XStream attempt marker'
+        Write-ExclusiveTextFile -Path $xstreamMarker `
+            -Text ($markerText + "`r`nXStreamApproved=true`r`nPhysicalDiskDisconnectedConfirmed=true`r`n")
+        Assert-CaptureJobRunning -Job $script:CaptureJob `
+            -Boundary 'XStream dispatch'
+        $xstreamEvidence = Join-Path $evidence 'xstream-evidence'
+        if (Test-Path -LiteralPath $xstreamEvidence) {
+            throw "XStream evidence path already exists: $xstreamEvidence"
+        }
+        $xstreamMode = if ($TestMode) { 'OfflineMock' } else { 'RunAuthorized' }
+        $xstreamArguments = @('-NoProfile', '-NonInteractive',
+            '-ExecutionPolicy', 'Bypass', '-File', $xstreamRunner,
+            '-Mode', $xstreamMode, '-EvidenceRoot', $xstreamEvidence,
+            '-XStreamExecutablePath', $xstreamExecutable,
+            '-ExpectedXStreamExecutableHash', $ExpectedXStreamExecutableHash,
+            '-ExpectedInf', $ExpectedCurrentInf,
+            '-ExpectedVersion', $ExpectedCurrentVersion,
+            '-ExpectedSysHash', $ExpectedCurrentSysHash,
+            '-DeviceInstanceId', $DeviceInstanceId,
+            '-TimeoutSeconds', $XStreamTimeoutSeconds.ToString())
+        if ($TestMode) {
+            $xstreamArguments += @('-MockStatePath', $MockStatePath)
+        }
+        $xstreamArguments += @('-OwnerAuthorized',
+            '-PhysicalDiskDisconnectedConfirmed')
+        $script:XStreamInvocations++
+        $xstreamResult = Invoke-LecS65NativeProcess `
+            -Name 'Approved one-time XStream waveform attempt' `
+            -FilePath (Join-Path $PSHOME 'powershell.exe') `
+            -Arguments $xstreamArguments -WorkingDirectory $repository `
+            -LogPath (Join-Path $evidence 'xstream-runner.log') `
+            -TimeoutSeconds ($XStreamTimeoutSeconds + 30) -ReturnOnNonZeroExit
+        if ($xstreamResult.ExitCode -ne 0) {
+            throw "XStream runner exited with code $($xstreamResult.ExitCode); no retry was attempted."
+        }
+        $xstreamResultPath = Join-Path $xstreamEvidence 'result.json'
+        if (-not (Test-Path -LiteralPath $xstreamResultPath -PathType Leaf)) {
+            throw 'XStream runner did not produce result.json.'
+        }
+        $xstreamContract = Get-Content -Raw -LiteralPath $xstreamResultPath |
+            ConvertFrom-Json
+        if ($xstreamContract.Result -ne 'PASS' -or
+            [int]$xstreamContract.XStreamLaunchCount -ne 1 -or
+            [int]$xstreamContract.ExplicitAcquireCount -ne 0 -or
+            -not [bool]$xstreamContract.Waveform.Observed) {
+            throw 'XStream runner result contract mismatch.'
+        }
+        Write-LauncherOutput 'XSTREAM CHILD PASS'
     }
 
     $script:CaptureResult = Complete-CaptureJob -Job $script:CaptureJob `
