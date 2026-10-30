@@ -29,6 +29,8 @@ $layoutSource = Join-Path $repo "driver\DmaLayout.c"
 $layoutHeader = Join-Path $repo "driver\DmaLayout.h"
 $experimentGateSource = Join-Path $repo "driver\DmaExperimentGate.c"
 $experimentGateHeader = Join-Path $repo "driver\DmaExperimentGate.h"
+$cfDc2110ProtocolSource = Join-Path $repo "driver\CfDc2110Protocol.c"
+$cfDc2110ProtocolHeader = Join-Path $repo "driver\CfDc2110Protocol.h"
 $adapterSource = Join-Path $repo "driver\DmaAdapterStage.c"
 $adapterHeader = Join-Path $repo "driver\DmaAdapterStage.h"
 $ownerSource = Join-Path $repo "driver\DmaMappingOwner.c"
@@ -57,7 +59,7 @@ $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
 $codexContinuation = Join-Path $repo "scripts\manage-codex-continuation.ps1"
 $mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $xstreamSingleRunner, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $cfDc2110ProtocolSource, $cfDc2110ProtocolHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $xstreamSingleRunner, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -72,6 +74,8 @@ $acquisitionText = Get-Content -LiteralPath $acquisitionSource -Raw
 $completionText = Get-Content -LiteralPath $completionSource -Raw
 $interruptText = Get-Content -LiteralPath (Join-Path $repo "driver\InterruptControl.c") -Raw
 $experimentGateText = Get-Content -LiteralPath $experimentGateSource -Raw
+$cfDc2110ProtocolText = Get-Content -LiteralPath $cfDc2110ProtocolSource -Raw
+$cfDc2110ProtocolHeaderText = Get-Content -LiteralPath $cfDc2110ProtocolHeader -Raw
 $completionHeaderText = Get-Content -LiteralPath $completionHeader -Raw
 $transactionText = Get-Content -LiteralPath $transactionSource -Raw
 $transactionHeaderText = Get-Content -LiteralPath $transactionHeader -Raw
@@ -1025,6 +1029,23 @@ Test-Contract "WDM-v3 MAM transaction has an explicit default-off development ga
     $driverProjectText -match 'LECS65_ENABLE_WDM_V3_MAM_DMA=1' -and
     $ioctlText -match 'LecDmaPnpExecuteLegacyTransfer' -and
     $ioctlText -match 'WRITE_REGISTER_ULONG\(sgta, DescriptorTable.LowPart\)'
+}
+
+Test-Contract "CFDC2110 family-2 opcode 0x03 is exact-shape and transport-only" {
+    $driverProjectText -match 'ClCompile Include="CfDc2110Protocol\.c"' -and
+    $driverProjectText -match 'ClInclude Include="CfDc2110Protocol\.h"' -and
+    $cfDc2110ProtocolHeaderText -match 'LECS65_CFDC2110_OPCODE03_COMMAND_PAYLOAD 112U' -and
+    $cfDc2110ProtocolHeaderText -match 'LECS65_CFDC2110_OPCODE03_RESPONSE_TIMEOUT_MS 10000U' -and
+    $cfDc2110ProtocolText -match 'commandOutput != 6U' -and
+    $cfDc2110ProtocolText -match 'responseOutput != LECS65_CFDC2110_OPCODE03_RESPONSE_OUTPUT' -and
+    $cfDc2110ProtocolText -match 'commandSpan \+ responseSpan != InputLength' -and
+    $ioctlText -match 'LecCfDc2110PlanFamily2Opcode03' -and
+    $ioctlText -match 'payload\[1\] == 2 && payload\[2\] == 0x03' -and
+    $ioctlText -match 'pendingResponseTimeoutPolls =\s*opcode03Plan\.ResponseTimeoutMilliseconds' -and
+    $ioctlText -match 'currentTimeoutPolls =\s*LECS65_CFDC2110_DEFAULT_RESPONSE_TIMEOUT_MS' -and
+    $ioctlText -match 'LecCfDc2110MapOpcode03TransportFailure' -and
+    $ioctlText -match '&DevExt->TransferMutex' -and
+    $ioctlText -notmatch '(?s)payload\[1\] == 2 && payload\[2\] == 0x03.*?LecDma.*?payload\[1\] == 2 && payload\[2\] == 0x01'
 }
 
 Test-Contract "DMA transaction keeps IRQ evidence separate from physical idle" {

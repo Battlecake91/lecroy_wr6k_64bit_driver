@@ -4111,3 +4111,21 @@ compatibility targets to different confidence levels:
 The older 2026-09-28 audit below remains historical:
 `0x00223044` has since received an x64 case,
 whereas `0xCFDC2194` remains unported at this point.
+
+## CFDC2110 family-2 opcode 0x03 response-timeout transaction
+
+Batch 25 captured six identical calls with 130 input bytes and 14 output bytes.
+The packed input is one A5FB record (`output=6`, `payload=112`, `type=3`,
+`40 02 03 ...`) and one immediately following fetch record at offset 120
+(`output=8`, `payload=2`, `type=3`, `85FB 40 00`). The original family-2
+dispatcher sends 114 bytes from the first record's signature and treats the
+remaining 109 command-body bytes as opaque.
+
+The `0x19` argument passed to the common sender is only a nonzero
+response-pending selector. Opcode `0x03` separately changes the next response
+wait from the five-second default to ten seconds. The fetch restores the
+default state before waiting; RX continuation chunks retain the normal
+five-second bound. Timeout framing is DWORD `0x102`, WORD length 2, WORD
+protocol `0x20`, with successful outer IOCTL completion. This path uses the
+existing BAR1 message registers and receive interrupt; it does not register a
+buffer, map DMA or launch MAM/MTT.

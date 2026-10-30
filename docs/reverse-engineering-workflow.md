@@ -260,8 +260,9 @@ opcode 0x00 -> arm/start the internal timer object from payload, wait for it,
 opcode 0x01 -> arm/re-arm the internal timer using the payload delay while
                preserving/recomputing remaining time across an active timer
 opcode 0x02 -> write INTST = payload[0] (0 or 1)
-opcode 0x03 -> send the packet through the common TX transport with mode/value
-               0x19 and change the subsequent response timeout state to 10
+opcode 0x03 -> send the packet through the common TX transport; nonzero selector
+               0x19 marks a response pending, then the next response wait is
+               changed from the five-second default to ten seconds
 opcode 0x04 -> temporarily mask the corresponding software interrupt-state bit,
                pulse INTST high/low N times, then restore the bit if needed
 opcode 0x05 -> ITMODE 7 -> 3 sequence
@@ -274,6 +275,17 @@ opcode 0x10 -> LEDCTL two-bit write
 opcode 0x40 -> re-run the original board interrupt/error-state service and
                reset/acknowledgement helpers, then return success
 ```
+
+The Batch 25 request fixes the observed opcode-`0x03` record contract more
+narrowly: output 6, payload 112, type 3, A5FB, `40 02 03`, followed immediately
+at input offset 120 by output 8, payload 2, type 3, `85FB 40 00`. The outer
+call supplies 130 input and 14 output bytes. The original driver treats the
+109 bytes after the opcode as opaque and sends `record + 6` for 114 bytes. The
+next fetch uses the ten-second response wait and resets the state to five
+seconds; continuation chunks retain their normal five-second waits. A response
+timeout is framed as status `0x102`, length 2, protocol word `0x20` while the
+outer IOCTL completes successfully. No request-specific cancel check exists
+after original transport dispatch begins.
 
 The timer object at CFDC2110 field `+0x186` is allocated by `FUN_000158EE`
 and initialized through `KeInitializeTimerEx`. Opcodes 0x00 and 0x01 use its

@@ -1,5 +1,6 @@
 #include "LecS65Drv.h"
 #include "DmaPnpPublication.h"
+#include "CfDc2110Protocol.h"
 
 static
 BOOLEAN
@@ -790,14 +791,18 @@ LecTransportReceive(
     _In_ PLECS65_DEVICE_EXTENSION DevExt,
     _Out_writes_bytes_(Capacity) UCHAR* Buffer,
     _In_ ULONG Capacity,
+    _In_ ULONG TimeoutPolls,
     _Out_ PULONG Received
     )
 {
     volatile ULONG* control;
     ULONG offset = 0;
+    ULONG currentTimeoutPolls = TimeoutPolls;
     NTSTATUS status;
 
-    if (Buffer == NULL || Received == NULL) {
+    if (Buffer == NULL || Received == NULL ||
+        TimeoutPolls == 0 ||
+        TimeoutPolls > LECS65_CFDC2110_OPCODE03_RESPONSE_TIMEOUT_MS) {
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -817,7 +822,7 @@ LecTransportReceive(
         ULONG words;
         ULONG i;
 
-        for (poll = 0; poll < LECS65_TRANSFER_TIMEOUT_POLLS; ++poll) {
+        for (poll = 0; poll < currentTimeoutPolls; ++poll) {
             value = READ_REGISTER_ULONG(control);
             if ((value & 0x8000UL) != 0) {
                 break;
@@ -828,6 +833,10 @@ LecTransportReceive(
         if ((value & 0x8000UL) == 0) {
             return STATUS_IO_TIMEOUT;
         }
+
+        /* Only the first opcode-0x03 response wait is extended. */
+        currentTimeoutPolls =
+            LECS65_CFDC2110_DEFAULT_RESPONSE_TIMEOUT_MS;
 
         words = value & 0x00FFUL;
         if (words > 0x78UL ||
@@ -944,6 +953,26 @@ LecWriteU32(
     )
 {
     RtlCopyMemory(Buffer, &Value, sizeof(Value));
+}
+
+static
+VOID
+LecBuildCfDc2110Opcode03Failure(
+    _Out_writes_bytes_(8) UCHAR* Buffer,
+    _In_ NTSTATUS TransportStatus
+    )
+{
+    LECS65_CFDC2110_OPCODE03_FAILURE failure;
+
+    LecCfDc2110MapOpcode03TransportFailure(
+        (ULONG)TransportStatus,
+        (ULONG)STATUS_IO_TIMEOUT,
+        (ULONG)STATUS_TIMEOUT,
+        &failure);
+    RtlFillMemory(Buffer, 8, 0xFF);
+    LecWriteU32(Buffer, failure.ResponseStatus);
+    LecWriteU16(Buffer + 4, failure.ResponsePayloadLength);
+    LecWriteU16(Buffer + 6, failure.ResponseProtocolStatus);
 }
 
 typedef struct _LECS65_LEGACY_REGISTER_LIST_ENTRY {
@@ -2301,7 +2330,8 @@ static
 BOOLEAN
 LecIsAllowedCfDc2110(
     _In_reads_bytes_(InputLength) const UCHAR* Buffer,
-    _In_ ULONG InputLength
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength
     )
 {
     static const UCHAR resetPacket[] = {
@@ -2427,8 +2457,18 @@ LecIsAllowedCfDc2110(
         0x10,0x00,0x02,0x00,0x03,0x00,0xFB,0x85,0x40,0x00
     };
 
+    LECS65_CFDC2110_OPCODE03_PLAN opcode03Plan;
+
     if (Buffer == NULL) {
         return FALSE;
+    }
+
+    if (LecCfDc2110PlanFamily2Opcode03(
+            Buffer,
+            InputLength,
+            OutputLength,
+            &opcode03Plan) == LecCfDc2110Opcode03Ok) {
+        return TRUE;
     }
 
     if (LecIsStructurallySupportedCfDc2110(Buffer, InputLength)) {
@@ -2476,6 +2516,9 @@ LecIoctlCfDc2110(
     BOOLEAN hardwareResponsePending = FALSE;
     BOOLEAN pendingResponseIsRawHardware = FALSE;
     USHORT pendingResponseLengthOverride = 0;
+    ULONG pendingResponseTimeoutPolls =
+        LECS65_CFDC2110_DEFAULT_RESPONSE_TIMEOUT_MS;
+    BOOLEAN pendingResponseIsOpcode03 = FALSE;
     ULONG inputOffset;
     ULONG outputOffset;
     ULONG totalOutput = 0;
@@ -2629,6 +2672,49 @@ LecIoctlCfDc2110(
                 }
                 else {
                     protocolStatus = 8;
+                }
+            }
+            else if (payload[1] == 2 && payload[2] == 0x03) {
+                LECS65_CFDC2110_OPCODE03_PLAN opcode03Plan;
+                NTSTATUS hwStatus;
+
+                if (LecCfDc2110PlanFamily2Opcode03(
+                        inputCopy,
+                        InputLength,
+                        OutputLength,
+                        &opcode03Plan) != LecCfDc2110Opcode03Ok ||
+                    inputOffset != 0 ||
+                    opcode03Plan.CommandSendOffset != 6U ||
+                    opcode03Plan.CommandSendLength != payloadLength + 2U) {
+                    protocolStatus = 4;
+                }
+                else {
+                    hwStatus = LecTransportSend(
+                        DevExt,
+                        record + opcode03Plan.CommandSendOffset,
+                        opcode03Plan.CommandSendLength);
+
+                    if (NT_SUCCESS(hwStatus)) {
+                        hardwareResponsePending = TRUE;
+                        pendingResponseReady = FALSE;
+                        pendingResponseIsRawHardware = FALSE;
+                        pendingResponseLengthOverride = 0;
+                        pendingResponseLength = 0;
+                        pendingResponseTimeoutPolls =
+                            opcode03Plan.ResponseTimeoutMilliseconds;
+                        pendingResponseIsOpcode03 = TRUE;
+                        protocolStatus = 0;
+                    }
+                    else {
+                        LecBuildCfDc2110Opcode03Failure(
+                            pendingResponse,
+                            hwStatus);
+                        pendingResponseLength = 8;
+                        pendingResponseReady = TRUE;
+                        pendingResponseIsRawHardware = FALSE;
+                        hardwareResponsePending = FALSE;
+                        protocolStatus = 8;
+                    }
                 }
             }
             else if (payload[1] == 2 && payload[2] == 0x01) {
@@ -3338,30 +3424,74 @@ LecIoctlCfDc2110(
                      */
                     status = LecEnsureReceiveInterrupt(DevExt);
                     if (!NT_SUCCESS(status)) {
-                        break;
+                        if (pendingResponseIsOpcode03) {
+                            LecBuildCfDc2110Opcode03Failure(
+                                pendingResponse,
+                                status);
+                            pendingResponseLength = 8;
+                            pendingResponseReady = TRUE;
+                            pendingResponseIsRawHardware = FALSE;
+                            hardwareResponsePending = FALSE;
+                            status = STATUS_SUCCESS;
+                        }
+                        else {
+                            break;
+                        }
                     }
 
-                    status = LecTransportSend(
-                        DevExt,
-                        fetchPacket,
-                        sizeof(fetchPacket));
-                    if (!NT_SUCCESS(status)) {
-                        break;
+                    if (!pendingResponseReady) {
+                        status = LecTransportSend(
+                            DevExt,
+                            fetchPacket,
+                            sizeof(fetchPacket));
+                        if (!NT_SUCCESS(status)) {
+                            if (pendingResponseIsOpcode03) {
+                                LecBuildCfDc2110Opcode03Failure(
+                                    pendingResponse,
+                                    status);
+                                pendingResponseLength = 8;
+                                pendingResponseReady = TRUE;
+                                pendingResponseIsRawHardware = FALSE;
+                                hardwareResponsePending = FALSE;
+                                status = STATUS_SUCCESS;
+                            }
+                            else {
+                                break;
+                            }
+                        }
                     }
 
-                    status = LecTransportReceive(
-                        DevExt,
-                        pendingResponse,
-                        max(OutputLength, 8UL),
-                        &received);
-                    if (!NT_SUCCESS(status)) {
-                        break;
+                    if (!pendingResponseReady) {
+                        status = LecTransportReceive(
+                            DevExt,
+                            pendingResponse,
+                            pendingResponseIsOpcode03
+                                ? 2UL
+                                : max(OutputLength, 8UL),
+                            pendingResponseTimeoutPolls,
+                            &received);
+                        if (!NT_SUCCESS(status)) {
+                            if (pendingResponseIsOpcode03) {
+                                LecBuildCfDc2110Opcode03Failure(
+                                    pendingResponse,
+                                    status);
+                                pendingResponseLength = 8;
+                                pendingResponseReady = TRUE;
+                                pendingResponseIsRawHardware = FALSE;
+                                hardwareResponsePending = FALSE;
+                                status = STATUS_SUCCESS;
+                            }
+                            else {
+                                break;
+                            }
+                        }
+                        else {
+                            pendingResponseLength = received;
+                            pendingResponseReady = TRUE;
+                            pendingResponseIsRawHardware = TRUE;
+                            hardwareResponsePending = FALSE;
+                        }
                     }
-
-                    pendingResponseLength = received;
-                    pendingResponseReady = TRUE;
-                    pendingResponseIsRawHardware = TRUE;
-                    hardwareResponsePending = FALSE;
                 }
 
                 if (!pendingResponseReady) {
@@ -3454,6 +3584,9 @@ LecIoctlCfDc2110(
                 pendingResponseIsRawHardware = FALSE;
                 pendingResponseLengthOverride = 0;
                 pendingResponseLength = 0;
+                pendingResponseTimeoutPolls =
+                    LECS65_CFDC2110_DEFAULT_RESPONSE_TIMEOUT_MS;
+                pendingResponseIsOpcode03 = FALSE;
             }
         }
         else if (signature == 0xC5FB) {
@@ -4533,7 +4666,8 @@ LecS65DeviceControl(
         if (systemBuffer != NULL &&
             LecIsAllowedCfDc2110(
                 (const UCHAR*)systemBuffer,
-                inputLength)) {
+                inputLength,
+                outputLength)) {
             status = LecIoctlCfDc2110(
                 devExt,
                 ownerProcessId,
