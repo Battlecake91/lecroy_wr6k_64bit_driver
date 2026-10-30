@@ -85,7 +85,7 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-dma-layout.ps1")
     }
 
-    Invoke-Step "First MAM exact-shape and exact-once gate tests (no hardware)" {
+    Invoke-Step "First-MAM exact-shape and regular-MAM launch-limit tests (no hardware)" {
         & (Join-Path $repo "tests\dry\test-first-mam-experiment-gate.ps1")
     }
 

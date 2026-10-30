@@ -34,6 +34,8 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - The current x64 test package is `oem106.inf`, version `0.2026.1029.1`, with
   loaded SYS SHA-256
   `647A7B38597C19D96DF509557E05895C5074727C329EFBD182AD01AC144E3F71`.
+  Batch 24 prepares a separate regular-MAM candidate with a kernel launch
+  admission limit of one; XStream execution remains separately gated.
   Its single captured installation and exact-once 9/9 R0 plus 2/2 R1 matrix
   passed; the device remains problem-free with five interfaces. This is the
   exact-shape, exact-once first-MAM experiment build. One authorized 16-byte

@@ -1,5 +1,14 @@
 # WR6k DMA and acquisition architecture
 
+## Regular MAM development admission
+
+A development build may set `LecMamLaunchLimit` to a positive number. The
+counter is atomically consumed after mapping/descriptor validation but before
+arm, interrupt enable or acquisition MMIO. Exhaustion returns
+`STATUS_DEVICE_BUSY`; a later pre-GO failure conservatively still consumes the
+admission. This private build gate is separate from and mutually exclusive
+with `FirstMamExperimentOnly`. The default WDM-v3 launch gate remains closed.
+
 This document is the canonical end-to-end architecture and proof-boundary
 reference. It describes the development tree after Batch 12. It does not claim
 that acquisition DMA is release-ready.

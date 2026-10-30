@@ -60,3 +60,36 @@ LecFirstMamValidateAndConsume(
     }
     return LecFirstMamGateAccepted;
 }
+
+LECS65_MAM_LAUNCH_LIMIT_RESULT
+LecMamLaunchLimitTryConsume(
+    volatile long* Consumed,
+    long Limit,
+    LECS65_FIRST_MAM_COMPARE_EXCHANGE CompareExchange,
+    long* AdmissionNumber)
+{
+    long current;
+    long observed;
+
+    if (Consumed == 0 || CompareExchange == 0 || AdmissionNumber == 0 ||
+        Limit <= 0) {
+        return LecMamLaunchLimitInvalid;
+    }
+
+    current = *Consumed;
+    for (;;) {
+        if (current < 0 || current >= Limit) {
+            return current < 0 ?
+                LecMamLaunchLimitInvalid : LecMamLaunchLimitExhausted;
+        }
+        observed = CompareExchange(Consumed, current + 1, current);
+        if (observed < 0) {
+            return LecMamLaunchLimitInvalid;
+        }
+        if (observed == current) {
+            *AdmissionNumber = current + 1;
+            return LecMamLaunchLimitAccepted;
+        }
+        current = observed;
+    }
+}

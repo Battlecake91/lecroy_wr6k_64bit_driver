@@ -2021,6 +2021,7 @@ Cleanup:
 
     return status;
 #endif
+
 }
 
 static
@@ -3516,7 +3517,7 @@ typedef struct _LECS65_WDM_MAM_EXECUTE_CONTEXT {
 } LECS65_WDM_MAM_EXECUTE_CONTEXT,
     *PLECS65_WDM_MAM_EXECUTE_CONTEXT;
 
-#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY || LECS65_MAM_LAUNCH_LIMIT > 0
 static long
 LecFirstMamCompareExchange(
     volatile long* Target,
@@ -3526,6 +3527,9 @@ LecFirstMamCompareExchange(
     return InterlockedCompareExchange(
         (volatile LONG*)Target, (LONG)Exchange, (LONG)Comparand);
 }
+#endif
+
+#if LECS65_FIRST_MAM_EXPERIMENT_ONLY
 
 static NTSTATUS
 LecValidateFirstMamExperiment(
@@ -3560,6 +3564,40 @@ LecValidateFirstMamExperiment(
         exactShape.SegmentCount,
         exactShape.Channel,
         exactShape.Config);
+    return STATUS_SUCCESS;
+}
+#endif
+
+#if LECS65_MAM_LAUNCH_LIMIT > 0
+static NTSTATUS
+LecValidateMamLaunchLimit(
+    _Inout_ PVOID Context,
+    _In_ const LECS65_FIRST_MAM_SHAPE* Shape)
+{
+    PLECS65_WDM_MAM_EXECUTE_CONTEXT execute =
+        (PLECS65_WDM_MAM_EXECUTE_CONTEXT)Context;
+    LECS65_MAM_LAUNCH_LIMIT_RESULT result;
+    long admissionNumber = 0;
+
+    UNREFERENCED_PARAMETER(Shape);
+    if (execute == NULL || execute->DevExt == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    result = LecMamLaunchLimitTryConsume(
+        (volatile long*)&execute->DevExt->MamLaunchAdmissions,
+        LECS65_MAM_LAUNCH_LIMIT,
+        LecFirstMamCompareExchange,
+        &admissionNumber);
+    if (result == LecMamLaunchLimitExhausted) {
+        LecTrace("MAM_DMA_LIMIT: admission denied limit=%lu\n",
+            (ULONG)LECS65_MAM_LAUNCH_LIMIT);
+        return STATUS_DEVICE_BUSY;
+    }
+    if (result != LecMamLaunchLimitAccepted) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    LecTrace("MAM_DMA_LIMIT: admission=%ld limit=%lu\n",
+        admissionNumber, (ULONG)LECS65_MAM_LAUNCH_LIMIT);
     return STATUS_SUCCESS;
 }
 #endif
@@ -3834,6 +3872,8 @@ LecIoctlAcquireBufferedOneChannel(
         CancelRequested,
 #if LECS65_FIRST_MAM_EXPERIMENT_ONLY
         LecValidateFirstMamExperiment,
+#elif LECS65_MAM_LAUNCH_LIMIT > 0
+        LecValidateMamLaunchLimit,
 #else
         NULL,
 #endif

@@ -301,9 +301,11 @@ exit 0
             WdmV3MamDmaMarker = 'LECS65_WDM_V3_MAM_DMA_ENABLED'
             FirstMamExperimentOnly = $true
             FirstMamExperimentMarker = 'LECS65_FIRST_MAM_EXPERIMENT_ONLY'
+            MamLaunchLimit = 0
+            MamLaunchLimitMarker = $null
             Configurations = @(
-                [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true }
-                [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true }
+                [ordered]@{ Configuration = 'Debug'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true; MamLaunchLimit = 0 }
+                [ordered]@{ Configuration = 'Release'; PnpStatusDiagnostics = $true; WdmV3MamDma = $true; FirstMamExperimentOnly = $true; MamLaunchLimit = 0 }
             )
         }
         Regression = [ordered]@{
@@ -365,6 +367,23 @@ exit 0
     Expect-Rejection 'mixed first-MAM experiment modes are rejected' {
         Assert-ManifestComplete -Manifest $ambiguousExperiment
     }
+
+    $ambiguousLimit = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $ambiguousLimit.Build.Configurations[1].MamLaunchLimit = 1
+    Expect-Rejection 'mixed MAM launch limits are rejected' {
+        Assert-ManifestComplete -Manifest $ambiguousLimit
+    }
+
+    $invalidLimit = $manifest | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $invalidLimit.Build.FirstMamExperimentOnly = $false
+    $invalidLimit.Build.MamLaunchLimit = 1
+    $invalidLimit.Build.MamLaunchLimitMarker = 'LECS65_MAM_LAUNCH_LIMIT=1'
+    foreach ($configuration in $invalidLimit.Build.Configurations) {
+        $configuration.FirstMamExperimentOnly = $false
+        $configuration.MamLaunchLimit = 1
+    }
+    Assert-ManifestComplete -Manifest $invalidLimit
+    Test-Condition 'bounded regular-MAM manifest is accepted' $true
 
     $suiteText = @'
 DRY REGRESSION: 70/70 passed; 0 failed.

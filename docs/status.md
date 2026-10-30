@@ -1,5 +1,18 @@
 # Current project status
 
+## Batch 24 regular-MAM candidate preparation
+
+- Historical x64 traces prove that XStream automatically rearms MAM DMA: the
+  first visible-waveform trace contains 3,134 successful `CFDC2138` calls and
+  the broad control trace contains 43,157. Starting XStream is not a one-GO
+  boundary.
+- The regular WDM-v3 path preserves the legacy ABI, register order, completion
+  response, registration reuse and normal retirement while using Windows DMA
+  logical addresses. PFN DMA and MTT launch remain disabled.
+- `LecMamLaunchLimit=1` now provides a separate atomic pre-MMIO admission bound
+  for the first XStream candidate. It is independent of the consumed Batch 23
+  latch; default builds remain no-launch.
+
 ## Batch 23 first physical MAM DMA
 
 - The owner confirmed that the productive x86 disk was physically disconnected

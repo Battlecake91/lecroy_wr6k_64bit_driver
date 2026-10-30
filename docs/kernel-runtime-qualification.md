@@ -1,5 +1,12 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 24 XStream boundary
+
+Because XStream automatically rearms acquisition, the first waveform candidate
+uses `PnpStatusDiagnostics=true`, `LecWdmV3MamDma=true`,
+`FirstMamExperimentOnly=false` and `LecMamLaunchLimit=1`. Application launch
+and its potential DMA remain a separate owner-authorization gate.
+
 ## Current Batch 21 gate
 
 The exact-shape candidate is installed as `oem106.inf`, version

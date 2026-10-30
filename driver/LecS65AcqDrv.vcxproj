@@ -51,6 +51,7 @@
     <LecPnpStatusDiagnostics Condition="'$(LecPnpStatusDiagnostics)'==''">false</LecPnpStatusDiagnostics>
     <LecWdmV3MamDma Condition="'$(LecWdmV3MamDma)'==''">false</LecWdmV3MamDma>
     <LecFirstMamExperimentOnly Condition="'$(LecFirstMamExperimentOnly)'==''">false</LecFirstMamExperimentOnly>
+    <LecMamLaunchLimit Condition="'$(LecMamLaunchLimit)'==''">0</LecMamLaunchLimit>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -124,6 +125,12 @@
   <ItemDefinitionGroup Condition="'$(LecFirstMamExperimentOnly)'=='true'">
     <ClCompile>
       <PreprocessorDefinitions>LECS65_FIRST_MAM_EXPERIMENT_ONLY=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(LecMamLaunchLimit)'!='0'">
+    <ClCompile>
+      <PreprocessorDefinitions>LECS65_MAM_LAUNCH_LIMIT=$(LecMamLaunchLimit);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 

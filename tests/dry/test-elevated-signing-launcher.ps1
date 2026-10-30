@@ -80,6 +80,7 @@ function Invoke-LauncherCase {
         [bool]$Diagnostics = $true,
         [bool]$WdmV3MamDma = $true,
         [bool]$FirstMamExperimentOnly = $true,
+        [int]$MamLaunchLimit = 0,
         [int]$ChildTimeoutSeconds = 30
     )
 
@@ -135,6 +136,9 @@ function Invoke-LauncherCase {
         }
         if ($FirstMamExperimentOnly) {
             $arguments += '-FirstMamExperimentOnly'
+        }
+        if ($MamLaunchLimit -gt 0) {
+            $arguments += @('-MamLaunchLimit', $MamLaunchLimit)
         }
         if ($Mode -eq 'Sign' -and -not $OmitThumbprint) {
             $arguments += @('-CertificateThumbprint', ('A' * 40))
@@ -217,6 +221,18 @@ try {
         (Test-Path -LiteralPath ($success.Log + '.stdout.txt')) -and
         (Test-Path -LiteralPath ($success.Log + '.stderr.txt')))
 
+    $bounded = Invoke-LauncherCase -Name 'bounded-regular-mam-success' `
+        -Mode UnsignedQualification -FirstMamExperimentOnly $false `
+        -MamLaunchLimit 1
+    $boundedManifest = Get-Content -LiteralPath `
+        (Join-Path $bounded.Output 'evidence\manifest.json') -Raw | ConvertFrom-Json
+    Add-Result 'bounded regular-MAM launch limit reaches child and manifest' (
+        $bounded.ExitCode -eq 0 -and $bounded.Invocations -eq 1 -and
+        $boundedManifest.Build.WdmV3MamDma -eq $true -and
+        $boundedManifest.Build.FirstMamExperimentOnly -eq $false -and
+        $boundedManifest.Build.MamLaunchLimit -eq 1 -and
+        $boundedManifest.Build.MamLaunchLimitMarker -eq 'LECS65_MAM_LAUNCH_LIMIT=1')
+
     $unsigned = Invoke-LauncherCase -Name 'unsigned-success' `
         -Mode UnsignedQualification
     $unsignedLog = Get-Content -LiteralPath $unsigned.Log -Raw
@@ -249,7 +265,8 @@ try {
         $defaultManifest.Build.FirstMamExperimentOnly -eq $false -and
         @($defaultManifest.Build.Configurations | Where-Object {
             $_.FirstMamExperimentOnly -ne $false
-        }).Count -eq 0)
+        }).Count -eq 0 -and
+        $defaultManifest.Build.MamLaunchLimit -eq 0)
 
     $stderrSuccess = Invoke-LauncherCase -Name 'stderr-success' `
         -Mode UnsignedQualification -Scenario NativeToolStderrZero

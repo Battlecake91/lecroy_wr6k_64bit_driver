@@ -1,5 +1,14 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 24 automatic-rearm conclusion
+
+The reference waveform trace reaches `CFDC2138` about 18.31 seconds after
+startup and records 3,134 successful acquisitions; a later controls run records
+43,157. Live monitoring shows that acquisition traffic stops and resumes with
+the application state. XStream therefore automatically rearms and cannot be
+treated as a single-GO launch. Batch 24 retains the regular WDM-v3 sequence and
+adds only a separate one-admission kernel limit for the first waveform test.
+
 ## Batch 23 first physical parity evidence
 
 The current WDM-v3 implementation completed one real 16-byte MAM transfer with

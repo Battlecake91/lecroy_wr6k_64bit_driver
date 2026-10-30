@@ -50,6 +50,9 @@ param(
 
     [switch]$FirstMamExperimentOnly,
 
+    [ValidateRange(0, 1000000)]
+    [int]$MamLaunchLimit = 0,
+
     [switch]$Sign,
 
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
@@ -195,6 +198,18 @@ function Assert-FirstMamExperimentMarkerState {
         -Marker 'LECS65_FIRST_MAM_EXPERIMENT_ONLY'
     if ($present -ne $ExpectedEnabled) {
         throw "First MAM experiment marker mismatch in $Path. Expected=$ExpectedEnabled Actual=$present"
+    }
+}
+
+function Assert-MamLaunchLimitMarkerState {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][int]$ExpectedLimit
+    )
+    $present = Test-AsciiMarker -Path $Path `
+        -Marker ("LECS65_MAM_LAUNCH_LIMIT={0}" -f $ExpectedLimit)
+    if (($ExpectedLimit -gt 0) -ne $present) {
+        throw "MAM launch-limit marker mismatch in $Path. ExpectedLimit=$ExpectedLimit Present=$present"
     }
 }
 
@@ -430,6 +445,8 @@ function Assert-ManifestComplete {
         ForEach-Object { [bool]$_.WdmV3MamDma } | Select-Object -Unique)
     $experimentModes = @($Manifest.Build.Configurations |
         ForEach-Object { [bool]$_.FirstMamExperimentOnly } | Select-Object -Unique)
+    $launchLimits = @($Manifest.Build.Configurations |
+        ForEach-Object { [int]$_.MamLaunchLimit } | Select-Object -Unique)
     if ($Manifest.Schema -ne 2 -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.WorkflowCommit) -or
         [string]::IsNullOrWhiteSpace($Manifest.Source.DriverTree) -or
@@ -443,8 +460,13 @@ function Assert-ManifestComplete {
         $dmaModes[0] -ne [bool]$Manifest.Build.WdmV3MamDma -or
         $experimentModes.Count -ne 1 -or
         $experimentModes[0] -ne [bool]$Manifest.Build.FirstMamExperimentOnly -or
+        $launchLimits.Count -ne 1 -or
+        $launchLimits[0] -ne [int]$Manifest.Build.MamLaunchLimit -or
         ([bool]$Manifest.Build.FirstMamExperimentOnly -and
             -not [bool]$Manifest.Build.WdmV3MamDma) -or
+        ([int]$Manifest.Build.MamLaunchLimit -gt 0 -and
+            (-not [bool]$Manifest.Build.WdmV3MamDma -or
+             [bool]$Manifest.Build.FirstMamExperimentOnly)) -or
         ($artifactNames -join ',') -ne ($requiredArtifacts -join ',') -or
         @($Manifest.Artifacts | Where-Object { $_.SHA256 -notmatch '^[0-9A-F]{64}$' }).Count -ne 0 -or
         $Manifest.InstallAuthorized -ne $false -or
@@ -613,6 +635,12 @@ Assert-DriverVer -Value $DriverVer
 if ($FirstMamExperimentOnly -and -not $WdmV3MamDma) {
     throw 'FirstMamExperimentOnly requires WdmV3MamDma.'
 }
+if ($MamLaunchLimit -gt 0 -and -not $WdmV3MamDma) {
+    throw 'MamLaunchLimit requires WdmV3MamDma.'
+}
+if ($MamLaunchLimit -gt 0 -and $FirstMamExperimentOnly) {
+    throw 'MamLaunchLimit and FirstMamExperimentOnly are mutually exclusive.'
+}
 
 if (Test-Path -LiteralPath $output) {
     throw "OutputRoot already exists; refusing to overwrite it: $output"
@@ -651,6 +679,7 @@ try {
     Write-Host ("PnP status diagnostics: {0}" -f [bool]$PnpStatusDiagnostics)
     Write-Host ("WDM-v3 MAM DMA gate: {0}" -f [bool]$WdmV3MamDma)
     Write-Host ("First MAM experiment only: {0}" -f [bool]$FirstMamExperimentOnly)
+    Write-Host ("MAM launch limit: {0}" -f $MamLaunchLimit)
     Write-Host ("Signing requested: {0}" -f [bool]$Sign)
 
     $buildDriver = Join-Path $PSScriptRoot 'build-driver.ps1'
@@ -661,11 +690,11 @@ try {
 
     $null = Invoke-ScriptCaptured -Name 'Debug x64 driver and tools build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly; Rebuild = $true } `
+        -Arguments @{ Configuration = 'Debug'; BuildLecdiag = $true; BuildLecwatch = $true; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly; MamLaunchLimit = $MamLaunchLimit; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-debug.log')
     $null = Invoke-ScriptCaptured -Name 'Release x64 driver build' `
         -FilePath $buildDriver `
-        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly; Rebuild = $true } `
+        -Arguments @{ Configuration = 'Release'; PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics; WdmV3MamDma = [bool]$WdmV3MamDma; FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly; MamLaunchLimit = $MamLaunchLimit; Rebuild = $true } `
         -LogPath (Join-Path $evidenceDir 'build-release.log')
     $null = Invoke-ScriptCaptured -Name 'Complete Dry regression' `
         -FilePath $dryRunner `
@@ -732,6 +761,7 @@ try {
             -ExpectedEnabled ([bool]$WdmV3MamDma)
         Assert-FirstMamExperimentMarkerState -Path $sys `
             -ExpectedEnabled ([bool]$FirstMamExperimentOnly)
+        Assert-MamLaunchLimitMarkerState -Path $sys -ExpectedLimit $MamLaunchLimit
         $pe = Get-PeEvidence -Path $sys -Label $configuration
         if ([System.IO.Path]::GetFileName($pe.EmbeddedPdbPath) -ne
             [System.IO.Path]::GetFileName($pdb)) {
@@ -754,6 +784,7 @@ try {
             PnpStatusDiagnostics = [bool]$PnpStatusDiagnostics
             WdmV3MamDma = [bool]$WdmV3MamDma
             FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly
+            MamLaunchLimit = $MamLaunchLimit
             SYS = [ordered]@{
                 Bytes = (Get-Item -LiteralPath $sys).Length
                 SHA256 = (Get-FileHash -LiteralPath $sys -Algorithm SHA256).Hash
@@ -785,6 +816,7 @@ try {
         -ExpectedEnabled ([bool]$WdmV3MamDma)
     Assert-FirstMamExperimentMarkerState -Path $packageSys `
         -ExpectedEnabled ([bool]$FirstMamExperimentOnly)
+    Assert-MamLaunchLimitMarkerState -Path $packageSys -ExpectedLimit $MamLaunchLimit
     $infText = Get-Content -LiteralPath $sourceInf -Raw
     if ([regex]::Matches($infText, '(?m)^DriverVer=.*$').Count -ne 1) {
         throw 'Source INF must contain exactly one DriverVer line.'
@@ -887,6 +919,7 @@ try {
         -ExpectedEnabled ([bool]$WdmV3MamDma)
     Assert-FirstMamExperimentMarkerState -Path $packageSys `
         -ExpectedEnabled ([bool]$FirstMamExperimentOnly)
+    Assert-MamLaunchLimitMarkerState -Path $packageSys -ExpectedLimit $MamLaunchLimit
     Assert-PackageSignatureState -SigningRequested ([bool]$Sign) `
         -SysSignature $sysSignature -CatSignature $catSignature `
         -ExpectedThumbprint $normalizedThumbprint
@@ -932,6 +965,10 @@ try {
             WdmV3MamDmaMarker = 'LECS65_WDM_V3_MAM_DMA_ENABLED'
             FirstMamExperimentOnly = [bool]$FirstMamExperimentOnly
             FirstMamExperimentMarker = 'LECS65_FIRST_MAM_EXPERIMENT_ONLY'
+            MamLaunchLimit = $MamLaunchLimit
+            MamLaunchLimitMarker = if ($MamLaunchLimit -gt 0) {
+                "LECS65_MAM_LAUNCH_LIMIT=$MamLaunchLimit"
+            } else { $null }
             Configurations = $buildArtifacts
         }
         Regression = [ordered]@{

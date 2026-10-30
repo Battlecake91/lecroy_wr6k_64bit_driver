@@ -1,4 +1,7 @@
 #include "LecS65Drv.h"
+
+#define LECS65_STRINGIFY_INNER(Value) #Value
+#define LECS65_STRINGIFY(Value) LECS65_STRINGIFY_INNER(Value)
 #include "DmaPnpPublication.h"
 #include <stdarg.h>
 
@@ -96,6 +99,10 @@ DriverEntry(
 #endif
 #if LECS65_FIRST_MAM_EXPERIMENT_ONLY
     LecTrace("LECS65_FIRST_MAM_EXPERIMENT_ONLY\n");
+#endif
+#if LECS65_MAM_LAUNCH_LIMIT > 0
+    LecTrace("LECS65_MAM_LAUNCH_LIMIT="
+        LECS65_STRINGIFY(LECS65_MAM_LAUNCH_LIMIT) "\n");
 #endif
 
     for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; ++i) {
