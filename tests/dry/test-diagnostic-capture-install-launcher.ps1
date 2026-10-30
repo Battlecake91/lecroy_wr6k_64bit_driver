@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$EvidenceLog,
-    [Parameter(Mandatory=$true)][string]$ResultPath
+    [Parameter(Mandatory=$true)][string]$ResultPath,
+    [switch]$AllowNonElevatedTestMode
 )
 
 Set-StrictMode -Version Latest
@@ -9,7 +10,8 @@ $ErrorActionPreference = 'Stop'
 $principal = [Security.Principal.WindowsPrincipal](
     [Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        [Security.Principal.WindowsBuiltInRole]::Administrator) -and
+    -not $AllowNonElevatedTestMode) {
     throw 'This suite requires an elevated token.'
 }
 if ($PSVersionTable.PSVersion.Major -ne 5 -or
@@ -30,6 +32,7 @@ $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $launcherSource = Join-Path $repo 'scripts\invoke-diagnostic-capture-install.ps1'
 $runnerSource = Join-Path $repo 'scripts\native-process.ps1'
 $noLaunchRunnerSource = Join-Path $repo 'scripts\invoke-no-launch-preparation.ps1'
+$xstreamRunnerSource = Join-Path $repo 'scripts\invoke-xstream-single-waveform.ps1'
 $lecdiagMockTest = Join-Path $PSScriptRoot 'test-lecdiag-command-chain.ps1'
 $mockSource = Join-Path $PSScriptRoot 'fixtures\mock-diagnostic-native.cs'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) `
@@ -71,6 +74,7 @@ function New-TestContext {
     Copy-Item -LiteralPath $launcherSource -Destination $scripts
     Copy-Item -LiteralPath $runnerSource -Destination $scripts
     Copy-Item -LiteralPath $noLaunchRunnerSource -Destination $scripts
+    Copy-Item -LiteralPath $xstreamRunnerSource -Destination $scripts
     & git -C $fixture init --quiet
     & git -C $fixture config user.email 'offline-test@example.invalid'
     & git -C $fixture config user.name 'Offline Test'
@@ -98,7 +102,7 @@ function New-TestContext {
     $manifest = [ordered]@{
         Schema=2; PackageState='SignedCandidate'
         Source=[ordered]@{WorkflowCommit=('1'*40);ReviewedDriverTreeCommit=('2'*40);DriverTree=('3'*40);IncludeTree=('4'*40)}
-        Build=[ordered]@{RuntimeConfiguration='Release';PnpStatusDiagnostics=$true;DiagnosticMarker='PNP_STATUS:'}
+        Build=[ordered]@{RuntimeConfiguration='Release';PnpStatusDiagnostics=$true;DiagnosticMarker='PNP_STATUS:';WdmV3MamDma=$true;FirstMamExperimentOnly=$false;MamLaunchLimit=1}
         PackageIdentity=[ordered]@{DriverVer='10/18/2026,0.2026.1018.1';Signed=$true;Certificate=[ordered]@{Thumbprint=('5'*40)};SysSignatureStatus='Valid';CatSignatureStatus='Valid'}
         Artifacts=@($artifacts | ForEach-Object {[ordered]@{Name=$_.Name;RelativePath=$_.RelativePath;SHA256=$_.Hash}})
     }
@@ -120,8 +124,11 @@ function New-TestContext {
     $noLaunchRunner = Join-Path $scripts 'invoke-no-launch-preparation.ps1'
     $noLaunchRunnerHash = (Get-FileHash -Algorithm SHA256 `
         -LiteralPath $noLaunchRunner).Hash
+    $xstreamRunner = Join-Path $scripts 'invoke-xstream-single-waveform.ps1'
+    $xstreamRunnerHash = (Get-FileHash -Algorithm SHA256 `
+        -LiteralPath $xstreamRunner).Hash
     $statePath = Join-Path $tempRoot 'state.json'
-    [ordered]@{InstanceId='PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0';Inf='oem17.inf';Version='0.2026.1017.1';ProblemCode=0;DeviceStatus='OK';ServiceName='LecS65AcqDrv';ServiceStatus='Running';LoadedSysHash=('6'*64);SysHash=('6'*64)} |
+    [ordered]@{InstanceId='PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0';Inf='oem17.inf';Version='0.2026.1017.1';ProblemCode=0;DeviceStatus='OK';ServiceName='LecS65AcqDrv';ServiceStatus='Running';LoadedSysHash=('6'*64);SysHash=('6'*64);Driver=[ordered]@{Inf='oem17.inf';Version='0.2026.1017.1';ProblemCode=0;DeviceStatus='OK';ServiceStatus='Running';SysHash=('6'*64)};Disks=@([ordered]@{Model='HFM256GDHTNG-8510B';Serial='ACE4_2E00_9590_A2AA.';Size=256052966400;Status='OK'});AcquisitionClients=@();MockWaveformObserved=$true;MockReportedSamples=16;MockReturnedValues=16} |
         ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
     return [pscustomobject]@{
         Repository=$fixture; Launcher=(Join-Path $scripts 'invoke-diagnostic-capture-install.ps1')
@@ -129,6 +136,7 @@ function New-TestContext {
         Artifacts=$artifacts; MockExe=$mockExe; MockHash=$mockHash; State=$statePath
         NoLaunchExe=$noLaunchExe;NoLaunchHash=$noLaunchHash
         NoLaunchRunner=$noLaunchRunner;NoLaunchRunnerHash=$noLaunchRunnerHash
+        XStreamRunner=$xstreamRunner;XStreamRunnerHash=$xstreamRunnerHash
     }
 }
 
@@ -138,7 +146,7 @@ function Invoke-Case {
     param(
         [string]$Name,
         [ValidateSet('Preflight','CaptureQualification','InstallWithCapture',
-            'RestartWithCapture','NoLaunchWithCapture')]
+            'RestartWithCapture','NoLaunchWithCapture','XStreamWithCapture')]
         [string]$Mode='Preflight',
         [string]$Scenario='Success',
         [string]$FailureInjection='',
@@ -151,6 +159,8 @@ function Invoke-Case {
         [switch]$EvidencePathIsFile,
         [AllowEmptyString()][string]$PnPUtilPath,
         [switch]$OmitPnPUtilPath,
+        [switch]$OmitXStreamAuthorization,
+        [switch]$OmitPhysicalDiskConfirmation,
         [int]$ReadinessTimeout=8,
         [int]$Duration=2
     )
@@ -185,7 +195,7 @@ function Invoke-Case {
             '-ExpectedPdbHash',$artifact['LecS65AcqDrv.pdb'],'-DebugViewPath',$context.MockExe,
             '-ExpectedDebugViewHash',$(if($DebugViewHash){$DebugViewHash}else{$context.MockHash}),
             '-EvidenceRoot',$caseRoot,'-ExpectedCurrentSysHash',('6'*64),
-            '-TestMode','-MockStatePath',$context.State,
+            '-TestMode','-AllowNonElevatedTestMode','-MockStatePath',$context.State,
             '-CaptureReadinessTimeoutSeconds',$ReadinessTimeout,'-CaptureDurationSeconds',$Duration,
             '-CaptureShutdownGraceSeconds','2','-CaptureStabilityMilliseconds','250')
         if ($ExistingCollector) { $arguments += '-MockExistingCollector' }
@@ -215,6 +225,17 @@ function Invoke-Case {
                 '-ExpectedNoLaunchRunnerHash',$context.NoLaunchRunnerHash,
                 '-NoLaunchExecutablePath',$context.NoLaunchExe,
                 '-ExpectedNoLaunchExecutableHash',$context.NoLaunchHash)
+        }
+        elseif ($Mode -eq 'XStreamWithCapture') {
+            if (-not $OmitXStreamAuthorization) { $arguments += '-AuthorizeXStream' }
+            if (-not $OmitPhysicalDiskConfirmation) {
+                $arguments += '-ConfirmPhysicalDiskDisconnected'
+            }
+            $arguments += @('-XStreamRunnerPath',$context.XStreamRunner,
+                '-ExpectedXStreamRunnerHash',$context.XStreamRunnerHash,
+                '-XStreamExecutablePath',$context.MockExe,
+                '-ExpectedXStreamExecutableHash',$context.MockHash,
+                '-XStreamTimeoutSeconds','30')
         }
         $hostPath = Join-Path $PSHOME 'powershell.exe'
         $outerLog = Join-Path $tempRoot ("$Name-outer.log")
@@ -406,6 +427,29 @@ try {
         $noLaunchInner.Result -eq 'PASS' -and
         $noLaunchInner.HardwareLaunchObserved -eq $false)
 
+    $xstream = Invoke-Case -Name 'xstream-success' `
+        -Mode XStreamWithCapture -Scenario DelayedFileFlush
+    $xstreamOuter = Get-Content -Raw `
+        (Join-Path $xstream.Evidence 'result.json') | ConvertFrom-Json
+    $xstreamInner = Get-Content -Raw `
+        (Join-Path $xstream.Evidence 'xstream-evidence\result.json') |
+        ConvertFrom-Json
+    Add-Result 'exact production XStream path launches one observer after capture readiness' (
+        $xstream.ExitCode -eq 0 -and $xstream.Invocations -eq 1 -and
+        ($xstream.Records -join ',') -eq 'capture' -and
+        $xstreamOuter.XStreamInvocations -eq 1 -and
+        $xstreamInner.XStreamLaunchCount -eq 1 -and
+        $xstreamInner.ExplicitAcquireCount -eq 0 -and
+        $xstreamInner.Waveform.Observed)
+    $xstreamNoAuth = Invoke-Case -Name 'xstream-no-auth' `
+        -Mode XStreamWithCapture -OmitXStreamAuthorization
+    Add-Result 'XStream mode rejects missing owner authorization before capture' (
+        $xstreamNoAuth.ExitCode -ne 0 -and $xstreamNoAuth.Invocations -eq 0)
+    $xstreamNoDisk = Invoke-Case -Name 'xstream-no-disk-confirmation' `
+        -Mode XStreamWithCapture -OmitPhysicalDiskConfirmation
+    Add-Result 'XStream mode rejects missing physical-isolation confirmation before capture' (
+        $xstreamNoDisk.ExitCode -ne 0 -and $xstreamNoDisk.Invocations -eq 0)
+
     $early = Invoke-Case -Name 'early-exception' -Mode CaptureQualification `
         -FailureInjection BeforeCaptureStart
     Add-Result 'early terminating exception is persisted before child logs' (
@@ -475,7 +519,7 @@ try {
         @(Get-Process | Where-Object {$_.Path -eq $context.MockExe}).Count -eq 0)
 }
 finally {
-    [ordered]@{Host="Windows PowerShell $($PSVersionTable.PSVersion)";Elevated=$true;Passed=$script:Passed;Total=$script:Checks;Failed=$script:Failed} |
+    [ordered]@{Host="Windows PowerShell $($PSVersionTable.PSVersion)";Elevated=$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);TestOnlyElevationOverride=[bool]$AllowNonElevatedTestMode;Passed=$script:Passed;Total=$script:Checks;Failed=$script:Failed} |
         ConvertTo-Json | Set-Content -LiteralPath $ResultPath -Encoding UTF8
     try { Stop-Transcript | Out-Null } catch { }
 }

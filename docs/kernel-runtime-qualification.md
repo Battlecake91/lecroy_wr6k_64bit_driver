@@ -1,5 +1,35 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 25 first XStream waveform gate
+
+The active launcher mode is `XStreamWithCapture`. It is unreachable unless an
+elevated 64-bit Windows PowerShell 5.1 process supplies explicit kernel-capture
+and XStream authorization, fresh physical-disk-isolation confirmation, the
+exact one-admission package identity, and hash-pinned DebugView, XStream and
+runner paths. A fresh exclusive evidence root and capture readiness precede
+the durable application-attempt marker.
+
+The observer creates `LeCroy.XStreamDSO` once and relies on XStream's automatic
+acquisition. It never invokes `Acquire()`, changes a CVar, retries, performs a
+PnP operation or resets the driver. It records the current C1 configuration,
+reported/returned sample counts, finite-value statistics and a compact payload
+hash. On an observed waveform it requests an ordinary window close and never
+force-kills the process. On failure or uncertainty it preserves evidence and
+does not dispatch another application launch or hardware operation.
+
+Offline qualification is 9/9 single-waveform cases, 44/44 complete launcher
+cases, 21/21 launch-gate cases and 73/73 source/ABI contracts.
+
+The one authorized live attempt established capture readiness and dispatched
+one COM activation. The process did not register with DCOM and activation
+failed with `0x80080005`; no retry was made. Trace attribution is failure before
+GO: zero `CFDC2124`/`CFDC2138`, no DMA mapping or descriptor, no acquisition
+MMIO, IRQ or DPC, and no waveform. The only NTSTATUS failures were six rejected
+family-2 opcode-`0x03` `CFDC2110` chains. Post-state retained the exact package,
+problem code zero, running service and five interfaces. Any later live attempt
+requires an offline compatibility correction, a new reviewed package and fresh
+owner authorization.
+
 ## Batch 24 XStream boundary
 
 Because XStream automatically rearms acquisition, the first waveform candidate

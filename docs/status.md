@@ -1,5 +1,45 @@
 # Current project status
 
+## Batch 25 first XStream attempt
+
+- The authorized `XStreamWithCapture` attempt used `oem107.inf`, version
+  `0.2026.1030.1`, loaded SYS SHA-256
+  `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`,
+  after the owner confirmed physical isolation of the productive x86 disk.
+  Capture readiness was established before the durable application marker.
+- XStream DSO 8.5.1.1 is registered as the 32-bit COM local server
+  `lecroyxstreamdso.exe`. The executable has SHA-256
+  `27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F`
+  and valid Teledyne LeCroy Authenticode. DebugView CLI 5.02 remains pinned to
+  `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`.
+- Exactly one COM activation was dispatched. XStream process 35636 opened four
+  driver handles and issued 511 initialization IOCTLs, but the COM class never
+  registered. Activation ended with `CO_E_SERVER_EXEC_FAILURE` (`0x80080005`)
+  and System DCOM event 10010. The observer made zero explicit `Acquire()`
+  calls, changed no CVAR and did not retry or force-kill the application.
+- The kernel trace contains zero `CFDC2124`, zero `CFDC2138` and no MAM, GO,
+  mapping, descriptor, IRQ or DPC marker. No waveform was returned, no DMA
+  resource existed to retire or quarantine, and the per-FDO launch admission
+  remains unused. This is classified as **failure before GO**.
+- The only failing driver requests were six identical `CFDC2110` chains with
+  family 2 opcode `0x03`; the validated gate returned
+  `STATUS_INVALID_DEVICE_REQUEST`. Original-driver analysis already identifies
+  this opcode as a common-transport send with an extended response timeout.
+  Its timing and uniqueness make it the leading concrete compatibility blocker,
+  but the trace alone does not prove it is the sole cause of COM registration
+  failure.
+- Offline evidence passes: single-waveform runner 9/9, MAM gate 21/21,
+  source/ABI contracts 73/73 and complete launcher failure injection 44/44
+  under Windows PowerShell 5.1. The launcher suite used its test-only
+  non-elevated override; real active mode still requires an elevated token.
+- Post-attempt state passed: problem code zero, running service, exact loaded
+  SYS hash and all five interfaces. XStream and DebugView exited, the temporary
+  `DBGV` service was removed, and no target Kernel-PnP, Code Integrity or WHEA
+  error appeared. The private kernel-capture SHA-256 is
+  `DA4B0DC8066BC645658557728F4FA8F76DEE1AA8827AEA3D2010B51A5CE003B9`;
+  the post-state JSON SHA-256 is
+  `24CC773D634F062537904E9ACA715E4FD19E8F18B5651ACB6C2454A0420F67EE`.
+
 ## Batch 24 regular-MAM candidate preparation
 
 - Historical x64 traces prove that XStream automatically rearms MAM DMA: the

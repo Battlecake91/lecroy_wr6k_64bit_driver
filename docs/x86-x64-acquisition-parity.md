@@ -1,5 +1,38 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 25 first XStream execution result
+
+The historically used XStream installation is LeCroy XStream DSO 8.5.1.1.
+Its registered 32-bit COM local server is
+`C:\Program Files (x86)\LeCroy\XStream\lecroyxstreamdso.exe`, SHA-256
+`27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F`.
+Creating `LeCroy.XStreamDSO` starts the application and may automatically begin
+acquisition, so COM activation itself is the hardware-attempt boundary.
+
+The Batch 25 observer deliberately does not call `Acquisition.Acquire`, change
+trigger/timebase/vertical CVARs or start a second application process. After
+the pinned capture is ready, it creates the COM server once and polls the
+existing `Acquisition/C1/Out/Result` hierarchy for a non-empty finite
+`DataArray`. It records channel configuration, sample counts, compact sample
+statistics and a SHA-256 over the returned double values. Raw waveform values
+remain private. A second XStream request may be generated automatically, but
+the installed kernel limit rejects it before acquisition MMIO.
+
+This mode passed 9/9 focused mock cases and the complete capture-launcher suite
+passed 44/44. The owner then confirmed physical disk isolation and authorized
+one live activation. The COM server process started once but failed to register,
+returning `CO_E_SERVER_EXEC_FAILURE`; no retry occurred.
+
+The kernel trace proves that startup progressed through four device handles and
+511 initialization IOCTLs. It proves equally clearly that acquisition did not
+begin: there is no `CFDC2124`, `CFDC2138`, mapping, descriptor, GO, IRQ or DPC
+record. Six identical family-2 opcode-`0x03` `CFDC2110` chains were the only
+requests to fail at NTSTATUS level. The native validated gate does not yet admit
+that opcode, while original-driver analysis assigns it common-transport send
+and extended response-timeout semantics. This is the leading compatibility gap
+to resolve before another separately authorized waveform attempt. No waveform
+data or completion length exists for Batch 25.
+
 ## Batch 24 automatic-rearm conclusion
 
 The reference waveform trace reaches `CFDC2138` about 18.31 seconds after

@@ -1,5 +1,23 @@
 # Regression test architecture
 
+## Batch 25 single-waveform runner
+
+`scripts/invoke-xstream-single-waveform.ps1` is distinct from the broad
+XStream E2E suite. The broad suite explicitly invokes `Acquire()` multiple
+times and changes controls, so it must not be used for the installed
+one-admission candidate. The Batch 25 runner instead starts the COM local
+server once and observes automatic `C1.Out.Result` data without changing any
+application setting.
+
+Focused offline execution passes 9/9 cases: success, exclusive evidence,
+missing owner authorization, missing physical-isolation confirmation, wrong
+application hash, unexpected disk, existing acquisition client, missing
+waveform and evidence collision. The production capture launcher suite passes
+44/44 under Windows PowerShell 5.1, including the new success path and both
+authorization failures. A test-only non-elevated override was used for this
+offline run; it is accepted only together with `TestMode`, while every real
+active mode still requires an elevated token.
+
 ## Regular-MAM launch-limit coverage
 
 The gate suite verifies first admission, exhaustion, invalid zero and

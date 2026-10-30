@@ -50,13 +50,14 @@ $lecwatchBuild = Join-Path $repo "scripts\build-lecwatch.ps1"
 $packageBuild = Join-Path $repo "scripts\build-driver-package.ps1"
 $nativeProcess = Join-Path $repo "scripts\native-process.ps1"
 $diagnosticLauncher = Join-Path $repo "scripts\invoke-diagnostic-capture-install.ps1"
+$xstreamSingleRunner = Join-Path $repo "scripts\invoke-xstream-single-waveform.ps1"
 $code52Collector = Join-Path $repo "scripts\collect-code52-signing-diagnostics.ps1"
 $runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
 $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
 $codexContinuation = Join-Path $repo "scripts\manage-codex-continuation.ps1"
 $mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $xstreamSingleRunner, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -102,6 +103,7 @@ $lecdiagText = Get-Content -LiteralPath $lecdiagSource -Raw
 $packageBuildText = Get-Content -LiteralPath $packageBuild -Raw
 $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 $diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
+$xstreamSingleRunnerText = Get-Content -LiteralPath $xstreamSingleRunner -Raw
 $mockDeviceText = Get-Content -LiteralPath $mockDeviceSource -Raw
 
 $script:Checks = 0
@@ -938,19 +940,34 @@ Test-Contract "package signing is opt-in and thumbprint-bound" {
 Test-Contract "diagnostic launcher keeps every active capture mode explicitly gated" {
     $diagnosticLauncherText -match "'RestartWithCapture'" -and
     $diagnosticLauncherText -match "'NoLaunchWithCapture'" -and
+    $diagnosticLauncherText -match "'XStreamWithCapture'" -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeKernelCapture' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeInstallation' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizePnpRestart' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeNoLaunch' -and
+    $diagnosticLauncherText -match '\[switch\]\$AuthorizeXStream' -and
+    $diagnosticLauncherText -match '\[switch\]\$ConfirmPhysicalDiskDisconnected' -and
+    $diagnosticLauncherText -match '\$TestMode -and \$AllowNonElevatedTestMode' -and
     $diagnosticLauncherText -match 'Preflight forbids active authorization switches' -and
     $diagnosticLauncherText -match 'CAPTURE READY' -and
     $diagnosticLauncherText -match 'InstallInvocations\+\+' -and
     $diagnosticLauncherText -match 'PnpRestartInvocations\+\+' -and
     $diagnosticLauncherText -match 'NoLaunchInvocations\+\+' -and
+    $diagnosticLauncherText -match 'XStreamInvocations\+\+' -and
     $diagnosticLauncherText -match 'No-launch runner result contract mismatch' -and
     $diagnosticLauncherText -match '-Arguments @\(''/restart-device'', \$DeviceInstanceId\)' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
     $diagnosticLauncherText -notmatch 'scan-devices|disable-device|enable-device|DeviceIoControl|CreateFile'
+}
+
+Test-Contract "single-waveform runner observes automatic XStream data without Acquire" {
+    $xstreamSingleRunnerText -match "New-Object -ComObject 'LeCroy.XStreamDSO'" -and
+    $xstreamSingleRunnerText -match 'DataArray\(-1, -1, 0, 1\)' -and
+    $xstreamSingleRunnerText -match 'ExplicitAcquireCount' -and
+    $xstreamSingleRunnerText -match 'PhysicalDiskDisconnectedConfirmed' -and
+    $xstreamSingleRunnerText -match 'FileMode\]::CreateNew' -and
+    $xstreamSingleRunnerText -notmatch '\.Acquire\s*\(' -and
+    $xstreamSingleRunnerText -notmatch 'DeviceIoControl|pnputil|restart-device|Stop-Process|\.Kill\s*\('
 }
 
 Test-Contract "real capture readiness accounts for buffered DebugView logging" {
