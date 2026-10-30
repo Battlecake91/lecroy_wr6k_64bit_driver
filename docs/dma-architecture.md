@@ -16,6 +16,12 @@ before arm, interrupt enable or acquisition MMIO. The first completed request
 keeps its own generation and retirement state; rejection of a later request
 does not reset, deselect or free the first transaction.
 
+The first live Batch 25 activation stopped in control initialization. No
+`CFDC2124` registration or `CFDC2138` preparation reached the driver, so no DMA
+adapter mapping, SG list, descriptor table or launch admission existed. The
+observed failure therefore provides no new DMA success or abnormal-lifetime
+evidence; it leaves the installed FDO's one-admission counter unused.
+
 This document is the canonical end-to-end architecture and proof-boundary
 reference. It describes the development tree after Batch 12. It does not claim
 that acquisition DMA is release-ready.

@@ -4,13 +4,15 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Qualify one real XStream waveform with the installed one-admission
-  candidate.** The Batch 25 runner and capture launcher are offline-qualified
-  and never call `Acquire()` or change a CVar. Before dispatch, obtain fresh
-  owner confirmation that the productive x86 disk is physically disconnected
-  and explicit authorization for one potential MAM GO. Correlate visible or
-  automation-observed waveform data with physical IRQ/DPC completion and normal
-  mapping retirement. Do not reload the driver or bypass the kernel limit.
+- [ ] **Restore XStream startup through `CFDC2110` family-2 opcode `0x03`, then
+  requalify one waveform with a new candidate.** The one authorized Batch 25
+  COM activation failed before DMA after six identical opcode-`0x03` requests
+  were rejected with `STATUS_INVALID_DEVICE_REQUEST`. Compare the complete
+  request and response contract with original traces and the recovered
+  common-transport/extended-timeout behavior; implement only the proven
+  semantics and add focused tests. A later live attempt needs a new signed
+  candidate, physical-disk confirmation and fresh one-GO authorization. Do not
+  retry the installed candidate or bypass its kernel limit.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

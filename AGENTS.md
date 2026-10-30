@@ -35,17 +35,20 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   loaded SYS SHA-256
   `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`.
   It has a separate regular-MAM kernel admission limit of one; its 9/9 R0 and
-  2/2 R1 matrix passed. The current loaded FDO has not admitted a MAM launch.
-  Keep XStream closed until the owner freshly confirms physical x86-disk
-  isolation and explicitly authorizes the single-waveform stage.
+  2/2 R1 matrix passed. One authorized XStream COM activation reached control
+  initialization but failed with `CO_E_SERVER_EXEC_FAILURE` before
+  `CFDC2124`, `CFDC2138`, mapping or GO. The current loaded FDO has therefore
+  not admitted a MAM launch. Do not retry XStream without a new reviewed
+  candidate and fresh authorization.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical
   addresses and preserves the original register/completion sequence. One
   bounded 16-byte transfer passed with physical IRQ/DPC evidence and normal
   retirement. The installed regular-MAM candidate permits at most one launch
-  admission; repeated acquisition, timeout/cancellation and XStream waveform
-  delivery remain unqualified.
+  admission; its first XStream start exposed missing `CFDC2110` family-2
+  opcode-`0x03` compatibility before DMA. Repeated acquisition,
+  timeout/cancellation and XStream waveform delivery remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

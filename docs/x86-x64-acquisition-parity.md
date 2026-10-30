@@ -1,6 +1,6 @@
 # Original x86, historical x64 and current acquisition parity
 
-## Batch 25 single-waveform execution boundary
+## Batch 25 first XStream execution result
 
 The historically used XStream installation is LeCroy XStream DSO 8.5.1.1.
 Its registered 32-bit COM local server is
@@ -19,8 +19,19 @@ remain private. A second XStream request may be generated automatically, but
 the installed kernel limit rejects it before acquisition MMIO.
 
 This mode passed 9/9 focused mock cases and the complete capture-launcher suite
-passed 44/44. Live XStream execution remains blocked on fresh physical
-x86-disk-isolation confirmation and separate one-GO authorization.
+passed 44/44. The owner then confirmed physical disk isolation and authorized
+one live activation. The COM server process started once but failed to register,
+returning `CO_E_SERVER_EXEC_FAILURE`; no retry occurred.
+
+The kernel trace proves that startup progressed through four device handles and
+511 initialization IOCTLs. It proves equally clearly that acquisition did not
+begin: there is no `CFDC2124`, `CFDC2138`, mapping, descriptor, GO, IRQ or DPC
+record. Six identical family-2 opcode-`0x03` `CFDC2110` chains were the only
+requests to fail at NTSTATUS level. The native validated gate does not yet admit
+that opcode, while original-driver analysis assigns it common-transport send
+and extended response-timeout semantics. This is the leading compatibility gap
+to resolve before another separately authorized waveform attempt. No waveform
+data or completion length exists for Batch 25.
 
 ## Batch 24 automatic-rearm conclusion
 

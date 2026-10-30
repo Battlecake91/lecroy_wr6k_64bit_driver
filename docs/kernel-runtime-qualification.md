@@ -18,9 +18,17 @@ force-kills the process. On failure or uncertainty it preserves evidence and
 does not dispatch another application launch or hardware operation.
 
 Offline qualification is 9/9 single-waveform cases, 44/44 complete launcher
-cases, 21/21 launch-gate cases and 73/73 source/ABI contracts. The live mode is
-not authorized until the owner freshly confirms that the productive x86 disk
-is physically disconnected and explicitly approves one potential MAM GO.
+cases, 21/21 launch-gate cases and 73/73 source/ABI contracts.
+
+The one authorized live attempt established capture readiness and dispatched
+one COM activation. The process did not register with DCOM and activation
+failed with `0x80080005`; no retry was made. Trace attribution is failure before
+GO: zero `CFDC2124`/`CFDC2138`, no DMA mapping or descriptor, no acquisition
+MMIO, IRQ or DPC, and no waveform. The only NTSTATUS failures were six rejected
+family-2 opcode-`0x03` `CFDC2110` chains. Post-state retained the exact package,
+problem code zero, running service and five interfaces. Any later live attempt
+requires an offline compatibility correction, a new reviewed package and fresh
+owner authorization.
 
 ## Batch 24 XStream boundary
 

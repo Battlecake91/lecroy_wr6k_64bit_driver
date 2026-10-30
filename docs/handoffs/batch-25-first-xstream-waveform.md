@@ -1,4 +1,4 @@
-# Batch 25 first XStream waveform preparation
+# Batch 25 first XStream attempt
 
 ## Prepared identity
 
@@ -41,17 +41,40 @@ source/ABI contracts 73/73. The 44-case launcher run used the explicit
 test-only non-elevated override; the real mode still requires elevated 64-bit
 Windows PowerShell 5.1.
 
-## Remaining authorization boundary
+## Live result
 
-No Batch 25 XStream process or DMA request has been started. Software sees only
-the x64 NVMe `HFM256GDHTNG-8510B`, serial `ACE4_2E00_9590_A2AA.`, but that is
-not proof of physical isolation. Before the live command is assembled against
-a clean immutable launcher commit, the owner must state both:
+The owner confirmed the productive x86 disk was physically disconnected and
+authorized exactly one `XStreamWithCapture` run. The launcher established a
+real kernel-capture message, persisted the attempt marker and dispatched one
+COM activation. The runner made no explicit `Acquire()` call and did not retry.
 
-1. the productive Windows x86 disk remains physically disconnected; and
-2. exactly one potential MAM GO through the installed `oem107.inf` XStream path
-   is authorized.
+The XStream process reached driver control initialization but did not register
+its COM class. Activation failed with `CO_E_SERVER_EXEC_FAILURE` and Windows
+recorded DCOM event 10010. The trace contains 511 IOCTL requests over four
+handles. Six identical family-2 opcode-`0x03` `CFDC2110` chains were rejected
+with `STATUS_INVALID_DEVICE_REQUEST`; every other captured IOCTL completed at
+NTSTATUS success. The missing opcode is already identified by static original
+driver analysis as a common-transport send with an extended response timeout.
+This is the leading blocker, although the trace does not prove sole causality.
 
-After that statement, use a fresh evidence root and the exact hashes above.
-Never retry. Classify missing/uncertain completion as terminal for this loaded
-FDO and perform only passive/offline analysis afterward.
+No `CFDC2124`, `CFDC2138`, MAM mapping, descriptor, GO, IRQ, DPC, completion or
+waveform occurred. There was no DMA resource to retire or quarantine, and the
+kernel launch admission remains unused. Post-state is healthy with the exact
+SYS hash, problem code zero, running service and five interfaces. DebugView,
+XStream and the temporary `DBGV` service are gone. No Kernel-PnP, Code Integrity
+or WHEA error was observed.
+
+Private evidence hashes:
+
+- kernel capture:
+  `DA4B0DC8066BC645658557728F4FA8F76DEE1AA8827AEA3D2010B51A5CE003B9`
+- launcher result:
+  `58072D5A1D0CA435C1F3193B9B9DB37A7DD7A66929F96AD2220593D34DE89958`
+- XStream result:
+  `B3856361D890E8B743210F15B5158797332B0589CCC18C38077542D30CD72F1E`
+- post-state JSON:
+  `24CC773D634F062537904E9ACA715E4FD19E8F18B5651ACB6C2454A0420F67EE`
+
+Do not retry this candidate. The next workstream is offline opcode-`0x03`
+contract recovery, implementation and qualification, followed by a new signed
+candidate and a fresh authorization boundary.

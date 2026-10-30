@@ -22,6 +22,12 @@ pre-GO failure still consumes the limit. Any uncertain post-GO state continues
 to retain mappings/pages and close admission through `UnknownActive`; neither
 application exit nor a rejected second request proves hardware idle.
 
+The actual Batch 25 application attempt failed earlier than this boundary.
+There was no registration, mapping, descriptor, GO, IRQ or DPC record. No DMA
+resource required retirement or quarantine, `UnknownActive` was not entered,
+and the launch admission was not consumed. Four opened device handles closed
+normally before DCOM reported the server-registration timeout.
+
 Batch 21 installed the exact-shape, exact-once development build and completed
 its 9/9 R0 plus 2/2 R1 compatibility matrix. At that point no GO had occurred,
 so there was no new IRQ/DPC, retirement or `UnknownActive` evidence. Batch 23
