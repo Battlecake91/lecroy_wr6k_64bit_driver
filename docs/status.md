@@ -12,6 +12,13 @@
 - `LecMamLaunchLimit=1` now provides a separate atomic pre-MMIO admission bound
   for the first XStream candidate. It is independent of the consumed Batch 23
   latch; default builds remain no-launch.
+- Signed candidate `0.2026.1030.1` from commit `24fe8d90...6b815` passed
+  Authenticode, chain, catalog membership, SYS/PDB identity, Dry 847/847 and
+  stress 66,000/66,000. Its signed SYS is `184471C0...35CAE`.
+- One captured installation published `oem107.inf`; device status is `OK`,
+  problem code zero, service running and five interfaces active. The exact-once
+  installed matrix passed R0 9/9 and R1 2/2 with PCI `1570:0005` and both START
+  reads `0x00000002`. No XStream process or MAM GO was started.
 
 ## Batch 23 first physical MAM DMA
 
