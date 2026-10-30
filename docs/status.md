@@ -23,6 +23,16 @@
   Dry suite passes, including DMA stress 5,000/5,000 and INTEN stress
   1,000/1,000. No live request, XStream start, installation or PnP transition
   was performed.
+- The one authorized package run produced signed Release x64 candidate
+  `0.2026.1030.2` from source/workflow commit
+  `414f18e6c4f8072b05e7d60d8ef2a5c1218ada42`. Package regression is 849/849
+  functional and 66,000/66,000 stress iterations. PnP diagnostics, WDM-v3 MAM
+  and `MamLaunchLimit=1` are present; unsafe PFN DMA remains disabled.
+  Authenticode, the local test chain, CAT membership and SYS/PDB identity pass.
+  Frozen hashes are INF `BC7734C1...976CF4`, CAT `28BFF32C...A5617`, signed
+  SYS `2F0F53A7...C68653`, PDB `78D8D941...2710B` and manifest
+  `F615EA1F...5D116`. Installation is not authorized and `oem107.inf` remains
+  installed and started.
 - The 32-bit COM registration remains present and points
   `LeCroy.XStreamDSO`/CLSID `{03960F1A-A888-4335-AB08-6F8BE55F0D9B}` to the
   expected local server. This weakens a missing-registration hypothesis but

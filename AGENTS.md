@@ -50,7 +50,8 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   opcode-`0x03` compatibility before DMA. Repeated acquisition,
   timeout/cancellation and XStream waveform delivery remain unqualified. The
   exact-shape opcode-`0x03` common-transport path is now implemented and
-  Dry-qualified in source, but is not installed or hardware-qualified.
+  Dry-qualified in source. Signed candidate `0.2026.1030.2` exists with
+  `MamLaunchLimit=1`, but is not installed or hardware-qualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

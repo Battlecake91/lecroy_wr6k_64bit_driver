@@ -51,3 +51,28 @@ After a signed candidate is separately installed, the smallest live proof is
 one captured exact opcode request with a ten-second maximum response wait and
 post-request health inspection. A later XStream activation remains a separate
 authorization boundary and must retain the one-launch kernel limit.
+
+## Signed candidate
+
+One authorized signing run completed without retry. The immutable candidate is
+stored outside the repository at
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch26-SignedCandidate-20261030-1030-2`.
+
+- DriverVer: `10/30/2026,0.2026.1030.2`
+- source and workflow commit: `414f18e6c4f8072b05e7d60d8ef2a5c1218ada42`
+- certificate: `4296FA2E355613DF0D5CE6F24D0898E00B706472`
+- INF SHA-256: `BC7734C13F276A23ACD18B3CA004267B508F5DE9AD734F426E947AA051976CF4`
+- CAT SHA-256: `28BFF32CC2579CCC920991E4C36CA2007D04F9F9F1D255E1EEB4350924DA5617`
+- signed SYS SHA-256: `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`
+- PDB SHA-256: `78D8D941C159C639787D5513B4AB727560EB173FB285CB6C75F119020552710B`
+- manifest SHA-256: `F615EA1F0F31C8227D7592DECB2D106F4EBF874BA7104294238AA0827DD5D116`
+- package regression: 849/849 functional, 66,000/66,000 stress
+- configuration: Release x64, PnP diagnostics, WDM-v3 MAM,
+  `MamLaunchLimit=1`, unsafe PFN DMA disabled
+- validation: SYS/CAT Authenticode valid, local chain valid, CAT membership
+  valid, INF consistent, SYS/PDB identity valid
+
+The workflow records `DriverStoreChanged=false`, `PnpChanged=false` and
+`DeviceOpened=false`. Passive enumeration after signing still reports
+`oem107.inf`, version `0.2026.1030.1`, as installed and started. No candidate
+file was installed or staged.
