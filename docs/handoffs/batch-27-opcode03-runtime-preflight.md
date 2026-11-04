@@ -1,0 +1,111 @@
+# Batch 27 opcode 0x03 runtime preflight
+
+## Correct execution environment
+
+The incorrect `codex/legacy-dma-cleanup-hardening` checkout was not modified.
+The existing clean worktree at
+`C:\Users\LeCroyUser\.codex\worktrees\phase2c-runtime-batch12\lecroy_wr6k_64bit_driver`
+contained the required Batch 26 source at
+`f5782a61d42d317b82f6cf834921237a409aa6fc`. The Batch 26 handoff is present
+at that commit. Batch 27 preparation continues on
+`codex/phase2c-runtime-batch27` from that exact parent.
+
+The active host is the local console session of `DESKTOP-0Q0RKAQ`, running
+Windows 10 Pro x64 build 19045 as
+`DESKTOP-0Q0RKAQ\LeCroyUser`. The reported Gigabyte system model and
+`HypervisorPresent=false` show no remote-session or virtualization indicator.
+The console-session observation is direct; absence of every possible
+virtualization layer is not independently proven.
+
+This is consistent with the Batch 25 hardware environment: the stable PCI
+instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`, installed
+package, loaded binary hash, operating-system build and five interface classes
+all match the retained Batch 25 evidence.
+
+## Passive installed state
+
+- PCI device: present and started, `VEN_1570:DEV_0005`, problem code zero
+- bound package: `oem107.inf`, version `0.2026.1030.1`
+- loaded SYS SHA-256:
+  `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`
+- service: `LecS65AcqDrv`, running
+- enabled interface classes:
+  - `{FC5DF040-D6CD-4BA0-B5E0-2561972963A2}`
+  - `{8D1103B8-5BF4-4B5C-B21E-EEAACE97D418}`
+  - `{7AC34BE9-F766-4F15-9E88-854BA5E2146E}`
+  - `{958695A4-693A-435E-8297-66F805D8E46A}`
+  - `{9007C2BC-EDFD-4F2F-A059-DF1131CB1AE5}`
+- Driver Verifier flags: zero; no verified drivers
+- XStream/LeCroy acquisition processes: none
+
+The current non-elevated token could not read the BCD store, so the
+`testsigning` flag was not independently refreshed during this passive pass.
+The expected locally test-signed driver remains loaded and healthy.
+
+The pinned DebugView 5.02 x64 collector is present, Authenticode-valid and has
+SHA-256
+`7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B`.
+No DebugView process or temporary `Dbgv` service is active. Batch 25 proved the
+live-stdout readiness mechanism on this host; a future active attempt must
+establish a fresh readiness record before any installation or request dispatch.
+
+## Frozen candidate
+
+The Batch 26 candidate remains unchanged at
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch26-SignedCandidate-20261030-1030-2`.
+
+- DriverVer: `10/30/2026,0.2026.1030.2`
+- INF SHA-256: `BC7734C13F276A23ACD18B3CA004267B508F5DE9AD734F426E947AA051976CF4`
+- CAT SHA-256: `28BFF32CC2579CCC920991E4C36CA2007D04F9F9F1D255E1EEB4350924DA5617`
+- signed SYS SHA-256: `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`
+- PDB SHA-256: `78D8D941C159C639787D5513B4AB727560EB173FB285CB6C75F119020552710B`
+- manifest SHA-256: `F615EA1F0F31C8227D7592DECB2D106F4EBF874BA7104294238AA0827DD5D116`
+- SYS and CAT Authenticode: valid
+- signer thumbprint: `4296FA2E355613DF0D5CE6F24D0898E00B706472`
+- source/workflow commit: `414f18e6c4f8072b05e7d60d8ef2a5c1218ada42`
+- configuration: Release x64, PnP diagnostics, WDM-v3 MAM,
+  `MamLaunchLimit=1`, unsafe legacy PFN DMA disabled
+
+The package manifest still records `InstallAuthorized=false`. No package file
+was rebuilt, re-signed, staged or installed during this preflight.
+
+## Exact-request evidence gap
+
+The private Batch 25 kernel capture contains exactly six `CFDC2110` calls with
+130 input bytes and 14 output bytes. Their logged 64-byte previews are
+identical; the preview SHA-256 is
+`9A18FDEC752F591CB528C62453A9D9B475ED6BC5B51D7621B8934FD3731CA0E2`.
+Each trace record then explicitly reports `66 more bytes`. The raw log and its
+live-stdout copy are the only private files containing that preview. No retained
+evidence contains the missing 66 bytes, so no full 130-byte request or request
+SHA-256 can be recovered from the existing capture.
+
+This is an evidence-capture defect, not permission to reconstruct the opaque
+body. A standalone opcode qualification cannot be prepared faithfully until
+the complete request is obtained from a trusted private source. The public
+repository contains no request bytes.
+
+## Authorization boundary and next actions
+
+No installation, PnP transition, device handle, IOCTL, XStream launch or DMA
+operation occurred in this preparation.
+
+After the exact 130-byte private request has been recovered and pinned by hash,
+the following remain separate owner-authorized actions:
+
+1. one elevated installation of the frozen INF with
+   `pnputil.exe /add-driver <absolute Batch 26 INF path> /install`, under a
+   fresh qualified kernel capture;
+2. the established R0/R1 matrix on the installed candidate;
+3. one exact `CFDC2110` request with 130 input bytes and 14 output bytes, a
+   durable attempt marker, a bounded ten-second initial response wait and no
+   retry;
+4. only after that transport test succeeds, a separately authorized bounded
+   XStream startup.
+
+The repository, hardware, installed baseline, candidate and capture tooling
+are ready. Batch 27 as a complete install-and-transport qualification is not
+ready for installation authorization because the exact request payload is
+missing; installing now would not enable the required faithful standalone
+transport test.
