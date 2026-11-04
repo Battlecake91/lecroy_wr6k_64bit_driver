@@ -82,30 +82,103 @@ evidence contains the missing 66 bytes, so no full 130-byte request or request
 SHA-256 can be recovered from the existing capture.
 
 This is an evidence-capture defect, not permission to reconstruct the opaque
-body. A standalone opcode qualification cannot be prepared faithfully until
-the complete request is obtained from a trusted private source. The public
-repository contains no request bytes.
+body. A standalone opcode qualification cannot be prepared faithfully from the
+retained evidence. The public repository contains no request bytes.
+
+## Lossless external capture qualification
+
+The existing x86 user-mode IOCTL observer can capture the missing evidence
+without changing the signed driver. It now starts the pinned XStream local
+server suspended, injects the hook before the first application IOCTL, creates
+an exclusive PID-bound readiness marker, and then resumes `/Embedding`. The
+hook's format-4 JSONL records preserve the complete request and synchronous
+response, UTC/QPC ordering, thread and handle correlation, IOCTL identity,
+family/opcode metadata, status/last-error data, returned byte count and a
+normal-completion footer. Nested `DeviceIoControl`/`NtDeviceIoControlFile`
+observation is de-duplicated without suppressing direct NT calls.
+
+`scripts/invoke-xstream-lossless-capture.ps1` pins every executable/script by
+SHA-256, starts exactly one injected target, waits for readiness, and passes
+that exact PID to the bounded COM observer. The observer rejects every other
+pre-existing or additionally spawned XStream process. The post-capture
+validator requires complete 130-byte family-2/opcode-`0x03` input and 14-byte
+output framing, computes request/response SHA-256 values and writes metadata
+only. Opaque bytes remain exclusively in the private evidence root.
+
+Windows PowerShell 5.1 focused results are:
+
+- lossless tracer/orchestration: 18/18 PASS;
+- bounded single-waveform runner: 9/9 PASS;
+- diagnostic capture/install launcher: 44/44 PASS.
+
+The final local capture identities are launcher
+`77B2910B54AC7B2E9CA5A53CB66F5B862AB3B60024D97B9AA78FC875923AE2A6`,
+hook `F602235A7F676113B3A8233EDCA4796AB39E089F552C60EFE19F3821D03188BC`,
+validator `330FFFEDDAF1CF1D8A9D55332FCB52C96ED304014481F9937A9A72BE07A0AF78`,
+orchestrator `9C0C32A8258FE2B9B9AB26C3CDE5A2CB27CCBE7F08C83B2AD2715260D118EA28`
+and bounded observer
+`A5611EAD6F9FACA3EB8460E6ADACA56D2D06DDEFDF4124AE2A46AD50DCB7F1FB`.
+The generated x86 binaries remain local and ignored by Git; rebuilding them
+changes their identity and therefore requires updating the pinned live command.
+
+The synthetic target covers NUL-containing binary input, six identical target
+requests, two threads, two handles, error responses, successful output,
+pre-dispatch path collisions, unavailable trace output, `/Embedding`, truncated
+input rejection, repository-containment rejection and complete orchestration.
+Tracing did not change the target's observed IOCTL inputs, outputs or errors.
+The x86 synthetic target builds with `/W4 /WX`. The hook build retains nine
+MSVC C4152 warnings at the established IAT function/data-pointer conversion
+sites; no new warning class or build error was introduced.
+
+The frozen Batch 26 package hashes were reverified and remain exactly those
+listed above. It was not rebuilt, re-signed, staged or installed.
+The final passive snapshot still reports `oem107.inf`, version
+`0.2026.1030.1`, device `OK`, problem code zero, service `Running`, loaded SYS
+`184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`
+and no XStream process.
 
 ## Authorization boundary and next actions
 
 No installation, PnP transition, device handle, IOCTL, XStream launch or DMA
 operation occurred in this preparation.
 
-After the exact 130-byte private request has been recovered and pinned by hash,
-the following remain separate owner-authorized actions:
+The following remain separate owner-authorized actions:
 
 1. one elevated installation of the frozen INF with
    `pnputil.exe /add-driver <absolute Batch 26 INF path> /install`, under a
    fresh qualified kernel capture;
 2. the established R0/R1 matrix on the installed candidate;
-3. one exact `CFDC2110` request with 130 input bytes and 14 output bytes, a
-   durable attempt marker, a bounded ten-second initial response wait and no
-   retry;
-4. only after that transport test succeeds, a separately authorized bounded
-   XStream startup.
+3. one bounded XStream startup through the qualified lossless observer, after a
+   fresh physical-disk-isolation confirmation, with no explicit `Acquire()`, no
+   CVar change, no retry and the existing kernel `MamLaunchLimit=1`;
+4. private validation of every captured opcode-`0x03` request and response,
+   followed by COM, DMA and waveform outcome classification.
 
-The repository, hardware, installed baseline, candidate and capture tooling
-are ready. Batch 27 as a complete install-and-transport qualification is not
-ready for installation authorization because the exact request payload is
-missing; installing now would not enable the required faithful standalone
-transport test.
+The repository, hardware baseline, frozen candidate and lossless capture path
+are ready for a separately authorized installation. Installation itself is not
+authorized by this work. After installation and R0/R1, the single XStream
+startup remains a second, independent authorization boundary. Standalone replay
+is no longer a prerequisite because the missing historical bytes cannot be
+recovered and the controlled application run can capture them faithfully.
+
+The separately authorized installation command is:
+
+```powershell
+$pnp = Join-Path $env:SystemRoot 'System32\pnputil.exe'
+& $pnp /add-driver `
+  'C:\Users\LeCroyUser\.codex\driver-backups\Batch26-SignedCandidate-20261030-1030-2\package\LecS65AcqDrv.inf' `
+  /install
+```
+
+It must run only through the existing captured, exact-once installation mode
+after rechecking all five package hashes, elevation, test-signing state,
+rollback retention, device identity and XStream absence. The subsequent active
+XStream command is intentionally not frozen until installation has established
+the actual published INF and loaded SYS identity. At that later gate,
+`XStreamRunnerPath` for `XStreamWithCapture` must be
+`scripts\invoke-xstream-lossless-capture.ps1`; the diagnostic launcher now
+requires and pins the trace launcher, hook, validator and inner waveform runner
+before starting kernel capture. A real call lacking any of those identities
+fails before XStream dispatch. The next approval request must present the fully
+materialized command, fresh evidence root, actual installed INF/SYS values and
+fresh physical-disk-isolation confirmation.

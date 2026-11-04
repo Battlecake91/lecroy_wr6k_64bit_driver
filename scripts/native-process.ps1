@@ -127,7 +127,7 @@ namespace LecS65
             return quoted.ToString();
         }
 
-        private static string BuildArguments(string[] arguments)
+        public static string BuildArgumentString(string[] arguments)
         {
             List<string> quoted = new List<string>();
             foreach (string argument in arguments)
@@ -176,7 +176,7 @@ namespace LecS65
 
                 ProcessStartInfo start = new ProcessStartInfo();
                 start.FileName = fileName;
-                start.Arguments = BuildArguments(arguments);
+                start.Arguments = BuildArgumentString(arguments);
                 start.WorkingDirectory = workingDirectory;
                 start.UseShellExecute = false;
                 start.CreateNoWindow = true;

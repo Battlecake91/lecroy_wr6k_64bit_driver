@@ -83,6 +83,8 @@ static volatile LONG g_sequence;
 static LARGE_INTEGER g_qpcFrequency;
 static volatile LONG g_initialized;
 static volatile LONG g_recordsSinceFlush;
+static volatile LONG g_writeFailed;
+static DWORD g_deviceIoControlTls = TLS_OUT_OF_INDEXES;
 
 static BOOL WINAPI HookDeviceIoControl(HANDLE,DWORD,LPVOID,DWORD,LPVOID,DWORD,LPDWORD,LPOVERLAPPED);
 static HANDLE WINAPI HookCreateFileW(LPCWSTR,DWORD,DWORD,LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE);
@@ -98,6 +100,8 @@ static void write_u64(ULONGLONG value);
 static void write_hex_u32(DWORD value);
 static void write_hex_ptr(const void* value);
 static void write_json_string(const char* s);
+static ULONGLONG get_utc_filetime(void);
+static void write_protocol_identity(DWORD code,const BYTE* input,DWORD length);
 static char* copy_object_name_utf8(
     const LECS65_OBJECT_ATTRIBUTES* attributes);
 static ULONG_PTR safe_read_information(
@@ -167,9 +171,10 @@ static DWORD text_len(const char* s)
 
 static void write_raw(const char* s, DWORD n)
 {
-    DWORD written;
+    DWORD written = 0;
     if (g_log == INVALID_HANDLE_VALUE || !s || !n) return;
-    WriteFile(g_log, s, n, &written, NULL);
+    if (!WriteFile(g_log,s,n,&written,NULL) || written != n)
+        InterlockedExchange(&g_writeFailed,1);
 }
 
 static void write_text(const char* s)
@@ -281,6 +286,36 @@ static void write_json_string(const char* s)
     write_raw("\"", 1);
 }
 
+static ULONGLONG get_utc_filetime(void)
+{
+    FILETIME value;
+    ULARGE_INTEGER combined;
+    GetSystemTimeAsFileTime(&value);
+    combined.LowPart = value.dwLowDateTime;
+    combined.HighPart = value.dwHighDateTime;
+    return combined.QuadPart;
+}
+
+static void write_protocol_identity(DWORD code,const BYTE* input,DWORD length)
+{
+    int valid = 0;
+    BYTE family = 0;
+    BYTE opcode = 0;
+
+    if (code == 0xCFDC2110U && input && length >= 11U &&
+        input[4] == 3U && input[5] == 0U &&
+        input[6] == 0xFBU && input[7] == 0xA5U &&
+        input[8] == 0x40U) {
+        family = input[9];
+        opcode = input[10];
+        valid = 1;
+    }
+    write_text(",\"family\":");
+    if (valid) write_u32(family); else write_text("null");
+    write_text(",\"opcode\":");
+    if (valid) write_u32(opcode); else write_text("null");
+}
+
 static char* wide_to_utf8(LPCWSTR value)
 {
     int count;
@@ -368,11 +403,19 @@ static ULONG_PTR safe_read_information(const LECS65_IO_STATUS_BLOCK* p)
 
 static void log_header(void)
 {
+    LARGE_INTEGER qpc;
+    QueryPerformanceCounter(&qpc);
     EnterCriticalSection(&g_logLock);
-    write_text("{\"type\":\"legacy_xstream_user_trace\",\"format_version\":3,\"pid\":");
+    write_text("{\"type\":\"legacy_xstream_user_trace\",\"format_version\":4,\"pid\":");
     write_u32(GetCurrentProcessId());
     write_text(",\"capture_limit\":");
     write_u32(TRACE_CAPTURE_LIMIT);
+    write_text(",\"qpc_frequency\":");
+    write_u64((ULONGLONG)g_qpcFrequency.QuadPart);
+    write_text(",\"header_qpc\":");
+    write_u64((ULONGLONG)qpc.QuadPart);
+    write_text(",\"header_filetime_utc\":");
+    write_u64(get_utc_filetime());
     write_text("}\r\n");
     FlushFileBuffers(g_log);
     LeaveCriticalSection(&g_logLock);
@@ -498,13 +541,19 @@ static BOOL WINAPI HookDeviceIoControl(
     BOOL result;
     LARGE_INTEGER start,end;
     ULONGLONG durationUs = 0;
+    ULONGLONG timestampFiletime;
     LONG seq;
 
     inCopy = safe_copy(inBuffer,inSize,&inCopied);
+    timestampFiletime = get_utc_filetime();
     QueryPerformanceCounter(&start);
+    if (g_deviceIoControlTls != TLS_OUT_OF_INDEXES)
+        TlsSetValue(g_deviceIoControlTls,(LPVOID)1);
     result = g_realDeviceIoControl(
         hDevice,code,inBuffer,inSize,outBuffer,outSize,bytesOut,overlapped);
     error = GetLastError();
+    if (g_deviceIoControlTls != TLS_OUT_OF_INDEXES)
+        TlsSetValue(g_deviceIoControlTls,NULL);
     QueryPerformanceCounter(&end);
     returned = safe_read_dword(bytesOut);
 
@@ -522,6 +571,7 @@ static BOOL WINAPI HookDeviceIoControl(
     write_text("{\"type\":\"ioctl\",\"seq\":"); write_u32((DWORD)seq);
     write_text(",\"tid\":"); write_u32(GetCurrentThreadId());
     write_text(",\"qpc\":"); write_u64((ULONGLONG)start.QuadPart);
+    write_text(",\"timestamp_filetime_utc\":"); write_u64(timestampFiletime);
     write_text(",\"duration_us\":"); write_u64(durationUs);
     write_text(",\"handle\":\""); write_hex_ptr(hDevice);
     write_text("\",\"ioctl\":\""); write_hex_u32(code);
@@ -537,6 +587,7 @@ static BOOL WINAPI HookDeviceIoControl(
     write_text(",\"input_captured\":"); write_u32(inCopied);
     write_text(",\"input_truncated\":"); write_text(inSize > inCopied ? "true" : "false");
     write_text(",\"input_hex\":"); write_hex_bytes(inCopy,inCopied);
+    write_protocol_identity(code,inCopy,inCopied);
     write_text(",\"output_captured\":"); write_u32(outCopied);
     write_text(",\"output_truncated\":"); write_text(returned > outCopied ? "true" : "false");
     write_text(",\"output_hex\":"); write_hex_bytes(outCopy,outCopied);
@@ -572,10 +623,19 @@ static LONG NTAPI HookNtDeviceIoControlFile(
     LARGE_INTEGER start;
     LARGE_INTEGER end;
     ULONGLONG durationUs = 0;
+    ULONGLONG timestampFiletime;
     LONG seq;
+
+    if (g_deviceIoControlTls != TLS_OUT_OF_INDEXES &&
+        TlsGetValue(g_deviceIoControlTls) != NULL) {
+        return g_realNtDeviceIoControlFile(
+            fileHandle,eventHandle,apcRoutine,apcContext,ioStatus,code,
+            inBuffer,inSize,outBuffer,outSize);
+    }
 
     inCopy = safe_copy(inBuffer,inSize,&inCopied);
 
+    timestampFiletime = get_utc_filetime();
     QueryPerformanceCounter(&start);
     status = g_realNtDeviceIoControlFile(
         fileHandle,eventHandle,apcRoutine,apcContext,ioStatus,code,
@@ -601,6 +661,7 @@ static LONG NTAPI HookNtDeviceIoControlFile(
     write_text("{\"type\":\"nt_ioctl\",\"seq\":"); write_u32((DWORD)seq);
     write_text(",\"tid\":"); write_u32(GetCurrentThreadId());
     write_text(",\"qpc\":"); write_u64((ULONGLONG)start.QuadPart);
+    write_text(",\"timestamp_filetime_utc\":"); write_u64(timestampFiletime);
     write_text(",\"duration_us\":"); write_u64(durationUs);
     write_text(",\"handle\":\""); write_hex_ptr(fileHandle);
     write_text("\",\"ioctl\":\""); write_hex_u32(code);
@@ -617,6 +678,7 @@ static LONG NTAPI HookNtDeviceIoControlFile(
     write_text(",\"input_truncated\":");
     write_text(inSize > inCopied ? "true" : "false");
     write_text(",\"input_hex\":"); write_hex_bytes(inCopy,inCopied);
+    write_protocol_identity(code,inCopy,inCopied);
     write_text(",\"output_captured\":"); write_u32(outCopied);
     write_text(",\"output_truncated\":");
     write_text(information > outCopied ? "true" : "false");
@@ -715,6 +777,8 @@ __declspec(dllexport) DWORD WINAPI InitializeXStreamTrace(LPVOID unused)
 
     InitializeCriticalSection(&g_logLock);
     QueryPerformanceFrequency(&g_qpcFrequency);
+    g_deviceIoControlTls = TlsAlloc();
+    if (g_deviceIoControlTls == TLS_OUT_OF_INDEXES) return 0;
 
     kernel32 = GetModuleHandleW(L"kernel32.dll");
     if (!kernel32) return 0;
@@ -750,7 +814,7 @@ __declspec(dllexport) DWORD WINAPI InitializeXStreamTrace(LPVOID unused)
         lstrcpyW(path,L"legacy_xstream_trace.jsonl");
 
     g_log = g_realCreateFileW(
-        path,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,CREATE_ALWAYS,
+        path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,
         FILE_ATTRIBUTE_NORMAL,NULL);
     if (g_log == INVALID_HANDLE_VALUE) return 0;
 
@@ -775,11 +839,22 @@ BOOL WINAPI DllMain(HINSTANCE instance,DWORD reason,LPVOID reserved)
     else if (reason == DLL_PROCESS_DETACH) {
         if (g_initialized != 0) {
             if (g_log != INVALID_HANDLE_VALUE) {
+                EnterCriticalSection(&g_logLock);
+                write_text("{\"type\":\"trace_footer\",\"records\":");
+                write_u32((DWORD)g_sequence);
+                write_text(",\"write_failed\":");
+                write_text(g_writeFailed ? "true" : "false");
+                write_text("}\r\n");
+                LeaveCriticalSection(&g_logLock);
                 FlushFileBuffers(g_log);
                 if (g_realCloseHandle) g_realCloseHandle(g_log);
                 g_log = INVALID_HANDLE_VALUE;
             }
             DeleteCriticalSection(&g_logLock);
+            if (g_deviceIoControlTls != TLS_OUT_OF_INDEXES) {
+                TlsFree(g_deviceIoControlTls);
+                g_deviceIoControlTls = TLS_OUT_OF_INDEXES;
+            }
         }
     }
 

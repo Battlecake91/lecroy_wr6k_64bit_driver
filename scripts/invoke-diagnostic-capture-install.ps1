@@ -8,8 +8,9 @@
   and only after capture readiness. RestartWithCapture may invoke exactly one
   pinned PnPUtil restart for the exact device instance. NoLaunchWithCapture
   may invoke exactly one pinned no-launch runner after live kernel capture is
-  ready. XStreamWithCapture may invoke exactly one pinned single-waveform
-  runner after live kernel capture is ready. The launcher never elevates
+  ready. Real XStreamWithCapture may invoke exactly one pinned lossless
+  user-mode tracer/orchestrator after live kernel capture is ready; that
+  orchestrator invokes the pinned single-waveform observer once. The launcher never elevates
   itself, retries, rolls back or changes system policy.
 #>
 [CmdletBinding()]
@@ -68,6 +69,18 @@ param(
     [string]$XStreamExecutablePath,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
     [string]$ExpectedXStreamExecutableHash,
+    [string]$XStreamWaveformRunnerPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamWaveformRunnerHash,
+    [string]$XStreamTraceLauncherPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamTraceLauncherHash,
+    [string]$XStreamTraceHookPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamTraceHookHash,
+    [string]$XStreamTraceValidatorPath,
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedXStreamTraceValidatorHash,
     [ValidateRange(30, 600)][int]$XStreamTimeoutSeconds = 240,
     [ValidateRange(1, 3600)][int]$CaptureDurationSeconds = 300,
     [ValidateRange(1, 120)][int]$CaptureReadinessTimeoutSeconds = 60,
@@ -562,9 +575,37 @@ try {
         $xstreamExecutable = Get-AbsolutePath $XStreamExecutablePath `
             'XStreamExecutablePath'
         Assert-FileHash -Path $xstreamRunner -Expected $ExpectedXStreamRunnerHash `
-            -Label 'XStream single-waveform runner'
+            -Label 'XStream execution runner'
         Assert-FileHash -Path $xstreamExecutable `
             -Expected $ExpectedXStreamExecutableHash -Label 'XStream executable'
+        if (-not $TestMode) {
+            $losslessParameters = @(
+                $XStreamWaveformRunnerPath,$ExpectedXStreamWaveformRunnerHash,
+                $XStreamTraceLauncherPath,$ExpectedXStreamTraceLauncherHash,
+                $XStreamTraceHookPath,$ExpectedXStreamTraceHookHash,
+                $XStreamTraceValidatorPath,$ExpectedXStreamTraceValidatorHash)
+            if (@($losslessParameters | Where-Object {
+                    [string]::IsNullOrWhiteSpace([string]$_)
+                }).Count -ne 0) {
+                throw 'Real XStreamWithCapture requires the complete pinned lossless-capture chain.'
+            }
+            $xstreamWaveformRunner = Get-AbsolutePath `
+                $XStreamWaveformRunnerPath 'XStreamWaveformRunnerPath'
+            $xstreamTraceLauncher = Get-AbsolutePath `
+                $XStreamTraceLauncherPath 'XStreamTraceLauncherPath'
+            $xstreamTraceHook = Get-AbsolutePath `
+                $XStreamTraceHookPath 'XStreamTraceHookPath'
+            $xstreamTraceValidator = Get-AbsolutePath `
+                $XStreamTraceValidatorPath 'XStreamTraceValidatorPath'
+            Assert-FileHash $xstreamWaveformRunner `
+                $ExpectedXStreamWaveformRunnerHash 'XStream waveform runner'
+            Assert-FileHash $xstreamTraceLauncher `
+                $ExpectedXStreamTraceLauncherHash 'XStream trace launcher'
+            Assert-FileHash $xstreamTraceHook `
+                $ExpectedXStreamTraceHookHash 'XStream trace hook'
+            Assert-FileHash $xstreamTraceValidator `
+                $ExpectedXStreamTraceValidatorHash 'XStream trace validator'
+        }
         $xstreamManifest = Get-Content -Raw -LiteralPath `
             (Join-Path $package 'evidence\manifest.json') | ConvertFrom-Json
         if ($xstreamManifest.Build.WdmV3MamDma -ne $true -or
@@ -822,6 +863,17 @@ try {
         if ($TestMode) {
             $xstreamArguments += @('-MockStatePath', $MockStatePath)
         }
+        else {
+            $xstreamArguments += @(
+                '-TraceLauncherPath',$xstreamTraceLauncher,
+                '-ExpectedTraceLauncherHash',$ExpectedXStreamTraceLauncherHash,
+                '-TraceHookPath',$xstreamTraceHook,
+                '-ExpectedTraceHookHash',$ExpectedXStreamTraceHookHash,
+                '-TraceValidatorPath',$xstreamTraceValidator,
+                '-ExpectedTraceValidatorHash',$ExpectedXStreamTraceValidatorHash,
+                '-WaveformRunnerPath',$xstreamWaveformRunner,
+                '-ExpectedWaveformRunnerHash',$ExpectedXStreamWaveformRunnerHash)
+        }
         $xstreamArguments += @('-OwnerAuthorized',
             '-PhysicalDiskDisconnectedConfirmed')
         $script:XStreamInvocations++
@@ -840,10 +892,14 @@ try {
         }
         $xstreamContract = Get-Content -Raw -LiteralPath $xstreamResultPath |
             ConvertFrom-Json
+        $waveformContract = if ($TestMode) { $xstreamContract } else {
+            $xstreamContract.Waveform
+        }
         if ($xstreamContract.Result -ne 'PASS' -or
-            [int]$xstreamContract.XStreamLaunchCount -ne 1 -or
-            [int]$xstreamContract.ExplicitAcquireCount -ne 0 -or
-            -not [bool]$xstreamContract.Waveform.Observed) {
+            [int]$waveformContract.XStreamLaunchCount -ne 1 -or
+            [int]$waveformContract.ExplicitAcquireCount -ne 0 -or
+            -not [bool]$waveformContract.Waveform.Observed -or
+            (-not $TestMode -and $xstreamContract.Capture.Result -ne 'PASS')) {
             throw 'XStream runner result contract mismatch.'
         }
         Write-LauncherOutput 'XSTREAM CHILD PASS'

@@ -19,6 +19,7 @@ lecwatch_action_summary*.md
 x64/
 tools/lecdiag/build/
 tools/lecwatch/build/
+tools/xstream-ioctl-trace/build/
 
 # Native, hardware-independent unit test output
 tests/dry/build/

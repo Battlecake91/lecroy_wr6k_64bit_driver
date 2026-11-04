@@ -3714,3 +3714,27 @@ the existing 256-record trace ring every 10 ms instead of 100 ms, retains
 20,000 user-mode events and saves the QPC frequency in format-version-2
 sessions. If gaps remain under acquisition, the next step is a sequence-based
 incremental private diagnostic ABI rather than further blind polling changes.
+# Batch 27 lossless XStream request capture
+
+The Batch 25 kernel ring captured only 64-byte previews of the six 130-byte
+CFDC2110 family-2 opcode-`0x03` requests. The missing bytes are unrecoverable
+from retained evidence and must not be reconstructed.
+
+The qualified replacement is an external 32-bit user-mode observer; it does
+not change the frozen signed driver. `xstream_trace_launcher.exe` starts the
+pinned COM local server suspended with fixed `/Embedding`, injects and
+initializes `xstream_io_hook.dll`, creates an exclusive PID readiness marker,
+then resumes it. Format 4 records complete synchronous input/output up to the
+one-MiB limit plus UTC/QPC timing, sequence, thread, handle, family/opcode,
+result and footer integrity. `validate-xstream-ioctl-capture.ps1` rejects an
+incomplete 130/14 target record and publishes hashes/metadata only; opaque raw
+bytes remain private.
+
+The final offline-built observer identities for this preparation are launcher
+SHA-256 `77B2910B54AC7B2E9CA5A53CB66F5B862AB3B60024D97B9AA78FC875923AE2A6`
+and hook SHA-256
+`F602235A7F676113B3A8233EDCA4796AB39E089F552C60EFE19F3821D03188BC`.
+These development-tool hashes pin the next reviewed command; rebuilding the
+tools changes the executable identity and requires re-review. Focused synthetic
+qualification passes 18/18 under Windows PowerShell 5.1. No live XStream,
+driver installation, device IOCTL or DMA operation occurred.

@@ -1,5 +1,24 @@
 # Current project status
 
+## Batch 27 lossless opcode-0x03 capture preparation
+
+- The retained Batch 25 kernel trace contains only the first 64 of each 130-byte
+  opcode-`0x03` request; the missing 66 bytes cannot be recovered and have not
+  been guessed. Standalone replay is therefore not a prerequisite.
+- The existing external x86 observer now captures complete request/response
+  bytes before XStream runs: suspended launch, pre-resume injection, exclusive
+  PID readiness, format-4 ordering/correlation/footer metadata and private
+  post-capture hash validation. The signed driver does not change.
+- Windows PowerShell 5.1 offline results are lossless capture/orchestration
+  18/18, single-waveform runner 9/9 and diagnostic launcher 44/44. Raw opaque
+  bytes are excluded from repository results.
+- Frozen signed candidate `0.2026.1030.2` was reverified byte-for-byte and was
+  not rebuilt, re-signed, staged or installed. The active baseline remains
+  healthy `oem107.inf` / `0.2026.1030.1`.
+- The next gates are one separately authorized installation plus R0/R1, then a
+  separately authorized one-start XStream capture with fresh physical x86-disk
+  isolation confirmation and the existing `MamLaunchLimit=1`.
+
 ## Batch 26 opcode-0x03 compatibility preparation
 
 - Original x86 analysis establishes that CFDC2110 family 2 opcode `0x03`

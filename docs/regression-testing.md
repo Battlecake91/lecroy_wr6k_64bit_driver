@@ -1,5 +1,23 @@
 # Regression test architecture
 
+## Lossless XStream IOCTL capture coverage
+
+`tests/dry/test-xstream-ioctl-trace.ps1` builds an x86 synthetic target and
+executes the production suspended-process launcher, injected hook, private
+capture validator and bounded orchestration script under Windows PowerShell
+5.1. It passes 18/18. Coverage includes exact 130-byte input and 14-byte output,
+embedded NUL bytes, six identical requests, concurrent threads and handles,
+error preservation, successful output, truncation rejection, capture/footer
+write integrity, exclusive paths, fixed `/Embedding` forwarding and prevention
+of public-repository evidence, and explicit capture-write-failure rejection.
+The composed result contains hashes and protocol
+metadata, never opaque request/response bytes.
+
+The existing single-waveform runner passes 9/9 after adding an exact
+prelaunched-PID contract. The existing diagnostic launcher remains 44/44. No
+driver build, installation, device handle or hardware operation is part of
+these focused tests.
+
 ## CFDC2110 family-2 opcode-0x03 coverage
 
 `tests/dry/test-cfdc2110-opcode03.ps1` compiles the production framing helper
