@@ -359,35 +359,62 @@ function Start-CaptureJob {
     param([string]$Executable, [string[]]$Arguments,
         [string]$WorkingDirectory, [string]$LogPath, [string]$RunnerPath,
         [string]$LiveStdOutPath, [string]$LiveStdErrPath,
-        [string]$ProcessInfoPath)
+        [string]$ProcessInfoPath, [string]$WorkerResultPath)
     $script:CaptureInvocations++
+    foreach ($path in @($WorkerResultPath, ($WorkerResultPath + '.tmp'))) {
+        if (Test-Path -LiteralPath $path) {
+            throw "Capture worker result path already exists: $path"
+        }
+    }
     $argumentJson = ConvertTo-Json -InputObject @($Arguments) -Compress
     return Start-Job -ScriptBlock {
         param($Runner, $File, $ArgumentJson, $Working, $Log, $Timeout,
-            $LiveOut, $LiveErr, $ProcessInfo)
+            $LiveOut, $LiveErr, $ProcessInfo, $WorkerResult)
         $ErrorActionPreference = 'Stop'
-        . $Runner
-        $parsedArguments = $ArgumentJson | ConvertFrom-Json
-        [string[]]$nativeArguments = @($parsedArguments |
-            ForEach-Object { [string]$_ })
-        $nativeResult = Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
-            -FilePath $File -Arguments $nativeArguments -WorkingDirectory $Working `
-            -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit `
-            -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr `
-            -ProcessInfoPath $ProcessInfo -SuppressConsoleOutput
-        # Never serialize the potentially very large captured streams through
-        # the Windows PowerShell background-job transport. The authoritative
-        # stdout/stderr bytes are already preserved in exclusive evidence files.
-        [pscustomobject]@{
-            ProcessId = $nativeResult.ProcessId
-            ExitCode = $nativeResult.ExitCode
-            TimedOut = $nativeResult.TimedOut
-            JobAssigned = $nativeResult.JobAssigned
-            ProcessTreeClosed = $nativeResult.ProcessTreeClosed
+        $workerRecord = $null
+        try {
+            . $Runner
+            $parsedArguments = $ArgumentJson | ConvertFrom-Json
+            [string[]]$nativeArguments = @($parsedArguments |
+                ForEach-Object { [string]$_ })
+            $nativeResult = Invoke-LecS65NativeProcess -Name 'Diagnostic kernel capture' `
+                -FilePath $File -Arguments $nativeArguments -WorkingDirectory $Working `
+                -LogPath $Log -TimeoutSeconds $Timeout -ReturnOnNonZeroExit `
+                -LiveStdOutPath $LiveOut -LiveStdErrPath $LiveErr `
+                -ProcessInfoPath $ProcessInfo -SuppressConsoleOutput
+            $workerRecord = [ordered]@{
+                Schema = 1
+                Status = if ($nativeResult.TimedOut) { 'UNCERTAIN' } else { 'COMPLETED' }
+                ProcessId = $nativeResult.ProcessId
+                ExitCode = $nativeResult.ExitCode
+                TimedOut = $nativeResult.TimedOut
+                StreamDrainTimedOut = $nativeResult.StreamDrainTimedOut
+                JobAssigned = $nativeResult.JobAssigned
+                ProcessTreeClosed = $nativeResult.ProcessTreeClosed
+                CompletedUtc = [DateTime]::UtcNow.ToString('o')
+            }
+        }
+        catch {
+            $workerRecord = [ordered]@{
+                Schema = 1
+                Status = 'FAILED'
+                Error = ($_ | Out-String)
+                CompletedUtc = [DateTime]::UtcNow.ToString('o')
+            }
+        }
+        $temporaryPath = $WorkerResult + '.tmp'
+        $json = $workerRecord | ConvertTo-Json -Depth 6
+        [IO.File]::WriteAllText($temporaryPath, $json + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false)))
+        [IO.File]::Move($temporaryPath, $WorkerResult)
+        # Completion is communicated through the exclusive sidecar, never by
+        # serializing output streams over the PowerShell job transport.
+        if ($workerRecord.Status -eq 'FAILED') {
+            throw 'Diagnostic capture worker failed; see capture-worker.result.json.'
         }
     } -ArgumentList $RunnerPath, $Executable, $argumentJson, $WorkingDirectory,
         $LogPath, ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds),
-        $LiveStdOutPath, $LiveStdErrPath, $ProcessInfoPath
+        $LiveStdOutPath, $LiveStdErrPath, $ProcessInfoPath, $WorkerResultPath
 }
 
 function Test-ConfirmedKernelCaptureLine {
@@ -399,39 +426,93 @@ function Test-ConfirmedKernelCaptureLine {
 }
 
 function Assert-CaptureJobRunning {
-    param([System.Management.Automation.Job]$Job, [string]$Boundary)
+    param([System.Management.Automation.Job]$Job, [string]$Boundary,
+        [string]$WorkerResultPath)
     if ($null -eq $Job -or $Job.State -ne 'Running') {
+        if ($WorkerResultPath -and
+            (Test-Path -LiteralPath $WorkerResultPath -PathType Leaf)) {
+            try {
+                $workerResult = Get-Content -LiteralPath $WorkerResultPath -Raw |
+                    ConvertFrom-Json -ErrorAction Stop
+            }
+            catch {
+                throw "Capture collector result is malformed before ${Boundary}: $WorkerResultPath"
+            }
+            if ($workerResult.Status -eq 'FAILED' -and $workerResult.Error) {
+                throw "Capture collector failed before ${Boundary}: $($workerResult.Error)"
+            }
+            if ($workerResult.TimedOut -eq $true) {
+                throw "Capture collector timed out before $Boundary; process-tree cleanup was bounded."
+            }
+            if (($workerResult.ExitCode -is [int] -or
+                    $workerResult.ExitCode -is [long]) -and
+                $workerResult.ExitCode -ne 0) {
+                throw "Capture collector exited with code $($workerResult.ExitCode) before $Boundary."
+            }
+        }
         throw "Capture collector exited before $Boundary."
     }
 }
 
 function Complete-CaptureJob {
-    param([System.Management.Automation.Job]$Job, [int]$TimeoutSeconds)
-    $completed = Wait-Job -Job $Job -Timeout $TimeoutSeconds
-    if ($null -eq $completed) {
-        throw "Capture child exceeded its $TimeoutSeconds-second completion bound."
-    }
-    $items = @(Receive-Job -Job $Job -ErrorAction SilentlyContinue)
-    $result = @($items | Where-Object {
-        $null -ne $_.PSObject.Properties['ExitCode']
-    } | Select-Object -Last 1)
-    if ($result.Count -ne 1) {
-        if ($null -ne $script:CaptureLogPath -and
-            (Test-Path -LiteralPath $script:CaptureLogPath -PathType Leaf) -and
-            (Get-Content -Raw -LiteralPath $script:CaptureLogPath) -match
-                'PROCESS TIMEOUT') {
-            throw 'Capture child timed out and its bounded process tree was terminated.'
+    param([System.Management.Automation.Job]$Job, [string]$WorkerResultPath,
+        [int]$TimeoutSeconds)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $WorkerResultPath -PathType Leaf) {
+            try {
+                $result = Get-Content -LiteralPath $WorkerResultPath -Raw |
+                    ConvertFrom-Json -ErrorAction Stop
+            }
+            catch {
+                throw "Capture worker result is malformed: $WorkerResultPath"
+            }
+            if ($result.Status -eq 'FAILED') {
+                throw "Capture worker failed: $($result.Error) See $WorkerResultPath."
+            }
+            $requiredProperties = @('Schema', 'Status', 'ExitCode', 'TimedOut',
+                'StreamDrainTimedOut', 'JobAssigned', 'ProcessTreeClosed',
+                'ProcessId')
+            $actualProperties = @($result.PSObject.Properties.Name)
+            foreach ($property in $requiredProperties) {
+                if ($property -notin $actualProperties) {
+                    throw "Capture worker result is missing required property '$property': $WorkerResultPath"
+                }
+            }
+            if ($result.Schema -ne 1 -or
+                $result.Status -notin @('COMPLETED', 'UNCERTAIN') -or
+                -not ($result.ExitCode -is [int] -or $result.ExitCode -is [long]) -or
+                $result.TimedOut -isnot [bool] -or
+                $result.StreamDrainTimedOut -isnot [bool] -or
+                $result.JobAssigned -isnot [bool] -or
+                $result.ProcessTreeClosed -isnot [bool] -or
+                -not ($result.ProcessId -is [int] -or $result.ProcessId -is [long])) {
+                throw "Capture worker result has invalid property types or values: $WorkerResultPath"
+            }
+            if ($result.TimedOut) {
+                throw "Capture child timed out after its bounded process-tree stop; see $WorkerResultPath."
+            }
+            if ($result.Status -ne 'COMPLETED' -or [int]$result.ExitCode -ne 0 -or
+                -not $result.ProcessTreeClosed) {
+                if ($result.ExitCode -ne 0) {
+                    throw "Capture child exited with code $($result.ExitCode); see $WorkerResultPath."
+                }
+                throw "Capture worker result is uncertain or failed (status=$($result.Status), exitCode=$($result.ExitCode)); see $WorkerResultPath."
+            }
+            return $result
         }
-        $reason = $Job.ChildJobs[0].JobStateInfo.Reason
-        if ($null -ne $reason) {
-            throw "Capture child failed without a native-process result: $($reason.Message)"
+        if ($null -eq $Job -or $Job.State -in @('Completed','Failed','Stopped')) {
+            $reason = if ($null -ne $Job -and $Job.ChildJobs.Count -gt 0) {
+                $Job.ChildJobs[0].JobStateInfo.Reason
+            } else { $null }
+            if ($null -ne $reason) {
+                throw "Capture worker exited without a durable result: $($reason.Message)"
+            }
+            throw 'Capture worker exited without a durable result.'
         }
-        throw 'Capture child ended without a native-process result.'
+        Start-Sleep -Milliseconds 100
     }
-    if ([int]$result[0].ExitCode -ne 0) {
-        throw "Capture child exited with code $($result[0].ExitCode)."
-    }
-    return $result[0]
+    throw "Capture worker produced no durable result within $TimeoutSeconds seconds; state is uncertain."
 }
 
 try {
@@ -661,12 +742,14 @@ try {
     $captureLiveOut = Join-Path $evidence 'capture-live.stdout.txt'
     $captureLiveErr = Join-Path $evidence 'capture-live.stderr.txt'
     $captureProcessInfo = Join-Path $evidence 'capture-process.txt'
+    $captureWorkerResult = Join-Path $evidence 'capture-worker.result.json'
     $script:CaptureLogPath = $captureLog
     $runner = Join-Path $PSScriptRoot 'native-process.ps1'
     $script:CaptureJob = Start-CaptureJob -Executable $debugView `
         -Arguments $captureArguments -WorkingDirectory (Split-Path $debugView -Parent) `
         -LogPath $captureLog -RunnerPath $runner -LiveStdOutPath $captureLiveOut `
-        -LiveStdErrPath $captureLiveErr -ProcessInfoPath $captureProcessInfo
+        -LiveStdErrPath $captureLiveErr -ProcessInfoPath $captureProcessInfo `
+        -WorkerResultPath $captureWorkerResult
 
     $captureStartedUtc = [DateTime]::UtcNow
     $deadline = [DateTime]::UtcNow.AddSeconds($CaptureReadinessTimeoutSeconds)
@@ -709,7 +792,8 @@ try {
     if (-not $ready) {
         throw 'Capture readiness was not established before the deadline.'
     }
-    Assert-CaptureJobRunning -Job $script:CaptureJob -Boundary 'the readiness record'
+    Assert-CaptureJobRunning -Job $script:CaptureJob `
+        -WorkerResultPath $captureWorkerResult -Boundary 'the readiness record'
     $expectedRemainingSeconds = $CaptureDurationSeconds -
         [int]([DateTime]::UtcNow - $captureStartedUtc).TotalSeconds
     if (-not $TestMode -and $expectedRemainingSeconds -lt 120) {
@@ -756,7 +840,12 @@ try {
                 (Join-Path $package 'package\LecS65AcqDrv.inf'), '/install') `
             -WorkingDirectory (Join-Path $package 'package') `
             -LogPath (Join-Path $evidence 'install-child.log') `
-            -TimeoutSeconds 120 -ReturnOnNonZeroExit
+            -TimeoutSeconds 120 -ReturnOnNonZeroExit `
+            -ProcessInfoPath (Join-Path $evidence 'install-child.process.txt')
+        Write-ExclusiveTextFile -Path (Join-Path $evidence 'install-child.result.json') `
+            (($installResult | Select-Object ProcessId,ExitCode,TimedOut,
+                StreamDrainTimedOut,JobAssigned,ProcessTreeClosed |
+                ConvertTo-Json -Depth 4) + [Environment]::NewLine)
         if ($installResult.ExitCode -ne 0) {
             throw "PnPUtil exited with code $($installResult.ExitCode); no retry was attempted."
         }
@@ -764,23 +853,28 @@ try {
     }
     elseif ($Mode -eq 'RestartWithCapture') {
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'the PnP restart gate'
+            -WorkerResultPath $captureWorkerResult -Boundary 'the PnP restart gate'
         $pnp = Resolve-PnPUtilPath -Path $PnPUtilPath
         Assert-FileHash -Path $pnp -Expected $ExpectedPnPUtilHash `
             -Label 'PnPUtil executable'
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'the PnP restart marker'
+            -WorkerResultPath $captureWorkerResult -Boundary 'the PnP restart marker'
         Write-ExclusiveTextFile -Path $restartMarker `
             -Text ($markerText + "`r`nPnpRestartApproved=true`r`nDeviceInstanceId=$DeviceInstanceId`r`n")
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'PnP restart dispatch'
+            -WorkerResultPath $captureWorkerResult -Boundary 'PnP restart dispatch'
         $script:PnpRestartInvocations++
         $restartResult = Invoke-LecS65NativeProcess `
             -Name 'Approved one-time PnP restart' -FilePath $pnp `
             -Arguments @('/restart-device', $DeviceInstanceId) `
             -WorkingDirectory (Split-Path $pnp -Parent) `
             -LogPath (Join-Path $evidence 'pnp-restart-child.log') `
-            -TimeoutSeconds 120 -ReturnOnNonZeroExit
+            -TimeoutSeconds 120 -ReturnOnNonZeroExit `
+            -ProcessInfoPath (Join-Path $evidence 'pnp-restart-child.process.txt')
+        Write-ExclusiveTextFile -Path (Join-Path $evidence 'pnp-restart-child.result.json') `
+            (($restartResult | Select-Object ProcessId,ExitCode,TimedOut,
+                StreamDrainTimedOut,JobAssigned,ProcessTreeClosed |
+                ConvertTo-Json -Depth 4) + [Environment]::NewLine)
         if ($restartResult.ExitCode -ne 0) {
             throw "PnPUtil restart exited with code $($restartResult.ExitCode); no retry was attempted."
         }
@@ -788,11 +882,11 @@ try {
     }
     elseif ($Mode -eq 'NoLaunchWithCapture') {
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'the no-launch marker'
+            -WorkerResultPath $captureWorkerResult -Boundary 'the no-launch marker'
         Write-ExclusiveTextFile -Path $noLaunchMarker `
             -Text ($markerText + "`r`nNoLaunchApproved=true`r`n")
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'no-launch dispatch'
+            -WorkerResultPath $captureWorkerResult -Boundary 'no-launch dispatch'
         $noLaunchEvidence = Join-Path $evidence 'no-launch-evidence'
         if (Test-Path -LiteralPath $noLaunchEvidence) {
             throw "No-launch evidence path already exists: $noLaunchEvidence"
@@ -840,11 +934,11 @@ try {
     }
     elseif ($Mode -eq 'XStreamWithCapture') {
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'the XStream attempt marker'
+            -WorkerResultPath $captureWorkerResult -Boundary 'the XStream attempt marker'
         Write-ExclusiveTextFile -Path $xstreamMarker `
             -Text ($markerText + "`r`nXStreamApproved=true`r`nPhysicalDiskDisconnectedConfirmed=true`r`n")
         Assert-CaptureJobRunning -Job $script:CaptureJob `
-            -Boundary 'XStream dispatch'
+            -WorkerResultPath $captureWorkerResult -Boundary 'XStream dispatch'
         $xstreamEvidence = Join-Path $evidence 'xstream-evidence'
         if (Test-Path -LiteralPath $xstreamEvidence) {
             throw "XStream evidence path already exists: $xstreamEvidence"
@@ -906,6 +1000,7 @@ try {
     }
 
     $script:CaptureResult = Complete-CaptureJob -Job $script:CaptureJob `
+        -WorkerResultPath $captureWorkerResult `
         -TimeoutSeconds ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds)
     Write-LauncherOutput 'CAPTURE CHILD PASS'
     Write-Result 'PASS' 0 "$Mode completed without retry."

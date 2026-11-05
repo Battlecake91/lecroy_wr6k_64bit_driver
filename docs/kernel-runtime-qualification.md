@@ -21,6 +21,26 @@ fresh bounded authorization. XStream and MAM GO were explicitly excluded and
 did not occur. Full per-command evidence and hashes are in
 `docs/handoffs/batch-27-opcode03-runtime-preflight.md`.
 
+Offline recovery on `codex/phase2c-runtime-batch27` replaced PowerShell job
+stream result collection with an exclusive, atomically published worker-result
+sidecar. The native process runner now bounds both process exit and stdout /
+stderr drain waits. Parseable but incomplete worker JSON, missing sidecars,
+nonzero child exits and timeouts fail closed with evidence. The old launcher
+failure remains attributed only to the orchestration layer: the parent stopped
+after `INSTALL CHILD PASS`, while the capture worker itself recorded exit 0 at
+its configured duration. No stack dump was retained, so the exact blocked
+wait statement cannot be proven retroactively.
+
+The prior R0-8 request is not replayable based on the evidence. Source review of
+the four-byte `0x00223040` branch confirms it copies the constant register-list
+size `0x2CAE` and appends one software trace record; it has no MMIO or device
+state side effect. This makes a future single repeat bounded and normally
+idempotent for hardware, but does not establish whether the previous process
+was dispatched. Fresh authorization is required. The next continuation is
+R0-8, then R0-9, then the two R1 reads, each once and stopping on the first
+failure or uncertain result; it must not be reported as a single uninterrupted
+run with R0-1 through R0-7.
+
 ## Batch 25 first XStream waveform gate
 
 The active launcher mode is `XStreamWithCapture`. It is unreachable unless an

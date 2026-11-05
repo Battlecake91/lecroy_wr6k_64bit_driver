@@ -16,6 +16,10 @@ param(
     [switch]$OwnerAuthorized,
     [ValidateSet('All','Batch3Remaining')]
     [string]$CommandSet = 'All',
+    [string]$PreviousEvidenceRoot,
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$ExpectedPreviousEvidenceHead =
+        '50508767FE86150CBB92CD15E58DAAAF72BDE877',
     [ValidateSet('','r0-1-build','r0-2-stats','r0-3-bars','r0-4-trace',
         'r0-5-noop','r0-6-noop','r0-7-trace-size','r0-8-register-size',
         'r0-9-delay-zero','r1-pci','r1-start-register')]
@@ -106,6 +110,83 @@ function Write-ExclusiveText([string]$Path, [AllowEmptyString()][string]$Text) {
 
 function Write-ExclusiveJson([string]$Path, [object]$Value) {
     Write-ExclusiveText $Path (($Value | ConvertTo-Json -Depth 14) + "`r`n")
+}
+
+function Assert-VerifiedBatch3PriorEvidence {
+    param([string]$Path, [string]$CurrentExecutableHash)
+    if ([string]::IsNullOrWhiteSpace($Path) -or
+        -not [IO.Path]::IsPathRooted($Path) -or
+        -not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw 'Batch3Remaining requires an existing absolute PreviousEvidenceRoot.'
+    }
+    $priorRoot = [IO.Path]::GetFullPath($Path)
+    if ($priorRoot -eq [IO.Path]::GetFullPath($EvidenceRoot)) {
+        throw 'PreviousEvidenceRoot must differ from the new EvidenceRoot.'
+    }
+    $contextPath = Join-Path $priorRoot 'context.json'
+    if (-not (Test-Path -LiteralPath $contextPath -PathType Leaf)) {
+        throw 'Previous evidence lacks context.json.'
+    }
+    $context = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ($context.Mode -ne 'RunAuthorized' -or
+        $context.CommandSet -ne 'All' -or
+        $context.GitHead -ne $ExpectedPreviousEvidenceHead -or
+        $context.ExecutableSha256 -ne $CurrentExecutableHash) {
+        throw 'Previous evidence identity does not match the authorized Batch 27 run.'
+    }
+    $expectedPrior = @(
+        @{Name='r0-1-build'; Args=@('build')},
+        @{Name='r0-2-stats'; Args=@('stats')},
+        @{Name='r0-3-bars'; Args=@('bars')},
+        @{Name='r0-4-trace'; Args=@('trace')},
+        @{Name='r0-5-noop'; Args=@('raw-ioctl','0x00222400','','0')},
+        @{Name='r0-6-noop'; Args=@('raw-ioctl','0xCFDC2184','','0')},
+        @{Name='r0-7-trace-size'; Args=@('raw-ioctl','0x00223004','','4')})
+    foreach ($expected in $expectedPrior) {
+        $pathAttempt = Join-Path $priorRoot ($expected.Name + '.attempted')
+        $pathResult = Join-Path $priorRoot ($expected.Name + '.result.json')
+        if (-not (Test-Path -LiteralPath $pathAttempt -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $pathResult -PathType Leaf)) {
+            throw "Previous evidence lacks attempt/result pair $($expected.Name)."
+        }
+        $attempt = Get-Content -LiteralPath $pathAttempt -Raw | ConvertFrom-Json -ErrorAction Stop
+        $result = Get-Content -LiteralPath $pathResult -Raw | ConvertFrom-Json -ErrorAction Stop
+        if ($attempt.Name -ne $expected.Name -or
+            (($attempt.Arguments -join "`0") -cne ($expected.Args -join "`0")) -or
+            $result.Name -ne $expected.Name -or [int]$result.ExitCode -ne 0 -or
+            $result.TimedOut -or (($result.Arguments -join "`0") -cne
+                ($expected.Args -join "`0"))) {
+            throw "Previous result is not a verified pass: $($expected.Name)."
+        }
+    }
+    $uncertainAttempt = Join-Path $priorRoot 'r0-8-register-size.attempted'
+    $uncertainResult = Join-Path $priorRoot 'r0-8-register-size.result.json'
+    if (-not (Test-Path -LiteralPath $uncertainAttempt -PathType Leaf) -or
+        (Test-Path -LiteralPath $uncertainResult)) {
+        throw 'Previous R0-8 state is not the recorded uncertain attempt.'
+    }
+    $marker = Get-Content -LiteralPath $uncertainAttempt -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ($marker.Name -ne 'r0-8-register-size' -or
+        (($marker.Arguments -join "`0") -cne
+            (@('raw-ioctl','0x00223040','','4') -join "`0"))) {
+        throw 'Previous uncertain attempt is not the expected R0-8 command.'
+    }
+    foreach ($path in @('r0-8-register-size.log',
+        'r0-8-register-size.log.stdout.txt','r0-8-register-size.log.stderr.txt')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $priorRoot $path) -PathType Leaf)) {
+            throw "Previous uncertain R0-8 evidence lacks $path."
+        }
+    }
+    if ((Get-Item -LiteralPath (Join-Path $priorRoot 'r0-8-register-size.log')).Length -ne 0 -or
+        (Get-Item -LiteralPath (Join-Path $priorRoot 'r0-8-register-size.log.stdout.txt')).Length -ne 0 -or
+        (Get-Item -LiteralPath (Join-Path $priorRoot 'r0-8-register-size.log.stderr.txt')).Length -ne 0) {
+        throw 'Previous R0-8 partial output requires manual review before continuation.'
+    }
+    foreach ($name in @('r0-9-delay-zero','r1-pci','r1-start-register')) {
+        if (Test-Path -LiteralPath (Join-Path $priorRoot ($name + '.attempted'))) {
+            throw "A remaining command already has an attempt marker: $name."
+        }
+    }
 }
 
 function Read-JsonUtf8([string]$Path) {
@@ -347,20 +428,28 @@ function Invoke-ApprovedCommand([object]$Command, [string]$Executable,
     $behavior = Get-MockBehavior $Command.Name
     Set-MockEnvironment $behavior
     $started = [datetime]::UtcNow
+    $processInfoPath = Join-Path $EvidenceRoot ($Command.Name + '.process.txt')
     try {
         $result = Invoke-LecS65NativeProcess -Name $Command.Name -FilePath $Executable `
             -Arguments ([string[]]$Command.Args) -WorkingDirectory (Split-Path -Parent $Executable) `
             -LogPath (Join-Path $EvidenceRoot ($Command.Name + '.log')) `
-            -TimeoutSeconds 5 -ReturnOnNonZeroExit
+            -TimeoutSeconds 5 -ReturnOnNonZeroExit -ProcessInfoPath $processInfoPath
     } catch {
+        Write-ExclusiveJson (Join-Path $EvidenceRoot ($Command.Name + '.result.json')) ([ordered]@{
+            Name=$Command.Name; Arguments=@($Command.Args); StartedUtc=$started.ToString('o')
+            CompletedUtc=[datetime]::UtcNow.ToString('o'); Status='UNCERTAIN'
+            Error=($_ | Out-String); ProcessInfoExists=(Test-Path -LiteralPath $processInfoPath)
+            LogExists=(Test-Path -LiteralPath (Join-Path $EvidenceRoot ($Command.Name + '.log')))
+        })
         Write-ExclusiveText (Join-Path $EvidenceRoot ($Command.Name + '.exception.txt')) `
             (($_ | Out-String) + "`r`n")
         throw
     } finally { Set-MockEnvironment $null }
     Write-ExclusiveJson (Join-Path $EvidenceRoot ($Command.Name + '.result.json')) ([ordered]@{
         Name=$Command.Name; Arguments=@($Command.Args); StartedUtc=$started.ToString('o')
-        CompletedUtc=[datetime]::UtcNow.ToString('o'); ExitCode=$result.ExitCode
+        CompletedUtc=[datetime]::UtcNow.ToString('o'); Status='COMPLETED'; ExitCode=$result.ExitCode
         TimedOut=$result.TimedOut; StdOut=$result.StdOut; StdErr=$result.StdErr
+        StreamDrainTimedOut=$result.StreamDrainTimedOut; ProcessId=$result.ProcessId
         JobAssigned=$result.JobAssigned; ProcessTreeClosed=$result.ProcessTreeClosed
     })
     if ($result.TimedOut -or $result.ExitCode -ne 0) { throw "$($Command.Name) process failed." }
@@ -424,11 +513,18 @@ try {
         Mode=$Mode; StartedUtc=$script:startedUtc.ToString('o'); GitHead=$head
         GitDirty=@($dirty); PowerShell=$PSVersionTable.PSVersion.ToString()
         Executable=$executable; ExecutableSha256=$executableHash
-        CommandSet=$CommandSet; CommandName=$CommandName; PreflightOnly=[bool]$PreflightOnly
+        CommandSet=$CommandSet; CommandName=$CommandName
+        PreviousEvidenceRoot=$PreviousEvidenceRoot
+        ExpectedPreviousEvidenceHead=$ExpectedPreviousEvidenceHead
+        PreflightOnly=[bool]$PreflightOnly
         ApprovedCommands=@($selectedCommands | ForEach-Object {
             [ordered]@{ Name=$_.Name; Phase=$_.Phase; Arguments=@($_.Args) }
         })
     })
+    if ($CommandSet -eq 'Batch3Remaining') {
+        Assert-VerifiedBatch3PriorEvidence -Path $PreviousEvidenceRoot `
+            -CurrentExecutableHash $executableHash
+    }
     $preflight = Write-StateCheck 'preflight' $executableHash
     if ($Mode -eq 'Preflight' -or $PreflightOnly) {
         $outcome = 'PASS'

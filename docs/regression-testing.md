@@ -13,6 +13,26 @@ a pass; no command is to be replayed without a new review and authorization.
 The exact external evidence paths and result hashes are recorded in the Batch
 27 handoff. No XStream or MAM GO occurred.
 
+The offline launcher recovery uses an atomic, non-overwriting capture-worker
+result sidecar instead of PowerShell job output serialization. Native process
+exit and output-drain waits are bounded. Focused checks exercise successful and
+delayed child exit, process timeout and tree cleanup, early launcher failure,
+worker exit after readiness, missing/truncated/incomplete result records,
+failure evidence retention, and no-retry/exact-once boundaries. The safe
+Batch3Remaining mock additionally verifies prior evidence identity, continuation
+ordering and stop-on-failure. The previous R0-8 live outcome remains unknown;
+these tests do not convert it into a pass or authorize replay.
+
+The Batch 27 offline recovery is validated by source/ABI contracts 74/74,
+Batch3Remaining runtime-harness mocks 24/24, package workflow compatibility
+32/32 under Windows PowerShell 5.1.19041.6456 and 32/32 under PowerShell 7.6.9,
+and diagnostic capture/install orchestration 51/51 under Windows PowerShell
+5.1.19041.6456. The diagnostic suite used its explicit test-only elevation
+override (`Elevated=false`); it did not enter a real active mode. It covers
+atomic worker-result sidecars, malformed/incomplete results, collector exit
+after readiness, bounded timeout, nonzero install child, preserved logs and
+zero retries/orphan mock processes.
+
 ## Lossless XStream IOCTL capture coverage
 
 `tests/dry/test-xstream-ioctl-trace.ps1` builds an x86 synthetic target and

@@ -1,5 +1,88 @@
 # Batch 27 opcode 0x03 runtime preflight
 
+## Interrupted installation and R0/R1 launcher recovery
+
+The installation command itself completed successfully: the captured child
+reported PnPUtil exit code 0, and passive verification established `oem108.inf`
+and the expected healthy loaded driver. The outer PowerShell wrapper stopped
+after `INSTALL CHILD PASS` with an empty final result JSON. Its final blocked
+wait cannot be identified exactly: retained logs show the capture worker ended
+normally at its configured duration, but no parent stack dump exists. Source
+review found two credible unbounded-wait defects in the former orchestration:
+parameterless native `Process.WaitForExit()` and `Receive-Job` after a bounded
+`Wait-Job`. These are confirmed vulnerabilities, not proof of which one caused
+the historic hang.
+
+The R0/R1 runner dispatched and recorded R0-1 through R0-7 as successful. R0-8
+has an attempt marker only. It has no process-info record, per-command result,
+or child stdout/stderr, so available evidence cannot prove whether a process was
+created, whether `DeviceIoControl` was reached, or whether a completion occurred.
+Do not infer either success or failure from the marker or empty files. R0-9 and
+R1-1/R1-2 were not dispatched.
+
+R0-8 source review: for `IOCTL 0x00223040` with four output bytes, the driver
+returns the constant legacy register-list size `0x2CAE`, reports four bytes,
+and appends a software trace record. That branch performs no MMIO, register
+read/write, DMA, IRQ or acquisition operation and contains no intentional wait.
+The only observed side effect is the diagnostic trace-ring append. It is
+normally safe to repeat for hardware, but the prior outcome remains uncertain;
+fresh explicit authorization is required before a new dispatch.
+
+The offline continuation repair is isolated to the launcher and regression
+harness. Capture-worker completion now uses an exclusive result sidecar written
+to a temporary file and atomically renamed. The parent polls that sidecar with
+a deadline and validates required fields and types; it never waits on or drains
+the PowerShell job object for the large native output. The native runner uses
+bounded process and stdout/stderr-drain waits and kills its assigned process
+tree on timeout. The R0/R1 continuation validates the exact previous evidence
+root and HEAD, preserves R0-1 through R0-7, and refuses to run if R0-8 already
+has a result or any later command has an attempt marker.
+
+Focused results on 2026-11-05: source/ABI contracts 74/74; Batch3Remaining
+offline runtime harness 24/24; package-workflow compatibility 32/32 under
+Windows PowerShell 5.1.19041.6456 and 32/32 under PowerShell 7.6.9; diagnostic
+capture/install orchestration 51/51 under Windows PowerShell 5.1.19041.6456.
+The diagnostic launcher suite reported `Elevated=false` and used only its
+explicit test-mode elevation override. No live launcher mode or hardware test
+was dispatched. All capture/install mocks assert no retry and no leftover
+mock process.
+
+After the focused mock suites pass, a fresh owner authorization is required
+before the bounded continuation: R0-8 once; if it passes, R0-9 once; if it
+passes, R1 PCI once and R1 START-register once. Each command has a dedicated
+result and five-second timeout. Any error or uncertain result stops the
+sequence. This continuation evidence must remain explicitly separate from the
+historical R0-1 through R0-7 run. No installation, XStream, MAM GO, PnP change
+or reboot is part of that authorization.
+
+The current passive snapshot still matches the installed candidate: stable PCI
+instance status `OK`, problem code 0, bound INF `oem108.inf`, version
+`0.2026.1030.2`, service `LecS65AcqDrv` running, and system-driver image hash
+`2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`. No
+process named XStream or LeCroy was present. The retained prior preflight found
+all five interfaces enabled. No device handle or hardware command was used.
+
+The prepared continuation command, which must not be run without fresh owner
+authorization, is:
+
+```powershell
+& 'C:\Users\LeCroyUser\.codex\worktrees\phase2c-runtime-batch12\lecroy_wr6k_64bit_driver\scripts\invoke-runtime-ioctl-qualification.ps1' `
+  -Mode RunAuthorized -OwnerAuthorized -CommandSet Batch3Remaining `
+  -EvidenceRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Batch27-R0R1-20261105-continuation1' `
+  -PreviousEvidenceRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Batch27-R0R1-20261104-attempt1' `
+  -ExpectedPreviousEvidenceHead '50508767FE86150CBB92CD15E58DAAAF72BDE877' `
+  -ExpectedInf 'oem108.inf' -ExpectedVersion '0.2026.1030.2' `
+  -ExpectedSysHash '2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653' `
+  -ExpectedLecdiagHash '53F45F18D6887698AB2221EF69F4F0729A2BE5764FFFAECA3CC3ADB376795767'
+```
+
+Run only from an elevated 64-bit Windows PowerShell 5.1 session after checking
+that the evidence root does not exist, the old evidence still validates, and
+the current device is healthy. This resumes at R0-8 and includes only R0-8,
+R0-9 and the conditional two R1 reads. It does not install/reload the driver,
+restart PnP, start XStream or issue DMA GO. A timeout or missing result is
+uncertain and consumes that operation; do not retry it.
+
 ## Correct execution environment
 
 The incorrect `codex/legacy-dma-cleanup-hardening` checkout was not modified.

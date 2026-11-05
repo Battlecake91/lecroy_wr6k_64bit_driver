@@ -75,6 +75,15 @@ public static class MockDiagnosticNative
         if (scenario == "CaptureTimeout" || scenario == "MissingCaptureReady" ||
             scenario == "IncorrectMessageSource")
             Thread.Sleep(15000);
+        else if (scenario == "RunForConfiguredDuration")
+        {
+            int duration = 1;
+            for (int i = 0; i + 1 < args.Length; ++i)
+                if (args[i] == "--duration")
+                    Int32.TryParse(args[i + 1], out duration);
+            Thread.Sleep(Math.Max(1, duration) * 1000);
+            Console.Error.WriteLine("Duration limit reached (" + duration + " seconds). Capture stopped.");
+        }
         else
             Thread.Sleep(800);
         return 0;

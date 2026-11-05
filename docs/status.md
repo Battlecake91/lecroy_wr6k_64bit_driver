@@ -24,10 +24,26 @@
   established independently by PnPUtil output and passive device metadata,
   but the launcher orchestration result is incomplete. Preserve the original
   external evidence at the path in the handoff.
-- The next active action is not XStream. First review the incomplete R0-8
-  attempt and launcher supervision failure offline. Any additional R0/R1
-  commands require a fresh bounded authorization. XStream remains a separate
-  authorization gate and was expressly excluded from this batch.
+- Offline review found two independent unbounded-wait risks in the prior
+  launcher: a parameterless native `Process.WaitForExit()` and collection from
+  a PowerShell job stream after its timeout. The retained evidence cannot
+  identify which wait held the old parent; no process dump was captured. The
+  capture worker itself logged exit 0 at its configured duration. The revised
+  launcher writes a durable sidecar result, validates its schema and bounds
+  native process and pipe-drain waits.
+- R0-8 (`0x00223040`, four output bytes) returns constant `0x2CAE` in the
+  driver source and performs no MMIO or hardware-state change; it adds a
+  software trace record. Its old attempt is still indeterminate because there
+  is no process-start/result evidence. R0-9 and both R1 commands remain
+  undispatched. Any continuation requires fresh owner authorization for the
+  four remaining commands. XStream and MAM GO remain separate and were not
+  authorized.
+- Offline validation: source/ABI contracts 74/74; Batch 3 continuation mocks
+  24/24; package workflow compatibility 32/32 under Windows PowerShell
+  5.1.19041.6456 and 32/32 under PowerShell 7.6.9; diagnostic
+  capture/install orchestration 51/51 under Windows PowerShell 5.1.19041.6456.
+  The launcher mock suite ran with its explicit test-only elevation override
+  (`Elevated=false`); no active mode was executed.
 
 ## Batch 27 lossless opcode-0x03 capture preparation
 

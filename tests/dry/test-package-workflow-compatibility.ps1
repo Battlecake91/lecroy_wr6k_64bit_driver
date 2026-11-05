@@ -228,6 +228,57 @@ exit 0
         $emptyArgumentResult.StdOut -match 'empty-argument-preserved' -and
         [string]::IsNullOrEmpty($emptyArgumentResult.StdErr))
 
+    $delayedChild = Join-Path $tempRoot 'native-delayed-child.ps1'
+    Set-Content -LiteralPath $delayedChild -Encoding UTF8 -Value @'
+Start-Sleep -Milliseconds 1200
+Write-Output 'delayed-child-complete'
+'@
+    $delayedLog = Join-Path $evidenceDir 'native-delayed-child.log'
+    $delayedWatch = [Diagnostics.Stopwatch]::StartNew()
+    $delayedResult = Invoke-LecS65NativeProcess -Name 'Native delayed child' `
+        -FilePath $nativeHost -Arguments @('-NoProfile','-NonInteractive',
+            '-File',$delayedChild) -WorkingDirectory $tempRoot `
+        -LogPath $delayedLog -TimeoutSeconds 10
+    $delayedWatch.Stop()
+    Test-Condition 'delayed child completion is collected within the bound' (
+        $delayedResult.ExitCode -eq 0 -and
+        $delayedResult.StdOut -match 'delayed-child-complete' -and
+        $delayedWatch.Elapsed.TotalSeconds -lt 10)
+
+    $hungChild = Join-Path $tempRoot 'native-hung-child.ps1'
+    $hungPidPath = Join-Path $tempRoot 'native-hung-child.pid'
+    Set-Content -LiteralPath $hungChild -Encoding UTF8 -Value @'
+[IO.File]::WriteAllText($env:LECS65_HUNG_CHILD_PID_PATH,[string]$PID)
+Write-Output 'hung-child-started'
+Start-Sleep -Seconds 60
+'@
+    $oldHungPidPath = $env:LECS65_HUNG_CHILD_PID_PATH
+    $env:LECS65_HUNG_CHILD_PID_PATH = $hungPidPath
+    $hungLog = Join-Path $evidenceDir 'native-hung-child.log'
+    $hungWatch = [Diagnostics.Stopwatch]::StartNew()
+    $hungError = $null
+    try {
+        try {
+            Invoke-LecS65NativeProcess -Name 'Native hung child' `
+                -FilePath $nativeHost -Arguments @('-NoProfile','-NonInteractive',
+                    '-File',$hungChild) -WorkingDirectory $tempRoot `
+                -LogPath $hungLog -TimeoutSeconds 1 -StreamDrainTimeoutSeconds 2 | Out-Null
+        }
+        catch { $hungError = $_.Exception.Message }
+    }
+    finally { $env:LECS65_HUNG_CHILD_PID_PATH = $oldHungPidPath }
+    $hungWatch.Stop()
+    $hungChildPid = if (Test-Path -LiteralPath $hungPidPath) {
+        [int](Get-Content -LiteralPath $hungPidPath -Raw)
+    } else { 0 }
+    $hungProcess = if ($hungChildPid -gt 0) {
+        Get-Process -Id $hungChildPid -ErrorAction SilentlyContinue
+    } else { $null }
+    Test-Condition 'hung child is bounded, logged and terminated without retry' (
+        $hungError -match 'timed out' -and $hungWatch.Elapsed.TotalSeconds -lt 10 -and
+        $hungProcess -eq $null -and
+        (Get-Content -LiteralPath $hungLog -Raw) -match 'PROCESS TIMEOUT')
+
     $startupLog = Join-Path $evidenceDir 'startup-failure.log'
     Expect-Rejection 'native startup failure is logged and rejected' {
         Invoke-LecS65NativeProcess -Name 'Missing native child' `
