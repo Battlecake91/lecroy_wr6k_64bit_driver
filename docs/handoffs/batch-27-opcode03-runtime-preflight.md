@@ -182,3 +182,76 @@ before starting kernel capture. A real call lacking any of those identities
 fails before XStream dispatch. The next approval request must present the fully
 materialized command, fresh evidence root, actual installed INF/SYS values and
 fresh physical-disk-isolation confirmation.
+
+## Authorized installation and interrupted R0/R1 run (2026-11-04)
+
+The owner authorized one installation of the frozen candidate and one complete
+R0/R1 run, while explicitly excluding XStream and further MAM GO. The package
+was rechecked against the approved identity before dispatch:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| INF | `BC7734C13F276A23ACD18B3CA004267B508F5DE9AD734F426E947AA051976CF4` |
+| CAT | `28BFF32CC2579CCC920991E4C36CA2007D04F9F9F1D255E1EEB4350924DA5617` |
+| signed SYS | `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653` |
+| PDB | `78D8D941C159C639787D5513B4AB727560EB173FB285CB6C75F119020552710B` |
+| manifest | `F615EA1F0F31C8227D7592DECB2D106F4EBF874BA7104294238AA0827DD5D116` |
+
+The elevated Windows PowerShell 5.1 preflight passed: test signing was enabled,
+Secure Boot and Driver Verifier were inactive, the stable PCI instance was
+present, the old device was healthy, and XStream/acquisition clients were not
+running. The pinned certificate and local signatures were valid. No candidate
+file was rebuilt or changed.
+
+One captured installation ran from
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch27-InstallWithCapture-20261104-attempt1`.
+PnPUtil exited 0, published `oem108.inf`, and reported installation on the
+approved PCI instance. Passive verification found version `0.2026.1030.2`,
+loaded SYS hash equal to the approved hash, device `OK`/problem code 0, and
+`LecS65AcqDrv` running. Metadata enumeration found one enabled instance for
+each of the five expected interface classes. The 300-second DebugView capture
+ended at its configured duration; DebugView and the `Dbgv` service were absent
+afterward.
+
+The installation child succeeded, but the outer launcher did not complete its
+result write: `result.json` is zero bytes and launcher stdout ends after
+`INSTALL CHILD PASS`. With no child process remaining, the hung PowerShell
+parent was stopped. Therefore the installation outcome is established by the
+captured PnPUtil child output and passive device metadata, while the wrapper's
+final exit/result remains incomplete. The raw capture and logs remain outside
+the public repository at the path above. Kernel-capture SHA-256 is
+`23C7F975D4B44A8BC3FCC90498E72BAE2E37D46B5917ACC02A36F9088CEF4743`;
+install-child log SHA-256 is
+`0C70977A230A72E5EAD262CBD0553FE9FF1A0C5EC10B7C6CFDCBB47C99A28179`.
+
+The single R0/R1 runner invocation used evidence root
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch27-R0R1-20261104-attempt1`.
+R0-1 through R0-7 completed exactly once with exit code 0:
+
+| Command | Result | SHA-256 of result JSON |
+| --- | --- | --- |
+| `lecdiag build` | PASS, build 1002 | `19B8A9D3BF38FF6DC2A9A53E5B70D87F714D1B61B7C25D6E458F103047C44157` |
+| `lecdiag stats` | PASS, zero unknown IOCTLs | `A67062E4247D8115B85299786E7B3B1D6B006EDD362454A344710841E0A38CDE` |
+| `lecdiag bars` | PASS, three documented BARs | `A8CD433927034BD29E5F5CB8992EC913BA62AF4139EDF111C6B8423AB488EBAC` |
+| `lecdiag trace` | PASS, one prior trace record | `2DD73C9E7D3319BA3FE626CE9507444D2B8B4413CBBB50BE80CCAEDDD0F5A51A` |
+| R0-5 zero-length no-op | PASS | `9BC866F63EBD36E64F1892F9DAA365AA042A943EBCB5A42913E2C41B47A1DD03` |
+| R0-6 zero-length no-op | PASS | `70D9F4D291461565046E67BA73073371BCD0AAE9A5F2120E9945810908A56953` |
+| R0-7 trace-size query | PASS, returned `0x110` | `E5F053E15164A978BAA1278B0319F75D083B26CCF2421FE7DF4B85492C3A67A2` |
+
+R0-8 (`IOCTL 0x00223040`, four-byte output) has an exclusive durable attempt
+marker but no result JSON and empty stdout/stderr files. Its actual dispatch
+and completion cannot be established. Do not repeat it. R0-9 and both R1
+commands were not run because the serial matrix did not produce a verified
+R0-8 completion. The resulting matrix is incomplete, not a pass. A subsequent
+active continuation needs a fresh review of the interrupted runner state and
+explicit bounded authorization; XStream remains separately gated. No MAM GO,
+XStream start, driver replacement, reboot, rollback or additional PnP operation
+occurred.
+
+Latest passive snapshot: stable instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`, `oem108.inf`
+version `0.2026.1030.2`, expected loaded SYS hash, device `OK`, problem code 0,
+service running and all five expected interfaces enabled. XStream, lecdiag,
+DebugView and `Dbgv` were not running. Do not infer physical x86-disk status
+from this snapshot; the prior separate owner confirmation remains necessary
+for any future XStream attempt.

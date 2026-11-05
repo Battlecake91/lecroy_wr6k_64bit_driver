@@ -1,5 +1,18 @@
 # Regression test architecture
 
+## Batch 27 installed candidate runtime result
+
+The frozen signed candidate `0.2026.1030.2` was installed once as
+`oem108.inf`; the loaded SYS matched the approved hash, and passive device
+metadata showed `OK`, problem code zero, service running and five enabled
+interfaces. The one authorized live runner invocation completed R0-1 through
+R0-7 with exit code 0. R0-7 returned `0x110`. R0-8 was marked attempted but
+has no result JSON or child output, so its dispatch/completion is unknown.
+R0-9 and R1 were not run. The matrix is incomplete and must not be counted as
+a pass; no command is to be replayed without a new review and authorization.
+The exact external evidence paths and result hashes are recorded in the Batch
+27 handoff. No XStream or MAM GO occurred.
+
 ## Lossless XStream IOCTL capture coverage
 
 `tests/dry/test-xstream-ioctl-trace.ps1` builds an x86 synthetic target and

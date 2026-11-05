@@ -9,10 +9,15 @@ This file tracks unfinished work and deferred features. The current, verified ca
   exact-shape transport path is Dry-qualified. The full historical request was
   not retained, so do not fabricate a standalone body. The lossless external
   observer is now offline-qualified to capture all 130/14 bytes during the
-  controlled application run without changing the signed driver. Next: one
-  separately authorized candidate installation and R0/R1, then a separately
-  authorized single XStream activation with fresh physical-disk confirmation,
-  private request validation and the existing one-GO boundary.
+  controlled application run without changing the signed driver. Candidate
+  `0.2026.1030.2` is installed as `oem108.inf`, but the one authorized runtime
+  matrix stopped after seven completed R0 commands. R0-8's attempt marker has
+  no completion evidence; R0-9 and R1 were not run. Review the interrupted
+  runner state offline and obtain fresh bounded authorization before any
+  remaining device commands. Only after a complete qualification may a
+  separately authorized single XStream activation be considered, with fresh
+  physical-disk confirmation, private request validation and the existing
+  one-GO boundary.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

@@ -31,15 +31,14 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- The current x64 test package is `oem107.inf`, version `0.2026.1030.1`, with
+- The current x64 test package is `oem108.inf`, version `0.2026.1030.2`, with
   loaded SYS SHA-256
-  `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`.
-  It has a separate regular-MAM kernel admission limit of one; its 9/9 R0 and
-  2/2 R1 matrix passed. One authorized XStream COM activation reached control
-  initialization but failed with `CO_E_SERVER_EXEC_FAILURE` before
-  `CFDC2124`, `CFDC2138`, mapping or GO. The current loaded FDO has therefore
-  not admitted a MAM launch. Do not retry XStream without a new reviewed
-  candidate and fresh authorization.
+  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+  It has `MamLaunchLimit=1`. Following its authorized installation, seven R0
+  commands passed. R0-8 has a durable attempt marker but no completion result;
+  R0-9 and both R1 commands were not run. The matrix is incomplete and must not
+  be represented as passed. No XStream start or MAM launch was authorized for
+  this candidate; obtain fresh authorization before any active continuation.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical
@@ -50,8 +49,8 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   opcode-`0x03` compatibility before DMA. Repeated acquisition,
   timeout/cancellation and XStream waveform delivery remain unqualified. The
   exact-shape opcode-`0x03` common-transport path is now implemented and
-  Dry-qualified in source. Signed candidate `0.2026.1030.2` exists with
-  `MamLaunchLimit=1`, but is not installed or hardware-qualified.
+  Dry-qualified in source. Signed candidate `0.2026.1030.2` is installed;
+  XStream behavior and the opcode-`0x03` live path remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

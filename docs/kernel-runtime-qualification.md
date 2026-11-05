@@ -1,5 +1,26 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 27 installation and incomplete R0/R1 run
+
+The signed Batch 26 candidate `0.2026.1030.2` was installed once as
+`oem108.inf` on 2026-11-04. PnPUtil's captured child returned 0. Passive state
+matched the approved SYS SHA-256
+`2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`;
+the device was `OK`, problem code 0, service running, and all five expected
+interfaces enabled. The installation outer-launcher result file remained
+empty after `INSTALL CHILD PASS`, so its wrapper-level completion is incomplete
+even though installation is confirmed by child output and device metadata.
+
+The authorized serial runtime invocation completed R0-1 through R0-7 once,
+all with exit code 0; R0-7 returned trace size `0x110`. R0-8 has only an
+attempt marker and empty output files, so dispatch/completion is indeterminate.
+R0-9 and both conditional R1 commands were not run. Do not replay R0-8 or
+represent this as a full R0/R1 pass. Review the preserved private evidence and
+launcher supervision path offline. Any additional R0/R1 command requires a
+fresh bounded authorization. XStream and MAM GO were explicitly excluded and
+did not occur. Full per-command evidence and hashes are in
+`docs/handoffs/batch-27-opcode03-runtime-preflight.md`.
+
 ## Batch 25 first XStream waveform gate
 
 The active launcher mode is `XStreamWithCapture`. It is unreachable unless an

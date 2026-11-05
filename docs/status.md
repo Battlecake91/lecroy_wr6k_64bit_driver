@@ -1,5 +1,34 @@
 # Current project status
 
+## Batch 27 installed candidate and interrupted R0/R1 qualification
+
+- On 2026-11-04, the existing signed Batch 26 candidate was verified against
+  all five approved hashes and installed exactly once through the captured
+  launcher. PnPUtil reported success and published `oem108.inf`; no rebuild,
+  re-sign, extra PnP cycle, XStream start or MAM launch occurred. The frozen
+  identity is recorded in the Batch 27 handoff.
+- The installed device remains `OK` with problem code zero, service
+  `LecS65AcqDrv` running, and five active interface instances. The loaded SYS
+  hash remains
+  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+- One authorized R0/R1 runner invocation completed R0-1 through R0-7 with
+  process exit code 0. R0-7 returned trace size `0x110`. R0-8 has an attempt
+  marker but no result or captured child output; its dispatch outcome is
+  unknown. R0-9 and both R1 commands were not run. Treat the matrix as
+  incomplete; do not replay R0-8 or continue to later commands without a new
+  review and explicit authorization.
+- The installation launcher recorded `INSTALL CHILD PASS` and its child log
+  records PnPUtil exit code 0. Its own result JSON remained empty and the
+  launcher did not finish after capture collection; the no-child PowerShell
+  parent was stopped after it remained hung. The successful installation is
+  established independently by PnPUtil output and passive device metadata,
+  but the launcher orchestration result is incomplete. Preserve the original
+  external evidence at the path in the handoff.
+- The next active action is not XStream. First review the incomplete R0-8
+  attempt and launcher supervision failure offline. Any additional R0/R1
+  commands require a fresh bounded authorization. XStream remains a separate
+  authorization gate and was expressly excluded from this batch.
+
 ## Batch 27 lossless opcode-0x03 capture preparation
 
 - The retained Batch 25 kernel trace contains only the first 64 of each 130-byte
@@ -13,10 +42,10 @@
   18/18, single-waveform runner 9/9 and diagnostic launcher 44/44. Raw opaque
   bytes are excluded from repository results.
 - Frozen signed candidate `0.2026.1030.2` was reverified byte-for-byte and was
-  not rebuilt, re-signed, staged or installed. The active baseline remains
-  healthy `oem107.inf` / `0.2026.1030.1`.
-- The next gates are one separately authorized installation plus R0/R1, then a
-  separately authorized one-start XStream capture with fresh physical x86-disk
+  not rebuilt or re-signed. It was later installed as `oem108.inf`; the
+  incomplete R0/R1 result and current device state are recorded above.
+- A future XStream capture remains separately authorized and requires a
+  complete, reviewed R0/R1 qualification plus fresh physical x86-disk
   isolation confirmation and the existing `MamLaunchLimit=1`.
 
 ## Batch 26 opcode-0x03 compatibility preparation
@@ -50,8 +79,9 @@
   Authenticode, the local test chain, CAT membership and SYS/PDB identity pass.
   Frozen hashes are INF `BC7734C1...976CF4`, CAT `28BFF32C...A5617`, signed
   SYS `2F0F53A7...C68653`, PDB `78D8D941...2710B` and manifest
-  `F615EA1F...5D116`. Installation is not authorized and `oem107.inf` remains
-  installed and started.
+  `F615EA1F...5D116`. At the end of Batch 26 package preparation, installation
+  had not yet been authorized and `oem107.inf` remained active; the subsequent
+  Batch 27 installation is recorded at the top of this status file.
 - The 32-bit COM registration remains present and points
   `LeCroy.XStreamDSO`/CLSID `{03960F1A-A888-4335-AB08-6F8BE55F0D9B}` to the
   expected local server. This weakens a missing-registration hypothesis but
