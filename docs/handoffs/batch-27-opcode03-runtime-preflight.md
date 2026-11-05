@@ -254,4 +254,7 @@ version `0.2026.1030.2`, expected loaded SYS hash, device `OK`, problem code 0,
 service running and all five expected interfaces enabled. XStream, lecdiag,
 DebugView and `Dbgv` were not running. Do not infer physical x86-disk status
 from this snapshot; the prior separate owner confirmation remains necessary
-for any future XStream attempt.
+for any future XStream attempt. A read-only System log query from the install
+window onward found no matching LeCroy/PnP, Code Integrity, WHEA or service
+events by device/service/package identifiers; this does not claim that the
+entire System log contained no unrelated events.
