@@ -34,11 +34,11 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - The current x64 test package is `oem108.inf`, version `0.2026.1030.2`, with
   loaded SYS SHA-256
   `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
-  It has `MamLaunchLimit=1`. Following its authorized installation, seven R0
-  commands passed. R0-8 has a durable attempt marker but no completion result;
-  R0-9 and both R1 commands were not run. The matrix is incomplete and must not
-  be represented as passed. No XStream start or MAM launch was authorized for
-  this candidate; obtain fresh authorization before any active continuation.
+  It has `MamLaunchLimit=1`. Its 9-command R0 and 2-command R1 qualification
+  passed across two explicitly documented runs; R0-1 through R0-7 were not
+  repeated during continuation. XStream waveform delivery on this candidate
+  and repeated acquisition remain unqualified. No XStream start or additional
+  MAM launch is authorized by the R0/R1 result.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical

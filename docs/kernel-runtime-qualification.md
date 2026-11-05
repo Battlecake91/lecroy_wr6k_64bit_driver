@@ -1,6 +1,6 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Batch 27 installation and incomplete R0/R1 run
+## Batch 27 installation and completed R0/R1 qualification
 
 The signed Batch 26 candidate `0.2026.1030.2` was installed once as
 `oem108.inf` on 2026-11-04. PnPUtil's captured child returned 0. Passive state
@@ -11,14 +11,23 @@ interfaces enabled. The installation outer-launcher result file remained
 empty after `INSTALL CHILD PASS`, so its wrapper-level completion is incomplete
 even though installation is confirmed by child output and device metadata.
 
-The authorized serial runtime invocation completed R0-1 through R0-7 once,
-all with exit code 0; R0-7 returned trace size `0x110`. R0-8 has only an
-attempt marker and empty output files, so dispatch/completion is indeterminate.
-R0-9 and both conditional R1 commands were not run. Do not replay R0-8 or
-represent this as a full R0/R1 pass. Review the preserved private evidence and
-launcher supervision path offline. Any additional R0/R1 command requires a
-fresh bounded authorization. XStream and MAM GO were explicitly excluded and
-did not occur. Full per-command evidence and hashes are in
+The original authorized serial run completed R0-1 through R0-7 once, all with
+exit code 0; R0-7 returned trace size `0x110`. Its R0-8 attempt marker lacked
+process-info and result evidence, so that attempt remains indeterminate. After
+offline launcher repair and a fresh authorization, the exact continuation
+completed R0-8, R0-9, R1 PCI, and R1 START-register once each, all with exit
+code 0 and no timeouts. R0-8 returned four bytes `AE2C0000` (`0x2CAE`); R0-9
+returned zero bytes for the zero-delay input; R1 identified `1570:0005` at
+observed BDF `5:1.0`; both START paths returned `0x00000002`. The combined
+result is R0 9/9 and R1 2/2 PASS across separate documented runs. XStream,
+acquisition, and MAM GO did not occur.
+
+Continuation evidence is stored outside the public repository in local root
+`Batch27-R0R1-20261105-continuation1`. The runner outcome is PASS; all four
+attempt markers and results exist; its 49-entry manifest has zero hash
+mismatches and SHA-256
+`93EFE470BC39434FFD7806300EA2223A21EB39843BA187DAAADB574AB3E58E4A`. Exact
+timestamps and per-result hashes are in
 `docs/handoffs/batch-27-opcode03-runtime-preflight.md`.
 
 Offline recovery on `codex/phase2c-runtime-batch27` replaced PowerShell job

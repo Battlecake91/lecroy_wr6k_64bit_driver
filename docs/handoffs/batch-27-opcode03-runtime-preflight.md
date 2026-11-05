@@ -1,87 +1,59 @@
 # Batch 27 opcode 0x03 runtime preflight
 
-## Interrupted installation and R0/R1 launcher recovery
+## Batch 27 R0/R1 continuation result
 
-The installation command itself completed successfully: the captured child
-reported PnPUtil exit code 0, and passive verification established `oem108.inf`
-and the expected healthy loaded driver. The outer PowerShell wrapper stopped
-after `INSTALL CHILD PASS` with an empty final result JSON. Its final blocked
-wait cannot be identified exactly: retained logs show the capture worker ended
-normally at its configured duration, but no parent stack dump exists. Source
-review found two credible unbounded-wait defects in the former orchestration:
-parameterless native `Process.WaitForExit()` and `Receive-Job` after a bounded
-`Wait-Job`. These are confirmed vulnerabilities, not proof of which one caused
-the historic hang.
+The prior run passed R0-1 through R0-7. Its R0-8 attempt remains indeterminate:
+the marker existed, but process-info, result and child logs were absent. The
+later owner-authorized continuation did not replay R0-1 through R0-7. It
+executed only R0-8, R0-9, R1 PCI and R1 START-register, in order, each exactly
+once. All four completed with exit code 0, no timeout, and closed child process
+trees. The runner outcome is PASS; the combined matrix is R0 9/9 and R1 2/2
+across separate runs, not one uninterrupted run.
 
-The R0/R1 runner dispatched and recorded R0-1 through R0-7 as successful. R0-8
-has an attempt marker only. It has no process-info record, per-command result,
-or child stdout/stderr, so available evidence cannot prove whether a process was
-created, whether `DeviceIoControl` was reached, or whether a completion occurred.
-Do not infer either success or failure from the marker or empty files. R0-9 and
-R1-1/R1-2 were not dispatched.
+The installed package and post-run state match the approved identity:
 
-R0-8 source review: for `IOCTL 0x00223040` with four output bytes, the driver
-returns the constant legacy register-list size `0x2CAE`, reports four bytes,
-and appends a software trace record. That branch performs no MMIO, register
-read/write, DMA, IRQ or acquisition operation and contains no intentional wait.
-The only observed side effect is the diagnostic trace-ring append. It is
-normally safe to repeat for hardware, but the prior outcome remains uncertain;
-fresh explicit authorization is required before a new dispatch.
+- INF `oem108.inf`, version `0.2026.1030.2`
+- stable instance `PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`
+- loaded SYS SHA-256 `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`
+- device `OK`, problem code 0; `LecS65AcqDrv` running
+- five expected interface classes, one enabled interface instance per class
+- no XStream or LeCroy acquisition client present
+- preflight and post-R1 state checks passed
 
-The offline continuation repair is isolated to the launcher and regression
-harness. Capture-worker completion now uses an exclusive result sidecar written
-to a temporary file and atomically renamed. The parent polls that sidecar with
-a deadline and validates required fields and types; it never waits on or drains
-the PowerShell job object for the large native output. The native runner uses
-bounded process and stdout/stderr-drain waits and kills its assigned process
-tree on timeout. The R0/R1 continuation validates the exact previous evidence
-root and HEAD, preserves R0-1 through R0-7, and refuses to run if R0-8 already
-has a result or any later command has an attempt marker.
+Results and UTC timestamps:
 
-Focused results on 2026-11-05: source/ABI contracts 74/74; Batch3Remaining
-offline runtime harness 24/24; package-workflow compatibility 32/32 under
-Windows PowerShell 5.1.19041.6456 and 32/32 under PowerShell 7.6.9; diagnostic
-capture/install orchestration 51/51 under Windows PowerShell 5.1.19041.6456.
-The diagnostic launcher suite reported `Elevated=false` and used only its
-explicit test-mode elevation override. No live launcher mode or hardware test
-was dispatched. All capture/install mocks assert no retry and no leftover
-mock process.
+| Test | Exact request / observation | Result JSON SHA-256 | Command log SHA-256 |
+| --- | --- | --- | --- |
+| R0-8 | `raw-ioctl 0x00223040 "" 4`; output `AE2C0000` = `0x2CAE` | `1E0A7049BFD0F49C612EF0AC283280B7F7D6D4AD99AB6EA8E328341AA38FA218` | `608F381DC6B57A6C7CA9D0E72B5AD251B5F7C3760BF31EFB59DFBD4DF32476CC` |
+| R0-9 | `raw-ioctl 0x00222C00 00000000 0`; returned 0 bytes | `15C7A671C9D888F345E60F59F1BA5234BDBB09DB0D669CF3F44545D2A626827E` | `659D14F24FA0A14D2FAE37585F4CB246C51EF274EE12F56C03900C1AA4324B40` |
+| R1-1 | PCI vendor/device `1570:0005`; observed BDF `5:1.0` | `629D45DD6AA7E322B39F64FA50CFA5766D219CD5F68B8AB0D94F582D8536863C` | `0C2626620E651CE38BC83E4597315781D0242CDCBBB40D72FFCB2C69CBF4B439` |
+| R1-2 | Legacy and BAR0 START reads both `0x00000002` | `CF2B3FC2BAABF8AB7D0C52AEF6B41BC9AFF3165B376AE7ADBBC4021E9DFF06B5` | `41435F5AE955B8DA5E765F543CE89ED38604C91D287428077A4AF117B9F8804B` |
 
-After the focused mock suites pass, a fresh owner authorization is required
-before the bounded continuation: R0-8 once; if it passes, R0-9 once; if it
-passes, R1 PCI once and R1 START-register once. Each command has a dedicated
-result and five-second timeout. Any error or uncertain result stops the
-sequence. This continuation evidence must remain explicitly separate from the
-historical R0-1 through R0-7 run. No installation, XStream, MAM GO, PnP change
-or reboot is part of that authorization.
+The continuation ran from `2026-11-05T21:45:55Z` through
+`2026-11-05T21:49:08Z` using Windows PowerShell 5.1.19041.6456 and the pinned
+`lecdiag.exe` SHA-256
+`53F45F18D6887698AB2221EF69F4F0729A2BE5764FFFAECA3CC3ADB376795767`. Its
+49-entry manifest SHA-256 is
+`93EFE470BC39434FFD7806300EA2223A21EB39843BA187DAAADB574AB3E58E4A`; all
+listed artifact hashes were rechecked with zero mismatches. The final outer
+launcher exit code was 0. Dispatch marker SHA-256:
+`2A82FEA40664A62E042745C92024D876654014F5E6E440514368B43FB28B7504`;
+outer result SHA-256:
+`9F3C5183C6B7BBA09477027A7676CADEEA6DCC03E221FA583F9FEE250C1FE097`.
 
-The current passive snapshot still matches the installed candidate: stable PCI
-instance status `OK`, problem code 0, bound INF `oem108.inf`, version
-`0.2026.1030.2`, service `LecS65AcqDrv` running, and system-driver image hash
-`2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`. No
-process named XStream or LeCroy was present. The retained prior preflight found
-all five interfaces enabled. No device handle or hardware command was used.
+No driver installation, signing, PnP transition, reboot, XStream launch,
+acquisition, DMA GO, or other hardware command occurred in the continuation.
+The four authorized read/test operations are consumed. Further XStream,
+acquisition, or DMA testing requires separate authorization.
 
-The prepared continuation command, which must not be run without fresh owner
-authorization, is:
-
-```powershell
-& 'C:\Users\LeCroyUser\.codex\worktrees\phase2c-runtime-batch12\lecroy_wr6k_64bit_driver\scripts\invoke-runtime-ioctl-qualification.ps1' `
-  -Mode RunAuthorized -OwnerAuthorized -CommandSet Batch3Remaining `
-  -EvidenceRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Batch27-R0R1-20261105-continuation1' `
-  -PreviousEvidenceRoot 'C:\Users\LeCroyUser\.codex\driver-backups\Batch27-R0R1-20261104-attempt1' `
-  -ExpectedPreviousEvidenceHead '50508767FE86150CBB92CD15E58DAAAF72BDE877' `
-  -ExpectedInf 'oem108.inf' -ExpectedVersion '0.2026.1030.2' `
-  -ExpectedSysHash '2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653' `
-  -ExpectedLecdiagHash '53F45F18D6887698AB2221EF69F4F0729A2BE5764FFFAECA3CC3ADB376795767'
-```
-
-Run only from an elevated 64-bit Windows PowerShell 5.1 session after checking
-that the evidence root does not exist, the old evidence still validates, and
-the current device is healthy. This resumes at R0-8 and includes only R0-8,
-R0-9 and the conditional two R1 reads. It does not install/reload the driver,
-restart PnP, start XStream or issue DMA GO. A timeout or missing result is
-uncertain and consumes that operation; do not retry it.
+The offline recovery preceding this run bounded native process exit and
+stdout/stderr drain waits, replaced PowerShell job-stream completion with an
+exclusive atomically published worker-result sidecar, and verified prior
+evidence before resumption. Source/ABI contracts passed 74/74; Batch3Remaining
+offline runtime mocks 24/24; package compatibility 32/32 on Windows PowerShell
+5.1 and 32/32 on PowerShell 7.6; diagnostic capture/install mocks 51/51 on
+Windows PowerShell 5.1. The mock launcher suite used only its test-only
+elevation override and did not run an active mode.
 
 ## Correct execution environment
 
@@ -106,7 +78,7 @@ instance
 package, loaded binary hash, operating-system build and five interface classes
 all match the retained Batch 25 evidence.
 
-## Passive installed state
+## Passive installed state before the authorized Batch 26 installation
 
 - PCI device: present and started, `VEN_1570:DEV_0005`, problem code zero
 - bound package: `oem107.inf`, version `0.2026.1030.1`
@@ -220,51 +192,17 @@ The final passive snapshot still reports `oem107.inf`, version
 `184471C04BCE4688D3EE6EAC01049606F7878D9A0568419F0A08516282F35CAE`
 and no XStream process.
 
-## Authorization boundary and next actions
+## Lossless XStream capture preparation (completed; runtime remains gated)
 
-No installation, PnP transition, device handle, IOCTL, XStream launch or DMA
-operation occurred in this preparation.
-
-The following remain separate owner-authorized actions:
-
-1. one elevated installation of the frozen INF with
-   `pnputil.exe /add-driver <absolute Batch 26 INF path> /install`, under a
-   fresh qualified kernel capture;
-2. the established R0/R1 matrix on the installed candidate;
-3. one bounded XStream startup through the qualified lossless observer, after a
-   fresh physical-disk-isolation confirmation, with no explicit `Acquire()`, no
-   CVar change, no retry and the existing kernel `MamLaunchLimit=1`;
-4. private validation of every captured opcode-`0x03` request and response,
-   followed by COM, DMA and waveform outcome classification.
-
-The repository, hardware baseline, frozen candidate and lossless capture path
-are ready for a separately authorized installation. Installation itself is not
-authorized by this work. After installation and R0/R1, the single XStream
-startup remains a second, independent authorization boundary. Standalone replay
-is no longer a prerequisite because the missing historical bytes cannot be
-recovered and the controlled application run can capture them faithfully.
-
-The separately authorized installation command is:
-
-```powershell
-$pnp = Join-Path $env:SystemRoot 'System32\pnputil.exe'
-& $pnp /add-driver `
-  'C:\Users\LeCroyUser\.codex\driver-backups\Batch26-SignedCandidate-20261030-1030-2\package\LecS65AcqDrv.inf' `
-  /install
-```
-
-It must run only through the existing captured, exact-once installation mode
-after rechecking all five package hashes, elevation, test-signing state,
-rollback retention, device identity and XStream absence. The subsequent active
-XStream command is intentionally not frozen until installation has established
-the actual published INF and loaded SYS identity. At that later gate,
-`XStreamRunnerPath` for `XStreamWithCapture` must be
-`scripts\invoke-xstream-lossless-capture.ps1`; the diagnostic launcher now
-requires and pins the trace launcher, hook, validator and inner waveform runner
-before starting kernel capture. A real call lacking any of those identities
-fails before XStream dispatch. The next approval request must present the fully
-materialized command, fresh evidence root, actual installed INF/SYS values and
-fresh physical-disk-isolation confirmation.
+The historical 130-byte opcode-`0x03` XStream request was not fully retained;
+its missing bytes must not be reconstructed. The lossless external observer
+and bounded capture path are prepared to record the complete request/response
+during a future controlled XStream run. This Batch 27 continuation did not run
+XStream. Any future XStream start requires its own fresh explicit authorization,
+physical-disk-isolation confirmation, the installed candidate identity, and
+the pinned `scripts\invoke-xstream-lossless-capture.ps1` path. It must preserve
+`MamLaunchLimit=1`, make no explicit `Acquire()` or CVar changes, and have no
+retry. A successful R0/R1 result alone does not authorize that test.
 
 ## Authorized installation and interrupted R0/R1 run (2026-11-04)
 
@@ -321,15 +259,11 @@ R0-1 through R0-7 completed exactly once with exit code 0:
 | R0-6 zero-length no-op | PASS | `70D9F4D291461565046E67BA73073371BCD0AAE9A5F2120E9945810908A56953` |
 | R0-7 trace-size query | PASS, returned `0x110` | `E5F053E15164A978BAA1278B0319F75D083B26CCF2421FE7DF4B85492C3A67A2` |
 
-R0-8 (`IOCTL 0x00223040`, four-byte output) has an exclusive durable attempt
-marker but no result JSON and empty stdout/stderr files. Its actual dispatch
-and completion cannot be established. Do not repeat it. R0-9 and both R1
-commands were not run because the serial matrix did not produce a verified
-R0-8 completion. The resulting matrix is incomplete, not a pass. A subsequent
-active continuation needs a fresh review of the interrupted runner state and
-explicit bounded authorization; XStream remains separately gated. No MAM GO,
-XStream start, driver replacement, reboot, rollback or additional PnP operation
-occurred.
+At the end of this initial run, R0-8 (`IOCTL 0x00223040`) had an attempt marker
+but no result JSON or child output; dispatch and completion were indeterminate.
+R0-9 and both R1 commands were therefore not run in that attempt. The later
+separately authorized continuation and its passing results are recorded at the
+top of this handoff. No MAM GO or XStream start occurred in either run.
 
 Latest passive snapshot: stable instance
 `PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`, `oem108.inf`

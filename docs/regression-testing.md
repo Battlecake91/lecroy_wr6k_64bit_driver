@@ -2,16 +2,17 @@
 
 ## Batch 27 installed candidate runtime result
 
-The frozen signed candidate `0.2026.1030.2` was installed once as
-`oem108.inf`; the loaded SYS matched the approved hash, and passive device
-metadata showed `OK`, problem code zero, service running and five enabled
-interfaces. The one authorized live runner invocation completed R0-1 through
-R0-7 with exit code 0. R0-7 returned `0x110`. R0-8 was marked attempted but
-has no result JSON or child output, so its dispatch/completion is unknown.
-R0-9 and R1 were not run. The matrix is incomplete and must not be counted as
-a pass; no command is to be replayed without a new review and authorization.
-The exact external evidence paths and result hashes are recorded in the Batch
-27 handoff. No XStream or MAM GO occurred.
+The frozen signed candidate `0.2026.1030.2` is installed as `oem108.inf`; the
+loaded SYS matches the approved hash, and pre/post device metadata showed `OK`,
+problem code zero, service running and five enabled interfaces. R0-1 through
+R0-7 completed once in the original run, with R0-7 returning `0x110`. The old
+R0-8 attempt remains indeterminate because no process-info or completion result
+was retained. In a separate authorized continuation, R0-8 and R0-9 each passed
+once, followed by R1 PCI and START-register reads, each passing once. Combined
+qualification is R0 9/9 and R1 2/2 PASS across the separate runs; do not
+describe them as one uninterrupted run. The R0-8 result was `0x2CAE`, PCI
+identity was `1570:0005` at observed BDF `5:1.0`, and both START reads returned
+`0x00000002`. No XStream or MAM GO occurred.
 
 The offline launcher recovery uses an atomic, non-overwriting capture-worker
 result sidecar instead of PowerShell job output serialization. Native process
@@ -20,8 +21,9 @@ delayed child exit, process timeout and tree cleanup, early launcher failure,
 worker exit after readiness, missing/truncated/incomplete result records,
 failure evidence retention, and no-retry/exact-once boundaries. The safe
 Batch3Remaining mock additionally verifies prior evidence identity, continuation
-ordering and stop-on-failure. The previous R0-8 live outcome remains unknown;
-these tests do not convert it into a pass or authorize replay.
+ordering and stop-on-failure. These offline tests did not convert the earlier
+R0-8 result to PASS; the later continuation was separately authorized and has
+its own result records.
 
 The Batch 27 offline recovery is validated by source/ABI contracts 74/74,
 Batch3Remaining runtime-harness mocks 24/24, package workflow compatibility

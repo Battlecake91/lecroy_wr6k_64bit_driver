@@ -1,6 +1,6 @@
 # Current project status
 
-## Batch 27 installed candidate and interrupted R0/R1 qualification
+## Batch 27 installed candidate R0/R1 qualification
 
 - On 2026-11-04, the existing signed Batch 26 candidate was verified against
   all five approved hashes and installed exactly once through the captured
@@ -11,12 +11,14 @@
   `LecS65AcqDrv` running, and five active interface instances. The loaded SYS
   hash remains
   `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
-- One authorized R0/R1 runner invocation completed R0-1 through R0-7 with
-  process exit code 0. R0-7 returned trace size `0x110`. R0-8 has an attempt
-  marker but no result or captured child output; its dispatch outcome is
-  unknown. R0-9 and both R1 commands were not run. Treat the matrix as
-  incomplete; do not replay R0-8 or continue to later commands without a new
-  review and explicit authorization.
+- The original authorized run completed R0-1 through R0-7 once with exit code
+  0; R0-7 returned trace size `0x110`. The previous R0-8 attempt remains
+  indeterminate because its marker had no process-info or completion evidence.
+  Under a later, separately authorized continuation, R0-8 and R0-9 each
+  completed once with exit code 0, followed conditionally by R1-1 and R1-2,
+  also once each with exit code 0. The prior R0-1 through R0-7 commands were
+  not repeated. The combined result is 9/9 R0 and 2/2 R1 PASS across distinct,
+  explicitly labeled runs.
 - The installation launcher recorded `INSTALL CHILD PASS` and its child log
   records PnPUtil exit code 0. Its own result JSON remained empty and the
   launcher did not finish after capture collection; the no-child PowerShell
@@ -31,13 +33,18 @@
   capture worker itself logged exit 0 at its configured duration. The revised
   launcher writes a durable sidecar result, validates its schema and bounds
   native process and pipe-drain waits.
-- R0-8 (`0x00223040`, four output bytes) returns constant `0x2CAE` in the
-  driver source and performs no MMIO or hardware-state change; it adds a
-  software trace record. Its old attempt is still indeterminate because there
-  is no process-start/result evidence. R0-9 and both R1 commands remain
-  undispatched. Any continuation requires fresh owner authorization for the
-  four remaining commands. XStream and MAM GO remain separate and were not
-  authorized.
+- The continuation R0-8 output was `AE2C0000` (little-endian `0x2CAE`); R0-9
+  accepted the zero-delay request and returned zero bytes. R1-1 identified
+  `1570:0005` at observed BDF `5:1.0`; R1-2 returned `0x00000002` from both
+  START read paths. The BDF is an observation, not the stable identity. The
+  runner's preflight and post-R1 snapshots both passed with `oem108.inf`,
+  problem code 0, service running and all five interfaces published. XStream
+  and MAM GO were not executed or authorized by this continuation.
+- Persistent continuation evidence is in the private local root
+  `Batch27-R0R1-20261105-continuation1`. Its 49-entry SHA-256 manifest has no
+  mismatches; manifest SHA-256 is
+  `93EFE470BC39434FFD7806300EA2223A21EB39843BA187DAAADB574AB3E58E4A`.
+  Individual result hashes and exact timestamps are in the Batch 27 handoff.
 - Offline validation: source/ABI contracts 74/74; Batch 3 continuation mocks
   24/24; package workflow compatibility 32/32 under Windows PowerShell
   5.1.19041.6456 and 32/32 under PowerShell 7.6.9; diagnostic
