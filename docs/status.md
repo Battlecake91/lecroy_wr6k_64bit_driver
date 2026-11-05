@@ -1,28 +1,39 @@
 # Current project status
 
-## Batch 28 passive XStream preflight
+## Batch 28 XStream startup attempt
 
-- At `2026-11-05T22:07:54Z`, passive inspection found the expected installed
-  `oem108.inf` / `0.2026.1030.2`, stable PCI instance present with status `OK`
-  and problem code 0, `LecS65AcqDrv` running, and one enabled interface in
-  each of the five expected classes. Loaded SYS SHA-256 matches the approved
-  candidate: `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
-- The frozen INF, CAT, SYS and manifest hashes match their recorded values;
-  Authenticode reports valid signatures from the pinned local test signer.
-  The manifest records WDM-v3 MAM enabled and `MamLaunchLimit=1`. DebugView
-  5.02, the lossless capture launcher/hook, validator, waveform observer and
-  XStream executable match the pinned identities. Driver Verifier is inactive;
-  no XStream/acquisition, `lecdiag`, `lecwatch`, DebugView or `Dbgv` service
-  was active. No Batch 28 attempt root or marker exists.
-- No XStream startup, capture-driver load, device handle or hardware request
-  was made. The current shell is non-elevated PowerShell 7.6.9; the production
-  runtime path requires elevated 64-bit Windows PowerShell 5.1. The owner has
-  not yet provided a fresh confirmation that the productive x86 disk remains
-  physically disconnected or the separate Batch 28 authorization for one
-  XStream startup and its automatically initiated requests. Stop before live
-  work until both are supplied.
-- Exact observations and private-artifact hashes are recorded in
-  [the Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+- The owner reconfirmed physical x86-disk disconnection and authorized one
+  `XStreamWithCapture` attempt on `oem108.inf` / `0.2026.1030.2`, loaded SYS
+  SHA-256 `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+  The launcher ran once in elevated 64-bit Windows PowerShell 5.1. Its passive
+  gate passed, kernel capture readiness was established, and the pinned
+  embedded XStream server was created/resumed once (PID 528).
+- The waveform observer exited 1 before calling `New-Object -ComObject`:
+  `Assert-Preflight` treated the already-started, expected XStream server as a
+  competing acquisition client. Its result records `XStreamLaunchCount=0` and
+  `ExplicitAcquireCount=0`. The process had already emitted initialization
+  traffic before that guard, so the user-mode trace contains an observed prefix
+  of 1,441 IOCTL API calls, including 478 `CFDC2110` calls. None is a
+  family-2 opcode-`0x03` request; no complete 130-byte/14-byte transaction was
+  captured. The JSONL parses but lacks its required footer, so completeness is
+  unproven. The authorization was consumed; do not repeat the attempt.
+- No `CFDC2124`, `CFDC2138`, MAM GO, IRQ/DPC completion or waveform was
+  observed. The capture had genuine kernel-message readiness but stopped early
+  during failure cleanup; no explicit capture-child exit code was persisted.
+  Post-check found the same loaded SYS hash, `oem108.inf`, version
+  `0.2026.1030.2`, healthy device, running service and all five interface
+  classes. XStream, DebugView and `Dbgv` were absent after cleanup; no relevant
+  DCOM, Kernel-PnP, Code Integrity, WHEA or service event was found.
+- Offline correction now lets the observer accept only the expected prelaunched
+  process with exact PID/name/path and still rejects all competing clients.
+  Focused Windows PowerShell 5.1 mocks pass 13/13. This did not alter or reload
+  the driver. A future live run requires fresh explicit authorization.
+- Private raw evidence and per-file SHA-256 inventory remain at
+  `C:\Users\LeCroyUser\.codex\driver-backups\Batch28-XStreamWithCapture-20261105-attempt1`;
+  its hash manifest SHA-256 is
+  `3077215D7AF51829EFFCAA069EFB741FB337AA43EEC4055F956D8FEF95CF650D`.
+  The detailed analysis is in the
+  [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
 
 ## Batch 27 installed candidate R0/R1 qualification
 

@@ -1,14 +1,21 @@
 # Original x86, historical x64 and current acquisition parity
 
-## Batch 28 preflight state
+## Batch 28 XStream startup attempt
 
-The corrected family-2 opcode-`0x03` path has not yet been exercised by a new
-XStream startup on installed candidate `oem108.inf` (`0.2026.1030.2`). Passive
-preflight confirms the expected loaded SYS hash, healthy PCI device, running
-service, five published interfaces, pinned capture components and
-`MamLaunchLimit=1`. No XStream activation, request, MAM GO, IRQ, DPC or waveform
-was observed in Batch 28. A fresh physical x86-disk isolation confirmation and
-explicit authorization remain prerequisites; see the
+One authorized captured attempt used installed `oem108.inf` (`0.2026.1030.2`)
+with the existing one-GO kernel limit. The pinned local server process was
+started and resumed once. The observer's preflight then rejected that expected
+server process before its COM automation call, so `XStreamLaunchCount=0` and
+`ExplicitAcquireCount=0`. The server had already emitted a partial
+initialization trace: 478 `CFDC2110` IOCTLs were recorded, but no family-2
+opcode-`0x03` request or complete 130/14-byte transaction appeared. The
+user-mode trace lacks its completion footer. No `CFDC2124`/`CFDC2138`, MAM GO,
+IRQ/DPC completion, or waveform was observed. The device remained healthy.
+
+The concrete harness defect is fixed offline: preflight now permits only the
+expected prelaunched server PID and exact executable path and rejects other
+clients. Focused mocks pass 13/13. The consumed authorization cannot be reused;
+another live attempt requires fresh explicit authorization. See the
 [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
 
 ## Batch 26 opcode-0x03 parity

@@ -45,11 +45,14 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   addresses and preserves the original register/completion sequence. One
   bounded 16-byte transfer passed with physical IRQ/DPC evidence and normal
   retirement on an earlier candidate. The installed regular-MAM candidate
-  permits at most one launch admission. The prior XStream attempt on `oem107.inf`
-  failed before DMA on family-2 opcode `0x03`; the corrected exact-shape
-  common-transport path is Dry-qualified but not yet runtime-validated on
-  `oem108.inf`. Repeated acquisition, timeout/cancellation and waveform
-  delivery remain unqualified.
+  permits at most one launch admission. The corrected family-2 opcode-`0x03`
+  path remains unqualified on `oem108.inf`: one authorized Batch 28 attempt
+  started the pinned local server and captured initialization IOCTLs, but the
+  waveform observer's guard rejected that expected prelaunch process before
+  COM activation. The captured trace has no footer and no family-2 opcode-03
+  request. Do not retry without a new authorization. The observer guard is
+  corrected offline; no driver change was made or installed. Repeated
+  acquisition, timeout/cancellation and waveform delivery remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

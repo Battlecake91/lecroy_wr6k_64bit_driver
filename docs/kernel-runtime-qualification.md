@@ -1,16 +1,23 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Batch 28 authorization gate
+## Batch 28 one-shot XStream outcome
 
-Passive preflight on 2026-11-05 confirms the installed `oem108.inf`
-(`0.2026.1030.2`) matches the approved SYS hash, remains healthy, and has
-exactly one enabled interface in each of the five expected classes. The
-candidate manifest configures the existing one-admission MAM limit. The
-lossless XStream capture tools match their pinned hashes. No live startup or
-hardware operation was performed. A new explicit owner confirmation of
-physical x86-disk disconnection and separate authorization for one XStream
-startup are required before starting capture or XStream. Details are in the
-[Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+The owner reconfirmed physical disk isolation and authorized one captured
+attempt on `oem108.inf` (`0.2026.1030.2`). The launcher passed passive identity
+checks and kernel capture readiness, then started/resumed the pinned XStream
+local-server process once. The waveform observer rejected that expected
+prelaunched process in `Assert-Preflight` and exited before its COM activation
+(`XStreamLaunchCount=0`, explicit `Acquire()` count 0). The process had already
+generated an IOCTL prefix, including 478 `CFDC2110` calls; none matched family
+2 opcode `0x03`. The user-mode trace has no footer, so it is incomplete. No
+MAM, GO, IRQ/DPC completion or waveform occurred. No retry is permitted under
+the consumed authorization.
+
+The observer's preflight now validates and permits only the exact expected
+prelaunched process identity while rejecting competing clients; focused
+PowerShell 5.1 mocks pass 13/13. This is a user-mode orchestration change only.
+The installed driver is unchanged. Any subsequent live attempt requires fresh
+authorization. See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
 
 ## Batch 27 installation and completed R0/R1 qualification
 

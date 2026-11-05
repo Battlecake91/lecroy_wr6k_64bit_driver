@@ -1,11 +1,14 @@
-# Batch 28 first XStream startup preflight
+# Batch 28 first XStream startup attempt
 
 ## Outcome
 
-Batch 28 stopped after passive preflight. No XStream process was started, no
-capture driver was loaded, no device handle was opened, and no hardware request
-or MAM GO was dispatched. The current preflight does not authorize those
-operations.
+The owner reconfirmed physical x86-disk disconnection and authorized exactly
+one `XStreamWithCapture` attempt. The attempt was dispatched once. The pinned
+capture launcher started and resumed one XStream embedded local-server process;
+the process emitted initialization IOCTLs before the waveform observer failed
+its own-client guard. There was no retry, explicit `Acquire()`, CVar change,
+MAM GO, driver reload, PnP transition or reboot. This authorization is
+consumed; do not rerun under it.
 
 ## Repository identity
 
@@ -39,9 +42,10 @@ PowerShell 5.1 process.
 | Capture state | No DebugView process and no `Dbgv` system-driver service found |
 | Batch 28 attempt evidence | No Batch 28 evidence directory was present under the private driver-backup root |
 
-The PnP interface check used metadata enumeration only. It did not open any
-interface or device handle. R0/R1 was not repeated; its separate completed
-evidence remains in the Batch 27 handoff.
+The passive PnP interface check used metadata enumeration only and opened no
+interface. The later approved XStream server process opened its normal handles;
+the lossless private trace records those process events and IOCTLs. R0/R1 was
+not repeated; its separate completed evidence remains in the Batch 27 handoff.
 
 ## Frozen candidate and capture identities
 
@@ -75,23 +79,86 @@ PDB is not a member of the three-file runtime package directory. The lossless
 capture binaries are the existing locally generated artifacts and were checked
 without rebuilding them.
 
-## Authorization and next step
+## Actual attempt and findings
 
-Two live prerequisites are missing from this Batch 28 request:
+The elevated 64-bit Windows PowerShell 5.1 launcher ran from
+`2026-11-05T22:32:51.8496507Z` and passed passive identity validation. DebugView
+reported a confirmed kernel message and `CAPTURE READY` at
+`2026-11-05T22:32:55.3464617Z`. The trace launcher's readiness record names PID
+528 and `Embedding=true`; its source writes readiness and then resumes the
+created process. The server was therefore already running when the observer
+performed its preflight.
 
-1. A fresh owner confirmation that the productive Windows x86 disk remains
-   physically disconnected. Prior-batch confirmation is not treated as current.
-2. Separate explicit authorization for exactly one XStream startup, its
-   automatically initiated common-transport requests, at most one MAM GO under
-   the installed `MamLaunchLimit=1`, and complete private IOCTL capture. The
-   authorization must identify `oem108.inf`, version `0.2026.1030.2`, and the
-   exact loaded SYS hash above.
+The observer failed at `Assert-Preflight` with
+`An acquisition client is already running.` Its result at
+`2026-11-05T22:32:58.1417399Z` is `FAIL`, `XStreamLaunchCount=0`, and
+`ExplicitAcquireCount=0`. The pinned lossless orchestrator then exited 1 at
+`2026-11-05T22:33:28.6590608Z`; the outer launcher records one capture
+invocation and one XStream runner invocation, with no retry. The observer never
+reached `New-Object -ComObject 'LeCroy.XStreamDSO'`; COM activation and class
+registration were not established; no DCOM event 10010 or other relevant
+System/Application event was found in the attempt window.
 
-Once both are provided, the next action is to repeat the passive identity check
-in an elevated 64-bit Windows PowerShell 5.1 session, reserve a new private
-evidence directory and exclusive attempt marker, start the pinned capture,
-require a genuine readiness record, and invoke the existing
-`XStreamWithCapture` path once. Do not call `Acquire()`, change CVars, retry,
-reload the driver, or exceed the kernel launch limit. If a post-GO result is
-uncertain, preserve the existing quarantine behavior and stop all further
-hardware operations.
+This was not a no-IOCTL attempt. The private format-4 trace parses as 2,843
+JSON records: one header, 1,401 `NtCreateFile` records, 913 Win32 IOCTL records
+and 528 native IOCTL records (1,441 IOCTL API calls). It contains 478
+`0xCFDC2110` calls; all captured `CFDC2110` native calls returned NTSTATUS
+`STATUS_SUCCESS`. No family-2 opcode-`0x03` call with the required 130-byte
+input and 14-byte output was present. No full request hash exists because that
+request did not occur. The JSONL is an incomplete prefix: its `trace_footer`
+record is absent, so total capture completeness and final target-process exit
+status are unproven.
+
+Eighteen native IOCTL records returned `STATUS_OBJECT_TYPE_MISMATCH`
+(`0xC0000024`): sixteen on `0x80002000`, one on `0x80002004`, and one on
+`0x80002008`. The captured handle data did not correlate these records to the
+LeCroy device path; their source is therefore unassigned. No captured
+`CFDC2124`, `CFDC2138` or `CFDC2128` was present. The kernel capture contains no
+`PNP_STATUS:`, `CFDC2124`, `CFDC2138`, `MAMRGO` or DPC marker. There is no
+evidence of MAM GO, DMA mapping, IRQ/DPC completion, completion status or
+waveform payload.
+
+The configured capture duration was 300 seconds, but failure cleanup ended
+capture early; the final live-output write was at `2026-11-05T22:35:28Z`, about
+154 seconds after DebugView started. The capture child exit code was not
+persisted. After cleanup, DebugView, the `Dbgv` service and XStream processes
+were absent. The post-check at `2026-11-05T22:46:21Z` found `oem108.inf`,
+version `0.2026.1030.2`, the exact SYS hash, device `OK` / problem 0, the
+service running and one published interface in each of the five classes. No
+relevant PnP, Code Integrity, WHEA, service or DCOM events were found.
+
+## Offline guard correction
+
+The defect is in `scripts/invoke-xstream-single-waveform.ps1`: the observer
+rejected every acquisition-client process before applying its existing
+`ExpectedPrelaunchedProcessId` check. Preflight now allows only the one expected
+`lecroyxstreamdso.exe` with the exact pinned executable path and PID, and still
+rejects any additional client. Focused Windows PowerShell 5.1 tests pass
+13/13, including wrong PID, wrong path and competing-client failures. The
+installed driver and capture binaries were not changed by this correction.
+
+## Evidence integrity and next gate
+
+Raw evidence remains private at
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch28-XStreamWithCapture-20261105-attempt1`.
+Its 26-file SHA-256 inventory is
+`batch28-evidence-hashes.json`, SHA-256
+`3077215D7AF51829EFFCAA069EFB741FB337AA43EEC4055F956D8FEF95CF650D`.
+Key hashes:
+
+- private user-mode trace:
+  `FEED400895B4452FB4151B9E55AD6668C1C5E709D6C3196E07C2F604EB38827E`
+- raw kernel capture:
+  `1F92714B7E3E36CF4474A1417F036D48B3FCF09E3C806A032FFDCF2C98D501F3`
+- outer result JSON:
+  `F15B5CE9A4C04E4509427A731F7EAF3C4AF930422DEBCEB94DBEA29913F1972E`
+- lossless orchestrator result:
+  `39CCC2F32E827C478BB154A95D92EC18E3DA7C6E2382F7E230A31991F4891F6C`
+- waveform-observer result:
+  `8C7D1ABFAB30631DD37A16A089B1DCA1AB4F376FB328691C9403CFC1337EF5F3`
+
+The XStream startup authorization is consumed regardless of the preflight
+failure. Any further XStream attempt requires fresh explicit authorization and
+fresh physical-isolation confirmation. Keep `MamLaunchLimit=1`; do not reset
+the kernel gate. Review this corrected runner and incomplete first trace before
+proposing another single captured startup.
