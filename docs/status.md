@@ -1,5 +1,76 @@
 # Current project status
 
+## Batch 27 installed candidate R0/R1 qualification
+
+- On 2026-11-04, the existing signed Batch 26 candidate was verified against
+  all five approved hashes and installed exactly once through the captured
+  launcher. PnPUtil reported success and published `oem108.inf`; no rebuild,
+  re-sign, extra PnP cycle, XStream start or MAM launch occurred. The frozen
+  identity is recorded in the Batch 27 handoff.
+- The installed device remains `OK` with problem code zero, service
+  `LecS65AcqDrv` running, and five active interface instances. The loaded SYS
+  hash remains
+  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+- The original authorized run completed R0-1 through R0-7 once with exit code
+  0; R0-7 returned trace size `0x110`. The previous R0-8 attempt remains
+  indeterminate because its marker had no process-info or completion evidence.
+  Under a later, separately authorized continuation, R0-8 and R0-9 each
+  completed once with exit code 0, followed conditionally by R1-1 and R1-2,
+  also once each with exit code 0. The prior R0-1 through R0-7 commands were
+  not repeated. The combined result is 9/9 R0 and 2/2 R1 PASS across distinct,
+  explicitly labeled runs.
+- The installation launcher recorded `INSTALL CHILD PASS` and its child log
+  records PnPUtil exit code 0. Its own result JSON remained empty and the
+  launcher did not finish after capture collection; the no-child PowerShell
+  parent was stopped after it remained hung. The successful installation is
+  established independently by PnPUtil output and passive device metadata,
+  but the launcher orchestration result is incomplete. Preserve the original
+  external evidence at the path in the handoff.
+- Offline review found two independent unbounded-wait risks in the prior
+  launcher: a parameterless native `Process.WaitForExit()` and collection from
+  a PowerShell job stream after its timeout. The retained evidence cannot
+  identify which wait held the old parent; no process dump was captured. The
+  capture worker itself logged exit 0 at its configured duration. The revised
+  launcher writes a durable sidecar result, validates its schema and bounds
+  native process and pipe-drain waits.
+- The continuation R0-8 output was `AE2C0000` (little-endian `0x2CAE`); R0-9
+  accepted the zero-delay request and returned zero bytes. R1-1 identified
+  `1570:0005` at observed BDF `5:1.0`; R1-2 returned `0x00000002` from both
+  START read paths. The BDF is an observation, not the stable identity. The
+  runner's preflight and post-R1 snapshots both passed with `oem108.inf`,
+  problem code 0, service running and all five interfaces published. XStream
+  and MAM GO were not executed or authorized by this continuation.
+- Persistent continuation evidence is in the private local root
+  `Batch27-R0R1-20261105-continuation1`. Its 49-entry SHA-256 manifest has no
+  mismatches; manifest SHA-256 is
+  `93EFE470BC39434FFD7806300EA2223A21EB39843BA187DAAADB574AB3E58E4A`.
+  Individual result hashes and exact timestamps are in the Batch 27 handoff.
+- Offline validation: source/ABI contracts 74/74; Batch 3 continuation mocks
+  24/24; package workflow compatibility 32/32 under Windows PowerShell
+  5.1.19041.6456 and 32/32 under PowerShell 7.6.9; diagnostic
+  capture/install orchestration 51/51 under Windows PowerShell 5.1.19041.6456.
+  The launcher mock suite ran with its explicit test-only elevation override
+  (`Elevated=false`); no active mode was executed.
+
+## Batch 27 lossless opcode-0x03 capture preparation
+
+- The retained Batch 25 kernel trace contains only the first 64 of each 130-byte
+  opcode-`0x03` request; the missing 66 bytes cannot be recovered and have not
+  been guessed. Standalone replay is therefore not a prerequisite.
+- The existing external x86 observer now captures complete request/response
+  bytes before XStream runs: suspended launch, pre-resume injection, exclusive
+  PID readiness, format-4 ordering/correlation/footer metadata and private
+  post-capture hash validation. The signed driver does not change.
+- Windows PowerShell 5.1 offline results are lossless capture/orchestration
+  18/18, single-waveform runner 9/9 and diagnostic launcher 44/44. Raw opaque
+  bytes are excluded from repository results.
+- Frozen signed candidate `0.2026.1030.2` was reverified byte-for-byte and was
+  not rebuilt or re-signed. It was later installed as `oem108.inf`; the
+  incomplete R0/R1 result and current device state are recorded above.
+- A future XStream capture remains separately authorized and requires a
+  complete, reviewed R0/R1 qualification plus fresh physical x86-disk
+  isolation confirmation and the existing `MamLaunchLimit=1`.
+
 ## Batch 26 opcode-0x03 compatibility preparation
 
 - Original x86 analysis establishes that CFDC2110 family 2 opcode `0x03`
@@ -31,8 +102,9 @@
   Authenticode, the local test chain, CAT membership and SYS/PDB identity pass.
   Frozen hashes are INF `BC7734C1...976CF4`, CAT `28BFF32C...A5617`, signed
   SYS `2F0F53A7...C68653`, PDB `78D8D941...2710B` and manifest
-  `F615EA1F...5D116`. Installation is not authorized and `oem107.inf` remains
-  installed and started.
+  `F615EA1F...5D116`. At the end of Batch 26 package preparation, installation
+  had not yet been authorized and `oem107.inf` remained active; the subsequent
+  Batch 27 installation is recorded at the top of this status file.
 - The 32-bit COM registration remains present and points
   `LeCroy.XStreamDSO`/CLSID `{03960F1A-A888-4335-AB08-6F8BE55F0D9B}` to the
   expected local server. This weakens a missing-registration hypothesis but

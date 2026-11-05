@@ -25,6 +25,7 @@ param(
     [string]$ExpectedDiskModel = 'HFM256GDHTNG-8510B',
     [string]$ExpectedDiskSerial = 'ACE4_2E00_9590_A2AA.',
     [ValidateRange(30,600)][int]$TimeoutSeconds = 240,
+    [ValidateRange(0,2147483647)][int]$ExpectedPrelaunchedProcessId = 0,
     [switch]$OwnerAuthorized,
     [switch]$PhysicalDiskDisconnectedConfirmed,
     [string]$MockStatePath
@@ -247,9 +248,25 @@ try {
         $processRemaining = $false
     }
     else {
-        $existingIds = @(Get-Process -Name 'lecroyxstreamdso' `
-            -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-        if ($existingIds.Count -ne 0) { throw 'XStream is already running.' }
+        $existingProcesses = @(Get-CimInstance Win32_Process -Filter `
+            "Name = 'lecroyxstreamdso.exe'" -ErrorAction SilentlyContinue)
+        if ($ExpectedPrelaunchedProcessId -eq 0) {
+            if ($existingProcesses.Count -ne 0) {
+                throw 'XStream is already running.'
+            }
+        }
+        else {
+            if ($existingProcesses.Count -ne 1 -or
+                [int]$existingProcesses[0].ProcessId -ne
+                    $ExpectedPrelaunchedProcessId -or
+                -not [string]::Equals(
+                    [IO.Path]::GetFullPath([string]$existingProcesses[0].ExecutablePath),
+                    [IO.Path]::GetFullPath($XStreamExecutablePath),
+                    [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'The prelaunched XStream process identity does not match the pinned capture target.'
+            }
+        }
+        $existingIds = @($existingProcesses | ForEach-Object { [int]$_.ProcessId })
         $script:LaunchCount++
         $app = $null; $acq = $null; $c1 = $null; $horizontal = $null
         $trigger = $null; $c1Result = $null
@@ -301,21 +318,34 @@ try {
             }
         }
         $newProcesses = @(Get-Process -Name 'lecroyxstreamdso' `
-            -ErrorAction SilentlyContinue | Where-Object { $existingIds -notcontains $_.Id })
+            -ErrorAction SilentlyContinue | Where-Object {
+                $existingIds -notcontains $_.Id
+            })
+        if ($ExpectedPrelaunchedProcessId -ne 0 -and $newProcesses.Count -ne 0) {
+            throw 'COM activation created an unexpected second XStream process.'
+        }
+        $ownedProcesses = if ($ExpectedPrelaunchedProcessId -ne 0) {
+            @(Get-Process -Id $ExpectedPrelaunchedProcessId `
+                -ErrorAction SilentlyContinue)
+        }
+        else { $newProcesses }
         $closeRequested = $false
-        foreach ($process in $newProcesses) {
+        foreach ($process in $ownedProcesses) {
             if ($process.CloseMainWindow()) { $closeRequested = $true }
         }
-        if ($closeRequested) {
+        if ($closeRequested -and $ownedProcesses.Count -ne 0) {
             $closeDeadline = [datetime]::UtcNow.AddSeconds(30)
             while ([datetime]::UtcNow -lt $closeDeadline -and
-                @(Get-Process -Name 'lecroyxstreamdso' `
+                @(Get-Process -Id @($ownedProcesses.Id) `
                     -ErrorAction SilentlyContinue).Count -ne 0) {
                 Start-Sleep -Milliseconds 250
             }
         }
-        $processRemaining = @(Get-Process -Name 'lecroyxstreamdso' `
-            -ErrorAction SilentlyContinue).Count -ne 0
+        $processRemaining = $false
+        if ($ownedProcesses.Count -ne 0) {
+            $processRemaining = @(Get-Process -Id @($ownedProcesses.Id) `
+                -ErrorAction SilentlyContinue).Count -ne 0
+        }
     }
 
     $result = [ordered]@{
@@ -323,6 +353,7 @@ try {
         Result = 'PASS'
         CompletedUtc = [datetime]::UtcNow.ToString('o')
         XStreamLaunchCount = $script:LaunchCount
+        ExpectedPrelaunchedProcessId = $ExpectedPrelaunchedProcessId
         ExplicitAcquireCount = $script:ExplicitAcquireCount
         Configuration = $configuration
         Waveform = $waveform

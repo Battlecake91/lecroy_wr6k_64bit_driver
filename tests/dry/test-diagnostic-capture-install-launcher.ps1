@@ -49,7 +49,7 @@ if ($parseErrors.Count -ne 0) {
 foreach ($definition in @($launcherAst.FindAll({
     param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
-    $node.Name -in @('Get-AbsolutePath', 'Resolve-PnPUtilPath')
+    $node.Name -in @('Get-AbsolutePath', 'Resolve-PnPUtilPath', 'Complete-CaptureJob')
 }, $true) | Sort-Object { $_.Extent.StartOffset })) {
     . ([scriptblock]::Create($definition.Extent.Text))
 }
@@ -265,6 +265,64 @@ try {
     Add-Result 'mock capture qualification succeeds without PnPUtil' (
         $capture.ExitCode -eq 0 -and $capture.Invocations -eq 1 -and
         @($capture.Records) -contains 'capture')
+    $captureWorkerResult = Get-Content -Raw `
+        (Join-Path $capture.Evidence 'capture-worker.result.json') | ConvertFrom-Json
+    Add-Result 'capture completion is durably persisted outside PowerShell job streams' (
+        $captureWorkerResult.Status -eq 'COMPLETED' -and
+        $captureWorkerResult.ExitCode -eq 0 -and
+        $captureWorkerResult.ProcessTreeClosed)
+    $captureChildLog = Get-Content -Raw (Join-Path $capture.Evidence 'capture-child.log')
+    Add-Result 'capture child exit and separate output logs are retained' (
+        $captureChildLog -match 'PROCESS EXIT CODE: 0' -and
+        (Test-Path (Join-Path $capture.Evidence 'capture-child.log.stdout.txt')) -and
+        (Test-Path (Join-Path $capture.Evidence 'capture-child.log.stderr.txt')))
+
+    $duration = Invoke-Case -Name 'configured-capture-duration' `
+        -Mode CaptureQualification -Scenario RunForConfiguredDuration -Duration 1
+    $durationResult = Get-Content -Raw `
+        (Join-Path $duration.Evidence 'capture-worker.result.json') | ConvertFrom-Json
+    Add-Result 'collector reaching configured duration records a bounded success' (
+        $duration.ExitCode -eq 0 -and $durationResult.Status -eq 'COMPLETED' -and
+        $durationResult.ExitCode -eq 0 -and
+        (Get-Content -Raw (Join-Path $duration.Evidence 'capture-child.log.stderr.txt')) `
+            -match 'Duration limit reached')
+
+    $probeRoot = Join-Path $tempRoot 'capture-completion-probes'
+    [IO.Directory]::CreateDirectory($probeRoot) | Out-Null
+    $completedJob = Start-Job -ScriptBlock { }
+    Wait-Job -Job $completedJob | Out-Null
+    try {
+        $missingResultPath = Join-Path $probeRoot 'missing-result.json'
+        try {
+            Complete-CaptureJob -Job $completedJob -WorkerResultPath $missingResultPath `
+                -TimeoutSeconds 1 | Out-Null
+            $missingResultRejected = $false
+        }
+        catch { $missingResultRejected = $_.Exception.Message -match 'without a durable result' }
+        Add-Result 'completed collector without a result fails closed' $missingResultRejected
+
+        $truncatedResultPath = Join-Path $probeRoot 'truncated-result.json'
+        [IO.File]::WriteAllText($truncatedResultPath,'{"Status":"COMPLETED"')
+        try {
+            Complete-CaptureJob -Job $completedJob -WorkerResultPath $truncatedResultPath `
+                -TimeoutSeconds 1 | Out-Null
+            $truncatedResultRejected = $false
+        }
+        catch { $truncatedResultRejected = $_.Exception.Message -match 'malformed' }
+        Add-Result 'truncated worker result fails closed' $truncatedResultRejected
+
+        $incompleteResultPath = Join-Path $probeRoot 'incomplete-result.json'
+        [IO.File]::WriteAllText($incompleteResultPath,
+            '{"Status":"COMPLETED","ExitCode":0}')
+        try {
+            Complete-CaptureJob -Job $completedJob -WorkerResultPath $incompleteResultPath `
+                -TimeoutSeconds 1 | Out-Null
+            $incompleteResultRejected = $false
+        }
+        catch { $incompleteResultRejected = $_.Exception.Message -match 'missing required property' }
+        Add-Result 'parseable but incomplete worker result fails closed' $incompleteResultRejected
+    }
+    finally { Remove-Job -Job $completedJob -Force }
 
     $delayed = Invoke-Case -Name 'delayed-file-flush' -Mode CaptureQualification `
         -Scenario DelayedFileFlush
@@ -330,6 +388,12 @@ try {
     Add-Result 'mock capture/install path invokes each child exactly once' (
         $install.ExitCode -eq 0 -and $install.Invocations -eq 2 -and
         ($install.Records -join ',') -eq 'capture,install')
+    $installChildResult = Get-Content -Raw `
+        (Join-Path $install.Evidence 'install-child.result.json') | ConvertFrom-Json
+    Add-Result 'install child exit identity is persisted before capture shutdown' (
+        $installChildResult.ExitCode -eq 0 -and $installChildResult.ProcessId -gt 0 -and
+        $installChildResult.ProcessTreeClosed -and
+        (Test-Path (Join-Path $install.Evidence 'install-child.process.txt')))
 
     $literalEnvironment = Invoke-Case -Name 'literal-environment-path' `
         -Mode InstallWithCapture -PnPUtilPath '$env:SystemRoot\System32\pnputil.exe'

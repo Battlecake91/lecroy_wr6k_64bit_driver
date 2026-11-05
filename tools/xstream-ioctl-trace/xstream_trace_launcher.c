@@ -4,6 +4,42 @@
 
 #define TRACE_ENV_NAME L"LECS65_TRACE_PATH"
 
+static void print_win32_error(const char* what);
+
+static int file_exists(const WCHAR* path)
+{
+    return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
+}
+
+static int write_ready_marker(const WCHAR* path,DWORD pid,int embedding)
+{
+    HANDLE file;
+    char text[256];
+    int count;
+    DWORD written = 0;
+
+    if (!path || !*path) return 1;
+    file = CreateFileW(
+        path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL,NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        print_win32_error("CreateFile(ready marker)");
+        return 0;
+    }
+    count = _snprintf_s(
+        text,sizeof(text),_TRUNCATE,
+        "CaptureReady=true\r\nPid=%lu\r\nEmbedding=%s\r\n",
+        (unsigned long)pid,embedding ? "true" : "false");
+    if (count < 0 || !WriteFile(file,text,(DWORD)count,&written,NULL) ||
+        written != (DWORD)count || !FlushFileBuffers(file)) {
+        print_win32_error("WriteFile(ready marker)");
+        CloseHandle(file);
+        return 0;
+    }
+    CloseHandle(file);
+    return 1;
+}
+
 static void print_win32_error(const char* what)
 {
     DWORD error = GetLastError();
@@ -166,11 +202,22 @@ int wmain(int argc,WCHAR** argv)
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     DWORD exitCode = 0;
+    int embedding = 0;
+    int argumentIndex = 1;
+    const WCHAR* executable;
+    const WCHAR* readyPath = NULL;
 
-    if (argc < 2 || argc > 3) {
-        fwprintf(stderr,L"Usage:\n  %s <xstream.exe> [trace.jsonl]\n",argv[0]);
+    if (argc > 1 && lstrcmpiW(argv[1],L"--embedding") == 0) {
+        embedding = 1;
+        argumentIndex++;
+    }
+    if (argc - argumentIndex < 1 || argc - argumentIndex > 3) {
+        fwprintf(stderr,
+            L"Usage:\n  %s [--embedding] <target.exe> [trace.jsonl] [ready.marker]\n",
+            argv[0]);
         return 2;
     }
+    executable = argv[argumentIndex];
 
     if (!make_hook_path(hookPath,(DWORD)(sizeof(hookPath)/sizeof(hookPath[0])))) {
         fprintf(stderr,"Could not resolve xstream_io_hook.dll path.\n");
@@ -182,9 +229,10 @@ int wmain(int argc,WCHAR** argv)
         return 1;
     }
 
-    if (argc == 3) {
+    if (argc - argumentIndex >= 2) {
         DWORD n = GetFullPathNameW(
-            argv[2],(DWORD)(sizeof(tracePath)/sizeof(tracePath[0])),tracePath,NULL);
+            argv[argumentIndex+1],
+            (DWORD)(sizeof(tracePath)/sizeof(tracePath[0])),tracePath,NULL);
         if (!n || n >= (DWORD)(sizeof(tracePath)/sizeof(tracePath[0]))) {
             print_win32_error("GetFullPathName(trace)");
             return 1;
@@ -194,6 +242,26 @@ int wmain(int argc,WCHAR** argv)
         fprintf(stderr,"Could not create default trace path.\n");
         return 1;
     }
+    if (file_exists(tracePath)) {
+        fwprintf(stderr,L"Trace path already exists: %s\n",tracePath);
+        return 1;
+    }
+    if (argc - argumentIndex == 3) {
+        static WCHAR readyFullPath[MAX_PATH*4];
+        DWORD n = GetFullPathNameW(
+            argv[argumentIndex+2],
+            (DWORD)(sizeof(readyFullPath)/sizeof(readyFullPath[0])),
+            readyFullPath,NULL);
+        if (!n || n >= (DWORD)(sizeof(readyFullPath)/sizeof(readyFullPath[0]))) {
+            print_win32_error("GetFullPathName(ready marker)");
+            return 1;
+        }
+        if (file_exists(readyFullPath)) {
+            fwprintf(stderr,L"Ready marker already exists: %s\n",readyFullPath);
+            return 1;
+        }
+        readyPath = readyFullPath;
+    }
 
     if (!SetEnvironmentVariableW(TRACE_ENV_NAME,tracePath)) {
         print_win32_error("SetEnvironmentVariable");
@@ -202,7 +270,7 @@ int wmain(int argc,WCHAR** argv)
 
     if (_snwprintf_s(
             commandLine,sizeof(commandLine)/sizeof(commandLine[0]),_TRUNCATE,
-            L"\"%s\"",argv[1]) < 0) {
+            embedding ? L"\"%s\" /Embedding" : L"\"%s\"",executable) < 0) {
         fprintf(stderr,"XStream command line is too long.\n");
         return 1;
     }
@@ -212,18 +280,27 @@ int wmain(int argc,WCHAR** argv)
     si.cb = sizeof(si);
 
     wprintf(L"XStream IOCTL trace launcher\n");
-    wprintf(L"  Executable: %s\n",argv[1]);
+    wprintf(L"  Executable: %s\n",executable);
     wprintf(L"  Hook DLL:   %s\n",hookPath);
     wprintf(L"  Trace:      %s\n",tracePath);
+    wprintf(L"  Embedding:  %s\n",embedding ? L"yes" : L"no");
+    if (readyPath) wprintf(L"  Ready:      %s\n",readyPath);
 
     if (!CreateProcessW(
-            argv[1],commandLine,NULL,NULL,FALSE,CREATE_SUSPENDED,
+            executable,commandLine,NULL,NULL,FALSE,CREATE_SUSPENDED,
             NULL,NULL,&si,&pi)) {
         print_win32_error("CreateProcessW");
         return 1;
     }
 
     if (!inject_dll_and_initialize(pi.hProcess,hookPath)) {
+        TerminateProcess(pi.hProcess,1);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return 1;
+    }
+
+    if (!write_ready_marker(readyPath,pi.dwProcessId,embedding)) {
         TerminateProcess(pi.hProcess,1);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
@@ -249,5 +326,5 @@ int wmain(int argc,WCHAR** argv)
 
     wprintf(L"XStream exited with code %lu\n",(unsigned long)exitCode);
     wprintf(L"Trace saved to: %s\n",tracePath);
-    return 0;
+    return exitCode == 0 ? 0 : (int)exitCode;
 }

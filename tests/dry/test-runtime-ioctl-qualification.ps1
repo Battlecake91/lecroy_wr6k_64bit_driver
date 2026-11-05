@@ -93,7 +93,8 @@ function Invoke-HarnessCase {
         [string]$Name, [object]$State, [int]$ExpectedExit,
         [int]$ExpectedAttempts, [object]$Scenario = $null,
         [bool]$Bom = $false, [string]$HashOverride,
-        [ValidateSet('All','Batch3Remaining')][string]$CommandSet = 'All'
+        [ValidateSet('All','Batch3Remaining')][string]$CommandSet = 'All',
+        [string]$PreviousEvidenceRoot
     )
     $statePath = Join-Path $root ($Name + '-state.json')
     $scenarioPath = Join-Path $root ($Name + '-scenario.json')
@@ -104,6 +105,9 @@ function Invoke-HarnessCase {
         '-MockExecutablePath',$mockExe,'-MockExecutableSha256',
         $(if ($HashOverride) { $HashOverride } else { $script:mockHash }),
         '-CommandSet',$CommandSet)
+    if ($PreviousEvidenceRoot) {
+        $arguments += @('-PreviousEvidenceRoot',$PreviousEvidenceRoot)
+    }
     if ($null -ne $Scenario) {
         Write-JsonEncoding $scenarioPath $Scenario $false
         $arguments += @('-MockScenarioPath',$scenarioPath)
@@ -128,6 +132,31 @@ function Invoke-HarnessCase {
         throw "outcome mismatch: $($outcome.Outcome)"
     }
     [pscustomobject]@{ Evidence=$evidence; Outcome=$outcome; Output=$output }
+}
+
+function New-PriorEvidenceFixture([string]$Path,[string]$ExecutableHash) {
+    [IO.Directory]::CreateDirectory($Path) | Out-Null
+    $priorCommands = @(
+        @{Name='r0-1-build'; Args=@('build')},
+        @{Name='r0-2-stats'; Args=@('stats')},
+        @{Name='r0-3-bars'; Args=@('bars')},
+        @{Name='r0-4-trace'; Args=@('trace')},
+        @{Name='r0-5-noop'; Args=@('raw-ioctl','0x00222400','','0')},
+        @{Name='r0-6-noop'; Args=@('raw-ioctl','0xCFDC2184','','0')},
+        @{Name='r0-7-trace-size'; Args=@('raw-ioctl','0x00223004','','4')})
+    [ordered]@{Mode='RunAuthorized';CommandSet='All';GitHead='50508767FE86150CBB92CD15E58DAAAF72BDE877';ExecutableSha256=$ExecutableHash;ApprovedCommands=@()} |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Path 'context.json') -Encoding UTF8
+    foreach ($command in $priorCommands) {
+        [ordered]@{Name=$command.Name;Arguments=$command.Args;AttemptedUtc=[datetime]::UtcNow.ToString('o')} |
+            ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path ($command.Name+'.attempted')) -Encoding UTF8
+        [ordered]@{Name=$command.Name;Arguments=$command.Args;ExitCode=0;TimedOut=$false;StdOut='';StdErr=''} |
+            ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path ($command.Name+'.result.json')) -Encoding UTF8
+    }
+    [ordered]@{Name='r0-8-register-size';Phase='R0';Arguments=@('raw-ioctl','0x00223040','','4');AttemptedUtc=[datetime]::UtcNow.ToString('o')} |
+        ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Path 'r0-8-register-size.attempted') -Encoding UTF8
+    foreach ($suffix in @('.log','.log.stdout.txt','.log.stderr.txt')) {
+        [IO.File]::WriteAllText((Join-Path $Path ('r0-8-register-size'+$suffix)),'')
+    }
 }
 
 New-Item -ItemType Directory -Path $root | Out-Null
@@ -161,8 +190,10 @@ try {
         [void](Invoke-HarnessCase 'pass-bdf4' (New-MockState -Location 'PCI bus 4, device 1, function 0') 0 11)
     }
     Test-Case 'Batch 3 resume runs only R0-8, R0-9 and conditional R1' {
+        $prior = Join-Path $root 'batch3-prior'
+        New-PriorEvidenceFixture $prior $script:mockHash
         $result = Invoke-HarnessCase 'batch3-resume' (New-MockState -Location 'GERMAN') `
-            0 4 $null $false $null 'Batch3Remaining'
+            0 4 $null $false $null 'Batch3Remaining' $prior
         $context = Get-Content (Join-Path $result.Evidence 'context.json') -Raw | ConvertFrom-Json
         $names = @($context.ApprovedCommands | ForEach-Object Name)
         if (($names -join ',') -ne 'r0-8-register-size,r0-9-delay-zero,r1-pci,r1-start-register') {
@@ -177,10 +208,27 @@ try {
         }
     }
     Test-Case 'Batch 3 R0-8 failure blocks R0-9 and both R1 commands' {
+        $prior = Join-Path $root 'batch3-prior-fail'
+        New-PriorEvidenceFixture $prior $script:mockHash
         $scenario=[pscustomobject]@{Behaviors=@([pscustomobject]@{
             Name='r0-8-register-size';Type='Fail';Ioctl='00223040'})}
         [void](Invoke-HarnessCase 'batch3-r0-fail' (New-MockState) 1 1 $scenario `
-            $false $null 'Batch3Remaining')
+            $false $null 'Batch3Remaining' $prior)
+    }
+    Test-Case 'Batch 3 resume rejects missing prior evidence before dispatch' {
+        $result = Invoke-HarnessCase 'batch3-missing-prior' (New-MockState) 1 0 $null `
+            $false $null 'Batch3Remaining'
+        if ($result.Output -notmatch 'PreviousEvidenceRoot') {
+            throw 'missing prior-evidence diagnostic was not preserved'
+        }
+    }
+    Test-Case 'Batch 3 resume rejects altered prior result before dispatch' {
+        $prior = Join-Path $root 'batch3-prior-corrupt'
+        New-PriorEvidenceFixture $prior $script:mockHash
+        Set-Content -LiteralPath (Join-Path $prior 'r0-7-trace-size.result.json') `
+            -Value '{ malformed' -Encoding UTF8
+        [void](Invoke-HarnessCase 'batch3-corrupt-prior' (New-MockState) 1 0 $null `
+            $false $null 'Batch3Remaining' $prior)
     }
     Test-Case 'changed PCI instance ID fails before commands' {
         [void](Invoke-HarnessCase 'bad-instance' (New-MockState -InstanceId 'PCI\WRONG') 1 0)

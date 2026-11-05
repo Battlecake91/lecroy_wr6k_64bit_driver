@@ -1,5 +1,58 @@
 # Regression test architecture
 
+## Batch 27 installed candidate runtime result
+
+The frozen signed candidate `0.2026.1030.2` is installed as `oem108.inf`; the
+loaded SYS matches the approved hash, and pre/post device metadata showed `OK`,
+problem code zero, service running and five enabled interfaces. R0-1 through
+R0-7 completed once in the original run, with R0-7 returning `0x110`. The old
+R0-8 attempt remains indeterminate because no process-info or completion result
+was retained. In a separate authorized continuation, R0-8 and R0-9 each passed
+once, followed by R1 PCI and START-register reads, each passing once. Combined
+qualification is R0 9/9 and R1 2/2 PASS across the separate runs; do not
+describe them as one uninterrupted run. The R0-8 result was `0x2CAE`, PCI
+identity was `1570:0005` at observed BDF `5:1.0`, and both START reads returned
+`0x00000002`. No XStream or MAM GO occurred.
+
+The offline launcher recovery uses an atomic, non-overwriting capture-worker
+result sidecar instead of PowerShell job output serialization. Native process
+exit and output-drain waits are bounded. Focused checks exercise successful and
+delayed child exit, process timeout and tree cleanup, early launcher failure,
+worker exit after readiness, missing/truncated/incomplete result records,
+failure evidence retention, and no-retry/exact-once boundaries. The safe
+Batch3Remaining mock additionally verifies prior evidence identity, continuation
+ordering and stop-on-failure. These offline tests did not convert the earlier
+R0-8 result to PASS; the later continuation was separately authorized and has
+its own result records.
+
+The Batch 27 offline recovery is validated by source/ABI contracts 74/74,
+Batch3Remaining runtime-harness mocks 24/24, package workflow compatibility
+32/32 under Windows PowerShell 5.1.19041.6456 and 32/32 under PowerShell 7.6.9,
+and diagnostic capture/install orchestration 51/51 under Windows PowerShell
+5.1.19041.6456. The diagnostic suite used its explicit test-only elevation
+override (`Elevated=false`); it did not enter a real active mode. It covers
+atomic worker-result sidecars, malformed/incomplete results, collector exit
+after readiness, bounded timeout, nonzero install child, preserved logs and
+zero retries/orphan mock processes.
+
+## Lossless XStream IOCTL capture coverage
+
+`tests/dry/test-xstream-ioctl-trace.ps1` builds an x86 synthetic target and
+executes the production suspended-process launcher, injected hook, private
+capture validator and bounded orchestration script under Windows PowerShell
+5.1. It passes 18/18. Coverage includes exact 130-byte input and 14-byte output,
+embedded NUL bytes, six identical requests, concurrent threads and handles,
+error preservation, successful output, truncation rejection, capture/footer
+write integrity, exclusive paths, fixed `/Embedding` forwarding and prevention
+of public-repository evidence, and explicit capture-write-failure rejection.
+The composed result contains hashes and protocol
+metadata, never opaque request/response bytes.
+
+The existing single-waveform runner passes 9/9 after adding an exact
+prelaunched-PID contract. The existing diagnostic launcher remains 44/44. No
+driver build, installation, device handle or hardware operation is part of
+these focused tests.
+
 ## CFDC2110 family-2 opcode-0x03 coverage
 
 `tests/dry/test-cfdc2110-opcode03.ps1` compiles the production framing helper

@@ -77,6 +77,10 @@ if ($Mode -eq "Dry" -or $Mode -eq "All") {
         & (Join-Path $repo "tests\dry\test-cfdc2110-opcode03.ps1")
     }
 
+    Invoke-Step "Lossless XStream user-mode IOCTL capture tests (no hardware)" {
+        & (Join-Path $repo "tests\dry\test-xstream-ioctl-trace.ps1")
+    }
+
     Invoke-Step "Pre-GO side-effect allowlist contracts (no hardware)" {
         & (Join-Path $repo "tests\dry\test-pre-go-side-effects.ps1")
     }

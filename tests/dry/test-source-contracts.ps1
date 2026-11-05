@@ -852,9 +852,14 @@ Test-Contract "package workflow is installation- and device-operation-free" {
     $nativeProcessText -match 'RedirectStandardError = true' -and
     $nativeProcessText -match 'JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE' -and
     $nativeProcessText -match 'WaitForExit\(timeoutMilliseconds\)' -and
+    $nativeProcessText -match 'WaitForExit\(streamDrainMilliseconds\)' -and
+    $nativeProcessText -match 'stdoutClosed\.WaitOne\(remainingDrainMilliseconds\)' -and
+    $nativeProcessText -match 'stderrClosed\.WaitOne\(remainingDrainMilliseconds\)' -and
+    $nativeProcessText -notmatch '\.WaitForExit\(\);' -and
     $nativeProcessText -match 'BeginOutputReadLine\(\)' -and
     $nativeProcessText -match 'BeginErrorReadLine\(\)' -and
-    $nativeProcessText -match 'ProcessTreeClosed = true'
+    $nativeProcessText -match 'StreamDrainTimedOut = !streamsDrained' -and
+    $nativeProcessText -match 'ProcessTreeClosed = processStopped'
 }
 
 Test-Contract "native process runner admits and quotes explicit empty arguments" {
@@ -958,6 +963,10 @@ Test-Contract "diagnostic launcher keeps every active capture mode explicitly ga
     $diagnosticLauncherText -match 'PnpRestartInvocations\+\+' -and
     $diagnosticLauncherText -match 'NoLaunchInvocations\+\+' -and
     $diagnosticLauncherText -match 'XStreamInvocations\+\+' -and
+    $diagnosticLauncherText -match 'Real XStreamWithCapture requires the complete pinned lossless-capture chain' -and
+    $diagnosticLauncherText -match 'ExpectedXStreamTraceLauncherHash' -and
+    $diagnosticLauncherText -match 'ExpectedXStreamTraceHookHash' -and
+    $diagnosticLauncherText -match 'ExpectedXStreamTraceValidatorHash' -and
     $diagnosticLauncherText -match 'No-launch runner result contract mismatch' -and
     $diagnosticLauncherText -match '-Arguments @\(''/restart-device'', \$DeviceInstanceId\)' -and
     $diagnosticLauncherText -match 'no retry was attempted' -and
@@ -968,6 +977,8 @@ Test-Contract "single-waveform runner observes automatic XStream data without Ac
     $xstreamSingleRunnerText -match "New-Object -ComObject 'LeCroy.XStreamDSO'" -and
     $xstreamSingleRunnerText -match 'DataArray\(-1, -1, 0, 1\)' -and
     $xstreamSingleRunnerText -match 'ExplicitAcquireCount' -and
+    $xstreamSingleRunnerText -match 'ExpectedPrelaunchedProcessId' -and
+    $xstreamSingleRunnerText -match 'prelaunched XStream process identity does not match' -and
     $xstreamSingleRunnerText -match 'PhysicalDiskDisconnectedConfirmed' -and
     $xstreamSingleRunnerText -match 'FileMode\]::CreateNew' -and
     $xstreamSingleRunnerText -notmatch '\.Acquire\s*\(' -and

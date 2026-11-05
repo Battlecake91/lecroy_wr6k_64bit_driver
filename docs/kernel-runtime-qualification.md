@@ -1,5 +1,55 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 27 installation and completed R0/R1 qualification
+
+The signed Batch 26 candidate `0.2026.1030.2` was installed once as
+`oem108.inf` on 2026-11-04. PnPUtil's captured child returned 0. Passive state
+matched the approved SYS SHA-256
+`2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`;
+the device was `OK`, problem code 0, service running, and all five expected
+interfaces enabled. The installation outer-launcher result file remained
+empty after `INSTALL CHILD PASS`, so its wrapper-level completion is incomplete
+even though installation is confirmed by child output and device metadata.
+
+The original authorized serial run completed R0-1 through R0-7 once, all with
+exit code 0; R0-7 returned trace size `0x110`. Its R0-8 attempt marker lacked
+process-info and result evidence, so that attempt remains indeterminate. After
+offline launcher repair and a fresh authorization, the exact continuation
+completed R0-8, R0-9, R1 PCI, and R1 START-register once each, all with exit
+code 0 and no timeouts. R0-8 returned four bytes `AE2C0000` (`0x2CAE`); R0-9
+returned zero bytes for the zero-delay input; R1 identified `1570:0005` at
+observed BDF `5:1.0`; both START paths returned `0x00000002`. The combined
+result is R0 9/9 and R1 2/2 PASS across separate documented runs. XStream,
+acquisition, and MAM GO did not occur.
+
+Continuation evidence is stored outside the public repository in local root
+`Batch27-R0R1-20261105-continuation1`. The runner outcome is PASS; all four
+attempt markers and results exist; its 49-entry manifest has zero hash
+mismatches and SHA-256
+`93EFE470BC39434FFD7806300EA2223A21EB39843BA187DAAADB574AB3E58E4A`. Exact
+timestamps and per-result hashes are in
+`docs/handoffs/batch-27-opcode03-runtime-preflight.md`.
+
+Offline recovery on `codex/phase2c-runtime-batch27` replaced PowerShell job
+stream result collection with an exclusive, atomically published worker-result
+sidecar. The native process runner now bounds both process exit and stdout /
+stderr drain waits. Parseable but incomplete worker JSON, missing sidecars,
+nonzero child exits and timeouts fail closed with evidence. The old launcher
+failure remains attributed only to the orchestration layer: the parent stopped
+after `INSTALL CHILD PASS`, while the capture worker itself recorded exit 0 at
+its configured duration. No stack dump was retained, so the exact blocked
+wait statement cannot be proven retroactively.
+
+The prior R0-8 request is not replayable based on the evidence. Source review of
+the four-byte `0x00223040` branch confirms it copies the constant register-list
+size `0x2CAE` and appends one software trace record; it has no MMIO or device
+state side effect. This makes a future single repeat bounded and normally
+idempotent for hardware, but does not establish whether the previous process
+was dispatched. Fresh authorization is required. The next continuation is
+R0-8, then R0-9, then the two R1 reads, each once and stopping on the first
+failure or uncertain result; it must not be reported as a single uninterrupted
+run with R0-1 through R0-7.
+
 ## Batch 25 first XStream waveform gate
 
 The active launcher mode is `XStreamWithCapture`. It is unreachable unless an

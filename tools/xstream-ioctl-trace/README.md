@@ -9,7 +9,9 @@ Components:
 - `xstream_io_hook.dll`: patches loaded-module imports for `DeviceIoControl`, `CreateFileA/W`, `CloseHandle`, `LoadLibraryA/W` and `GetProcAddress`.
 
 The hook forwards calls unchanged and records JSONL with exact IOCTL input bytes
-before the call and output bytes after synchronous completion.
+before the call and output bytes after synchronous completion. Format 4 also
+records a UTC timestamp, sequence, thread, handle, family/opcode metadata and a
+normal-completion footer with the record count and capture-write status.
 
 The launcher keeps XStream suspended until the hook DLL has been loaded and its
 exported `InitializeXStreamTrace` routine has completed successfully. Hook setup
@@ -32,7 +34,7 @@ tools\xstream-ioctl-trace\build\x86\xstream_io_hook.dll
 
 Both files must stay in the same directory.
 
-## Capture on the original 32-bit system
+## Controlled COM-server capture
 
 Do not start XStream manually. Run from an elevated PowerShell:
 
@@ -40,14 +42,32 @@ Do not start XStream manually. Run from an elevated PowerShell:
 .\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe"
 ```
 
-Or specify the output path explicitly:
+For a COM local-server observation, provide the fixed `/Embedding` mode, an
+exclusive private trace path and an exclusive readiness marker:
 
 ```powershell
-.\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe" "C:\Temp\legacy_xstream_trace.jsonl"
+.\xstream_trace_launcher.exe --embedding `
+  "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe" `
+  "C:\PrivateEvidence\xstream-ioctl.jsonl" `
+  "C:\PrivateEvidence\xstream-ready.txt"
 ```
 
-Close XStream normally after startup reaches the state to compare. The launcher
-waits for XStream to exit so the trace is flushed.
+The launcher rejects existing trace/marker paths, starts the target suspended,
+initializes the hook, writes the PID-bound readiness marker, and only then
+resumes the target. It waits for orderly target exit so the trace footer is
+flushed. `scripts/invoke-xstream-lossless-capture.ps1` combines this path with
+the bounded single-waveform observer; its active mode still requires explicit
+owner authorization and physical-disk isolation confirmation.
+
+Validate a private capture without publishing opaque bytes:
+
+```powershell
+.\scripts\validate-xstream-ioctl-capture.ps1 `
+  -TracePath "C:\PrivateEvidence\xstream-ioctl.jsonl" `
+  -ResultPath "C:\PrivateEvidence\validation.json" `
+  -PrivateEvidenceRoot "C:\PrivateEvidence" `
+  -RepositoryRoot (Resolve-Path .)
+```
 
 ## Trace format
 
@@ -58,14 +78,17 @@ The first JSONL record is a header. Subsequent records include:
   `GetLastError`, bytes returned, duration, thread id and overlapped state;
 - `close_handle`: handle closes.
 
-Buffers are capped at 1 MiB per direction and records mark truncation.
+Buffers are capped at 1 MiB per direction and records mark truncation. The
+validator rejects a target 130-byte request unless all bytes and the complete
+14-byte synchronous output contract are present. Raw JSONL is private evidence
+and must never be committed to the public repository.
 Asynchronous calls are marked `pending=true`; this first tracer version does not
 yet hook completion APIs, so pending calls do not contain final completion output.
 
 The capture is intentionally user-mode only. The original legacy kernel driver
 is not patched or replaced.
 
-## Expected first test
+## Offline qualification
 
 Build on the 64-bit development system:
 
@@ -75,14 +98,14 @@ git pull
 .\scripts\build-xstream-ioctl-trace.ps1
 ```
 
-Copy both files from `tools\xstream-ioctl-trace\build\x86\` to the original
-32-bit system. Keep them together, then start the original XStream only through
-the launcher:
+The focused suite builds a deterministic x86 target and exercises the actual
+launcher, hook, validator and orchestration path under Windows PowerShell 5.1:
 
 ```powershell
-.\xstream_trace_launcher.exe "C:\Program Files\LeCroy\XStream\lecroyxstreamdso.exe"
+.\tests\dry\test-xstream-ioctl-trace.ps1
 ```
 
-Dismiss the normal probe warning with OK if it appears, let startup settle, then
-close XStream normally. Upload the resulting `legacy_xstream_trace_*.jsonl` for
-comparison with the x64 trace.
+It covers exact 130/14-byte binary preservation including NULs, concurrency,
+multiple handles, failures, output capture, write failure, collision handling,
+`/Embedding`, private-evidence containment, footer integrity and the complete
+mocked launch/validation chain. It performs no driver or hardware operation.

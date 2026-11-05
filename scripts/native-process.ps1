@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LecS65
@@ -30,6 +31,7 @@ namespace LecS65
         public int ProcessId { get; set; }
         public int ExitCode { get; set; }
         public bool TimedOut { get; set; }
+        public bool StreamDrainTimedOut { get; set; }
         public string StdOut { get; set; }
         public string StdErr { get; set; }
         public bool JobAssigned { get; set; }
@@ -127,7 +129,7 @@ namespace LecS65
             return quoted.ToString();
         }
 
-        private static string BuildArguments(string[] arguments)
+        public static string BuildArgumentString(string[] arguments)
         {
             List<string> quoted = new List<string>();
             foreach (string argument in arguments)
@@ -176,7 +178,7 @@ namespace LecS65
 
                 ProcessStartInfo start = new ProcessStartInfo();
                 start.FileName = fileName;
-                start.Arguments = BuildArguments(arguments);
+                start.Arguments = BuildArgumentString(arguments);
                 start.WorkingDirectory = workingDirectory;
                 start.UseShellExecute = false;
                 start.CreateNoWindow = true;
@@ -211,8 +213,11 @@ namespace LecS65
                 StringBuilder stderr = new StringBuilder();
                 object stdoutLock = new object();
                 object stderrLock = new object();
+                using (ManualResetEvent stdoutClosed = new ManualResetEvent(false))
+                using (ManualResetEvent stderrClosed = new ManualResetEvent(false))
+                {
                 process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) {
-                    if (e.Data == null) return;
+                    if (e.Data == null) { stdoutClosed.Set(); return; }
                     lock (stdoutLock) {
                         stdout.AppendLine(e.Data);
                         if (!String.IsNullOrWhiteSpace(liveStdOutPath))
@@ -221,7 +226,7 @@ namespace LecS65
                     }
                 };
                 process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) {
-                    if (e.Data == null) return;
+                    if (e.Data == null) { stderrClosed.Set(); return; }
                     lock (stderrLock) {
                         stderr.AppendLine(e.Data);
                         if (!String.IsNullOrWhiteSpace(liveStdErrPath))
@@ -237,20 +242,36 @@ namespace LecS65
                 CloseHandle(job);
                 job = IntPtr.Zero;
 
-                if (!exited && !process.WaitForExit(streamDrainMilliseconds))
-                    throw new TimeoutException("Timed-out native process did not terminate after job closure.");
-
-                process.WaitForExit();
+                Stopwatch drainWatch = Stopwatch.StartNew();
+                bool processStopped = exited || process.WaitForExit(streamDrainMilliseconds);
+                int remainingDrainMilliseconds = Math.Max(0,
+                    streamDrainMilliseconds - (int)drainWatch.ElapsedMilliseconds);
+                bool stdoutDrained = stdoutClosed.WaitOne(remainingDrainMilliseconds);
+                remainingDrainMilliseconds = Math.Max(0,
+                    streamDrainMilliseconds - (int)drainWatch.ElapsedMilliseconds);
+                bool stderrDrained = stderrClosed.WaitOne(remainingDrainMilliseconds);
+                bool streamsDrained = stdoutDrained && stderrDrained;
+                if (!streamsDrained)
+                {
+                    try { process.CancelOutputRead(); } catch { }
+                    try { process.CancelErrorRead(); } catch { }
+                }
+                string capturedStdout;
+                string capturedStderr;
+                lock (stdoutLock) { capturedStdout = stdout.ToString(); }
+                lock (stderrLock) { capturedStderr = stderr.ToString(); }
 
                 return new NativeProcessResult {
                     ProcessId = process.Id,
-                    ExitCode = exitCode,
-                    TimedOut = !exited,
-                    StdOut = stdout.ToString(),
-                    StdErr = stderr.ToString(),
+                    ExitCode = processStopped ? exitCode : 124,
+                    TimedOut = !exited || !processStopped || !streamsDrained,
+                    StreamDrainTimedOut = !streamsDrained,
+                    StdOut = capturedStdout,
+                    StdErr = capturedStderr,
                     JobAssigned = true,
-                    ProcessTreeClosed = true
+                    ProcessTreeClosed = processStopped
                 };
+                }
             }
             finally
             {
@@ -400,7 +421,10 @@ function Invoke-LecS65NativeProcess {
     }
 
     if ($null -ne $resolvedLog) {
-        $summary = if ($result.TimedOut) {
+        $summary = if ($result.StreamDrainTimedOut) {
+            "=== PROCESS RESULT UNCERTAIN: OUTPUT STREAM DRAIN TIMED OUT; EXIT CODE: $($result.ExitCode) ==="
+        }
+        elseif ($result.TimedOut) {
             "=== PROCESS TIMEOUT; EXIT CODE: $($result.ExitCode) ==="
         }
         else {
