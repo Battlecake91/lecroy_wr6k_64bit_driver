@@ -44,13 +44,12 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical
   addresses and preserves the original register/completion sequence. One
   bounded 16-byte transfer passed with physical IRQ/DPC evidence and normal
-  retirement. The installed regular-MAM candidate permits at most one launch
-  admission; its first XStream start exposed missing `CFDC2110` family-2
-  opcode-`0x03` compatibility before DMA. Repeated acquisition,
-  timeout/cancellation and XStream waveform delivery remain unqualified. The
-  exact-shape opcode-`0x03` common-transport path is now implemented and
-  Dry-qualified in source. Signed candidate `0.2026.1030.2` is installed;
-  XStream behavior and the opcode-`0x03` live path remain unqualified.
+  retirement on an earlier candidate. The installed regular-MAM candidate
+  permits at most one launch admission. The prior XStream attempt on `oem107.inf`
+  failed before DMA on family-2 opcode `0x03`; the corrected exact-shape
+  common-transport path is Dry-qualified but not yet runtime-validated on
+  `oem108.inf`. Repeated acquisition, timeout/cancellation and waveform
+  delivery remain unqualified.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

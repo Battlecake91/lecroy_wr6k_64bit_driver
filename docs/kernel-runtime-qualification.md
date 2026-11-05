@@ -1,5 +1,17 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 28 authorization gate
+
+Passive preflight on 2026-11-05 confirms the installed `oem108.inf`
+(`0.2026.1030.2`) matches the approved SYS hash, remains healthy, and has
+exactly one enabled interface in each of the five expected classes. The
+candidate manifest configures the existing one-admission MAM limit. The
+lossless XStream capture tools match their pinned hashes. No live startup or
+hardware operation was performed. A new explicit owner confirmation of
+physical x86-disk disconnection and separate authorization for one XStream
+startup are required before starting capture or XStream. Details are in the
+[Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+
 ## Batch 27 installation and completed R0/R1 qualification
 
 The signed Batch 26 candidate `0.2026.1030.2` was installed once as

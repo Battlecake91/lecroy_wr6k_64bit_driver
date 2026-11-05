@@ -5,19 +5,16 @@ This file tracks unfinished work and deferred features. The current, verified ca
 ## Active compatibility work
 
 - [ ] **Runtime-qualify restored `CFDC2110` family-2 opcode `0x03`, then
-  requalify one waveform.** The original contract is recovered and the native
-  exact-shape transport path is Dry-qualified. The full historical request was
-  not retained, so do not fabricate a standalone body. The lossless external
-  observer is now offline-qualified to capture all 130/14 bytes during the
-  controlled application run without changing the signed driver. Candidate
-  `0.2026.1030.2` is installed as `oem108.inf`, but the one authorized runtime
-  matrix stopped after seven completed R0 commands. R0-8's attempt marker has
-  no completion evidence; R0-9 and R1 were not run. Review the interrupted
-  runner state offline and obtain fresh bounded authorization before any
-  remaining device commands. Only after a complete qualification may a
-  separately authorized single XStream activation be considered, with fresh
-  physical-disk confirmation, private request validation and the existing
-  one-GO boundary.
+  requalify one waveform.** The native exact-shape transport path is
+  Dry-qualified; do not fabricate the opaque request body. The lossless
+  external observer is pinned and ready to capture full requests/responses.
+  Candidate `0.2026.1030.2` is installed as `oem108.inf`, and R0 9/9 plus R1
+  2/2 passed across separate documented runs. Batch 28's passive preflight
+  passed, but no XStream start occurred. A fresh owner confirmation of
+  physical x86-disk disconnection and a separate authorization for one XStream
+  startup, its automatic common-transport requests, private capture and at
+  most one MAM GO remain required. Preserve `MamLaunchLimit=1`; do not retry
+  startup or reset the kernel gate.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

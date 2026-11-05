@@ -1,5 +1,29 @@
 # Current project status
 
+## Batch 28 passive XStream preflight
+
+- At `2026-11-05T22:07:54Z`, passive inspection found the expected installed
+  `oem108.inf` / `0.2026.1030.2`, stable PCI instance present with status `OK`
+  and problem code 0, `LecS65AcqDrv` running, and one enabled interface in
+  each of the five expected classes. Loaded SYS SHA-256 matches the approved
+  candidate: `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+- The frozen INF, CAT, SYS and manifest hashes match their recorded values;
+  Authenticode reports valid signatures from the pinned local test signer.
+  The manifest records WDM-v3 MAM enabled and `MamLaunchLimit=1`. DebugView
+  5.02, the lossless capture launcher/hook, validator, waveform observer and
+  XStream executable match the pinned identities. Driver Verifier is inactive;
+  no XStream/acquisition, `lecdiag`, `lecwatch`, DebugView or `Dbgv` service
+  was active. No Batch 28 attempt root or marker exists.
+- No XStream startup, capture-driver load, device handle or hardware request
+  was made. The current shell is non-elevated PowerShell 7.6.9; the production
+  runtime path requires elevated 64-bit Windows PowerShell 5.1. The owner has
+  not yet provided a fresh confirmation that the productive x86 disk remains
+  physically disconnected or the separate Batch 28 authorization for one
+  XStream startup and its automatically initiated requests. Stop before live
+  work until both are supplied.
+- Exact observations and private-artifact hashes are recorded in
+  [the Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+
 ## Batch 27 installed candidate R0/R1 qualification
 
 - On 2026-11-04, the existing signed Batch 26 candidate was verified against

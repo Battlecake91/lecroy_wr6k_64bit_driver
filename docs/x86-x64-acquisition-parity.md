@@ -1,5 +1,16 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 28 preflight state
+
+The corrected family-2 opcode-`0x03` path has not yet been exercised by a new
+XStream startup on installed candidate `oem108.inf` (`0.2026.1030.2`). Passive
+preflight confirms the expected loaded SYS hash, healthy PCI device, running
+service, five published interfaces, pinned capture components and
+`MamLaunchLimit=1`. No XStream activation, request, MAM GO, IRQ, DPC or waveform
+was observed in Batch 28. A fresh physical x86-disk isolation confirmation and
+explicit authorization remain prerequisites; see the
+[Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+
 ## Batch 26 opcode-0x03 parity
 
 The missing family-2 opcode `0x03` is a board-message transaction, not an
