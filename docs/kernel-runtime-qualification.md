@@ -1,5 +1,32 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 28 corrected XStream startup outcome
+
+The owner reconfirmed physical disk isolation and authorized one captured
+attempt on `oem108.inf` (`0.2026.1030.2`). The elevated Windows PowerShell 5.1
+launcher passed passive identity checks and kernel capture readiness. The
+corrected observer accepted the expected prelaunched process and called
+`New-Object -ComObject 'LeCroy.XStreamDSO'` once; the root automation object
+was returned, but lookup of its `Acquisition` object failed with RPC server
+unavailable (`0x800706BA`). `ExplicitAcquireCount` remained zero.
+
+The user-mode trace has 7,160 records, including 2,130 IOCTL API records and
+1,098 `CFDC2110` calls. It contains no family-2 opcode-`0x03` request and no
+required trace footer; the validator rejected it. Captured `CFDC2110`
+NTSTATUS values were success, but the absent opcode-`0x03` request means its
+transport behavior and the original `STATUS_INVALID_DEVICE_REQUEST` question
+remain unqualified. Six `CFDC2124` and 34 `CFDC2138` calls were recorded, but
+no MAMRGO, IRQ/DPC completion or waveform was observed. The capture stopped at
+its 300-second limit; its child exit code was not persisted.
+
+The post-check retained the exact installed SYS hash, device `OK` / problem 0,
+running service and five enabled interfaces; no relevant System/Application
+events or XStream/DebugView/Dbgv process remained. The installed driver was not
+changed. The observer, lossless-trace and launcher mock suites pass 13/13,
+18/18 and 51/51, respectively. Those mocks do not override the incomplete live
+trace. No further XStream attempt is allowed under the consumed authorization.
+See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+
 ## Batch 27 installation and completed R0/R1 qualification
 
 The signed Batch 26 candidate `0.2026.1030.2` was installed once as

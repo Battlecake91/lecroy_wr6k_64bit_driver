@@ -102,8 +102,33 @@ function Assert-Preflight {
         $State.Driver.SysHash -ne $ExpectedSysHash.ToUpperInvariant()) {
         throw 'Installed driver identity or health does not match the approved baseline.'
     }
-    if (@($State.AcquisitionClients).Count -ne 0) {
-        throw 'An acquisition client is already running.'
+    $clients = @($State.AcquisitionClients)
+    if ($ExpectedPrelaunchedProcessId -eq 0) {
+        if ($clients.Count -ne 0) {
+            throw 'An acquisition client is already running.'
+        }
+    }
+    else {
+        $expectedClients = @($clients | Where-Object {
+            [int]$_.ProcessId -eq $ExpectedPrelaunchedProcessId
+        })
+        if ($expectedClients.Count -ne 1 -or
+            [string]$expectedClients[0].Name -ne 'lecroyxstreamdso.exe' -or
+            [string]::IsNullOrWhiteSpace(
+                [string]$expectedClients[0].ExecutablePath) -or
+            -not [string]::Equals(
+                [IO.Path]::GetFullPath(
+                    [string]$expectedClients[0].ExecutablePath),
+                [IO.Path]::GetFullPath($XStreamExecutablePath),
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'The prelaunched XStream process identity does not match the pinned capture target.'
+        }
+        $otherClients = @($clients | Where-Object {
+            [int]$_.ProcessId -ne $ExpectedPrelaunchedProcessId
+        })
+        if ($otherClients.Count -ne 0) {
+            throw 'Another acquisition client is already running.'
+        }
     }
     $disks = @($State.Disks)
     if ($disks.Count -ne 1 -or

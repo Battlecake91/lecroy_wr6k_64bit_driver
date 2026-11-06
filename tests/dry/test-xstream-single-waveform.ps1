@@ -47,7 +47,8 @@ try {
     function Invoke-Case {
         param([string]$Name, [object]$State=$baseState,
             [switch]$NoAuthorization, [switch]$NoDiskConfirmation,
-            [string]$Hash=$exeHash, [switch]$PrecreateEvidence)
+            [string]$Hash=$exeHash, [switch]$PrecreateEvidence,
+            [int]$ExpectedPrelaunchedProcessId=0)
         $script:caseNumber++
         $statePath = Join-Path $temp ("state-$($script:caseNumber).json")
         $evidence = Join-Path $temp ("evidence-$($script:caseNumber)")
@@ -59,6 +60,10 @@ try {
             '-ExpectedInf','oem107.inf','-ExpectedVersion','0.2026.1030.1',
             '-ExpectedSysHash',('1' * 64),'-MockStatePath',$statePath,
             '-TimeoutSeconds','30')
+        if ($ExpectedPrelaunchedProcessId -gt 0) {
+            $arguments += @('-ExpectedPrelaunchedProcessId',
+                $ExpectedPrelaunchedProcessId.ToString())
+        }
         if (-not $NoAuthorization) { $arguments += '-OwnerAuthorized' }
         if (-not $NoDiskConfirmation) {
             $arguments += '-PhysicalDiskDisconnectedConfirmed'
@@ -110,6 +115,44 @@ try {
     $clientCase = Invoke-Case 'existing-client' -State $clientState
     Add-Result 'existing acquisition client fails before launch' (
         $clientCase.ExitCode -ne 0 -and [int]$clientCase.Result.XStreamLaunchCount -eq 0)
+
+    $prelaunchedState = $baseState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $prelaunchedState.AcquisitionClients = @([pscustomobject]@{
+        ProcessId=528; Name='lecroyxstreamdso.exe'; ExecutablePath=$exe
+    })
+    $prelaunchedCase = Invoke-Case 'expected-prelaunched-client' `
+        -State $prelaunchedState -ExpectedPrelaunchedProcessId 528
+    Add-Result 'pinned suspended-launch target is accepted as the sole expected client' (
+        $prelaunchedCase.ExitCode -eq 0 -and
+        $prelaunchedCase.Result.Result -eq 'PASS' -and
+        [int]$prelaunchedCase.Result.XStreamLaunchCount -eq 1 -and
+        [int]$prelaunchedCase.Result.ExplicitAcquireCount -eq 0)
+
+    $wrongPidCase = Invoke-Case 'wrong-prelaunched-pid' `
+        -State $prelaunchedState -ExpectedPrelaunchedProcessId 529
+    Add-Result 'mismatched prelaunched process id fails before application launch' (
+        $wrongPidCase.ExitCode -ne 0 -and
+        [int]$wrongPidCase.Result.XStreamLaunchCount -eq 0)
+
+    $wrongPathState = $prelaunchedState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $wrongPathState.AcquisitionClients[0].ExecutablePath = `
+        (Join-Path $temp 'other-xstream.exe')
+    $wrongPathCase = Invoke-Case 'wrong-prelaunched-path' `
+        -State $wrongPathState -ExpectedPrelaunchedProcessId 528
+    Add-Result 'wrong prelaunched executable path fails before application launch' (
+        $wrongPathCase.ExitCode -ne 0 -and
+        [int]$wrongPathCase.Result.XStreamLaunchCount -eq 0)
+
+    $competingState = $prelaunchedState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $competingState.AcquisitionClients = @($competingState.AcquisitionClients) +
+        [pscustomobject]@{
+            ProcessId=123; Name='lecdiag.exe'; ExecutablePath=(Join-Path $temp 'lecdiag.exe')
+        }
+    $competingCase = Invoke-Case 'competing-client-with-prelaunch' `
+        -State $competingState -ExpectedPrelaunchedProcessId 528
+    Add-Result 'a competing client still blocks the expected prelaunched target' (
+        $competingCase.ExitCode -ne 0 -and
+        [int]$competingCase.Result.XStreamLaunchCount -eq 0)
 
     $emptyState = $baseState | ConvertTo-Json -Depth 8 | ConvertFrom-Json
     $emptyState.MockWaveformObserved = $false

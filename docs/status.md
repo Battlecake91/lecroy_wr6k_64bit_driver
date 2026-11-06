@@ -1,5 +1,47 @@
 # Current project status
 
+## Batch 28 corrected XStream startup attempt
+
+- On 2026-11-06, the owner reconfirmed physical x86-disk disconnection and
+  authorized exactly one corrected `XStreamWithCapture` run on the installed
+  `oem108.inf` / `0.2026.1030.2`; loaded SYS SHA-256 remained
+  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`. The
+  elevated 64-bit Windows PowerShell 5.1 launcher passed passive preflight and
+  kernel capture readiness. The corrected observer accepted the exact pinned
+  prelaunched process and attempted one XStream COM startup; there was no
+  explicit `Acquire()` call or retry.
+- `New-Object -ComObject 'LeCroy.XStreamDSO'` returned, but the observer failed
+  while resolving the `Acquisition` object with RPC server unavailable
+  (`0x800706BA`). Its result records one process launch and zero
+  explicit acquisitions. The trace has 7,160 records and 2,130 IOCTL API
+  records, including 1,098 `CFDC2110` calls; it has no footer. The trace
+  validator rejected it. No family-2 opcode-`0x03` request was captured, so the
+  130-byte/14-byte transaction and the original `STATUS_INVALID_DEVICE_REQUEST`
+  behavior remain unqualified. Captured `CFDC2110` NTSTATUS values were zero,
+  but none belonged to opcode `0x03`.
+- Six `CFDC2124` and 34 `CFDC2138` requests appear in user-mode trace metadata.
+  No MAMRGO, IRQ, DPC completion, or waveform evidence was recorded. The
+  capture reached its 300-second duration limit and stopped; its child exit
+  code was not persisted. Post-check confirmed the same SYS hash, device
+  `OK` / problem 0, running service and five active interface classes, with no
+  relevant System/Application events or remaining XStream/DebugView/Dbgv
+  process/service.
+- Offline validation: corrected observer 13/13, lossless trace suite 18/18,
+  and diagnostic launcher mock suite 51/51. These tests verify full request /
+  response and footer behavior in the synthetic path; the live capture remains
+  incomplete. No driver installation, reload, PnP transition or reboot occurred.
+  The one-shot authorization is consumed; any new XStream run requires fresh
+  physical-isolation confirmation and explicit authorization.
+- Private evidence is retained at
+  `C:\Users\LeCroyUser\.codex\driver-backups\Batch28-XStreamWithCapture-20261106-attempt2`.
+  The 33-file final inventory SHA-256 is
+  `1C360F4DE289AF40C67F18FC71F9E001686B127261075844B168C572E2BA4EFD`;
+  trace SHA-256 is
+  `CAC96BA72349C13C7D928A7042F608523E72BD74CB5B4157912BB8B27EE45848`;
+  kernel capture SHA-256 is
+  `47A0F528C1EC5B24C00E414DAEFAD863D4B80416F215BCCD32BF81FEE10AC868`.
+  See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+
 ## Batch 27 installed candidate R0/R1 qualification
 
 - On 2026-11-04, the existing signed Batch 26 candidate was verified against
