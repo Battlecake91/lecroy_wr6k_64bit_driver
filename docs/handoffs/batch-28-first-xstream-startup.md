@@ -157,8 +157,93 @@ Key hashes:
 - waveform-observer result:
   `8C7D1ABFAB30631DD37A16A089B1DCA1AB4F376FB328691C9403CFC1337EF5F3`
 
-The XStream startup authorization is consumed regardless of the preflight
-failure. Any further XStream attempt requires fresh explicit authorization and
-fresh physical-isolation confirmation. Keep `MamLaunchLimit=1`; do not reset
-the kernel gate. Review this corrected runner and incomplete first trace before
-proposing another single captured startup.
+The first XStream startup authorization was consumed by that attempt. A later
+freshly authorized continuation is recorded below. Keep `MamLaunchLimit=1`; do
+not reset the kernel gate.
+
+## Corrected observer continuation attempt
+
+The owner reconfirmed that the productive x86 disk remained physically
+disconnected and authorized exactly one new `XStreamWithCapture` run. The
+attempt used a new private evidence directory and a unique authorization ID.
+No R0/R1, installation, signing, PnP transition, reboot, explicit `Acquire()`
+or CVar change occurred.
+
+### Identity and offline gates
+
+- Repository branch / HEAD: `codex/phase2c-runtime-batch28` /
+  `ca0f6a1b17cbbed8883e7c058fbad22a01532ad7`, clean before execution.
+- Installed package: `oem108.inf`, `0.2026.1030.2`; loaded SYS SHA-256
+  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
+- Focused Windows PowerShell 5.1 tests: observer 13/13, lossless trace
+  18/18, diagnostic launcher mocks 51/51. The synthetic trace suite validated
+  complete 130-byte requests, response capture, footer persistence and orderly
+  target shutdown. The live trace is evaluated independently below.
+- Corrected observer SHA-256:
+  `6273ED70DEE28F625FB5A12EA6A9C595C4CFF33110DC9C209AAE489A75E28B5E`.
+  The invocation passed this updated identity through the outer launcher.
+- Live trace launcher / hook hashes after the offline build used by the tests:
+  `50DED7E1CBE5379705BB804424772ED18F45C32C203F8C7DCEBC0972B812A16B` /
+  `8A7BFE67EB75D4FB2F1FE581FF1317798B4DDC6EC5960673E226343154DB8261`.
+  Lossless orchestrator and validator hashes remained the values in the prior
+  identity table.
+
+### Runtime result
+
+The elevated 64-bit Windows PowerShell 5.1 launcher passed passive package,
+device and tool identity validation. Kernel capture became ready at
+`2026-11-06T21:39:11.0057497Z` with a confirmed kernel message. The corrected
+observer accepted the expected prelaunched `lecroyxstreamdso.exe` after exact
+PID/name/path validation. Its preflight recorded `oem108.inf`, version
+`0.2026.1030.2`, the approved loaded SYS hash, device `OK` / problem 0,
+`LecS65AcqDrv` running and the owner-confirmed physical disk isolation.
+
+The embedded server was started once (PID 7580); the outer result records one
+XStream invocation, one capture invocation and no retry. The observer called
+`New-Object -ComObject 'LeCroy.XStreamDSO'` once and received the root
+automation object, then failed while resolving the `Acquisition` object with
+RPC server unavailable (`0x800706BA`). `ExplicitAcquireCount=0`; no acquisition
+object or waveform was available.
+
+The private JSONL trace has 7,160 records: one format-4 header, 2,130 IOCTL API
+records, and no `trace_footer`. It includes 1,098 `CFDC2110` records, six
+`CFDC2124` records and 34 `CFDC2138` records. All captured `CFDC2110`
+NTSTATUS values are `0x00000000`, but there are zero family-2 opcode-`0x03`
+records, so no 130-byte request / 14-byte response pair or request hash exists.
+The original `STATUS_INVALID_DEVICE_REQUEST` behavior is therefore unresolved:
+the exact operation was not observed. The trace validator exited 1 because the
+footer was absent (and the target opcode record was absent); the trace is not a
+complete capture despite the trace launcher's process exit code 0.
+
+The raw kernel capture reached its configured 300-second duration and stopped.
+Its child exit code was not persisted. Kernel-text marker counts were zero for
+`MAMRGO`, IRQ, DPC and `PNP_STATUS:`; this run provides no evidence of a MAM GO,
+DMA completion, IRQ/DPC completion or waveform. `CFDC2124` / `CFDC2138` text
+matches in the kernel log do not prove a launch. No explicit acquisition was
+performed.
+
+### Final passive state and evidence
+
+After cleanup, the device remained `OK` with problem code 0, the service was
+running and the loaded SYS hash still matched. PnP metadata showed five active
+interface instances for the target PCI device. No XStream, DebugView or `Dbgv`
+service/process remained. No relevant warning/error event was found in the
+queried System/Application provider set. No hardware operation followed the
+failed attempt.
+
+Private evidence root:
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch28-XStreamWithCapture-20261106-attempt2`.
+The final 33-file inventory is
+`batch28-continuation-evidence-hashes-final.json`, SHA-256
+`1C360F4DE289AF40C67F18FC71F9E001686B127261075844B168C572E2BA4EFD`.
+Key private hashes:
+
+- User-mode trace: `CAC96BA72349C13C7D928A7042F608523E72BD74CB5B4157912BB8B27EE45848`
+- Kernel capture: `47A0F528C1EC5B24C00E414DAEFAD863D4B80416F215BCCD32BF81FEE10AC868`
+- Summary JSON: `5D4FA76CCA94266BC05F9631317BD2C01E75E16E1E7CD8CC30D467937ABE2629`
+
+The one-shot continuation authorization is consumed. The next step is offline
+analysis of why the XStream RPC server became unavailable and why the live hook
+omitted its footer. Do not repeat XStream until those issues are understood,
+the capture-integrity path is fixed and separately reviewed, and the owner
+provides fresh physical-isolation confirmation and explicit authorization.

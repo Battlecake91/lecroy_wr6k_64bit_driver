@@ -1,21 +1,21 @@
 # Original x86, historical x64 and current acquisition parity
 
-## Batch 28 XStream startup attempt
+## Batch 28 corrected XStream startup attempt
 
-One authorized captured attempt used installed `oem108.inf` (`0.2026.1030.2`)
-with the existing one-GO kernel limit. The pinned local server process was
-started and resumed once. The observer's preflight then rejected that expected
-server process before its COM automation call, so `XStreamLaunchCount=0` and
-`ExplicitAcquireCount=0`. The server had already emitted a partial
-initialization trace: 478 `CFDC2110` IOCTLs were recorded, but no family-2
-opcode-`0x03` request or complete 130/14-byte transaction appeared. The
-user-mode trace lacks its completion footer. No `CFDC2124`/`CFDC2138`, MAM GO,
-IRQ/DPC completion, or waveform was observed. The device remained healthy.
-
-The concrete harness defect is fixed offline: preflight now permits only the
-expected prelaunched server PID and exact executable path and rejects other
-clients. Focused mocks pass 13/13. The consumed authorization cannot be reused;
-another live attempt requires fresh explicit authorization. See the
+One authorized attempt on installed `oem108.inf` (`0.2026.1030.2`) passed the
+corrected expected-process guard and called
+`New-Object -ComObject 'LeCroy.XStreamDSO'` once. The root automation object
+was returned, but resolving its `Acquisition` object failed with RPC server
+unavailable (`0x800706BA`); there was no explicit `Acquire()` call. The private
+trace contains 1,098 `CFDC2110` calls but no family-2 opcode-`0x03` request or
+required footer, so
+the exact 130-byte/14-byte transport transaction and the original invalid
+request status remain unqualified. Six `CFDC2124` and 34 `CFDC2138` requests
+appear in the trace. No MAM GO, IRQ/DPC completion or waveform was observed.
+The device remained healthy. Focused mocks pass 13/13, the lossless capture
+suite 18/18 and the outer launcher suite 51/51; the incomplete live trace is
+not treated as a pass. The authorization is consumed; a later attempt requires
+fresh explicit authorization and disk-isolation confirmation. See the
 [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
 
 ## Batch 26 opcode-0x03 parity

@@ -9,14 +9,17 @@ This file tracks unfinished work and deferred features. The current, verified ca
   Dry-qualified; do not fabricate the opaque request body. The lossless
   external observer is pinned and ready to capture full requests/responses.
   Candidate `0.2026.1030.2` is installed as `oem108.inf`, and R0 9/9 plus R1
-  2/2 passed across separate documented runs. Batch 28 started the pinned
-  embedded local server once, then the observer rejected its own expected
-  prelaunch process before COM activation; the prefix contains 1,441 IOCTL API
-  calls but no family-2 opcode-`0x03` request and no capture footer. The
-  observer guard fix passes 13/13 focused mocks. The one-shot authorization is
-  consumed. After reviewing the offline correction and incomplete evidence,
-  obtain fresh physical-isolation confirmation and separate authorization
-  before another XStream attempt. Preserve `MamLaunchLimit=1`; do not reset it.
+  2/2 passed across separate documented runs. The corrected Batch 28 observer
+  passed preflight and attempted XStream COM startup once, but resolving the
+  `Acquisition` object failed with RPC server unavailable (`0x800706BA`). The
+  trace contains 1,098 `CFDC2110` calls but no family-2 opcode-`0x03` request
+  and no footer; the validator rejected it. No MAM GO or waveform was observed.
+  Focused observer, trace and outer-launcher suites pass 13/13, 18/18 and 51/51.
+  The one-shot authorization is consumed. Next, analyze the RPC-server
+  lifecycle and why the live tracer omitted its footer; do not run XStream again
+  until those issues are understood and the owner provides fresh authorization
+  plus physical-isolation confirmation. Preserve `MamLaunchLimit=1`; do not
+  reset it.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
