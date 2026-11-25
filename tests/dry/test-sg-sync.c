@@ -51,6 +51,7 @@ static MDL mdls[2];
 static SCATTER_GATHER_LIST sg;
 static char bytes[128];
 static volatile LONG firstTransferCalls;
+static volatile LONG firstTransferValidationCalls;
 static BOOLEAN firstTransferCompletion;
 static BOOLEAN firstTransferCommit;
 static NTSTATUS firstTransferStatus;
@@ -124,6 +125,20 @@ fakeFirstTransferExecute(
     outcome->GoCommitted = firstTransferCommit;
     outcome->CompletionObserved = firstTransferCompletion;
     return firstTransferStatus;
+}
+
+static NTSTATUS
+rejectFirstTransferAtLaunchLimit(
+    PVOID context,
+    const LECS65_FIRST_MAM_SHAPE* shape)
+{
+    UNREFERENCED_PARAMETER(context);
+    InterlockedIncrement(&firstTransferValidationCalls);
+    if (shape == NULL || shape->TransferBytes !=
+            LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_DEVICE_BUSY;
 }
 
 static NTSTATUS fakeInit(PDMA_ADAPTER dmaAdapter, void* context)
@@ -1709,6 +1724,22 @@ int main(void)
         pnpSnapshot.CompletedTransferCount == 1 &&
         !pnpSnapshot.UnknownActive && pnpSnapshot.AdmissionOpen &&
         firstTransferStage->SyncOwner.Outstanding == 0);
+
+    firstTransferValidationCalls = 0;
+    memset(&prepareResult, 0, sizeof(prepareResult));
+    status = LecDmaPnpExecuteLegacyTransfer(
+        firstTransferStage, mdls, LECS65_DMA_MIN_OBSERVED_TRANSFER_BYTES,
+        1, 2, NULL, rejectFirstTransferAtLaunchLimit,
+        fakeFirstTransferExecute, NULL, &prepareResult);
+    LecDmaPnpSnapshot(firstTransferStage, &pnpSnapshot);
+    check("launch-limit denial survives successful pre-GO mapping cleanup",
+        status == STATUS_DEVICE_BUSY && firstTransferValidationCalls == 1 &&
+        firstTransferCalls == 1 && !prepareResult.GoPossible &&
+        !prepareResult.CompletionObserved && !prepareResult.Quarantined &&
+        prepareResult.MappingReleased && !pnpSnapshot.LegacyTransferActive &&
+        pnpSnapshot.AdmissionOpen && !pnpSnapshot.UnknownActive &&
+        firstTransferStage->SyncOwner.Outstanding == 0);
+
     memset(&prepareResult, 0, sizeof(prepareResult));
     check("a second generation is admitted only after normal retirement",
         LecDmaPnpExecuteLegacyTransfer(

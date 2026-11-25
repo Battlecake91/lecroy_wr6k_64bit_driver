@@ -2,6 +2,17 @@
 
 ## Current normal-completion boundary
 
+### Pre-GO launch-limit rejection status
+
+When the qualification-only MAM launch limit is exhausted, the validator
+returns `STATUS_DEVICE_BUSY` before arm, interrupt enable, and GO. Successful
+no-launch unmapping must preserve that operation failure through IOCTL
+completion; cleanup success is not operation success. A cleanup failure remains
+authoritative and must take the existing fail-closed quarantine path. Batch 30
+fixed a status overwrite in this path and added a regression against the
+compiled production PnP/DMA stage. The fix is not in the currently installed
+`oem108.inf` image. See the [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
+
 The development-gated WDM-v3 MAM path uses a matching generation, accepted
 physical bit-0 IRQ, DPC event delivery, successful wait, successful INTEN
 cleanup and successful transaction retirement as the normal compatibility

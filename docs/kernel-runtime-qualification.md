@@ -1,5 +1,23 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 30 pre-GO status propagation correction
+
+Offline analysis of the retained Batch 28 evidence proved that exhausted
+`MamLaunchLimit` requests were rejected before arm/interrupt enable/GO, but
+`LecDmaPnpExecuteLegacyTransfer` replaced the validator's
+`STATUS_DEVICE_BUSY` with successful `LecSgSyncReleaseNoLaunch` cleanup. The
+top-level dispatch therefore completed those old requests as success with
+zero information. Batch 30 preserves the operation status after successful
+cleanup, while cleanup failure remains authoritative and enters quarantine.
+The correction is only in the Batch 30 source branch; the installed
+`oem108.inf` binary remains unchanged. See the
+[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md) for the
+request correlation, test results, and binary identities.
+
+Any candidate containing this correction requires separate package
+authorization, private-key signing approval, and installation/runtime
+authorization. No live behavior has been verified for the fix.
+
 ## Batch 29 RPC lifetime and capture-integrity analysis
 
 Batch 28 made one authorized XStream COM startup on the unchanged `oem108.inf`
@@ -30,10 +48,11 @@ Thirty-three additional `CFDC2138` calls have matching kernel
 `MAM_DMA_LIMIT: admission denied limit=1` records. In the reviewed source the
 atomic launch-limit check runs after descriptor preparation but before arm,
 interrupt enable and the hardware callback. These calls were therefore denied
-before GO, and the mapped resources were released. The transaction markers
-nevertheless show success status with `completed=0`, and the user-mode API
-records also show NTSTATUS success; source returns `STATUS_DEVICE_BUSY` for
-limit exhaustion. This status-reporting mismatch remains unresolved. The
+before GO, and the mapped resources were released. The old image's transaction
+and user-mode records nevertheless show success with `completed=0` because
+successful cleanup overwrote the validator's `STATUS_DEVICE_BUSY`. Batch 30
+reproduced and fixed this source defect offline; the installed image remains
+affected. The
 `launchDenied` field is narrower: it only marks `LecDmaTxLaunchDisabled` at the
 later transaction-commit stage, so zero there does not negate the explicit
 limit-denied messages. The observed 34 limit markers consist of one accepted

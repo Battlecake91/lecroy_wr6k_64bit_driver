@@ -3525,6 +3525,13 @@ the default-off `LecWdmV3MamDma` gate.
 Only the observed one-channel form is enabled. CFDD219F and unobserved
 multi-channel CFDC2138 remain gated.
 
+The qualification build's `MamLaunchLimit` denial is separate from the legacy
+request ABI. Exhaustion is rejected before arm/interrupt enable/GO with
+`STATUS_DEVICE_BUSY`; successful no-launch mapping cleanup must preserve that
+status. Batch 30 fixed an overwrite that returned false success with zero
+information on the old `oem108.inf` image. The fix is offline-only and has not
+been installed. See the [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
+
 
 ## Family-1 opcodes 0x50 / 0x51: registered-buffer MTT transfer
 

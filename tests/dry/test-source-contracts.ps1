@@ -924,6 +924,12 @@ Test-Contract "first MAM experiment build is exact-once and narrowly shaped" {
     $packageBuildText -match 'FirstMamExperimentOnly requires WdmV3MamDma'
 }
 
+Test-Contract "pre-GO MAM failure survives successful mapping cleanup and reaches the IRP" {
+    $pnpDmaText -match '(?s)CancelAndRelease:\s*operationStatus = status;.*?cleanupStatus = LecSgSyncReleaseNoLaunch.*?if \(!NT_SUCCESS\(cleanupStatus\)\).*?status = cleanupStatus;.*?status = operationStatus;\s*goto Exit;' -and
+    $ioctlText -match '(?s)LecIoctlAcquireBufferedOneChannel\(.*?\*Information = 0;.*?if \(prepareResult\.GoPossible\).*?\*Information = sizeof\(ULONG\);.*?return status;' -and
+    $ioctlText -match '(?s)Irp->IoStatus\.Status = status;.*?Irp->IoStatus\.Information = information;.*?IoCompleteRequest\(Irp'
+}
+
 Test-Contract "regular MAM acquisition has a separate kernel launch limit" {
     $driverProjectText -match '<LecMamLaunchLimit Condition=.*?>0</LecMamLaunchLimit>' -and
     $driverProjectText -match 'LECS65_MAM_LAUNCH_LIMIT=\$\(LecMamLaunchLimit\)' -and

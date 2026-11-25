@@ -47,21 +47,23 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   retirement on an earlier candidate. The installed regular-MAM candidate
   permits at most one launch admission. Batch 28 source-correlated one
   3,072-byte completed transfer and 33 further requests denied by the consumed
-  launch limit; their NTSTATUS success reports conflict with expected
-  `STATUS_DEVICE_BUSY`. The corrected family-2 opcode-`0x03`
+  launch limit. Batch 30 traced their false NTSTATUS success to no-launch
+  cleanup overwriting `STATUS_DEVICE_BUSY` and fixed it offline on its branch;
+  the installed image remains affected. The corrected family-2 opcode-`0x03`
   path remains unqualified on `oem108.inf`: the single Batch 28 COM startup
   returned the root automation object but failed resolving `Acquisition` with
   RPC server unavailable (`0x800706BA`); no explicit `Acquire()` or waveform
   occurred. Batch 29 source-correlated one completed 3,072-byte MAM transaction
   with normal mapping retirement in the retained kernel log. Thirty-three
-  remaining `CFDC2138` requests were denied before GO; their success status
-  report conflicts with reviewed source and remains unexplained. The private XStream
+  remaining `CFDC2138` requests were denied before GO; their old success status
+  report is explained by the cleanup overwrite. The private XStream
   trace is incomplete and lacks a footer; opcode `0x03` is absent only from its
   surviving prefix. No retry without fresh authorization and physical-isolation
   confirmation. Windows rebooted after the attempt, so its FDO-local
   `MamLaunchLimit=1` count may be fresh and a new XStream start may admit one
   GO; any future authorization must cover that risk. See
-  `docs/handoffs/batch-29-xstream-rpc-capture.md`.
+  `docs/handoffs/batch-29-xstream-rpc-capture.md`. Batch 30 evidence and
+  offline correction: `docs/handoffs/batch-30-mam-status-propagation.md`.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.
