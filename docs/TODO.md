@@ -14,11 +14,13 @@ This file tracks unfinished work and deferred features. The current, verified ca
   no explicit `Acquire()` or waveform occurred. Its trace lacks a footer, and
   the required opcode-`0x03` request is absent from the surviving prefix. Batch
   29 found one earlier 3,072-byte MAM transaction with source-corroborated
-  GO/completion and normal mapping retirement, plus 33 successful-status
-  `CFDC2138` records with matching kernel `MAM_DMA_LIMIT` denials before GO;
-  their NTSTATUS success reports conflict with the expected `STATUS_DEVICE_BUSY`.
-  Resolve that status-reporting discrepancy and identify the RPC server
-  lifecycle before any new live attempt. Batch 29's offline suites pass 28/28,
+  GO/completion and normal mapping retirement, plus 33 `CFDC2138` requests
+  denied before GO. Batch 30 identified the old image's success-status bug:
+  successful mapping cleanup overwrote the validator's
+  `STATUS_DEVICE_BUSY`. The source fix is offline-qualified but unsigned and
+  uninstalled; test it only after separate package, signing, and installation
+  authorization. The RPC server lifecycle remains unresolved. Batch 29's
+  offline suites pass 28/28,
   8/8 and 13/13. The prior one-shot authorization is consumed. Require fresh
   explicit authorization and physical-isolation confirmation before XStream;
   preserve `MamLaunchLimit=1` and do not reset it. Windows booted after the

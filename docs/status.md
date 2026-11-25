@@ -1,5 +1,23 @@
 # Current project status
 
+## Batch 30 MAM status propagation
+
+- Batch 30 resolved the success/zero-information discrepancy in the retained
+  Batch 28 trace. The launch-limit validator returned `STATUS_DEVICE_BUSY`,
+  but successful no-launch mapping cleanup overwrote it with success before
+  IRP completion. The source correction preserves the operation status when
+  cleanup succeeds; cleanup failure still takes precedence and quarantines.
+- The production-stage regression reproduced the old failure before the fix
+  (164/165) and passes after it. Focused DMA, descriptor, gate, MDL, pre-GO,
+  and source/ABI suites pass; Debug/Release default-off and WDM-v3 MAM/limit-1
+  x64 builds succeed. Exact results and unsigned binary hashes are in the
+  [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
+- This correction is source-only on the Batch 30 branch. The installed
+  `oem108.inf` / `0.2026.1030.2` binary is unchanged and still contains the
+  defect. No signing, installation, XStream, IOCTL, DMA, PnP, or hardware
+  operation occurred. Candidate creation, private-key signing, installation,
+  and live runtime qualification each require their own authorization.
+
 ## Batch 29 XStream RPC and capture analysis
 
 - Batch 28's one authorized XStream startup returned the root COM object, then
@@ -20,9 +38,10 @@
   proof or independent bus-analyzer evidence. Thirty-three other
   requests have matching `MAM_DMA_LIMIT: admission denied limit=1` records and
   released mappings, proving they were rejected before arm/interrupt-enable/
-  GO. Their user/kernel transaction status fields nevertheless report success
-  instead of the source-expected `STATUS_DEVICE_BUSY`; this status-reporting
-  inconsistency remains unresolved.
+  GO. The old installed binary reported success with zero information because
+  cleanup overwrote the launch-limit rejection. Batch 30 reproduced and fixed
+  this source defect offline; the installed `oem108.inf` binary remains
+  affected until a separately approved replacement.
 - The child was reported exited with code 0, but the trace has no footer and
   lacks durable parent finalization metadata. The capture is therefore
   incomplete; there is no evidence proving a process crash. The observer's
@@ -53,6 +72,7 @@
   `47A0F528C1EC5B24C00E414DAEFAD863D4B80416F215BCCD32BF81FEE10AC868`.
   See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
   See also the [Batch 29 analysis](handoffs/batch-29-xstream-rpc-capture.md).
+  See the [Batch 30 status-propagation analysis](handoffs/batch-30-mam-status-propagation.md).
 
 ## Batch 27 installed candidate R0/R1 qualification
 

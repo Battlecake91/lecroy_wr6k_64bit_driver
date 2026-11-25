@@ -395,6 +395,8 @@ LecDmaPnpExecuteLegacyTransfer(
     SIZE_T elementBytes;
     SIZE_T segmentBytes;
     NTSTATUS status;
+    NTSTATUS operationStatus;
+    NTSTATUS cleanupStatus;
     LECS65_DMA_TRANSACTION_RESULT txResult = LecDmaTxInvalid;
     BOOLEAN mappingOwned = FALSE;
     KIRQL irql;
@@ -482,7 +484,11 @@ LecDmaPnpExecuteLegacyTransfer(
 
     status = LecSgSyncCopySegments(
         &Stage->SyncOwner, token, elements, capacity, &count);
-    if (!NT_SUCCESS(status) || count == 0 || count > capacity) {
+    if (!NT_SUCCESS(status)) {
+        goto CancelAndRelease;
+    }
+    if (count == 0 || count > capacity) {
+        status = STATUS_INVALID_DEVICE_STATE;
         goto CancelAndRelease;
     }
     for (i = 0; i < count; ++i) {
@@ -583,13 +589,15 @@ LecDmaPnpExecuteLegacyTransfer(
     goto TransactionFailure;
 
 CancelAndRelease:
+    operationStatus = status;
     txResult = LecDmaTransactionCancel(transaction, generation, 0);
     if (txResult != LecDmaTxOk) goto TransactionFailure;
     txResult = LecDmaTransactionReleaseMapping(transaction, generation);
     if (txResult != LecDmaTxOk) goto TransactionFailure;
     if (mappingOwned) {
-        status = LecSgSyncReleaseNoLaunch(&Stage->SyncOwner, token);
-        if (!NT_SUCCESS(status)) {
+        cleanupStatus = LecSgSyncReleaseNoLaunch(&Stage->SyncOwner, token);
+        if (!NT_SUCCESS(cleanupStatus)) {
+            status = cleanupStatus;
             (void)LecDmaPnpQuarantineUnknownActive(Stage);
             goto Exit;
         }
@@ -597,6 +605,7 @@ CancelAndRelease:
         LecDmaPnpCompleteLegacyTransfer(Stage, FALSE);
         Result->MappingReleased = TRUE;
     }
+    status = operationStatus;
     goto Exit;
 
 TransactionFailure:

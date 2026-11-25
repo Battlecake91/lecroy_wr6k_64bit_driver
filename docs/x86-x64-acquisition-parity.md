@@ -1,5 +1,17 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 30 correction to Batch 29 status attribution
+
+The 33 requests denied by the x64-only `MamLaunchLimit=1` gate were returned
+as success by the old installed image because successful no-launch mapping
+cleanup overwrote `STATUS_DEVICE_BUSY`. Batch 30 reproduced this with a
+regression against the compiled production DMA/PnP stage, then corrected the
+status preservation. There is no equivalent launch-limit-exhaustion behavior
+in the original x86 driver, so the status represents the qualification gate,
+not a legacy ABI difference. The fix is unsigned and uninstalled; the existing
+`oem108.inf` image remains unchanged. See the
+[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
+
 ## Batch 29 correction to Batch 28 XStream evidence
 
 One authorized COM startup on `oem108.inf` (`0.2026.1030.2`) returned the root
@@ -16,8 +28,8 @@ two mapped segments, three descriptors and normal mapping release. This is
 one source-corroborated DMA completion, not waveform evidence. Thirty-three
 other requests have explicit kernel launch-limit denial markers, so they were
 rejected before GO and their mappings were released. Their NTSTATUS success
-reports conflict with the source-expected `STATUS_DEVICE_BUSY`; this status
-propagation/reporting discrepancy remains unresolved. There is no basis to
+reports were caused by the cleanup overwrite described above. The source
+correction is offline-only. There is no basis to
 claim that the 300-second capture itself proved normal
 trace finalization: the child was reported exited with code 0 but the trace has
 no footer and no durable parent finalization record. See the

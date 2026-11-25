@@ -1,5 +1,13 @@
 # Batch 29 XStream RPC lifetime and capture integrity
 
+## Batch 30 follow-up
+
+Batch 30 later resolved the status discrepancy described in this historical
+analysis: successful `LecSgSyncReleaseNoLaunch` cleanup overwrote the earlier
+launch-limit `STATUS_DEVICE_BUSY` result. The source correction is offline-only
+and the installed `oem108.inf` binary remains affected. See the
+[Batch 30 status-propagation handoff](batch-30-mam-status-propagation.md).
+
 ## Scope and safety
 
 This batch analyzed retained Batch 28 evidence and modified only offline
@@ -140,9 +148,9 @@ earlier validation callback.
 
 The source returns `STATUS_DEVICE_BUSY` on launch-limit exhaustion, but all 33
 user-mode records and their kernel transaction markers report
-`0x00000000`. This source/runtime status discrepancy remains unresolved; the
-cause could be build/runtime identity or logging/status propagation not
-represented in the retained records. Launch state is determinate from the
+`0x00000000`. At the time of this analysis, the discrepancy was unresolved;
+Batch 30 later proved that successful no-launch cleanup overwrote the earlier
+launch-limit status. Launch state is determinate from the
 explicit denial messages: none of these 33 reached GO. No second MAMRGO write,
 IRQ or DPC completion is supported by this capture.
 
