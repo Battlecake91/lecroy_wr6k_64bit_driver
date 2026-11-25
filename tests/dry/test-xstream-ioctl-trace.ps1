@@ -2,11 +2,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $repo 'scripts\native-process.ps1')
 $buildScript = Join-Path $repo 'scripts\build-xstream-ioctl-trace.ps1'
 $validator = Join-Path $repo 'scripts\validate-xstream-ioctl-capture.ps1'
 $captureRunner = Join-Path $repo 'scripts\invoke-xstream-lossless-capture.ps1'
 $waveformRunner = Join-Path $repo 'scripts\invoke-xstream-single-waveform.ps1'
-$toolRoot = Join-Path $repo 'tools\xstream-ioctl-trace\build\x86'
+$toolRoot = Join-Path $repo 'tools\xstream-ioctl-trace\build\x86-test'
 $launcher = Join-Path $toolRoot 'xstream_trace_launcher.exe'
 $hook = Join-Path $toolRoot 'xstream_io_hook.dll'
 $targetSource = Join-Path $PSScriptRoot 'xstream-trace-synthetic-target.c'
@@ -41,7 +42,7 @@ function Invoke-ExpectedFailure([scriptblock]$Action) {
     catch { return $true }
 }
 
-& $buildScript | Out-Host
+& $buildScript -TestMode | Out-Host
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} `
     'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -59,6 +60,7 @@ $privateRoot = Join-Path ([IO.Path]::GetTempPath()) `
 [IO.Directory]::CreateDirectory($privateRoot) | Out-Null
 try {
     $trace = Join-Path $privateRoot 'capture.jsonl'
+    $captureResult = "$trace.capture-result.json"
     $ready = Join-Path $privateRoot 'capture.ready'
     $dispatch = Join-Path $privateRoot 'target.dispatch'
     $result = Join-Path $privateRoot 'validation.json'
@@ -67,13 +69,27 @@ try {
 
     & $launcher $target $trace $ready
     $launchExit = $LASTEXITCODE
+    $launcherMetadata = Get-Content -Raw -LiteralPath $captureResult | ConvertFrom-Json
     Check 'synthetic target completed through the production launcher' `
-        ($launchExit -eq 0 -and (Test-Path $dispatch) -and (Test-Path $ready))
+        ($launchExit -eq 0 -and (Test-Path $dispatch) -and (Test-Path $ready) -and
+         $launcherMetadata.capture_classification -eq 'complete_normal' -and
+         $launcherMetadata.footer_present -and $launcherMetadata.parent_flush_succeeded)
+
+    $classificationPath = Join-Path $privateRoot 'classification.json'
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $trace -CaptureResultPath $captureResult -ResultPath $classificationPath `
+        -PrivateEvidenceRoot $privateRoot -RepositoryRoot $repo -ClassifyOnly
+    $classificationExit = $LASTEXITCODE
+    $classification = Get-Content -Raw -LiteralPath $classificationPath | ConvertFrom-Json
+    Check 'complete trace receives the complete-normal classification' `
+        ($classificationExit -eq 0 -and
+         $classification.Classification -eq 'COMPLETE_NORMAL_CAPTURE')
 
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
         -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
         -TracePath $trace -ResultPath $result `
-        -PrivateEvidenceRoot $privateRoot -RepositoryRoot $repo `
+        -CaptureResultPath $captureResult -PrivateEvidenceRoot $privateRoot -RepositoryRoot $repo `
         -ExpectedRequestCount 6 -ExpectedRequestHash $expectedRequestHash
     $validationExit = $LASTEXITCODE
     $summary = Get-Content -Raw -LiteralPath $result | ConvertFrom-Json
@@ -114,6 +130,171 @@ try {
         (@($jsonRecords | Where-Object {
             $_.type -eq 'trace_footer' -and -not [bool]$_.write_failed
         }).Count -eq 1)
+
+    $successTrace = Join-Path $privateRoot 'response14.jsonl'
+    $successReady = Join-Path $privateRoot 'response14.ready'
+    $successResult = "$successTrace.capture-result.json"
+    $successDispatch = Join-Path $privateRoot 'response14.dispatch'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $successDispatch
+    $env:LECS65_TEST_IOCTL_SUCCESS = '1'
+    & $launcher $target $successTrace $successReady
+    $responseLaunchExit = $LASTEXITCODE
+    $responseValidation = Join-Path $privateRoot 'response14-validation.json'
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $successTrace -CaptureResultPath $successResult `
+        -ResultPath $responseValidation -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ExpectedRequestCount 6 `
+        -ExpectedRequestHash $expectedRequestHash
+    $responseValidationExit = $LASTEXITCODE
+    $responseSummary = Get-Content -Raw -LiteralPath $responseValidation | ConvertFrom-Json
+    [byte[]]$expectedResponse = 0x31..0x3E
+    $responseSha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $expectedResponseHash = ([BitConverter]::ToString(
+            $responseSha.ComputeHash($expectedResponse))).Replace('-','')
+    }
+    finally { $responseSha.Dispose() }
+    Check 'synthetic response fixture records all 14 returned bytes per request' `
+        ($responseLaunchExit -eq 0 -and $responseValidationExit -eq 0 -and
+         @($responseSummary.Requests | Where-Object {
+            [int]$_.ResponseBytes -ne 14 -or
+            [string]$_.ResponseSha256 -ne $expectedResponseHash
+         }).Count -eq 0)
+    Remove-Item Env:LECS65_TEST_IOCTL_SUCCESS -ErrorAction SilentlyContinue
+
+    $hangTrace = Join-Path $privateRoot 'timeout.jsonl'
+    $hangReady = Join-Path $privateRoot 'timeout.ready'
+    $hangResult = "$hangTrace.capture-result.json"
+    $hangClassification = Join-Path $privateRoot 'timeout-classification.json'
+    $hangDispatch = Join-Path $privateRoot 'timeout.dispatch'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $hangDispatch
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'hang-after-requests'
+    & $launcher --timeout-seconds 1 $target $hangTrace $hangReady
+    $hangExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $hangTrace -CaptureResultPath $hangResult `
+        -ResultPath $hangClassification -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $hangClass = Get-Content -Raw -LiteralPath $hangClassification | ConvertFrom-Json
+    $hangReadyData = @{}
+    foreach($line in Get-Content $hangReady){$parts=$line -split '=',2;if($parts.Count -eq 2){$hangReadyData[$parts[0]]=$parts[1]}}
+    Check 'bounded timeout preserves a valid partial trace and known termination' `
+        ($hangExit -ne 0 -and $hangClass.Classification -eq 'VALID_PARTIAL_LAUNCHER_TERMINATION' -and
+         [int]$hangClass.TraceRecordCount -ge 6 -and (Test-Path $hangDispatch) -and
+         @(Get-Process -Id ([int]$hangReadyData.Pid) -ErrorAction SilentlyContinue).Count -eq 0)
+
+    $crashTrace = Join-Path $privateRoot 'crash.jsonl'
+    $crashReady = Join-Path $privateRoot 'crash.ready'
+    $crashResult = "$crashTrace.capture-result.json"
+    $crashClassification = Join-Path $privateRoot 'crash-classification.json'
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'crash'
+    & $launcher $target $crashTrace $crashReady
+    $crashExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $crashTrace -CaptureResultPath $crashResult `
+        -ResultPath $crashClassification -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $crashClass = Get-Content -Raw -LiteralPath $crashClassification | ConvertFrom-Json
+    Check 'target termination without footer remains unknown rather than a claimed crash' `
+        ($crashExit -ne 0 -and $crashClass.Classification -eq 'UNKNOWN_TERMINATION')
+
+    $crashZeroTrace = Join-Path $privateRoot 'crashzero.jsonl'
+    $crashZeroReady = Join-Path $privateRoot 'crashzero.ready'
+    $crashZeroResult = "$crashZeroTrace.capture-result.json"
+    $crashZeroClassPath = Join-Path $privateRoot 'crashzero-classification.json'
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'crashzero'
+    & $launcher $target $crashZeroTrace $crashZeroReady
+    $crashZeroExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $crashZeroTrace -CaptureResultPath $crashZeroResult `
+        -ResultPath $crashZeroClassPath -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $crashZeroClass = Get-Content -Raw -LiteralPath $crashZeroClassPath | ConvertFrom-Json
+    Check 'zero exit code without footer does not falsely imply normal capture' `
+        ($crashZeroExit -ne 0 -and $crashZeroClass.Classification -eq 'UNKNOWN_TERMINATION')
+
+    $malformedTrace = Join-Path $privateRoot 'malformed.jsonl'
+    $malformedResult = Join-Path $privateRoot 'malformed.capture-result.json'
+    $malformedClassPath = Join-Path $privateRoot 'malformed-classification.json'
+    $malformedHeader = '{"type":"legacy_xstream_user_trace","format_version":4,' +
+        '"pid":1,"capture_limit":1048576,"qpc_frequency":1,' +
+        '"header_qpc":1,"header_filetime_utc":1}'
+    [IO.File]::WriteAllText($malformedTrace,$malformedHeader + "`r`n" + '{broken',
+        (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($malformedResult,
+        '{"schema":1,"target_pid":1,"target_exit_code":0,"termination":"process_exited","footer_present":false,"footer_write_failed":false,"parent_flush_succeeded":true,"capture_classification":"unknown_termination"}',
+        (New-Object Text.UTF8Encoding($false)))
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $malformedTrace -CaptureResultPath $malformedResult `
+        -ResultPath $malformedClassPath -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $malformedClass = Get-Content -Raw -LiteralPath $malformedClassPath | ConvertFrom-Json
+    Check 'malformed partial trace is distinguished from valid unknown termination' `
+        ($malformedClass.Classification -eq 'CORRUPT_OR_TRUNCATED')
+
+    $nonzeroTrace = Join-Path $privateRoot 'orderly-nonzero.jsonl'
+    $nonzeroReady = Join-Path $privateRoot 'orderly-nonzero.ready'
+    $nonzeroResult = "$nonzeroTrace.capture-result.json"
+    $nonzeroClassPath = Join-Path $privateRoot 'orderly-nonzero-classification.json'
+    $nonzeroDispatch = Join-Path $privateRoot 'orderly-nonzero.dispatch'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $nonzeroDispatch
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'exit23'
+    & $launcher $target $nonzeroTrace $nonzeroReady
+    $nonzeroExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $nonzeroTrace -CaptureResultPath $nonzeroResult `
+        -ResultPath $nonzeroClassPath -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $nonzeroClass = Get-Content -Raw -LiteralPath $nonzeroClassPath | ConvertFrom-Json
+    Check 'orderly nonzero target exit retains complete trace but remains a process failure' `
+        ($nonzeroExit -eq 23 -and
+         $nonzeroClass.Classification -eq 'COMPLETE_NORMAL_CAPTURE' -and
+         [int64]$nonzeroClass.TargetExitCode -eq 23)
+
+    $flushTrace = Join-Path $privateRoot 'flush-failure.jsonl'
+    $flushReady = Join-Path $privateRoot 'flush-failure.ready'
+    $flushResult = "$flushTrace.capture-result.json"
+    $flushClassPath = Join-Path $privateRoot 'flush-failure-classification.json'
+    $env:LECS65_TEST_HOOK_FLUSH_FAILURE = '1'
+    & $launcher $target $flushTrace $flushReady
+    $flushExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_TEST_HOOK_FLUSH_FAILURE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $flushTrace -CaptureResultPath $flushResult `
+        -ResultPath $flushClassPath -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $flushClass = Get-Content -Raw -LiteralPath $flushClassPath | ConvertFrom-Json
+    Check 'hook flush failure is retained as corrupt/incomplete evidence' `
+        ($flushExit -ne 0 -and $flushClass.Classification -eq 'CORRUPT_OR_TRUNCATED')
+
+    $parentFlushTrace = Join-Path $privateRoot 'parent-flush-failure.jsonl'
+    $parentFlushReady = Join-Path $privateRoot 'parent-flush-failure.ready'
+    $parentFlushResult = "$parentFlushTrace.capture-result.json"
+    $parentFlushClassPath = Join-Path $privateRoot 'parent-flush-classification.json'
+    $env:LECS65_TEST_PARENT_FLUSH_FAILURE = '1'
+    & $launcher $target $parentFlushTrace $parentFlushReady
+    $parentFlushExit = $LASTEXITCODE
+    Remove-Item Env:LECS65_TEST_PARENT_FLUSH_FAILURE -ErrorAction SilentlyContinue
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
+        -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
+        -TracePath $parentFlushTrace -CaptureResultPath $parentFlushResult `
+        -ResultPath $parentFlushClassPath -PrivateEvidenceRoot $privateRoot `
+        -RepositoryRoot $repo -ClassifyOnly
+    $parentFlushClass = Get-Content -Raw -LiteralPath $parentFlushClassPath | ConvertFrom-Json
+    Check 'parent flush failure cannot be promoted to a complete capture' `
+        ($parentFlushExit -ne 0 -and
+         $parentFlushClass.Classification -eq 'UNKNOWN_TERMINATION')
 
     $secondDispatch = Join-Path $privateRoot 'second.dispatch'
     $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $secondDispatch
@@ -185,6 +366,46 @@ try {
     Check 'orchestration result exposes hashes and metadata but no opaque bytes' `
         ((Get-Content -Raw -LiteralPath `
             (Join-Path $orchestrationRoot 'result.json')) -notmatch 'input_hex|output_hex')
+
+    $nonzeroOrchestrationRoot = Join-Path $privateRoot 'orchestration-nonzero'
+    $nonzeroOrchestrationDispatch = Join-Path $privateRoot 'orchestration-nonzero.dispatch'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $nonzeroOrchestrationDispatch
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'exit23'
+    $powershell51 = Join-Path $env:SystemRoot `
+        'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $nonzeroOrchestrationArgs = @('-NoProfile','-NonInteractive',
+        '-ExecutionPolicy','Bypass','-File',$captureRunner,
+        '-Mode','OfflineMock','-EvidenceRoot',$nonzeroOrchestrationRoot,
+        '-TraceLauncherPath',$launcher,
+        '-ExpectedTraceLauncherHash',(Get-FileHash -Algorithm SHA256 $launcher).Hash,
+        '-TraceHookPath',$hook,
+        '-ExpectedTraceHookHash',(Get-FileHash -Algorithm SHA256 $hook).Hash,
+        '-TraceValidatorPath',$validator,
+        '-ExpectedTraceValidatorHash',(Get-FileHash -Algorithm SHA256 $validator).Hash,
+        '-WaveformRunnerPath',$waveformRunner,
+        '-ExpectedWaveformRunnerHash',(Get-FileHash -Algorithm SHA256 $waveformRunner).Hash,
+        '-XStreamExecutablePath',$target,
+        '-ExpectedXStreamExecutableHash',(Get-FileHash -Algorithm SHA256 $target).Hash,
+        '-ExpectedInf','oem-mock.inf','-ExpectedVersion','0.0.0.1',
+        '-ExpectedSysHash',('6'*64),'-OwnerAuthorized',
+        '-PhysicalDiskDisconnectedConfirmed','-MockStatePath',$mockState)
+    $nonzeroChild = Invoke-LecS65NativeProcess `
+        -Name 'Nonzero orchestration child test' -FilePath $powershell51 `
+        -Arguments $nonzeroOrchestrationArgs -WorkingDirectory $repo `
+        -LogPath (Join-Path $privateRoot 'nonzero-orchestration-child.log') `
+        -TimeoutSeconds 120 -ReturnOnNonZeroExit
+    $nonzeroOrchestrationExit = $nonzeroChild.ExitCode
+    Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+    $nonzeroOrchestration = Get-Content -Raw -LiteralPath `
+        (Join-Path $nonzeroOrchestrationRoot 'result.json') | ConvertFrom-Json
+    Check 'nonzero child exit propagates through production orchestration with preserved capture metadata' `
+        ($nonzeroOrchestrationExit -ne 0 -and
+         $nonzeroOrchestration.Result -eq 'FAIL' -and
+         [int]$nonzeroOrchestration.TraceLauncherExitCode -eq 23 -and
+         $nonzeroOrchestration.CaptureClassification.Classification -eq 'COMPLETE_NORMAL_CAPTURE' -and
+         $nonzeroOrchestration.TargetProcessRemaining -eq $false -and
+         (Test-Path -LiteralPath $nonzeroOrchestrationDispatch))
+
     $publicEvidence = Join-Path $repo 'private-xstream-evidence-must-not-exist'
     Check 'orchestrator rejects a repository evidence root before target dispatch' `
         (Invoke-ExpectedFailure {

@@ -82,6 +82,18 @@ $stderrTask = $null
 $traceExitCode = $null
 $targetPid = 0
 $targetProcessRemaining = $false
+$captureMetadata = $null
+$captureClassification = $null
+$captureClassificationPath = $null
+$captureResultPath = $null
+$childPowerShellPath = Join-Path $env:SystemRoot `
+    'System32\WindowsPowerShell\v1.0\powershell.exe'
+$childPowerShellEnvironment = @{
+    PSModulePath = @(
+        (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules')
+        (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules')
+    ) -join ';'
+}
 try {
     if (-not [IO.Path]::IsPathRooted($EvidenceRoot)) {
         throw 'EvidenceRoot must be an absolute private path.'
@@ -120,6 +132,9 @@ try {
          -not [Environment]::Is64BitProcess)) {
         throw 'RunAuthorized requires 64-bit Windows PowerShell 5.1.'
     }
+    if (-not (Test-Path -LiteralPath $childPowerShellPath -PathType Leaf)) {
+        throw 'The explicit Windows PowerShell 5.1 child executable is missing.'
+    }
     if ($Mode -eq 'RunAuthorized') {
         $principal = New-Object Security.Principal.WindowsPrincipal(
             [Security.Principal.WindowsIdentity]::GetCurrent())
@@ -134,10 +149,13 @@ try {
     }
 
     $rawTrace = Join-Path $EvidenceRoot 'xstream-ioctl-private.jsonl'
+    $captureResultPath = "$rawTrace.capture-result.json"
+    $captureClassificationPath = Join-Path $EvidenceRoot 'capture-classification.json'
     $readyMarker = Join-Path $EvidenceRoot 'xstream-trace-ready.txt'
     $traceStdout = Join-Path $EvidenceRoot 'trace-launcher.stdout.txt'
     $traceStderr = Join-Path $EvidenceRoot 'trace-launcher.stderr.txt'
-    $traceArguments = @('--embedding',$XStreamExecutablePath,$rawTrace,$readyMarker)
+    $traceArguments = @('--embedding','--timeout-seconds',
+        ($TimeoutSeconds + 20).ToString(),$XStreamExecutablePath,$rawTrace,$readyMarker)
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $TraceLauncherPath
     $start.Arguments = [LecS65.NativeProcessRunner]::BuildArgumentString($traceArguments)
@@ -176,7 +194,7 @@ try {
 
     $waveformEvidence = Join-Path $EvidenceRoot 'waveform-evidence'
     $waveformMode = if ($Mode -eq 'RunAuthorized') {'RunAuthorized'} else {'OfflineMock'}
-    $waveformArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+    $waveformArguments = @('-NoProfile','-NonInteractive','-STA','-ExecutionPolicy','Bypass',
         '-File',$WaveformRunnerPath,'-Mode',$waveformMode,
         '-EvidenceRoot',$waveformEvidence,
         '-XStreamExecutablePath',$XStreamExecutablePath,
@@ -190,9 +208,10 @@ try {
     }
     else { $waveformArguments += @('-MockStatePath',$MockStatePath) }
     $waveform = Invoke-LecS65NativeProcess -Name 'Pinned XStream waveform observer' `
-        -FilePath (Join-Path $PSHOME 'powershell.exe') -Arguments $waveformArguments `
+        -FilePath $childPowerShellPath -Arguments $waveformArguments `
         -WorkingDirectory (Split-Path $WaveformRunnerPath -Parent) `
         -LogPath (Join-Path $EvidenceRoot 'waveform-runner.log') `
+        -EnvironmentVariables $childPowerShellEnvironment `
         -TimeoutSeconds ($TimeoutSeconds + 30) -ReturnOnNonZeroExit
     if ($waveform.ExitCode -ne 0) {
         throw "Waveform observer exited with code $($waveform.ExitCode)."
@@ -204,6 +223,30 @@ try {
     $traceExitCode = $traceProcess.ExitCode
     New-ExclusiveTextFile $traceStdout $stdoutTask.Result
     New-ExclusiveTextFile $traceStderr $stderrTask.Result
+    if (-not (Test-Path -LiteralPath $captureResultPath -PathType Leaf)) {
+        throw 'Trace launcher exited without durable capture-finalization metadata.'
+    }
+    $captureMetadata = Get-Content -Raw -LiteralPath $captureResultPath | ConvertFrom-Json
+
+    $classificationArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+        '-File',$TraceValidatorPath,'-TracePath',$rawTrace,
+        '-CaptureResultPath',$captureResultPath,'-ResultPath',$captureClassificationPath,
+        '-PrivateEvidenceRoot',$EvidenceRoot,'-RepositoryRoot',$repositoryRoot,
+        '-ClassifyOnly')
+    $classification = Invoke-LecS65NativeProcess -Name 'XStream capture classifier' `
+        -FilePath $childPowerShellPath -Arguments $classificationArguments `
+        -WorkingDirectory (Split-Path $TraceValidatorPath -Parent) `
+        -LogPath (Join-Path $EvidenceRoot 'capture-classifier.log') `
+        -EnvironmentVariables $childPowerShellEnvironment `
+        -TimeoutSeconds 30 -ReturnOnNonZeroExit
+    if ($classification.ExitCode -ne 0) {
+        throw "Capture classification exited with code $($classification.ExitCode)."
+    }
+    $captureClassification = Get-Content -Raw -LiteralPath `
+        $captureClassificationPath | ConvertFrom-Json
+    if ($captureClassification.Classification -ne 'COMPLETE_NORMAL_CAPTURE') {
+        throw "Capture is not complete: $($captureClassification.Classification)."
+    }
     if ($traceExitCode -ne 0) {
         throw "Trace launcher exited with code $traceExitCode."
     }
@@ -211,12 +254,14 @@ try {
     $validationPath = Join-Path $EvidenceRoot 'capture-validation.json'
     $validatorArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
         '-File',$TraceValidatorPath,'-TracePath',$rawTrace,
+        '-CaptureResultPath',$captureResultPath,
         '-ResultPath',$validationPath,'-PrivateEvidenceRoot',$EvidenceRoot,
         '-RepositoryRoot',$repositoryRoot)
     $validation = Invoke-LecS65NativeProcess -Name 'Lossless XStream trace validator' `
-        -FilePath (Join-Path $PSHOME 'powershell.exe') -Arguments $validatorArguments `
+        -FilePath $childPowerShellPath -Arguments $validatorArguments `
         -WorkingDirectory (Split-Path $TraceValidatorPath -Parent) `
         -LogPath (Join-Path $EvidenceRoot 'capture-validator.log') `
+        -EnvironmentVariables $childPowerShellEnvironment `
         -TimeoutSeconds 30 -ReturnOnNonZeroExit
     if ($validation.ExitCode -ne 0) {
         throw "Trace validator exited with code $($validation.ExitCode)."
@@ -231,6 +276,8 @@ try {
         TraceLauncherExitCode = $traceExitCode
         TargetProcessId = $targetPid
         TargetProcessRemaining = $false
+        CaptureFinalization = $captureMetadata
+        CaptureClassification = $captureClassification
         Capture = $capture
         Waveform = $waveformResult
         RetryCount = 0
@@ -261,6 +308,32 @@ catch {
             try { New-ExclusiveTextFile (Join-Path $EvidenceRoot 'trace-launcher.stderr.txt') $stderrTask.Result } catch {}
         }
     }
+    if ($null -ne $captureResultPath -and
+        (Test-Path -LiteralPath $captureResultPath -PathType Leaf) -and
+        (Test-Path -LiteralPath $rawTrace -PathType Leaf) -and
+        -not (Test-Path -LiteralPath $captureClassificationPath)) {
+        try {
+            $classifyArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+                '-File',$TraceValidatorPath,'-TracePath',$rawTrace,
+                '-CaptureResultPath',$captureResultPath,'-ResultPath',$captureClassificationPath,
+                '-PrivateEvidenceRoot',$EvidenceRoot,'-RepositoryRoot',$repositoryRoot,
+                '-ClassifyOnly')
+            [void](Invoke-LecS65NativeProcess -Name 'XStream failure capture classifier' `
+                -FilePath $childPowerShellPath -Arguments $classifyArguments `
+                -WorkingDirectory (Split-Path $TraceValidatorPath -Parent) `
+                -LogPath (Join-Path $EvidenceRoot 'capture-classifier.log') `
+                -EnvironmentVariables $childPowerShellEnvironment `
+                -TimeoutSeconds 30 -ReturnOnNonZeroExit)
+        } catch { }
+    }
+    if ($null -ne $captureResultPath -and
+        (Test-Path -LiteralPath $captureResultPath -PathType Leaf)) {
+        try { $captureMetadata = Get-Content -Raw -LiteralPath $captureResultPath | ConvertFrom-Json } catch { }
+    }
+    if ($null -ne $captureClassificationPath -and
+        (Test-Path -LiteralPath $captureClassificationPath -PathType Leaf)) {
+        try { $captureClassification = Get-Content -Raw -LiteralPath $captureClassificationPath | ConvertFrom-Json } catch { }
+    }
     if ($null -ne $exceptionPath -and -not (Test-Path -LiteralPath $exceptionPath)) {
         try { New-ExclusiveTextFile $exceptionPath ($_ | Out-String) } catch {}
     }
@@ -271,6 +344,8 @@ catch {
                 CompletedUtc=[datetime]::UtcNow.ToString('o')
                 TraceLauncherExitCode=$traceExitCode;TargetProcessId=$targetPid
                 TargetProcessRemaining=$targetProcessRemaining
+                CaptureFinalization=$captureMetadata
+                CaptureClassification=$captureClassification
                 RetryCount=0;Message=$_.Exception.Message
             })
         } catch {}

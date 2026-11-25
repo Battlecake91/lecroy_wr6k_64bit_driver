@@ -177,6 +177,10 @@ static void write_raw(const char* s, DWORD n)
         InterlockedExchange(&g_writeFailed,1);
 }
 
+#if defined(LECS65_TRACE_TESTING)
+static int test_environment_enabled(const WCHAR* name);
+#endif
+
 static void write_text(const char* s)
 {
     write_raw(s, text_len(s));
@@ -191,9 +195,23 @@ static void maybe_flush_log(void)
      */
     if (InterlockedIncrement(&g_recordsSinceFlush) >= 256) {
         InterlockedExchange(&g_recordsSinceFlush, 0);
-        FlushFileBuffers(g_log);
+        if (!FlushFileBuffers(g_log))
+            InterlockedExchange(&g_writeFailed, 1);
+#if defined(LECS65_TRACE_TESTING)
+        if (test_environment_enabled(L"LECS65_TEST_HOOK_FLUSH_FAILURE"))
+            InterlockedExchange(&g_writeFailed, 1);
+#endif
     }
 }
+
+#if defined(LECS65_TRACE_TESTING)
+static int test_environment_enabled(const WCHAR* name)
+{
+    WCHAR value[8];
+    DWORD length = GetEnvironmentVariableW(name,value,8);
+    return length == 1 && value[0] == L'1';
+}
+#endif
 
 static void write_u32(DWORD value)
 {
@@ -551,6 +569,18 @@ static BOOL WINAPI HookDeviceIoControl(
         TlsSetValue(g_deviceIoControlTls,(LPVOID)1);
     result = g_realDeviceIoControl(
         hDevice,code,inBuffer,inSize,outBuffer,outSize,bytesOut,overlapped);
+#if defined(LECS65_TRACE_TESTING)
+    if (code == 0xCFDC2110U && inSize == 130U && outBuffer != NULL &&
+        outSize == 14U && bytesOut != NULL &&
+        test_environment_enabled(L"LECS65_TEST_IOCTL_SUCCESS")) {
+        DWORD index;
+        for (index=0; index<14U; ++index)
+            ((BYTE*)outBuffer)[index] = (BYTE)(0x31U + index);
+        *bytesOut = 14U;
+        result = TRUE;
+        SetLastError(ERROR_SUCCESS);
+    }
+#endif
     error = GetLastError();
     if (g_deviceIoControlTls != TLS_OUT_OF_INDEXES)
         TlsSetValue(g_deviceIoControlTls,NULL);
@@ -840,13 +870,18 @@ BOOL WINAPI DllMain(HINSTANCE instance,DWORD reason,LPVOID reserved)
         if (g_initialized != 0) {
             if (g_log != INVALID_HANDLE_VALUE) {
                 EnterCriticalSection(&g_logLock);
+#if defined(LECS65_TRACE_TESTING)
+                if (test_environment_enabled(L"LECS65_TEST_HOOK_FLUSH_FAILURE"))
+                    InterlockedExchange(&g_writeFailed,1);
+#endif
                 write_text("{\"type\":\"trace_footer\",\"records\":");
                 write_u32((DWORD)g_sequence);
                 write_text(",\"write_failed\":");
                 write_text(g_writeFailed ? "true" : "false");
                 write_text("}\r\n");
                 LeaveCriticalSection(&g_logLock);
-                FlushFileBuffers(g_log);
+                if (!FlushFileBuffers(g_log))
+                    InterlockedExchange(&g_writeFailed,1);
                 if (g_realCloseHandle) g_realCloseHandle(g_log);
                 g_log = INVALID_HANDLE_VALUE;
             }

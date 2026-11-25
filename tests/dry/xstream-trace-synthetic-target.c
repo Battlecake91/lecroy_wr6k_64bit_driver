@@ -10,6 +10,7 @@ typedef struct TRACE_THREAD_CONTEXT {
     const BYTE* Request;
     volatile LONG* Calls;
     volatile LONG* Failures;
+    int ExpectSuccess;
 } TRACE_THREAD_CONTEXT;
 
 static void write_u16(BYTE* target,USHORT value)
@@ -51,7 +52,8 @@ static DWORD WINAPI issue_requests(LPVOID parameter)
         BOOL ok = DeviceIoControl(
             context->Device,TARGET_IOCTL,(LPVOID)context->Request,130,
             output,sizeof(output),&returned,NULL);
-        if (ok || GetLastError() == ERROR_SUCCESS || returned != 0)
+        if (context->ExpectSuccess ? (!ok || returned != 14U) :
+            (ok || GetLastError() == ERROR_SUCCESS || returned != 0))
             InterlockedIncrement(context->Failures);
         InterlockedIncrement(context->Calls);
     }
@@ -110,13 +112,36 @@ int wmain(int argc,WCHAR** argv)
     volatile LONG failures = 0;
     DWORD index;
     WCHAR expectEmbedding[2];
+    WCHAR mode[32];
+    WCHAR successMode[8];
     DWORD expectLength;
+    DWORD modeLength;
+    int expectSuccess;
 
     expectLength = GetEnvironmentVariableW(
         L"LECS65_EXPECT_EMBEDDING",expectEmbedding,
         (DWORD)(sizeof(expectEmbedding)/sizeof(expectEmbedding[0])));
     if (expectLength != 0 &&
         (argc != 2 || lstrcmpiW(argv[1],L"/Embedding") != 0)) return 13;
+
+    modeLength = GetEnvironmentVariableW(
+        L"LECS65_SYNTHETIC_TARGET_MODE",mode,
+        (DWORD)(sizeof(mode)/sizeof(mode[0])));
+    if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
+        lstrcmpiW(mode,L"hang") == 0) {
+        for (;;) Sleep(1000);
+    }
+    if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
+        (lstrcmpiW(mode,L"crash") == 0 ||
+         lstrcmpiW(mode,L"crashzero") == 0)) {
+        TerminateProcess(GetCurrentProcess(),
+            lstrcmpiW(mode,L"crashzero") == 0 ? 0UL : 0xC0000005UL);
+        return 15;
+    }
+    expectSuccess = GetEnvironmentVariableW(
+        L"LECS65_TEST_IOCTL_SUCCESS",successMode,
+        (DWORD)(sizeof(successMode)/sizeof(successMode[0]))) == 1 &&
+        successMode[0] == L'1';
 
     build_request(request);
     for (index=0; index<2; ++index) {
@@ -128,6 +153,7 @@ int wmain(int argc,WCHAR** argv)
         contexts[index].Request = request;
         contexts[index].Calls = &calls;
         contexts[index].Failures = &failures;
+        contexts[index].ExpectSuccess = expectSuccess;
         threads[index] = CreateThread(
             NULL,0,issue_requests,&contexts[index],0,NULL);
         if (!threads[index]) return 11;
@@ -139,5 +165,11 @@ int wmain(int argc,WCHAR** argv)
     }
     if (!issue_successful_output_ioctl()) return 12;
     if (calls != 6 || failures != 0 || !write_dispatch_marker()) return 14;
+    if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
+        lstrcmpiW(mode,L"hang-after-requests") == 0) {
+        for (;;) Sleep(1000);
+    }
+    if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
+        lstrcmpiW(mode,L"exit23") == 0) return 23;
     return 0;
 }

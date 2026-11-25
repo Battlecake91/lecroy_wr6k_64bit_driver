@@ -1,8 +1,11 @@
+param([switch]$TestMode)
+
 $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 $srcDir = Join-Path $repo "tools\xstream-ioctl-trace"
-$outDir = Join-Path $srcDir "build\x86"
+$outName = if ($TestMode) { 'x86-test' } else { 'x86' }
+$outDir = Join-Path $srcDir ("build\" + $outName)
 $hookSrc = Join-Path $srcDir "xstream_io_hook.c"
 $launcherSrc = Join-Path $srcDir "xstream_trace_launcher.c"
 $hookOut = Join-Path $outDir "xstream_io_hook.dll"
@@ -31,7 +34,8 @@ if (-not (Test-Path $vcvars)) {
     throw "vcvars32.bat not found: $vcvars"
 }
 
-$cmd = '"' + $vcvars + '" >nul && cd /d "' + $srcDir + '" && cl /nologo /W4 /O2 /MT /D_CRT_SECURE_NO_WARNINGS /LD /Fe:"' + $hookOut + '" xstream_io_hook.c && cl /nologo /W4 /O2 /MT /D_CRT_SECURE_NO_WARNINGS /Fe:"' + $launcherOut + '" xstream_trace_launcher.c'
+$testDefine = if ($TestMode) { ' /DLECS65_TRACE_TESTING' } else { '' }
+$cmd = '"' + $vcvars + '" >nul && cd /d "' + $srcDir + '" && cl /nologo /W4 /O2 /MT /D_CRT_SECURE_NO_WARNINGS' + $testDefine + ' /LD /Fe:"' + $hookOut + '" xstream_io_hook.c && cl /nologo /W4 /O2 /MT /D_CRT_SECURE_NO_WARNINGS' + $testDefine + ' /Fe:"' + $launcherOut + '" xstream_trace_launcher.c'
 & $env:ComSpec /d /s /c $cmd
 if ($LASTEXITCODE -ne 0) {
     throw "XStream IOCTL tracer build failed with exit code $LASTEXITCODE."

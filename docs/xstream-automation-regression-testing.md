@@ -23,6 +23,27 @@ Instead, XStream automation should provide the highest regression layer:
 This third layer is capable of validating observable oscilloscope behavior without
 requiring manual GUI interaction for every driver change.
 
+## RPC readiness and capture qualification
+
+Batch 28 showed that successful creation of the root
+`LeCroy.XStreamDSO` automation object does not establish that a later
+out-of-process `Acquisition` lookup can complete. The `Item()` / `Objects.Item`
+calls perform COM dispatches and may require a live RPC round trip; RPC server
+unavailable (`0x800706BA`) is not equivalent to an ordinary missing property.
+The Batch 29 observer now uses an explicit STA child, records activation and
+lookup timestamps, retries only ordinary not-ready errors, and fails fast on
+RPC server unavailability. STA is the deterministic supported test apartment;
+it is not established as the cause of the Batch 28 server failure.
+
+Do not treat a root COM proxy or a running process as application readiness.
+Readiness must be established by a successful object/property call and, for a
+waveform test, a non-empty finite `DataArray`. The private IOCTL capture also
+requires independent process-exit/finalization metadata and a validated footer;
+missing footer means capture is incomplete even if the process exit code is
+zero. See the [runtime trace capture notes](runtime-trace.md) and [Batch 29
+handoff](handoffs/batch-29-xstream-rpc-capture.md). The COM lifecycle mocks do
+not emulate RPC marshaling or a real XStream local-server failure.
+
 ## Relevant LeCroy interfaces
 
 LeCroy documents the XStream COM automation object as the native control interface

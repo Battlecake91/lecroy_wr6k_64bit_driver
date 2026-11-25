@@ -1,4 +1,40 @@
 # Runtime trace capture
+
+## Batch 29 lossless XStream capture integrity
+
+The Batch 28 trace was an incomplete JSONL prefix: the hook's only final
+`trace_footer` was emitted from `DLL_PROCESS_DETACH`, and the previous parent
+launcher persisted no independent finalization record. A normal target exit
+should run process-detach callbacks, but `TerminateProcess` and a process crash
+can bypass orderly DLL detach; a reported target exit code alone cannot
+establish whether the hook wrote and flushed a complete trace. Existing
+evidence reports exit code 0 but has no footer, so it does not identify which
+failure path occurred.
+
+The tracer still writes each request and response synchronously under one
+critical section; periodic `FlushFileBuffers` bounds loss during an abnormal
+exit. The footer records prior write failure state and is flushed during
+detach. The parent waits for target termination, opens and flushes the trace,
+checks the footer, then atomically publishes a create-new sidecar with target
+PID/exit code, launcher termination state, footer/write-failure flags and
+parent flush outcome. The native launcher returns success only when both the
+footer and parent flush are verified. It does not synthesize a normal footer
+after abnormal termination. On a bounded launcher termination, the validator
+can classify a valid no-footer prefix as partial; malformed JSON is corrupt;
+ambiguous/no-metadata termination stays unknown. Only matching PID, one valid
+footer, matching record count and successful parent flush qualifies as a
+complete capture.
+
+The PowerShell orchestrator separately classifies output, includes sidecar
+and classification in its result, and requires complete-normal capture before
+normal success. This keeps an orderly nonzero target exit distinguishable: the
+trace can be complete while the orchestrator still reports the target failure.
+The synthetic launcher suite exercises normal exit, nonzero exit, timeout,
+process termination, missing footer, malformed trace, hook/parent flush failure,
+request/response fidelity, and the production orchestration path under Windows
+PowerShell 5.1. See the [Batch 29 handoff](handoffs/batch-29-xstream-rpc-capture.md)
+for evidence limits and exact results.
+
 ## 2026-10-01 decisive original-x86 SetOneRegister runtime capture
 
 Private owner capture: `legacy_xstream_trace_setregister_3.jsonl`.

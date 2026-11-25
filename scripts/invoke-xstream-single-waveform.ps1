@@ -38,6 +38,13 @@ $script:ExplicitAcquireCount = 0
 $script:EvidenceInitialized = $false
 $script:ResultPath = $null
 $script:ExceptionPath = $null
+$script:ObserverStartedUtc = $null
+$script:ComRootActivationStartedUtc = $null
+$script:ComRootActivationCompletedUtc = $null
+$script:AcquisitionLookupFirstStartedUtc = $null
+$script:RpcServerUnavailableUtc = $null
+$script:ComApartmentState = [Threading.Thread]::CurrentThread.GetApartmentState().ToString()
+. (Join-Path $PSScriptRoot 'xstream-com-lifecycle.ps1')
 
 function New-ExclusiveTextFile {
     param([string]$Path, [string]$Text)
@@ -139,18 +146,6 @@ function Assert-Preflight {
     }
 }
 
-function Get-XStreamObject {
-    param([object]$Parent, [string]$Name)
-    $errors = @()
-    try { return $Parent.Item($Name) }
-    catch { $errors += "Item: $($_.Exception.Message)" }
-    try { return $Parent.Objects.Item($Name) }
-    catch { $errors += "Objects.Item: $($_.Exception.Message)" }
-    try { return $Parent.Object.Item($Name) }
-    catch { $errors += "Object.Item: $($_.Exception.Message)" }
-    throw "Could not resolve XStream object '$Name': $($errors -join ' | ')"
-}
-
 function Get-XStreamControlValue {
     param([object]$Object, [string]$Name)
     return $Object.Item($Name).Value
@@ -206,6 +201,7 @@ try {
     }
     [IO.Directory]::CreateDirectory($EvidenceRoot) | Out-Null
     $script:EvidenceInitialized = $true
+    $script:ObserverStartedUtc = [datetime]::UtcNow.ToString('o')
     $script:ResultPath = Join-Path $EvidenceRoot 'result.json'
     $script:ExceptionPath = Join-Path $EvidenceRoot 'exception.txt'
 
@@ -226,6 +222,11 @@ try {
          $PSVersionTable.PSVersion.Minor -ne 1 -or
          -not [Environment]::Is64BitProcess)) {
         throw 'RunAuthorized requires 64-bit Windows PowerShell 5.1.'
+    }
+    if ($Mode -eq 'RunAuthorized' -and
+        [Threading.Thread]::CurrentThread.GetApartmentState() -ne
+            [Threading.ApartmentState]::STA) {
+        throw 'RunAuthorized requires a single-threaded COM apartment.'
     }
     if ($Mode -eq 'OfflineMock' -and
         [string]::IsNullOrWhiteSpace($MockStatePath)) {
@@ -296,12 +297,17 @@ try {
         $app = $null; $acq = $null; $c1 = $null; $horizontal = $null
         $trigger = $null; $c1Result = $null
         try {
+            $script:ComRootActivationStartedUtc = [datetime]::UtcNow.ToString('o')
             $app = New-Object -ComObject 'LeCroy.XStreamDSO'
+            $script:ComRootActivationCompletedUtc = [datetime]::UtcNow.ToString('o')
             $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
             $lastError = 'automation model not ready'
             $values = @()
             while ([datetime]::UtcNow -lt $deadline) {
                 try {
+                    if ($null -eq $script:AcquisitionLookupFirstStartedUtc) {
+                        $script:AcquisitionLookupFirstStartedUtc = [datetime]::UtcNow.ToString('o')
+                    }
                     $acq = Get-XStreamObject -Parent $app -Name 'Acquisition'
                     $c1 = Get-XStreamObject -Parent $acq -Name 'C1'
                     $horizontal = Get-XStreamObject -Parent $acq -Name 'Horizontal'
@@ -313,7 +319,13 @@ try {
                         if ($values.Count -gt 0) { break }
                     }
                 }
-                catch { $lastError = $_.Exception.Message }
+                catch {
+                    $lastError = $_.Exception.Message
+                    if (Test-XStreamRpcServerUnavailable -Exception $_.Exception) {
+                        $script:RpcServerUnavailableUtc = [datetime]::UtcNow.ToString('o')
+                        throw
+                    }
+                }
                 Start-Sleep -Milliseconds 250
             }
             if ($values.Count -eq 0) {
@@ -377,6 +389,12 @@ try {
         Schema = 1
         Result = 'PASS'
         CompletedUtc = [datetime]::UtcNow.ToString('o')
+        ObserverStartedUtc = $script:ObserverStartedUtc
+        ComApartmentState = $script:ComApartmentState
+        ComRootActivationStartedUtc = $script:ComRootActivationStartedUtc
+        ComRootActivationCompletedUtc = $script:ComRootActivationCompletedUtc
+        AcquisitionLookupFirstStartedUtc = $script:AcquisitionLookupFirstStartedUtc
+        RpcServerUnavailableUtc = $script:RpcServerUnavailableUtc
         XStreamLaunchCount = $script:LaunchCount
         ExpectedPrelaunchedProcessId = $ExpectedPrelaunchedProcessId
         ExplicitAcquireCount = $script:ExplicitAcquireCount
@@ -401,6 +419,12 @@ catch {
                     Schema=1; Result='FAIL'; CompletedUtc=[datetime]::UtcNow.ToString('o')
                     Message=$_.Exception.Message; XStreamLaunchCount=$script:LaunchCount
                     ExplicitAcquireCount=$script:ExplicitAcquireCount
+                    ObserverStartedUtc=$script:ObserverStartedUtc
+                    ComApartmentState=$script:ComApartmentState
+                    ComRootActivationStartedUtc=$script:ComRootActivationStartedUtc
+                    ComRootActivationCompletedUtc=$script:ComRootActivationCompletedUtc
+                    AcquisitionLookupFirstStartedUtc=$script:AcquisitionLookupFirstStartedUtc
+                    RpcServerUnavailableUtc=$script:RpcServerUnavailableUtc
                 })
             } catch { }
         }

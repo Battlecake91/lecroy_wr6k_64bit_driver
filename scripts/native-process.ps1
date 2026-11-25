@@ -151,6 +151,17 @@ namespace LecS65
             string liveStdOutPath, string liveStdErrPath,
             string processInfoPath)
         {
+            return Run(fileName, arguments, workingDirectory,
+                timeoutMilliseconds, streamDrainMilliseconds, liveStdOutPath,
+                liveStdErrPath, processInfoPath, null);
+        }
+
+        public static NativeProcessResult Run(
+            string fileName, string[] arguments, string workingDirectory,
+            int timeoutMilliseconds, int streamDrainMilliseconds,
+            string liveStdOutPath, string liveStdErrPath,
+            string processInfoPath, IDictionary<string, string> environment)
+        {
             if (String.IsNullOrWhiteSpace(fileName))
                 throw new ArgumentException("Native executable path is empty.", "fileName");
             if (arguments == null)
@@ -184,6 +195,15 @@ namespace LecS65
                 start.CreateNoWindow = true;
                 start.RedirectStandardOutput = true;
                 start.RedirectStandardError = true;
+                if (environment != null)
+                {
+                    foreach (KeyValuePair<string, string> entry in environment)
+                    {
+                        if (String.IsNullOrWhiteSpace(entry.Key))
+                            throw new ArgumentException("Environment variable name is empty.");
+                        start.EnvironmentVariables[entry.Key] = entry.Value ?? String.Empty;
+                    }
+                }
 
                 process = new Process();
                 process.StartInfo = start;
@@ -334,6 +354,7 @@ function Invoke-LecS65NativeProcess {
         [string]$LiveStdOutPath,
         [string]$LiveStdErrPath,
         [string]$ProcessInfoPath,
+        [hashtable]$EnvironmentVariables,
         [switch]$SuppressConsoleOutput,
         [switch]$AllowPositiveExitCode,
         [switch]$ReturnOnNonZeroExit
@@ -404,11 +425,26 @@ function Invoke-LecS65NativeProcess {
     Write-Host ''
     Write-Host ("=== {0} ===" -f $Name) -ForegroundColor Cyan
     try {
-        $result = [LecS65.NativeProcessRunner]::Run(
-            $executable, [string[]]$Arguments, $working,
-            [int]($TimeoutSeconds * 1000),
-            [int]($StreamDrainTimeoutSeconds * 1000),
-            $resolvedLiveStdOut, $resolvedLiveStdErr, $resolvedProcessInfo)
+        if ($null -ne $EnvironmentVariables -and $EnvironmentVariables.Count -gt 0) {
+            $childEnvironment = New-Object 'System.Collections.Generic.Dictionary[string,string]' `
+                ([StringComparer]::OrdinalIgnoreCase)
+            foreach ($entry in $EnvironmentVariables.GetEnumerator()) {
+                $childEnvironment[[string]$entry.Key] = [string]$entry.Value
+            }
+            $result = [LecS65.NativeProcessRunner]::Run(
+                $executable, [string[]]$Arguments, $working,
+                [int]($TimeoutSeconds * 1000),
+                [int]($StreamDrainTimeoutSeconds * 1000),
+                $resolvedLiveStdOut, $resolvedLiveStdErr, $resolvedProcessInfo,
+                $childEnvironment)
+        }
+        else {
+            $result = [LecS65.NativeProcessRunner]::Run(
+                $executable, [string[]]$Arguments, $working,
+                [int]($TimeoutSeconds * 1000),
+                [int]($StreamDrainTimeoutSeconds * 1000),
+                $resolvedLiveStdOut, $resolvedLiveStdErr, $resolvedProcessInfo)
+        }
     }
     catch {
         $message = "$Name failed to start or supervise: $($_.Exception.Message)"
