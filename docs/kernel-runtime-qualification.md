@@ -1,31 +1,56 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Batch 28 corrected XStream startup outcome
+## Batch 29 RPC lifetime and capture-integrity analysis
 
-The owner reconfirmed physical disk isolation and authorized one captured
-attempt on `oem108.inf` (`0.2026.1030.2`). The elevated Windows PowerShell 5.1
-launcher passed passive identity checks and kernel capture readiness. The
-corrected observer accepted the expected prelaunched process and called
-`New-Object -ComObject 'LeCroy.XStreamDSO'` once; the root automation object
-was returned, but lookup of its `Acquisition` object failed with RPC server
-unavailable (`0x800706BA`). `ExplicitAcquireCount` remained zero.
+Batch 28 made one authorized XStream COM startup on the unchanged `oem108.inf`
+candidate. The root `LeCroy.XStreamDSO` automation object was returned, then
+the first `Acquisition` lookup failed with RPC server unavailable
+(`0x800706BA`). The observer had used STA, so apartment mismatch is not proven.
+The cause of RPC server unavailability remains indeterminate; the root proxy
+does not prove the local server remained available for later method calls.
+No explicit `Acquire()` was issued.
 
-The user-mode trace has 7,160 records, including 2,130 IOCTL API records and
-1,098 `CFDC2110` calls. It contains no family-2 opcode-`0x03` request and no
-required trace footer; the validator rejected it. Captured `CFDC2110`
-NTSTATUS values were success, but the absent opcode-`0x03` request means its
-transport behavior and the original `STATUS_INVALID_DEVICE_REQUEST` question
-remain unqualified. Six `CFDC2124` and 34 `CFDC2138` calls were recorded, but
-no MAMRGO, IRQ/DPC completion or waveform was observed. The capture stopped at
-its 300-second limit; its child exit code was not persisted.
+The private trace contains 7,160 records and ends at `21:41:03.3368581Z`
+without its footer. It has 1,098 `CFDC2110` records but no family-2 opcode
+`0x03` request in the retained prefix. Do not infer that later calls were
+absent. The old launcher reported child exit code 0 and process disappearance,
+but did not persist parent finalization metadata; therefore process crash is
+not established and the trace remains incomplete.
 
-The post-check retained the exact installed SYS hash, device `OK` / problem 0,
-running service and five enabled interfaces; no relevant System/Application
-events or XStream/DebugView/Dbgv process remained. The installed driver was not
-changed. The observer, lossless-trace and launcher mock suites pass 13/13,
-18/18 and 51/51, respectively. Those mocks do not override the incomplete live
-trace. No further XStream attempt is allowed under the consumed authorization.
-See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+Re-reading the retained kernel log found one `CFDC2138` transaction for 3,072
+bytes with two DMA-logical segments, three descriptors, `completed=1`,
+`released=1`, and success status. In the matching source, completion is
+recorded only after `LecLaunchSelectedDma` has returned with its GO write
+committed and the completion event wait succeeds; the ISR/DPC path signals
+that event for INTST bit 0. This supports one MAMRGO write, one matching
+completion and normal mapping retirement. It does not establish waveform
+validity or repeated acquisition.
+
+Thirty-three additional `CFDC2138` calls have matching kernel
+`MAM_DMA_LIMIT: admission denied limit=1` records. In the reviewed source the
+atomic launch-limit check runs after descriptor preparation but before arm,
+interrupt enable and the hardware callback. These calls were therefore denied
+before GO, and the mapped resources were released. The transaction markers
+nevertheless show success status with `completed=0`, and the user-mode API
+records also show NTSTATUS success; source returns `STATUS_DEVICE_BUSY` for
+limit exhaustion. This status-reporting mismatch remains unresolved. The
+`launchDenied` field is narrower: it only marks `LecDmaTxLaunchDisabled` at the
+later transaction-commit stage, so zero there does not negate the explicit
+limit-denied messages. The observed 34 limit markers consist of one accepted
+admission and 33 denials; only the accepted admission is correlated with a
+completed MAM transaction.
+
+Batch 29 changes the COM observer to fail immediately on RPC-server-unavailable
+instead of repeating the lookup, records COM/apartment/failure timestamps,
+and adds parent-owned capture-finalization metadata and strict classification.
+Under Windows PowerShell 5.1, offline tests pass: trace/launcher 28/28,
+COM-lifecycle 8/8, and single-waveform observer 13/13. Batch 29 ran no hardware
+or XStream operation. Any next live attempt needs fresh explicit owner
+authorization and physical disk isolation confirmation. The host rebooted
+after that attempt; because the `MamLaunchLimit=1` count is FDO-local and is
+initialized on FDO creation, a future XStream start can admit one GO. Do not
+treat the next run as a COM-only probe. See the
+[Batch 29 handoff](handoffs/batch-29-xstream-rpc-capture.md).
 
 ## Batch 27 installation and completed R0/R1 qualification
 

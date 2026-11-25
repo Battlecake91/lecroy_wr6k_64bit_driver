@@ -1,10 +1,116 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define TRACE_ENV_NAME L"LECS65_TRACE_PATH"
 
 static void print_win32_error(const char* what);
+
+static int make_result_path(const WCHAR* tracePath,WCHAR* resultPath,DWORD capacity)
+{
+    int count = _snwprintf_s(
+        resultPath,capacity,_TRUNCATE,L"%s.capture-result.json",tracePath);
+    return count >= 0 && (DWORD)count < capacity;
+}
+
+static int write_capture_result(
+    const WCHAR* tracePath,const WCHAR* resultPath,DWORD pid,DWORD exitCode,
+    const WCHAR* termination)
+{
+    WCHAR temporary[MAX_PATH*4];
+    HANDLE trace = INVALID_HANDLE_VALUE;
+    HANDLE result = INVALID_HANDLE_VALUE;
+    LARGE_INTEGER size;
+    LARGE_INTEGER offset;
+    char tail[2049];
+    DWORD readBytes = 0;
+    DWORD written = 0;
+    char* lastLine;
+    char* end;
+    int footerPresent = 0;
+    int footerWriteFailed = 0;
+    int flushOk = 0;
+    int launcherTermination = termination &&
+        wcsncmp(termination,L"launcher_",8) == 0 &&
+        wcsstr(termination,L"_terminated") != NULL;
+    char json[1024];
+    int jsonLength;
+
+    trace = CreateFileW(
+        tracePath,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,
+        NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (trace != INVALID_HANDLE_VALUE && GetFileSizeEx(trace,&size) &&
+        size.QuadPart > 0) {
+        ULONGLONG available = (ULONGLONG)size.QuadPart;
+        DWORD wanted = available >= sizeof(tail) ?
+            (DWORD)sizeof(tail)-1U : (DWORD)available;
+        offset.QuadPart = size.QuadPart - wanted;
+        if (SetFilePointerEx(trace,offset,NULL,FILE_BEGIN) &&
+            ReadFile(trace,tail,wanted,&readBytes,NULL) && readBytes == wanted) {
+            tail[readBytes] = '\0';
+            end = tail + readBytes;
+            while (end > tail && (end[-1] == '\r' || end[-1] == '\n' ||
+                   end[-1] == ' ' || end[-1] == '\t')) --end;
+            *end = '\0';
+            lastLine = strrchr(tail,'\n');
+            lastLine = lastLine ? lastLine + 1 : tail;
+            footerPresent = strstr(lastLine,"\"type\":\"trace_footer\"") != NULL;
+            footerWriteFailed = footerPresent &&
+                strstr(lastLine,"\"write_failed\":true") != NULL;
+        }
+        flushOk = FlushFileBuffers(trace) != 0;
+    }
+#if defined(LECS65_TRACE_TESTING)
+    {
+        WCHAR forced[8];
+        if (GetEnvironmentVariableW(
+                L"LECS65_TEST_PARENT_FLUSH_FAILURE",forced,8) == 1 &&
+            forced[0] == L'1') flushOk = 0;
+    }
+#endif
+    if (trace != INVALID_HANDLE_VALUE) CloseHandle(trace);
+
+    if (_snwprintf_s(
+            temporary,sizeof(temporary)/sizeof(temporary[0]),_TRUNCATE,
+            L"%s.tmp.%lu",resultPath,(unsigned long)GetCurrentProcessId()) < 0)
+        return 0;
+    if (GetFileAttributesW(resultPath) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(temporary) != INVALID_FILE_ATTRIBUTES)
+        return 0;
+
+    jsonLength = _snprintf_s(
+        json,sizeof(json),_TRUNCATE,
+        "{\"schema\":1,\"target_pid\":%lu,\"target_exit_code\":%lu,"
+        "\"termination\":\"%ls\",\"footer_present\":%s,"
+        "\"footer_write_failed\":%s,\"parent_flush_succeeded\":%s,"
+        "\"capture_classification\":\"%s\"}\r\n",
+        (unsigned long)pid,(unsigned long)exitCode,termination,
+        footerPresent ? "true" : "false",
+        footerWriteFailed ? "true" : "false",
+        flushOk ? "true" : "false",
+        footerPresent && !footerWriteFailed && flushOk ? "complete_normal" :
+            (launcherTermination ?
+                "partial_launcher_terminated" : "unknown_termination"));
+    if (jsonLength < 0 || (size_t)jsonLength >= sizeof(json)) return 0;
+
+    result = CreateFileW(
+        temporary,GENERIC_WRITE,0,NULL,CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
+    if (result == INVALID_HANDLE_VALUE) return 0;
+    if (!WriteFile(result,json,(DWORD)jsonLength,&written,NULL) ||
+        written != (DWORD)jsonLength || !FlushFileBuffers(result)) {
+        CloseHandle(result);
+        return 0;
+    }
+    CloseHandle(result);
+    if (!MoveFileExW(temporary,resultPath,MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary);
+        return 0;
+    }
+    return footerPresent && !footerWriteFailed && flushOk;
+}
 
 static int file_exists(const WCHAR* path)
 {
@@ -198,22 +304,45 @@ int wmain(int argc,WCHAR** argv)
 {
     WCHAR hookPath[MAX_PATH*4];
     WCHAR tracePath[MAX_PATH*4];
+    WCHAR resultPath[MAX_PATH*4];
     WCHAR commandLine[32768];
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;
     DWORD exitCode = 0;
+    DWORD timeoutSeconds = 0;
+    DWORD waitResult;
+    DWORD terminationCode;
     int embedding = 0;
+    int launcherTerminated = 0;
+    int timeoutTermination = 0;
     int argumentIndex = 1;
     const WCHAR* executable;
     const WCHAR* readyPath = NULL;
 
-    if (argc > 1 && lstrcmpiW(argv[1],L"--embedding") == 0) {
-        embedding = 1;
-        argumentIndex++;
+    while (argumentIndex < argc) {
+        if (lstrcmpiW(argv[argumentIndex],L"--embedding") == 0) {
+            embedding = 1;
+            argumentIndex++;
+            continue;
+        }
+        if (lstrcmpiW(argv[argumentIndex],L"--timeout-seconds") == 0 &&
+            argumentIndex + 1 < argc) {
+            WCHAR* end = NULL;
+            unsigned long parsed;
+            parsed = wcstoul(argv[argumentIndex+1],&end,10);
+            if (!end || *end || parsed == 0 || parsed > 3600) {
+                fwprintf(stderr,L"Invalid --timeout-seconds value.\n");
+                return 2;
+            }
+            timeoutSeconds = (DWORD)parsed;
+            argumentIndex += 2;
+            continue;
+        }
+        break;
     }
     if (argc - argumentIndex < 1 || argc - argumentIndex > 3) {
         fwprintf(stderr,
-            L"Usage:\n  %s [--embedding] <target.exe> [trace.jsonl] [ready.marker]\n",
+            L"Usage:\n  %s [--embedding] [--timeout-seconds N] <target.exe> [trace.jsonl] [ready.marker]\n",
             argv[0]);
         return 2;
     }
@@ -244,6 +373,16 @@ int wmain(int argc,WCHAR** argv)
     }
     if (file_exists(tracePath)) {
         fwprintf(stderr,L"Trace path already exists: %s\n",tracePath);
+        return 1;
+    }
+    if (!make_result_path(
+            tracePath,resultPath,
+            (DWORD)(sizeof(resultPath)/sizeof(resultPath[0])))) {
+        fprintf(stderr,"Could not resolve capture result path.\n");
+        return 1;
+    }
+    if (file_exists(resultPath)) {
+        fwprintf(stderr,L"Capture result path already exists: %s\n",resultPath);
         return 1;
     }
     if (argc - argumentIndex == 3) {
@@ -295,6 +434,11 @@ int wmain(int argc,WCHAR** argv)
 
     if (!inject_dll_and_initialize(pi.hProcess,hookPath)) {
         TerminateProcess(pi.hProcess,1);
+        WaitForSingleObject(pi.hProcess,INFINITE);
+        GetExitCodeProcess(pi.hProcess,&exitCode);
+        write_capture_result(
+            tracePath,resultPath,pi.dwProcessId,exitCode,
+            L"launcher_injection_failure_terminated");
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return 1;
@@ -302,6 +446,11 @@ int wmain(int argc,WCHAR** argv)
 
     if (!write_ready_marker(readyPath,pi.dwProcessId,embedding)) {
         TerminateProcess(pi.hProcess,1);
+        WaitForSingleObject(pi.hProcess,INFINITE);
+        GetExitCodeProcess(pi.hProcess,&exitCode);
+        write_capture_result(
+            tracePath,resultPath,pi.dwProcessId,exitCode,
+            L"launcher_readiness_failure_terminated");
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return 1;
@@ -310,6 +459,11 @@ int wmain(int argc,WCHAR** argv)
     if (ResumeThread(pi.hThread) == (DWORD)-1) {
         print_win32_error("ResumeThread");
         TerminateProcess(pi.hProcess,1);
+        WaitForSingleObject(pi.hProcess,INFINITE);
+        GetExitCodeProcess(pi.hProcess,&exitCode);
+        write_capture_result(
+            tracePath,resultPath,pi.dwProcessId,exitCode,
+            L"launcher_resume_failure_terminated");
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return 1;
@@ -318,13 +472,42 @@ int wmain(int argc,WCHAR** argv)
     wprintf(L"Tracing PID %lu. Close XStream normally to finish capture.\n",
         (unsigned long)pi.dwProcessId);
 
-    WaitForSingleObject(pi.hProcess,INFINITE);
-    GetExitCodeProcess(pi.hProcess,&exitCode);
+    waitResult = WaitForSingleObject(
+        pi.hProcess,timeoutSeconds ? timeoutSeconds*1000UL : INFINITE);
+    if (waitResult == WAIT_TIMEOUT || waitResult == WAIT_FAILED) {
+        timeoutTermination = waitResult == WAIT_TIMEOUT;
+        terminationCode = waitResult == WAIT_TIMEOUT ?
+            ERROR_TIMEOUT : ERROR_INVALID_DATA;
+        launcherTerminated = TerminateProcess(pi.hProcess,terminationCode) != 0;
+        if (launcherTerminated) {
+            waitResult = WaitForSingleObject(pi.hProcess,INFINITE);
+        } else {
+            waitResult = WaitForSingleObject(pi.hProcess,5000);
+        }
+    }
+    if (!GetExitCodeProcess(pi.hProcess,&exitCode)) {
+        print_win32_error("GetExitCodeProcess");
+        exitCode = ERROR_INVALID_DATA;
+    }
 
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
+    if (!write_capture_result(
+            tracePath,resultPath,pi.dwProcessId,exitCode,
+            launcherTerminated ? (waitResult == WAIT_OBJECT_0 ?
+                (timeoutTermination ? L"launcher_timeout_terminated" :
+                    L"launcher_wait_failure_terminated") :
+                L"launcher_termination_state_unknown") :
+                (waitResult == WAIT_OBJECT_0 ? L"process_exited" :
+                    L"unknown_wait_state"))) {
+        fprintf(stderr,"Capture finalization did not prove a flushed normal footer.\n");
+        wprintf(L"Capture result: %s\n",resultPath);
+        return ERROR_INVALID_DATA;
+    }
+
     wprintf(L"XStream exited with code %lu\n",(unsigned long)exitCode);
     wprintf(L"Trace saved to: %s\n",tracePath);
+    wprintf(L"Capture result: %s\n",resultPath);
     return exitCode == 0 ? 0 : (int)exitCode;
 }

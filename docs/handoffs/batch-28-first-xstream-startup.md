@@ -1,5 +1,34 @@
 # Batch 28 first XStream startup attempt
 
+## Batch 29 evidence correction
+
+Batch 29 reanalyzed the retained kernel capture against the packaged source.
+The earlier statement below that no MAM GO or IRQ/DPC completion occurred was
+incorrect: one `CFDC2138` transaction for 3,072 bytes records
+`completed=1`, `released=1`, and success, with two mapped segments and three
+descriptors. The matching source requires GO commitment and successful
+completion-event observation before reporting this completed result. The
+launch callback writes the MAMRGO register once; its launch-count value for
+this request is three. The ISR/DPC path signals the completion event for
+INTST bit 0. This is source-corroborated evidence of one MAM GO and normal
+mapping retirement, not proof of a valid waveform.
+
+Thirty-three other `CFDC2138` records have matching kernel
+`MAM_DMA_LIMIT: admission denied limit=1` messages, proving those requests
+were rejected before arm, interrupt enable and GO; their mappings were
+released. Their user/kernel transaction status fields nevertheless report
+success rather than the source-expected `STATUS_DEVICE_BUSY`. This status
+reporting discrepancy is unresolved. The `launchDenied` field stays zero
+because it labels a later, different commit-stage denial. The user-mode IOCTL trace remains
+incomplete, has no footer and ends at `21:41:03.3368581Z`. Its 1,098
+`CFDC2110` records contain no family-2 opcode-`0x03` request in the retained
+prefix; later traffic is unknown. The child was reported exited with code 0,
+but no durable parent finalization metadata exists, so process crash is not
+established and normal capture finalization is not proven.
+
+The corrected RPC/capture analysis and offline fixes are in the
+[Batch 29 handoff](batch-29-xstream-rpc-capture.md).
+
 ## Outcome
 
 The owner reconfirmed physical x86-disk disconnection and authorized exactly

@@ -9,17 +9,21 @@ This file tracks unfinished work and deferred features. The current, verified ca
   Dry-qualified; do not fabricate the opaque request body. The lossless
   external observer is pinned and ready to capture full requests/responses.
   Candidate `0.2026.1030.2` is installed as `oem108.inf`, and R0 9/9 plus R1
-  2/2 passed across separate documented runs. The corrected Batch 28 observer
-  passed preflight and attempted XStream COM startup once, but resolving the
-  `Acquisition` object failed with RPC server unavailable (`0x800706BA`). The
-  trace contains 1,098 `CFDC2110` calls but no family-2 opcode-`0x03` request
-  and no footer; the validator rejected it. No MAM GO or waveform was observed.
-  Focused observer, trace and outer-launcher suites pass 13/13, 18/18 and 51/51.
-  The one-shot authorization is consumed. Next, analyze the RPC-server
-  lifecycle and why the live tracer omitted its footer; do not run XStream again
-  until those issues are understood and the owner provides fresh authorization
-  plus physical-isolation confirmation. Preserve `MamLaunchLimit=1`; do not
-  reset it.
+  2/2 passed across separate documented runs. The one Batch 28 COM startup
+  failed resolving `Acquisition` with RPC server unavailable (`0x800706BA`);
+  no explicit `Acquire()` or waveform occurred. Its trace lacks a footer, and
+  the required opcode-`0x03` request is absent from the surviving prefix. Batch
+  29 found one earlier 3,072-byte MAM transaction with source-corroborated
+  GO/completion and normal mapping retirement, plus 33 successful-status
+  `CFDC2138` records with matching kernel `MAM_DMA_LIMIT` denials before GO;
+  their NTSTATUS success reports conflict with the expected `STATUS_DEVICE_BUSY`.
+  Resolve that status-reporting discrepancy and identify the RPC server
+  lifecycle before any new live attempt. Batch 29's offline suites pass 28/28,
+  8/8 and 13/13. The prior one-shot authorization is consumed. Require fresh
+  explicit authorization and physical-isolation confirmation before XStream;
+  preserve `MamLaunchLimit=1` and do not reset it. Windows booted after the
+  prior attempt, so the FDO-local launch counter may be fresh and one GO may be
+  admitted during a future XStream start; treat it as a DMA experiment.
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

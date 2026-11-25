@@ -12,6 +12,8 @@ param(
     [Parameter(Mandatory=$true)][string]$ResultPath,
     [Parameter(Mandatory=$true)][string]$PrivateEvidenceRoot,
     [Parameter(Mandatory=$true)][string]$RepositoryRoot,
+    [string]$CaptureResultPath,
+    [switch]$ClassifyOnly,
     [ValidateRange(0,1000)][int]$ExpectedRequestCount = 0,
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')][string]$ExpectedRequestHash = ''
 )
@@ -76,14 +78,25 @@ function Assert-Opcode03Shape {
 
 function Write-JsonExclusive {
     param([string]$Path,[object]$Value)
-    $stream = [IO.File]::Open(
-        $Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    $temporary = "$Path.tmp.$([Guid]::NewGuid().ToString('N'))"
     try {
-        $json = ($Value | ConvertTo-Json -Depth 8) + [Environment]::NewLine
-        $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($json)
-        $stream.Write($bytes,0,$bytes.Length)
+        $stream = [IO.File]::Open($temporary,[IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,[IO.FileShare]::None)
+        try {
+            $json = ($Value | ConvertTo-Json -Depth 8) + [Environment]::NewLine
+            $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($json)
+            $stream.Write($bytes,0,$bytes.Length)
+            $stream.Flush($true)
+        }
+        finally { $stream.Dispose() }
+        [IO.File]::Move($temporary,$Path)
     }
-    finally { $stream.Dispose() }
+    catch {
+        if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Force
+        }
+        throw
+    }
 }
 
 $trace = Get-AbsolutePath $TracePath 'TracePath'
@@ -107,6 +120,97 @@ if (-not (Test-Path -LiteralPath $trace -PathType Leaf)) {
 }
 if (Test-Path -LiteralPath $result) {
     throw 'ResultPath already exists.'
+}
+
+if ($ClassifyOnly) {
+    $classification = 'UNKNOWN_TERMINATION'
+    $reason = 'Capture finalization metadata is missing or invalid.'
+    $metadata = $null
+    $headerCount = 0
+    $footerCount = 0
+    $traceRecordCount = 0
+    $corrupt = $false
+    $traceHeader = $null
+    $traceFooter = $null
+    if ([string]::IsNullOrWhiteSpace($CaptureResultPath) -or
+        -not [IO.Path]::IsPathRooted($CaptureResultPath)) {
+        throw 'ClassifyOnly requires an absolute CaptureResultPath.'
+    }
+    $captureResult = Get-AbsolutePath $CaptureResultPath 'CaptureResultPath'
+    if (-not (Test-ContainedPath -Path $captureResult -Root $privateRoot) -or
+        -not (Test-Path -LiteralPath $captureResult -PathType Leaf)) {
+        throw 'CaptureResultPath must be an existing file inside PrivateEvidenceRoot.'
+    }
+    try { $metadata = Get-Content -Raw -LiteralPath $captureResult | ConvertFrom-Json }
+    catch { $metadata = $null }
+    try {
+        $classificationReader = New-Object IO.StreamReader(
+            $trace,[Text.Encoding]::UTF8,$true)
+        try {
+            while (($line = $classificationReader.ReadLine()) -ne $null) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                try { $record = $line | ConvertFrom-Json }
+                catch { $corrupt = $true; break }
+                if ($record.type -eq 'legacy_xstream_user_trace') {
+                    $headerCount++
+                    $traceHeader = $record
+                }
+                elseif ($record.type -eq 'trace_footer') {
+                    $footerCount++
+                    $traceFooter = $record
+                }
+                else { $traceRecordCount++ }
+            }
+        }
+        finally { $classificationReader.Dispose() }
+    }
+    catch { $corrupt = $true }
+
+    if ($corrupt -or $headerCount -ne 1 -or $footerCount -gt 1 -or
+        ($null -ne $traceFooter -and [bool]$traceFooter.write_failed) -or
+        ($null -ne $metadata -and [bool]$metadata.footer_write_failed)) {
+        $classification = 'CORRUPT_OR_TRUNCATED'
+        $reason = 'Trace JSONL is malformed or its header/footer structure is invalid.'
+    }
+    elseif ($null -ne $metadata -and [int]$metadata.schema -eq 1 -and
+        [int]$traceHeader.pid -eq [int]$metadata.target_pid -and
+        $null -ne $traceFooter -and -not [bool]$traceFooter.write_failed -and
+        [bool]$metadata.footer_present -and
+        -not [bool]$metadata.footer_write_failed -and
+        [bool]$metadata.parent_flush_succeeded -and
+        [int]$traceFooter.records -eq $traceRecordCount -and
+        [string]$metadata.capture_classification -eq 'complete_normal' -and
+        [string]$metadata.termination -eq 'process_exited') {
+        $classification = 'COMPLETE_NORMAL_CAPTURE'
+        $reason = 'Target exited, the matching hook footer is valid, and the parent flushed the trace.'
+    }
+    elseif ($null -ne $metadata -and
+        [string]$metadata.termination -like 'launcher_*_terminated' -and
+        -not $corrupt -and $headerCount -eq 1 -and $footerCount -eq 0) {
+        $classification = 'VALID_PARTIAL_LAUNCHER_TERMINATION'
+        $reason = 'The launcher confirms that it terminated the target after its bounded timeout.'
+    }
+    elseif (-not $corrupt -and $headerCount -eq 1 -and $footerCount -eq 0) {
+        $classification = 'UNKNOWN_TERMINATION'
+        $reason = 'The valid trace prefix has no footer; exit status alone cannot distinguish crash, forced termination, or detach failure.'
+    }
+    else {
+        $classification = 'UNKNOWN_TERMINATION'
+        $reason = 'Trace structure is readable, but external finalization evidence is incomplete or inconsistent.'
+    }
+    Write-JsonExclusive -Path $result -Value ([ordered]@{
+        Schema=1; Classification=$classification; Reason=$reason
+        ClassifiedUtc=[DateTime]::UtcNow.ToString('o')
+        TargetPid=if($metadata){$metadata.target_pid}else{$null}
+        TargetExitCode=if($metadata){$metadata.target_exit_code}else{$null}
+        Termination=if($metadata){$metadata.termination}else{$null}
+        TraceRecordCount=$traceRecordCount; HeaderCount=$headerCount
+        FooterCount=$footerCount
+        TraceSha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $trace).Hash
+        OpaqueBytesIncluded=$false
+    })
+    Write-Host "XStream capture classification: $classification"
+    exit 0
 }
 
 $records = New-Object System.Collections.Generic.List[object]
@@ -139,6 +243,24 @@ if ($null -eq $header -or [int]$header.format_version -lt 4 -or
 }
 if ($null -eq $footer -or [bool]$footer.write_failed) {
     throw 'Trace footer is missing or reports a capture write failure.'
+}
+if (-not [string]::IsNullOrWhiteSpace($CaptureResultPath)) {
+    $captureResult = Get-AbsolutePath $CaptureResultPath 'CaptureResultPath'
+    if (-not (Test-ContainedPath -Path $captureResult -Root $privateRoot) -or
+        -not (Test-Path -LiteralPath $captureResult -PathType Leaf)) {
+        throw 'CaptureResultPath must exist inside PrivateEvidenceRoot.'
+    }
+    $captureMetadata = Get-Content -Raw -LiteralPath $captureResult | ConvertFrom-Json
+    if ([int]$captureMetadata.schema -ne 1 -or
+        [int]$captureMetadata.target_pid -ne [int]$header.pid -or
+        [int64]$captureMetadata.target_exit_code -ne 0 -or
+        [string]$captureMetadata.termination -ne 'process_exited' -or
+        -not [bool]$captureMetadata.footer_present -or
+        [bool]$captureMetadata.footer_write_failed -or
+        -not [bool]$captureMetadata.parent_flush_succeeded -or
+        [string]$captureMetadata.capture_classification -ne 'complete_normal') {
+        throw 'External process-exit metadata does not prove complete normal capture.'
+    }
 }
 if ($records.Count -eq 0) { throw 'No target opcode 0x03 records were captured.' }
 if ($ExpectedRequestCount -ne 0 -and $records.Count -ne $ExpectedRequestCount) {

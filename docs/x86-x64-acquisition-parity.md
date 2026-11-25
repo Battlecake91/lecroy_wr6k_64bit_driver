@@ -1,22 +1,27 @@
 # Original x86, historical x64 and current acquisition parity
 
-## Batch 28 corrected XStream startup attempt
+## Batch 29 correction to Batch 28 XStream evidence
 
-One authorized attempt on installed `oem108.inf` (`0.2026.1030.2`) passed the
-corrected expected-process guard and called
-`New-Object -ComObject 'LeCroy.XStreamDSO'` once. The root automation object
-was returned, but resolving its `Acquisition` object failed with RPC server
-unavailable (`0x800706BA`); there was no explicit `Acquire()` call. The private
-trace contains 1,098 `CFDC2110` calls but no family-2 opcode-`0x03` request or
-required footer, so
-the exact 130-byte/14-byte transport transaction and the original invalid
-request status remain unqualified. Six `CFDC2124` and 34 `CFDC2138` requests
-appear in the trace. No MAM GO, IRQ/DPC completion or waveform was observed.
-The device remained healthy. Focused mocks pass 13/13, the lossless capture
-suite 18/18 and the outer launcher suite 51/51; the incomplete live trace is
-not treated as a pass. The authorization is consumed; a later attempt requires
-fresh explicit authorization and disk-isolation confirmation. See the
-[Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+One authorized COM startup on `oem108.inf` (`0.2026.1030.2`) returned the root
+`LeCroy.XStreamDSO` object, then failed resolving `Acquisition` with RPC server
+unavailable (`0x800706BA`). STA was used; the RPC-server lifetime cause is
+unknown. No explicit `Acquire()` was called. The incomplete private trace has
+1,098 `CFDC2110` records, no opcode-`0x03` record in its surviving prefix and
+no footer. It does not qualify the 130-byte/14-byte transaction or waveform
+delivery.
+
+The retained kernel trace does contain one completed 3,072-byte `CFDC2138`
+MAM transaction: source-correlated GO commitment and completion status,
+two mapped segments, three descriptors and normal mapping release. This is
+one source-corroborated DMA completion, not waveform evidence. Thirty-three
+other requests have explicit kernel launch-limit denial markers, so they were
+rejected before GO and their mappings were released. Their NTSTATUS success
+reports conflict with the source-expected `STATUS_DEVICE_BUSY`; this status
+propagation/reporting discrepancy remains unresolved. There is no basis to
+claim that the 300-second capture itself proved normal
+trace finalization: the child was reported exited with code 0 but the trace has
+no footer and no durable parent finalization record. See the
+[Batch 29 analysis](handoffs/batch-29-xstream-rpc-capture.md).
 
 ## Batch 26 opcode-0x03 parity
 

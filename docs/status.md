@@ -1,37 +1,48 @@
 # Current project status
 
-## Batch 28 corrected XStream startup attempt
+## Batch 29 XStream RPC and capture analysis
 
-- On 2026-11-06, the owner reconfirmed physical x86-disk disconnection and
-  authorized exactly one corrected `XStreamWithCapture` run on the installed
-  `oem108.inf` / `0.2026.1030.2`; loaded SYS SHA-256 remained
-  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`. The
-  elevated 64-bit Windows PowerShell 5.1 launcher passed passive preflight and
-  kernel capture readiness. The corrected observer accepted the exact pinned
-  prelaunched process and attempted one XStream COM startup; there was no
-  explicit `Acquire()` call or retry.
-- `New-Object -ComObject 'LeCroy.XStreamDSO'` returned, but the observer failed
-  while resolving the `Acquisition` object with RPC server unavailable
-  (`0x800706BA`). Its result records one process launch and zero
-  explicit acquisitions. The trace has 7,160 records and 2,130 IOCTL API
-  records, including 1,098 `CFDC2110` calls; it has no footer. The trace
-  validator rejected it. No family-2 opcode-`0x03` request was captured, so the
-  130-byte/14-byte transaction and the original `STATUS_INVALID_DEVICE_REQUEST`
-  behavior remain unqualified. Captured `CFDC2110` NTSTATUS values were zero,
-  but none belonged to opcode `0x03`.
-- Six `CFDC2124` and 34 `CFDC2138` requests appear in user-mode trace metadata.
-  No MAMRGO, IRQ, DPC completion, or waveform evidence was recorded. The
-  capture reached its 300-second duration limit and stopped; its child exit
-  code was not persisted. Post-check confirmed the same SYS hash, device
-  `OK` / problem 0, running service and five active interface classes, with no
-  relevant System/Application events or remaining XStream/DebugView/Dbgv
-  process/service.
-- Offline validation: corrected observer 13/13, lossless trace suite 18/18,
-  and diagnostic launcher mock suite 51/51. These tests verify full request /
-  response and footer behavior in the synthetic path; the live capture remains
-  incomplete. No driver installation, reload, PnP transition or reboot occurred.
-  The one-shot authorization is consumed; any new XStream run requires fresh
-  physical-isolation confirmation and explicit authorization.
+- Batch 28's one authorized XStream startup returned the root COM object, then
+  failed resolving `Acquisition` with RPC server unavailable (`0x800706BA`).
+  There was no explicit `Acquire()` call. No retry is authorized. The exact RPC
+  server lifetime cause remains unknown; PowerShell was STA, so apartment
+  mismatch is not established.
+- The private JSONL prefix contains 7,160 records, 2,130 IOCTL API records and
+  1,098 `CFDC2110` records, but ends at `21:41:03.3368581Z` without its footer.
+  The required family-2 opcode-`0x03` request/response is absent from this
+  surviving prefix; later traffic cannot be ruled out. The 130-byte/14-byte
+  transaction and `STATUS_INVALID_DEVICE_REQUEST` question remain unqualified.
+- Batch 29 reclassified the retained kernel evidence: one 3,072-byte
+  `CFDC2138` transaction has `completed=1`, `released=1`, status success, two
+  mapped segments and three descriptors. Correlated source shows one MAMRGO
+  register write, matching INTST-bit-0 completion via ISR/DPC, and normal map
+  retirement. This is source-corroborated one-transfer evidence, not waveform
+  proof or independent bus-analyzer evidence. Thirty-three other
+  requests have matching `MAM_DMA_LIMIT: admission denied limit=1` records and
+  released mappings, proving they were rejected before arm/interrupt-enable/
+  GO. Their user/kernel transaction status fields nevertheless report success
+  instead of the source-expected `STATUS_DEVICE_BUSY`; this status-reporting
+  inconsistency remains unresolved.
+- The child was reported exited with code 0, but the trace has no footer and
+  lacks durable parent finalization metadata. The capture is therefore
+  incomplete; there is no evidence proving a process crash. The observer's
+  prior retry loop also obscured the first RPC-failure timestamp. Batch 29 adds
+  fail-fast RPC classification, COM timing fields, parent-owned capture
+  finalization metadata, and a strict complete/partial/unknown classifier.
+- Offline tests pass under Windows PowerShell 5.1: lossless trace and launcher
+  suite 28/28, COM lifecycle 8/8, and single-waveform observer 13/13. No live
+  XStream, driver, PnP or hardware operation occurred in Batch 29. Any future
+  XStream run requires fresh physical-isolation confirmation and explicit
+  authorization.
+- A passive host snapshot on 2026-11-25 again found the stable PCI device `OK`,
+  bound to `oem108.inf` version `0.2026.1030.2`, service running, and on-disk
+  SYS hash unchanged. No XStream/acquisition process was present. The five
+  interface result is from the prior retained Batch 28 snapshot; it was not
+  re-enumerated in Batch 29. The host booted after the Batch 28 attempt; the
+  driver initializes its `MamLaunchLimit=1` admission counter with each FDO.
+  A future XStream start may therefore admit one MAM GO. Batch 28 authorization
+  is consumed; require fresh authorization covering that possibility and
+  renewed physical x86-disk isolation confirmation.
 - Private evidence is retained at
   `C:\Users\LeCroyUser\.codex\driver-backups\Batch28-XStreamWithCapture-20261106-attempt2`.
   The 33-file final inventory SHA-256 is
@@ -41,6 +52,7 @@
   kernel capture SHA-256 is
   `47A0F528C1EC5B24C00E414DAEFAD863D4B80416F215BCCD32BF81FEE10AC868`.
   See the [Batch 28 handoff](handoffs/batch-28-first-xstream-startup.md).
+  See also the [Batch 29 analysis](handoffs/batch-29-xstream-rpc-capture.md).
 
 ## Batch 27 installed candidate R0/R1 qualification
 
