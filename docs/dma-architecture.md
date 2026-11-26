@@ -7,9 +7,12 @@ The Batch 30 correction is in the frozen, locally test-signed candidate
 successful no-launch cleanup preserves the original operation failure,
 including `STATUS_DEVICE_BUSY`; cleanup failure remains authoritative and
 follows the existing fail-closed resource path. Invalid SG segment counts fail
-explicitly. The production-stage and source/ABI regressions passed. The
-installed `oem108.inf` image is unchanged and still has the old behavior. See
-the [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+explicitly. The production-stage and source/ABI regressions passed. This
+candidate is now installed as `oem109.inf`; its approved SYS hash is
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+Safe R0/R1 compatibility passed after installation. No MAM GO or acquisition
+was attempted, so the correction's live rejection behavior and DMA lifetime
+remain unqualified. See the [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 ## Regular MAM development admission
 

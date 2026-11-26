@@ -699,8 +699,10 @@ The owner authorized exactly one promotion of the frozen unsigned
 from commit `2e0e9a781e6df68fa83795889cf6bbcf85ef5472`; it did not rebuild and
 kept the unsigned source package unchanged. The new output is a local
 test-signed candidate, not Microsoft kernel-policy or WHQL/WHCP output. It was
-not staged or installed. The full source/build identity, verification record,
-and private evidence paths are in the
+not staged or installed during the signing operation; a separately authorized
+Batch 31 installation later published it as `oem109.inf`, followed by R0/R1
+qualification. The full source/build identity, verification record, and
+private evidence paths are in the
 [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 | Artifact | SHA-256 |

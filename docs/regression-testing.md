@@ -11,7 +11,10 @@ timeout regression was fixed in the test harness: expected native stderr is
 allowed while explicit exit/result checks remain, and a source contract guards
 that policy. The focused XStream suite passed 28/28 directly and under strict
 parent capture. These offline results do not establish runtime behavior of the
-uninstalled candidate. See the
+candidate's MAM behavior. The signed candidate was installed as `oem109.inf`
+and its separately authorized hardware-independent R0/R1 ABI matrix passed
+9/9 and 2/2 once, with per-command logs and no timeout. No XStream, acquisition,
+or MAM GO occurred. See the
 [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 

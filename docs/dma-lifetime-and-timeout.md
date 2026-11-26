@@ -5,9 +5,11 @@
 The status-preserving pre-GO cleanup correction is in frozen locally
 test-signed candidate `0.2026.1126.1`, built with WDM-v3 MAM and
 `MamLaunchLimit=1`. Offline tests cover the compiled production SG/PnP stage,
-status propagation, launch admission and retirement. The package is not
-installed and provides no new runtime evidence. Preserve `UnknownActive` quarantine for
-uncertain post-GO outcomes. See the
+status propagation, launch admission and retirement. The signed package is
+now installed as `oem109.inf`; safe R0/R1 passed, but no MAM launch occurred.
+This adds no live evidence for post-GO completion, retirement, or
+`UnknownActive` behavior. Preserve `UnknownActive` quarantine for uncertain
+post-GO outcomes. See the
 [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 ## Current normal-completion boundary
@@ -21,7 +23,9 @@ completion; cleanup success is not operation success. A cleanup failure remains
 authoritative and must take the existing fail-closed quarantine path. Batch 30
 fixed a status overwrite in this path and added a regression against the
 compiled production PnP/DMA stage. The fix is not in the currently installed
-`oem108.inf` image. See the [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
+`oem108.inf` image described in the historical Batch 30 evidence; Batch 31
+subsequently installed the fixed `oem109.inf` candidate. No MAM GO has been
+used to runtime-test this rejection. See the [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
 
 The development-gated WDM-v3 MAM path uses a matching generation, accepted
 physical bit-0 IRQ, DPC event delivery, successful wait, successful INTEN

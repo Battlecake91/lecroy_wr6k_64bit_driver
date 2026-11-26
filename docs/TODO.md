@@ -5,29 +5,18 @@ This file tracks unfinished work and deferred features. The current, verified ca
 ## Active compatibility work
 
 - [ ] **Runtime-qualify restored `CFDC2110` family-2 opcode `0x03`, then
-  requalify one waveform.** The native exact-shape transport path is
-  Dry-qualified; do not fabricate the opaque request body. The lossless
-  external observer is pinned and ready to capture full requests/responses.
-  Candidate `0.2026.1030.2` is installed as `oem108.inf`, and R0 9/9 plus R1
-  2/2 passed across separate documented runs. The one Batch 28 COM startup
-  failed resolving `Acquisition` with RPC server unavailable (`0x800706BA`);
-  no explicit `Acquire()` or waveform occurred. Its trace lacks a footer, and
-  the required opcode-`0x03` request is absent from the surviving prefix. Batch
-  29 found one earlier 3,072-byte MAM transaction with source-corroborated
-  GO/completion and normal mapping retirement, plus 33 `CFDC2138` requests
-  denied before GO. Batch 30 identified the old image's success-status bug:
-  successful mapping cleanup overwrote the validator's
-  `STATUS_DEVICE_BUSY`. The fix is in frozen signed, uninstalled candidate
-  `0.2026.1126.1`; see the
-  [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Installation
-  and R0/R1 on that binary remain gated; XStream requires its
-  own fresh authorization. The RPC server lifecycle remains unresolved.
-  Batch 29's offline suites pass 28/28, 8/8 and 13/13. The prior one-shot
-  authorization is consumed. Require fresh
-  explicit authorization and physical-isolation confirmation before XStream;
-  preserve `MamLaunchLimit=1` and do not reset it. Windows booted after the
-  prior attempt, so the FDO-local launch counter may be fresh and one GO may be
-  admitted during a future XStream start; treat it as a DMA experiment.
+  requalify one waveform.** The native exact-shape transport path remains
+  Dry-qualified; do not fabricate the opaque request body. The Batch 28 XStream
+  COM attempt failed resolving `Acquisition` with RPC server unavailable
+  (`0x800706BA`); its trace was incomplete and no explicit `Acquire()` or
+  waveform was observed. Batch 31 installed the fixed signed candidate as
+  `oem109.inf` and passed R0 9/9 plus R1 2/2. That safe ABI result does not
+  authorize XStream. RPC server lifetime and the corrected opcode-`0x03`
+  request/response remain unresolved. Require fresh explicit authorization
+  and physical-isolation confirmation before another XStream attempt. Preserve
+  `MamLaunchLimit=1`; a new driver start may permit one MAM GO, so the owner
+  authorization must explicitly account for it. See the
+  [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

@@ -5,9 +5,10 @@
 The Batch 30 status-propagation correction is frozen in an offline-validated
 unsigned Release x64 source package and a separately promoted, locally
 test-signed package. The original unsigned artifact set remains unchanged.
-The signed candidate has not been staged, installed, or used against hardware;
-its manifest records `InstallAuthorized=false`. No Driver Store, PnP,
-device-open, or signing-policy change occurred.
+At the signing completion checkpoint, the signed candidate had not been
+staged or installed and its manifest recorded `InstallAuthorized=false`.
+The separately authorized installation and runtime qualification are
+recorded below. No Driver Store or PnP change occurred during signing itself.
 
 ## Source and package identity
 
@@ -94,6 +95,72 @@ the PDB identity and source records. `InfVerif` passed and `Inf2Cat` reported no
 errors or warnings. DriverVer is later/newer than installed
 `0.2026.1030.2`; Windows selection still depends on full package ranking and
 matching rules, not just this version string.
+
+## Controlled installation and runtime qualification
+
+The owner authorized one installation of the exact signed artifact set above.
+Before dispatch, the elevated Windows PowerShell 5.1 preflight verified test
+signing, the stable PCI instance, the old installed package and rollback
+artifacts, device/service state, five enabled interface classes, no active
+acquisition client, and the candidate's five artifact hashes. The capture
+workflow verified a real kernel message before invoking PnPUtil. The single
+PnPUtil child exited 0 and published `oem109.inf`; no retry, separate PnP
+restart, reboot, or automatic rollback occurred.
+
+The install launcher result reports `PASS`, exit 0, one capture invocation, one
+install invocation, zero PnP restart/no-launch/XStream invocations. The raw
+kernel capture is retained outside the repository at
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch31-InstallWithCapture-20261126-01\install-evidence\kernel-capture.log`,
+SHA-256 `9126FFE835EADB21661756D69B280D3ECCAFD8AC6E8C8421873945AAAE0CBDEF`.
+The launcher result JSON SHA-256 is
+`FD56C08F203E07BB1283E66A8EA3D8B53860C6BFE9967683C11A1D05FF3730C3`.
+
+Post-install and post-R0/R1 snapshots show the stable device instance
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0` bound to
+`oem109.inf`, version `0.2026.1126.1`; the loaded/on-disk SYS hash matches
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`. Device
+status was `OK`, problem code 0, service `LecS65AcqDrv` was running, and each
+of the five expected interface classes had one published instance for this
+PCI function. The examined target-event snapshots contained no new relevant
+Kernel-PnP, Code Integrity, or service errors. These are observations from
+the captured interval, not proof that no unrelated event exists elsewhere.
+
+The authorized R0/R1 runner started at `2026-11-26T22:53:04.3605008Z` and
+completed at `2026-11-26T23:00:25.4899814Z` with outcome `PASS`, exit code 0.
+Every approved command has a unique attempted marker, process record, stdout,
+stderr, combined log and result JSON. All 11 commands completed once with
+process exit 0 and no timeout:
+
+| Test | Result |
+| --- | --- |
+| R0-1 `build` | PASS; legacy build 1002 |
+| R0-2 `stats` | PASS; returned expected stats record |
+| R0-3 `bars` | PASS; three BARs reported |
+| R0-4 `trace` | PASS; trace query completed |
+| R0-5 `raw-ioctl 0x00222400` | PASS; zero input/output semantics |
+| R0-6 `raw-ioctl 0xCFDC2184` | PASS; zero input/output semantics |
+| R0-7 `raw-ioctl 0x00223004` | PASS; returned `0x110` |
+| R0-8 `raw-ioctl 0x00223040` | PASS; returned `0x2CAE` |
+| R0-9 `raw-ioctl 0x00222C00` | PASS; four-byte zero-delay input, zero output |
+| R1-1 `pci` | PASS; `1570:0005`, observed BDF `5:1.0` |
+| R1-2 `start-register` | PASS; legacy and BAR read both `0x00000002` |
+
+The observed BDF is informational; the stable PCI instance ID is the device
+identity. The evidence root is
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch31-R0R1-20261126-01\run-evidence`.
+Its inventory manifest SHA-256 is
+`FC2D26D52761DB00BF9EAF833AF2B8667CCF08B9994AAA968F636199B852DD6F`; the
+runner outcome SHA-256 is
+`1BD739480DA238E5FC206F22C327113185003022C1A983BCA437EC09B319420C`.
+Per-command raw data and event snapshots remain private and were not committed.
+
+At completion, the device remained `OK`, problem code 0, bound to the verified
+candidate, with service running and all five interfaces published. No XStream,
+acquisition, MAM GO, DMA, additional PnP transition, reboot, Driver Verifier,
+FPGA, or EEPROM operation occurred. `MamLaunchLimit=1` remains active. The next
+hardware stage is not authorized by this qualification; obtain fresh explicit
+authorization and renewed physical x86-disk isolation confirmation before any
+XStream start because it may admit one GO.
 
 ## Build and regression evidence
 
