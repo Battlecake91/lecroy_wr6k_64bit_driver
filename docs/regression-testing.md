@@ -1,5 +1,23 @@
 # Regression test architecture
 
+## Batch 31 package qualification
+
+The complete Dry suite passed with 852/852 functional checks. Default stress
+passed with 5,000/5,000 DMA and 1,000/1,000 INTEN iterations; expanded stress
+passed with 50,000/50,000 DMA and 10,000/10,000 INTEN iterations. All 24
+manifest-listed suites passed; source/ABI is 76/76 and the compiled production
+SG/PnP stage is 165/165. A PowerShell 5.1 captured-output issue in the XStream
+timeout regression was fixed in the test harness: expected native stderr is
+allowed while explicit exit/result checks remain, and a source contract guards
+that policy. The focused XStream suite passed 28/28 directly and under strict
+parent capture. These offline results do not establish runtime behavior of the
+candidate's MAM behavior. The signed candidate was installed as `oem109.inf`
+and its separately authorized hardware-independent R0/R1 ABI matrix passed
+9/9 and 2/2 once, with per-command logs and no timeout. No XStream, acquisition,
+or MAM GO occurred. See the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
+
 ## Batch 27 installed candidate runtime result
 
 The frozen signed candidate `0.2026.1030.2` is installed as `oem108.inf`; the

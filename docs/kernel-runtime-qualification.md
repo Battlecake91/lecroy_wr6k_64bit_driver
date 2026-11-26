@@ -1,5 +1,20 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 31 candidate readiness
+
+The frozen candidate `0.2026.1126.1`, Release x64, source/workflow commit
+`50530b8d88cfee36ec23b8648611a4bafd6dfc4e`, with WDM-v3 MAM enabled,
+`MamLaunchLimit=1`, `FirstMamExperimentOnly=false`, PnP diagnostics enabled,
+and unsafe legacy PFN DMA disabled, was installed once as `oem109.inf` after
+the required hash and capture preflight. Its loaded SYS hash is
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`. The
+complete R0 9-command and R1 2-command matrices passed once, with no timeouts;
+device status remained `OK`, problem code 0, and service running. The five
+legacy interface classes remained published. No XStream, acquisition, MAM GO,
+or DMA operation occurred. Preserve `MamLaunchLimit=1`; any active follow-up
+requires separate authorization. Full install and per-command evidence is in
+the [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
 ## Batch 30 pre-GO status propagation correction
 
 Offline analysis of the retained Batch 28 evidence proved that exhausted
@@ -9,14 +24,14 @@ Offline analysis of the retained Batch 28 evidence proved that exhausted
 top-level dispatch therefore completed those old requests as success with
 zero information. Batch 30 preserves the operation status after successful
 cleanup, while cleanup failure remains authoritative and enters quarantine.
-The correction is only in the Batch 30 source branch; the installed
-`oem108.inf` binary remains unchanged. See the
-[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md) for the
-request correlation, test results, and binary identities.
-
-Any candidate containing this correction requires separate package
-authorization, private-key signing approval, and installation/runtime
-authorization. No live behavior has been verified for the fix.
+The correction is now frozen in locally test-signed candidate
+`0.2026.1126.1`; at that Batch 30 checkpoint the installed `oem108.inf` binary
+was unchanged. Batch 31 later installed it as `oem109.inf`; current safe runtime
+results are summarized above. See the
+[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md) for request
+correlation and the [Batch 31 handoff](handoffs/batch-31-package-qualification.md)
+for package identity and offline validation. Installation and runtime checks
+require separate authorization. No live behavior has been verified for the fix.
 
 ## Batch 29 RPC lifetime and capture-integrity analysis
 

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 Set-StrictMode -Version Latest
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -170,6 +170,8 @@ try {
     $hangDispatch = Join-Path $privateRoot 'timeout.dispatch'
     $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $hangDispatch
     $env:LECS65_SYNTHETIC_TARGET_MODE = 'hang-after-requests'
+    # The production launcher emits an expected diagnostic to native stderr on
+    # timeout; its exit code and parsed classification are the assertions.
     & $launcher --timeout-seconds 1 $target $hangTrace $hangReady
     $hangExit = $LASTEXITCODE
     Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue

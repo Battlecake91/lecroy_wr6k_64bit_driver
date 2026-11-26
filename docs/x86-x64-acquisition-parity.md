@@ -1,5 +1,18 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 31 candidate
+
+The corrected pre-GO status behavior is present in locally test-signed Release x64
+candidate `0.2026.1126.1`. A launch-limit rejection should report
+`STATUS_DEVICE_BUSY` with zero information and no fabricated completion count
+when cleanup succeeds. The candidate is installed as `oem109.inf`; Batch 31
+R0/R1 passed, confirming the existing safe ABI baseline only. This does not
+exercise the MAM launch-limit rejection or prove acquisition parity. This is
+qualification-gate behavior; the original x86 driver has no equivalent
+artificial launch-limit case. See the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
+
 ## Batch 30 correction to Batch 29 status attribution
 
 The 33 requests denied by the x64-only `MamLaunchLimit=1` gate were returned
@@ -8,8 +21,10 @@ cleanup overwrote `STATUS_DEVICE_BUSY`. Batch 30 reproduced this with a
 regression against the compiled production DMA/PnP stage, then corrected the
 status preservation. There is no equivalent launch-limit-exhaustion behavior
 in the original x86 driver, so the status represents the qualification gate,
-not a legacy ABI difference. The fix is unsigned and uninstalled; the existing
-`oem108.inf` image remains unchanged. See the
+not a legacy ABI difference. At the end of Batch 30 the fix was unsigned and
+uninstalled, with `oem108.inf` still active. Batch 31 later installed the
+corrected candidate as `oem109.inf`; R0/R1 passed, but this does not itself
+qualify DMA behavior. See the
 [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
 
 ## Batch 29 correction to Batch 28 XStream evidence

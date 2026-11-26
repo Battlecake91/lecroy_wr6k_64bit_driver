@@ -1,5 +1,49 @@
 # Current project status
 
+## Batch 31 installed candidate runtime qualification
+
+- The signed Release x64 candidate `0.2026.1126.1` was installed once as
+  `oem109.inf` on 2026-11-26. The approved INF/CAT/SYS/PDB/manifest hashes
+  matched before dispatch; the loaded SYS hash is
+  `6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+- The elevated PowerShell 5.1 installation workflow returned exit code 0 and
+  published `oem109.inf` for the stable PCI instance. Its qualified DebugView
+  capture recorded an independently attributable StorNVMe kernel message;
+  the raw capture SHA-256 is
+  `9126FFE835EADB21661756D69B280D3ECCAFD8AC6E8C8421873945AAAE0CBDEF`.
+- Post-install state: device `OK`, problem code 0, service running, all five
+  legacy interface classes published once for the PCI function, and no
+  relevant new Kernel-PnP, Code Integrity, or service errors in the examined
+  interval.
+- The complete authorized R0/R1 runner passed: R0 9/9 and R1 2/2, each command
+  dispatched once with exit code 0 and no timeout. R0-7 returned `0x110`;
+  R0-8 returned `0x2CAE`; R1 identified PCI `1570:0005` at observed BDF
+  `5:1.0`; both START paths returned `0x00000002`. The persistent evidence is
+  outside the public repository at
+  `C:\Users\LeCroyUser\.codex\driver-backups\Batch31-R0R1-20261126-01`.
+- No XStream start, acquisition, MAM GO, DMA, additional PnP transition, or
+  reboot occurred. The candidate's `MamLaunchLimit=1` remains in force; any
+  further hardware operation requires separate authorization.
+
+## Batch 31 signed WDM-v3 MAM candidate
+
+- The Batch 30 pre-GO status fix is packaged from source commit
+  `50530b8d88cfee36ec23b8648611a4bafd6dfc4e`. Driver tree:
+  `5225aaed874c2f5b461280b63f234d83563cd2e3`; include tree:
+  `eb1420b7c97a5e9d827aee59dadd8b0d6dbf3add`.
+- Release x64 candidate `0.2026.1126.1` is frozen and locally test-signed.
+  Its signed promotion was made without rebuilding; the original unsigned
+  package remains unchanged. It has
+  PnP diagnostics, WDM-v3 MAM, `MamLaunchLimit=1`,
+  `FirstMamExperimentOnly=false`, and unsafe legacy PFN DMA disabled. The
+  default production build remains no-launch. The manifest records 852/852
+  functional tests and 66,000/66,000 stress iterations; Debug/Release builds,
+  INF verification and catalog generation passed. Source/ABI contracts are
+  76/76. See the [Batch 31 handoff](handoffs/batch-31-package-qualification.md)
+  for both artifact sets and test details.
+- Signing was completed once for the frozen candidate described below. The
+  later authorized installation and R0/R1 qualification are recorded above.
+
 ## Batch 30 MAM status propagation
 
 - Batch 30 resolved the success/zero-information discrepancy in the retained
@@ -12,11 +56,11 @@
   and source/ABI suites pass; Debug/Release default-off and WDM-v3 MAM/limit-1
   x64 builds succeed. Exact results and unsigned binary hashes are in the
   [Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md).
-- This correction is source-only on the Batch 30 branch. The installed
-  `oem108.inf` / `0.2026.1030.2` binary is unchanged and still contains the
-  defect. No signing, installation, XStream, IOCTL, DMA, PnP, or hardware
-  operation occurred. Candidate creation, private-key signing, installation,
-  and live runtime qualification each require their own authorization.
+- At the end of Batch 30, this correction was source-only and the installed
+  `oem108.inf` / `0.2026.1030.2` image still contained the defect. Batch 31
+  later installed the signed corrected candidate as `oem109.inf`; its R0/R1
+  result is recorded above. Batch 30 itself performed no signing, installation,
+  XStream, IOCTL, DMA, PnP, or hardware operation.
 
 ## Batch 29 XStream RPC and capture analysis
 

@@ -58,8 +58,9 @@ $runtimeBaseline = Join-Path $repo "scripts\test-runtime-baseline.ps1"
 $processDmaModel = Join-Path $repo "tests\dry\test-process-dma-lifetime.c"
 $codexContinuation = Join-Path $repo "scripts\manage-codex-continuation.ps1"
 $mockDeviceSource = Join-Path $repo "tests\dry\lecdiag-mock-device.c"
+$xstreamTraceTest = Join-Path $repo "tests\dry\test-xstream-ioctl-trace.ps1"
 
-foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $cfDc2110ProtocolSource, $cfDc2110ProtocolHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $xstreamSingleRunner, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource)) {
+foreach ($path in @($publicHeader, $driverHeader, $driverSource, $ioctlSource, $deviceSource, $acquisitionSource, $completionSource, $completionHeader, $transactionSource, $transactionHeader, $v3TransferSource, $v3TransferHeader, $layoutSource, $layoutHeader, $experimentGateSource, $experimentGateHeader, $cfDc2110ProtocolSource, $cfDc2110ProtocolHeader, $adapterSource, $adapterHeader, $ownerSource, $ownerHeader, $scatterSource, $scatterHeader, $syncSource, $syncHeader, $pnpDmaSource, $pnpDmaHeader, $pnpPublicationSource, $pnpPublicationHeader, $pnpIrpSource, $driverProject, $driverInf, $lecwatchSource, $lecdiagSource, $lecwatchBuild, $packageBuild, $nativeProcess, $diagnosticLauncher, $xstreamSingleRunner, $code52Collector, $runtimeBaseline, $processDmaModel, $codexContinuation, $mockDeviceSource, $xstreamTraceTest)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required source file missing: $path"
     }
@@ -109,6 +110,7 @@ $nativeProcessText = Get-Content -LiteralPath $nativeProcess -Raw
 $diagnosticLauncherText = Get-Content -LiteralPath $diagnosticLauncher -Raw
 $xstreamSingleRunnerText = Get-Content -LiteralPath $xstreamSingleRunner -Raw
 $mockDeviceText = Get-Content -LiteralPath $mockDeviceSource -Raw
+$xstreamTraceTestText = Get-Content -LiteralPath $xstreamTraceTest -Raw
 
 $script:Checks = 0
 $script:Passed = 0
@@ -989,6 +991,12 @@ Test-Contract "single-waveform runner observes automatic XStream data without Ac
     $xstreamSingleRunnerText -match 'FileMode\]::CreateNew' -and
     $xstreamSingleRunnerText -notmatch '\.Acquire\s*\(' -and
     $xstreamSingleRunnerText -notmatch 'DeviceIoControl|pnputil|restart-device|Stop-Process|\.Kill\s*\('
+}
+
+Test-Contract "lossless XStream trace tests tolerate expected native stderr in captured runs" {
+    $xstreamTraceTestText -match '\$ErrorActionPreference = ''Continue''' -and
+    $xstreamTraceTestText -match '\$hangExit = \$LASTEXITCODE' -and
+    $xstreamTraceTestText -match 'bounded timeout preserves a valid partial trace and known termination'
 }
 
 Test-Contract "real capture readiness accounts for buffered DebugView logging" {

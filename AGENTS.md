@@ -31,14 +31,12 @@ Keep this section limited to the latest verified state. Replace obsolete values 
 - XStream on x64 has demonstrated real waveform acquisition and normal oscilloscope operation for the already-tested acquisition controls.
 - Last established real-PCI safe ABI baseline: 9/9 PASS.
 - Last established hardware regression milestone: 11/11 PASS.
-- The current x64 test package is `oem108.inf`, version `0.2026.1030.2`, with
+- The current x64 test package is `oem109.inf`, version `0.2026.1126.1`, with
   loaded SYS SHA-256
-  `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`.
-  It has `MamLaunchLimit=1`. Its 9-command R0 and 2-command R1 qualification
-  passed across two explicitly documented runs; R0-1 through R0-7 were not
-  repeated during continuation. XStream waveform delivery on this candidate
-  and repeated acquisition remain unqualified. No XStream start or additional
-  MAM launch is authorized by the R0/R1 result.
+  `6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+  It has `MamLaunchLimit=1`. Batch 31 installed it once; R0 9/9 and R1 2/2
+  passed with per-command evidence. This does not authorize XStream, acquisition,
+  or another MAM launch. See `docs/status.md` and the Batch 31 handoff.
 - A hardened native source implementation of legacy `SetOneRegister` IOCTL `0x0022303C` is present in the merged development revision. Debug and Release x64 builds are verified; loading and hardware behavior are not.
 - The original 43-entry legacy register list and the query/set record ABI are understood well enough for the current native implementation.
 - The one-channel `CFDC2124`/`CFDC2138` MAM request uses WDM-v3 DMA-logical
