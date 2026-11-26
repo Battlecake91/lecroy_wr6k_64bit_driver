@@ -16,7 +16,12 @@ This file tracks unfinished work and deferred features. The current, verified ca
   and physical-isolation confirmation before another XStream attempt. Preserve
   `MamLaunchLimit=1`; a new driver start may permit one MAM GO, so the owner
   authorization must explicitly account for it. See the
-  [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+  [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Batch 32
+  offline checks reconfirmed the installed identity and passed focused observer
+  suites, but production trace launcher/hook files were not located and the
+  current test-signing state could not be read without an elevated token. No
+  live attempt occurred; see the
+  [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,

@@ -1,5 +1,27 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 32 offline status and live gate
+
+The Batch 31 installed candidate remains `oem109.inf`, version
+`0.2026.1126.1`, with the qualified SYS identity recorded in
+[`docs/status.md`](status.md). Batch 32 passive inspection reconfirmed the
+loaded image hash, device health, service, and five enabled interface
+instances. Focused Windows PowerShell 5.1 observer tests passed, but production
+trace launcher/hook files were not located. The read-only BCD query was denied
+because the current shell was not elevated. No capture driver, XStream process,
+COM activation, device handle, IOCTL, or MAM launch was used. The exact evidence
+and offline test counts are in the
+[Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
+
+Do not start the next XStream attempt until the production trace assets are
+located and hash-verified, an elevated passive preflight verifies test-signing
+and package state, the owner freshly confirms physical disconnection of the
+productive Windows x86 disk, and the owner explicitly authorizes one COM
+startup with its automatic IOCTLs, private capture, and at most one MAM GO.
+Do not call `Acquire()`, change CVars, retry, reset the MAM launch limit, reload
+the driver, or claim opcode-`0x03`/waveform qualification without direct
+complete evidence.
+
 ## Batch 31 candidate readiness
 
 The frozen candidate `0.2026.1126.1`, Release x64, source/workflow commit

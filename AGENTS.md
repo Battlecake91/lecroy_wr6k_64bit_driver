@@ -46,9 +46,10 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   permits at most one launch admission. Batch 28 source-correlated one
   3,072-byte completed transfer and 33 further requests denied by the consumed
   launch limit. Batch 30 traced their false NTSTATUS success to no-launch
-  cleanup overwriting `STATUS_DEVICE_BUSY` and fixed it offline on its branch;
-  the installed image remains affected. The corrected family-2 opcode-`0x03`
-  path remains unqualified on `oem108.inf`: the single Batch 28 COM startup
+  cleanup overwriting `STATUS_DEVICE_BUSY`; the correction is now installed in
+  `oem109.inf`, but its launch-limit denial has not been runtime-observed. The
+  corrected family-2 opcode-`0x03` path remains unqualified on `oem109.inf`: the
+  single Batch 28 COM startup on the former `oem108.inf`
   returned the root automation object but failed resolving `Acquisition` with
   RPC server unavailable (`0x800706BA`); no explicit `Acquire()` or waveform
   occurred. Batch 29 source-correlated one completed 3,072-byte MAM transaction

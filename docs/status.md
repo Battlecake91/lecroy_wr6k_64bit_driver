@@ -44,6 +44,22 @@
 - Signing was completed once for the frozen candidate described below. The
   later authorized installation and R0/R1 qualification are recorded above.
 
+## Batch 32 offline XStream/MAM status preparation
+
+- Passive inspection reconfirmed `oem109.inf` / `0.2026.1126.1`, the expected
+  loaded SYS hash, device `OK` / problem code 0, running service, and all five
+  enabled interface instances. The frozen Batch 31 INF/CAT/SYS/PDB/manifest
+  hashes match their approved identities. No XStream, capture, IOCTL, MAM GO,
+  or other hardware operation occurred.
+- Offline Windows PowerShell 5.1 tests passed: launcher mock suite 51/51,
+  COM lifecycle 8/8, IOCTL trace 28/28, and single-waveform observer 13/13.
+  The test-only trace artifacts are not production capture binaries.
+- Batch 32 remains offline-only. The production trace launcher and hook were
+  not found in the scoped local search, the elevated BCD check could not run
+  from the non-elevated shell, and no fresh physical x86-disk isolation
+  confirmation or XStream authorization was provided. See the
+  [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
+
 ## Batch 30 MAM status propagation
 
 - Batch 30 resolved the success/zero-information discrepancy in the retained
