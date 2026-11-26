@@ -1,5 +1,25 @@
 # Current project status
 
+## Batch 31 unsigned WDM-v3 MAM candidate
+
+- The Batch 30 pre-GO status fix is packaged from source commit
+  `50530b8d88cfee36ec23b8648611a4bafd6dfc4e`. Driver tree:
+  `5225aaed874c2f5b461280b63f234d83563cd2e3`; include tree:
+  `eb1420b7c97a5e9d827aee59dadd8b0d6dbf3add`.
+- Release x64 candidate `0.2026.1126.1` is frozen and unsigned. It has
+  PnP diagnostics, WDM-v3 MAM, `MamLaunchLimit=1`,
+  `FirstMamExperimentOnly=false`, and unsafe legacy PFN DMA disabled. The
+  default production build remains no-launch. The manifest records 852/852
+  functional tests and 66,000/66,000 stress iterations; Debug/Release builds,
+  INF verification and catalog generation passed. Source/ABI contracts are
+  76/76. See the [Batch 31 handoff](handoffs/batch-31-package-qualification.md)
+  for hashes and test details.
+- No signing, installation, device access, PnP transition or DMA occurred.
+  A passive host snapshot on 2026-11-26 found the device `OK`, `oem108.inf` /
+  `0.2026.1030.2`, the expected loaded SYS hash and the service running. The
+  fix is not present in that installed image. Signing, installation, R0/R1
+  and later XStream qualification remain separate authorization gates.
+
 ## Batch 30 MAM status propagation
 
 - Batch 30 resolved the success/zero-information discrepancy in the retained

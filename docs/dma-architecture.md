@@ -1,5 +1,15 @@
 # WR6k DMA and acquisition architecture
 
+## Batch 31 status-preserving pre-GO cleanup
+
+The Batch 30 correction is in the frozen unsigned candidate `0.2026.1126.1`:
+successful no-launch cleanup preserves the original operation failure,
+including `STATUS_DEVICE_BUSY`; cleanup failure remains authoritative and
+follows the existing fail-closed resource path. Invalid SG segment counts fail
+explicitly. The production-stage and source/ABI regressions passed. The
+installed `oem108.inf` image is unchanged and still has the old behavior. See
+the [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
 ## Regular MAM development admission
 
 A development build may set `LecMamLaunchLimit` to a positive number. The

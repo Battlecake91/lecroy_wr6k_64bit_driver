@@ -1,5 +1,16 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 31 candidate
+
+The corrected pre-GO status behavior is present in unsigned Release x64
+candidate `0.2026.1126.1`. A launch-limit rejection should report
+`STATUS_DEVICE_BUSY` with zero information and no fabricated completion count
+when cleanup succeeds. This is qualification-gate behavior; the original x86
+driver has no equivalent artificial launch-limit case. The candidate is not
+signed or installed, so it establishes no new runtime parity. See the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
+
 ## Batch 30 correction to Batch 29 status attribution
 
 The 33 requests denied by the x64-only `MamLaunchLimit=1` gate were returned

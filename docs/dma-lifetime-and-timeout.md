@@ -1,5 +1,15 @@
 # WR6k DMA completion, timeout and memory lifetime
 
+## Batch 31 candidate status
+
+The status-preserving pre-GO cleanup correction is in frozen unsigned
+candidate `0.2026.1126.1`, built with WDM-v3 MAM and `MamLaunchLimit=1`.
+Offline tests cover the compiled production SG/PnP stage, status propagation,
+launch admission and retirement. The package is not signed or installed; it
+provides no new runtime evidence. Preserve `UnknownActive` quarantine for
+uncertain post-GO outcomes. See the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
 ## Current normal-completion boundary
 
 ### Pre-GO launch-limit rejection status

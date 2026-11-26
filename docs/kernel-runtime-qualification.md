@@ -1,5 +1,18 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 31 candidate readiness
+
+The frozen candidate is `0.2026.1126.1`, Release x64, source/workflow commit
+`50530b8d88cfee36ec23b8648611a4bafd6dfc4e`, with WDM-v3 MAM enabled,
+`MamLaunchLimit=1`, `FirstMamExperimentOnly=false`, PnP diagnostics enabled,
+and unsafe legacy PFN DMA disabled. It is unsigned and not installed. After
+separate signing and installation authorization, verify loaded SYS identity
+and device health, then run the established R0 9-command and R1 2-command
+matrices once with per-command evidence. XStream needs fresh authorization and
+physical x86-disk isolation confirmation; its start may admit one MAM GO under
+this package's launch limit. No runtime test occurred in Batch 31. See the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
 ## Batch 30 pre-GO status propagation correction
 
 Offline analysis of the retained Batch 28 evidence proved that exhausted
@@ -9,13 +22,12 @@ Offline analysis of the retained Batch 28 evidence proved that exhausted
 top-level dispatch therefore completed those old requests as success with
 zero information. Batch 30 preserves the operation status after successful
 cleanup, while cleanup failure remains authoritative and enters quarantine.
-The correction is only in the Batch 30 source branch; the installed
-`oem108.inf` binary remains unchanged. See the
-[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md) for the
-request correlation, test results, and binary identities.
-
-Any candidate containing this correction requires separate package
-authorization, private-key signing approval, and installation/runtime
+The correction is now frozen in unsigned candidate `0.2026.1126.1`; the
+installed `oem108.inf` binary remains unchanged. See the
+[Batch 30 handoff](handoffs/batch-30-mam-status-propagation.md) for request
+correlation and the [Batch 31 handoff](handoffs/batch-31-package-qualification.md)
+for package identity and offline validation. Signing requires separate
+private-key approval; installation and runtime checks require separate
 authorization. No live behavior has been verified for the fix.
 
 ## Batch 29 RPC lifetime and capture-integrity analysis
