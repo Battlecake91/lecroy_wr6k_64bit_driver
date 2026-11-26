@@ -691,3 +691,28 @@ SYS/PDB identity passed. The manifest records all 23 required suite identities,
 is local test-signing evidence only, not Microsoft kernel-policy or WHQL/WHCP
 certification. One captured installation later published the package as
 `oem103.inf`; the previous package was retained.
+
+## Batch 31 frozen MAM candidate promotion
+
+The owner authorized exactly one promotion of the frozen unsigned
+`0.2026.1126.1` Release x64 candidate. The versioned frozen-package signer ran
+from commit `2e0e9a781e6df68fa83795889cf6bbcf85ef5472`; it did not rebuild and
+kept the unsigned source package unchanged. The new output is a local
+test-signed candidate, not Microsoft kernel-policy or WHQL/WHCP output. It was
+not staged or installed. The full source/build identity, verification record,
+and private evidence paths are in the
+[Batch 31 handoff](handoffs/batch-31-package-qualification.md).
+
+| Artifact | SHA-256 |
+|---|---|
+| INF | `AF7A16A700B5D90B9EA5DFDB0B243464804DF63F785423CE2D9F39E2969449EF` |
+| signed CAT | `BEE0B662B55AEB0931806F9E0A9056330FCE64E02B182FC6014423601112D789` |
+| signed SYS | `6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75` |
+| matching PDB | `020EC0333DB143AE76EA71B28CBF66DBFA1F86816724D7EA8A4A81C97F4F2484` |
+| signed manifest | `3A7EB449FD7394EAF7E28C04226131EB7FF65EE561A1EDC2DD171078FECC8647` |
+
+Authenticode, local certificate chain, catalog membership, InfVerif and
+SYS/PDB identity passed for certificate thumbprint
+`4296FA2E355613DF0D5CE6F24D0898E00B706472`. The `/kp` rejection was expected
+for the local test certificate. No driver install, Driver Store staging, PnP
+transition or hardware operation was authorized or performed.

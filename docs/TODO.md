@@ -17,10 +17,10 @@ This file tracks unfinished work and deferred features. The current, verified ca
   GO/completion and normal mapping retirement, plus 33 `CFDC2138` requests
   denied before GO. Batch 30 identified the old image's success-status bug:
   successful mapping cleanup overwrote the validator's
-  `STATUS_DEVICE_BUSY`. The fix is now in frozen unsigned candidate
-  `0.2026.1126.1`, still uninstalled; see the
-  [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Signing,
-  installation, and R0/R1 on that binary remain gated; XStream requires its
+  `STATUS_DEVICE_BUSY`. The fix is in frozen signed, uninstalled candidate
+  `0.2026.1126.1`; see the
+  [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Installation
+  and R0/R1 on that binary remain gated; XStream requires its
   own fresh authorization. The RPC server lifecycle remains unresolved.
   Batch 29's offline suites pass 28/28, 8/8 and 13/13. The prior one-shot
   authorization is consumed. Require fresh

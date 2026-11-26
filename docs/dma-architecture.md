@@ -2,7 +2,8 @@
 
 ## Batch 31 status-preserving pre-GO cleanup
 
-The Batch 30 correction is in the frozen unsigned candidate `0.2026.1126.1`:
+The Batch 30 correction is in the frozen, locally test-signed candidate
+`0.2026.1126.1`:
 successful no-launch cleanup preserves the original operation failure,
 including `STATUS_DEVICE_BUSY`; cleanup failure remains authoritative and
 follows the existing fail-closed resource path. Invalid SG segment counts fail

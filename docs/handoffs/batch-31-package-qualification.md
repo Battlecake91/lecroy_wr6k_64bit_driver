@@ -2,12 +2,12 @@
 
 ## Result
 
-The Batch 30 status-propagation correction is frozen in one unsigned,
-offline-validated Release x64 package. It has not been signed, staged,
-installed, or used against hardware. The package workflow reported
-`UnsignedValidationOnly`; its manifest explicitly records
-`InstallAuthorized=false` and no Driver Store, PnP, device-open, or signing
-policy changes.
+The Batch 30 status-propagation correction is frozen in an offline-validated
+unsigned Release x64 source package and a separately promoted, locally
+test-signed package. The original unsigned artifact set remains unchanged.
+The signed candidate has not been staged, installed, or used against hardware;
+its manifest records `InstallAuthorized=false`. No Driver Store, PnP,
+device-open, or signing-policy change occurred.
 
 ## Source and package identity
 
@@ -39,6 +39,47 @@ It contains only INF/CAT/SYS in `package`; the matching PDB and manifest are in
 | Debug PDB | `6B7CC3A71A5C088AA6562D34274C231AD9408F68BE983F6741FEE77D05FCF362` |
 | `lecdiag.exe` | `374FC640A1DD8CFDC73FFE854DA988AA5ABFAB854D1F096EF5AD2F6747CA2CF0` |
 | `lecwatch.exe` | `AEE7AE68F4AA0B793C263E27EC1058809E1DFEA5A46B27321E74DFF460FCE027` |
+
+## One-time signed promotion
+
+The owner authorized one signing promotion of the frozen input above. The
+versioned `scripts/sign-frozen-driver-package.ps1` ran once from workflow HEAD
+`2e0e9a781e6df68fa83795889cf6bbcf85ef5472`, under elevated 64-bit Windows
+PowerShell 5.1. It did not build or modify source. It copied INF/SYS/PDB to a
+new output root, signed the copied SYS, generated a matching catalog, signed
+that catalog, verified the package, and emitted a signed manifest. The process
+returned exit code 0; no retry was made.
+
+Signed output root:
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch31-SignedCandidate-20261126-01`.
+The attempt marker, elevated transcript, result JSON, exception path, and
+per-tool logs are preserved outside the repository under
+`C:\Users\LeCroyUser\.codex\driver-backups\Batch31-SigningAttempt-20261126-01`.
+
+| Signed artifact | SHA-256 |
+| --- | --- |
+| INF | `AF7A16A700B5D90B9EA5DFDB0B243464804DF63F785423CE2D9F39E2969449EF` |
+| CAT | `BEE0B662B55AEB0931806F9E0A9056330FCE64E02B182FC6014423601112D789` |
+| Signed SYS | `6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75` |
+| Matching PDB | `020EC0333DB143AE76EA71B28CBF66DBFA1F86816724D7EA8A4A81C97F4F2484` |
+| Signed manifest | `3A7EB449FD7394EAF7E28C04226131EB7FF65EE561A1EDC2DD171078FECC8647` |
+
+The resulting manifest records `PackageState=SignedCandidate`,
+`RebuildPerformed=false`, the original unsigned manifest hash, and unchanged
+driver/include trees. Both SYS and CAT Authenticode statuses are `Valid` and
+the signer thumbprint is `4296FA2E355613DF0D5CE6F24D0898E00B706472`
+(`CN=LecS65 x64 Test Phase2C 2026-10`). The local certificate chain built
+successfully with no chain-status errors; its code-signing EKU is
+`1.3.6.1.5.5.7.3.3`. InfVerif passed, SignTool catalog membership passed, and
+SymChk matched the SYS to the PDB RSDS GUID
+`3FAECB31-B528-4C6F-A6B3-F71218A917F4`, age 1, with line information. The
+explicit `/kp` check failed as expected for this local test certificate; this
+is not Microsoft kernel-policy or WHQL/WHCP signing. `manifest.sha256` matches
+the signed manifest hash above.
+
+The unsigned source package was rehashed after promotion and all five hashes
+remain identical to the table above. No build, install, staging, PnP, reboot,
+XStream, DMA, device-handle, or IOCTL operation occurred.
 
 The selected candidate configuration is Release x64, PnP status diagnostics
 enabled, WDM-v3 MAM enabled, `MamLaunchLimit=1`,
@@ -75,7 +116,8 @@ corrected in commit `50530b8d88cfee36ec23b8648611a4bafd6dfc4e`: the test sets
 native exit/result status; a source contract pins this behavior. Source/ABI
 contracts pass 76/76, and the focused XStream timeout suite passes 28/28
 directly and under strict parent output capture. The first two incomplete
-private output roots remain preserved; no signing took place in any attempt.
+private output roots remain preserved; those failed package attempts did not
+sign. The subsequent single signing promotion is recorded below.
 
 ## Passive host snapshot
 
@@ -102,9 +144,8 @@ segment counts fail explicitly. The denial remains pre-arm and does not permit
 DMA arm, INTEN enable, or MAMRGO; no completion count is fabricated. The
 installed `oem108.inf` still contains the old status-overwrite behavior.
 
-Next, request separate explicit approval to use the private key to sign this
-exact frozen candidate. Signing approval does not authorize installation. A
-later installation needs its own approval and a fresh passive preflight of
+Signing is complete. The next step requires separate explicit installation
+approval and a fresh passive preflight of
 the package hashes, test-signing, device/service/interface state, capture
 readiness, acquisition-client absence, and verified rollback retention. After
 installation, qualify R0 9/9 and R1 2/2 once. Any XStream startup requires
