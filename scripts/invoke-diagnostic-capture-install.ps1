@@ -976,7 +976,7 @@ try {
             -FilePath (Join-Path $PSHOME 'powershell.exe') `
             -Arguments $xstreamArguments -WorkingDirectory $repository `
             -LogPath (Join-Path $evidence 'xstream-runner.log') `
-            -TimeoutSeconds ($XStreamTimeoutSeconds + 30) -ReturnOnNonZeroExit
+            -TimeoutSeconds ($XStreamTimeoutSeconds + 120) -ReturnOnNonZeroExit
         if ($xstreamResult.ExitCode -ne 0) {
             throw "XStream runner exited with code $($xstreamResult.ExitCode); no retry was attempted."
         }

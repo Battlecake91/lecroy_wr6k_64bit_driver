@@ -1,5 +1,47 @@
 # Phase 2C kernel-runtime qualification plan
 
+## Batch 33 timeout-causality finding and next gate
+
+The Batch 32 RPC error `0x800706BA` is not proven to be either the primary
+failure or a consequence of capture timeout. The XStream COM root returned at
+`00:36:28.5251868Z`; the synchronous `Acquisition` lookup began at
+`00:36:28.5301839Z` and the RPC exception was recorded at
+`00:40:28.3430275Z` (239.813 s later). The observer's nominal 240-s deadline
+was `00:40:28.5251868Z`, but it only applied after a COM call returned; a
+blocked synchronous dispatch could not be interrupted by the polling loop.
+
+The native launcher used a 260-s process wait starting after `ResumeThread`,
+then called `TerminateProcess` with `ERROR_TIMEOUT` (1460). The trace header
+timestamp `00:36:08.1847243Z` is before resume, and the observer started at
+`00:36:08.7843545Z` after target readiness/resume. The resulting possible
+target timeout window crosses the recorded RPC time. The old capture result
+proves timeout termination and exit code 1460, but omits the resume,
+termination-request, API-return and process-exit timestamps. This supports a
+launcher-induced RPC error as a strong hypothesis, not a causal conclusion.
+
+The Batch 32 private trace has 3,748 records, including 532 completed native
+IOCTL calls and 482 `CFDC2110` calls with success NTSTATUS; it records API
+completion rather than entry, and cannot establish that no call remained
+in-flight. The final completed LeCroy IOCTL is sequence 3748 at
+`00:38:18.0196946Z`. Repeated family-1/opcode-`0x81` and family-0/opcode-`0x84`
+traffic continued during the blocked lookup. Successful NTSTATUS and captured
+bytes do not prove protocol-level response acceptance. No opcode `0x03`,
+direct `CFDC2138`, MAM GO or waveform was observed. The bounded local
+Application/System error query and WER archive/queue inspection found no
+matching crash/RPC report; absence of a report does not establish process
+health at the RPC timestamp.
+
+Offline Batch 33 changes add durable COM lifecycle events, separate target and
+observer deadlines, target and observer process/thread snapshots, and native
+process termination/exit timestamps. The synthetic suite covers normal return,
+blocked lookup classification, natural/crash/launcher termination, timeout
+races and partial trace. No new live test is authorized; any next run needs
+fresh owner approval and physical x86-disk isolation confirmation. Preserve
+the existing `MamLaunchLimit=1` and unknown FDO-local latch; never assume an
+admission remains.
+
+See the detailed [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+
 ## Batch 32 XStream attempt result
 
 The Batch 31 installed candidate remains `oem109.inf`, version

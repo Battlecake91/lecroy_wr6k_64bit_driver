@@ -83,6 +83,40 @@
   limits are recorded in the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
+## Batch 33 offline RPC-timeout analysis
+
+- Batch 32's `0x800706BA` is **indeterminate, with strong timing correlation
+  to launcher termination**. The observer recorded the error at
+  `00:40:28.3430275Z`; the root COM call returned at `00:36:28.5251868Z`, so
+  the call lasted 239.813 s. The internal 240-s observer deadline was
+  `00:40:28.5251868Z`, 182 ms later. That deadline could not interrupt the
+  synchronous `Item('Acquisition')` COM dispatch.
+- The native launcher waited 260 s after `ResumeThread` and then terminated
+  the target with exit code 1460. The retained hook header at
+  `00:36:08.1847243Z` preceded resume; the observer was dispatched at
+  `00:36:08.7843545Z`. Therefore the possible native target deadline spans
+  the RPC timestamp. Batch 32 did not record resume, timeout, termination-call
+  or actual-exit timestamps, so it cannot establish which occurred first.
+- The private trace contains 3,748 records, including 532 completed native
+  `NtDeviceIoControlFile` records and 482 completed `CFDC2110` calls. Those
+  calls returned NTSTATUS success without captured truncation, but protocol
+  response semantics were not validated. Repeated family-1/opcode-`0x81`
+  and family-0/opcode-`0x84` calls continued during the blocked lookup; the
+  final completed native IOCTL was sequence 3748 at `00:38:18.0196946Z`.
+  The hook logs after an API call returns and has no in-flight entry record,
+  so an active call at termination cannot be excluded. No opcode `0x03`,
+  direct `CFDC2138`, MAM GO or waveform was observed.
+- Offline diagnostic changes now journal COM call entry/return/exception,
+  independently timestamp observer and target deadlines, record process/thread
+  snapshots, and persist launcher termination and exit timing. The next
+  experiment remains unauthorized and requires fresh physical isolation
+  confirmation; the MAM one-shot latch remains unknown. See the
+  [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+- Focused Windows PowerShell 5.1 validation passed: launcher 51/51, COM
+  lifecycle/process-deadline 24/24, trace/orchestration 32/32, and
+  single-waveform observer 13/13. The x86 launcher/hook tests used synthetic
+  processes only; no vendor COM server, driver or hardware was used.
+
 ## Batch 30 MAM status propagation
 
 - Batch 30 resolved the success/zero-information discrepancy in the retained

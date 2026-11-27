@@ -43,8 +43,19 @@ $script:ComRootActivationStartedUtc = $null
 $script:ComRootActivationCompletedUtc = $null
 $script:AcquisitionLookupFirstStartedUtc = $null
 $script:RpcServerUnavailableUtc = $null
+$script:LifecycleEventsPath = $null
+$script:ComOperationState = 'Starting'
 $script:ComApartmentState = [Threading.Thread]::CurrentThread.GetApartmentState().ToString()
 . (Join-Path $PSScriptRoot 'xstream-com-lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'xstream-process-diagnostics.ps1')
+
+function Write-ObserverLifecycleEvent {
+    param([string]$Event,[hashtable]$Data = @{})
+    if (-not [string]::IsNullOrWhiteSpace($script:LifecycleEventsPath)) {
+        Write-XStreamLifecycleEvent -Path $script:LifecycleEventsPath `
+            -Event $Event -Data $Data
+    }
+}
 
 function New-ExclusiveTextFile {
     param([string]$Path, [string]$Text)
@@ -204,6 +215,13 @@ try {
     $script:ObserverStartedUtc = [datetime]::UtcNow.ToString('o')
     $script:ResultPath = Join-Path $EvidenceRoot 'result.json'
     $script:ExceptionPath = Join-Path $EvidenceRoot 'exception.txt'
+    $script:LifecycleEventsPath = Join-Path $EvidenceRoot 'observer-lifecycle.jsonl'
+    New-XStreamLifecycleJournal -Path $script:LifecycleEventsPath
+    Write-ObserverLifecycleEvent -Event 'observer_started' -Data @{
+        ProcessId = $PID
+        ApartmentState = $script:ComApartmentState
+        TimeoutSeconds = $TimeoutSeconds
+    }
 
     if (-not [IO.Path]::IsPathRooted($XStreamExecutablePath) -or
         -not (Test-Path -LiteralPath $XStreamExecutablePath -PathType Leaf)) {
@@ -292,14 +310,25 @@ try {
                 throw 'The prelaunched XStream process identity does not match the pinned capture target.'
             }
         }
+        $script:ComOperationState = 'TargetValidated'
+        Write-ObserverLifecycleEvent -Event 'target_validated' -Data @{
+            ProcessId = $ExpectedPrelaunchedProcessId
+            ExecutablePath = [IO.Path]::GetFullPath($XStreamExecutablePath)
+        }
         $existingIds = @($existingProcesses | ForEach-Object { [int]$_.ProcessId })
         $script:LaunchCount++
         $app = $null; $acq = $null; $c1 = $null; $horizontal = $null
         $trigger = $null; $c1Result = $null
         try {
+            $script:ComOperationState = 'ComRootActivationInProgress'
             $script:ComRootActivationStartedUtc = [datetime]::UtcNow.ToString('o')
+            Write-ObserverLifecycleEvent -Event 'com_root_activation_started' -Data @{}
             $app = New-Object -ComObject 'LeCroy.XStreamDSO'
             $script:ComRootActivationCompletedUtc = [datetime]::UtcNow.ToString('o')
+            $script:ComOperationState = 'ComRootActivated'
+            Write-ObserverLifecycleEvent -Event 'com_root_activation_returned' -Data @{
+                CompletedUtc = $script:ComRootActivationCompletedUtc
+            }
             $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
             $lastError = 'automation model not ready'
             $values = @()
@@ -308,7 +337,28 @@ try {
                     if ($null -eq $script:AcquisitionLookupFirstStartedUtc) {
                         $script:AcquisitionLookupFirstStartedUtc = [datetime]::UtcNow.ToString('o')
                     }
-                    $acq = Get-XStreamObject -Parent $app -Name 'Acquisition'
+                    $script:ComOperationState = 'AcquisitionLookupInProgress'
+                    Write-ObserverLifecycleEvent -Event 'acquisition_lookup_started' -Data @{
+                        StartedUtc = $script:AcquisitionLookupFirstStartedUtc
+                        DeadlineUtc = $deadline.ToString('o')
+                    }
+                    try {
+                        $acq = Get-XStreamObject -Parent $app -Name 'Acquisition'
+                        $script:ComOperationState = 'AcquisitionLookupReturned'
+                        Write-ObserverLifecycleEvent -Event 'acquisition_lookup_returned' -Data @{
+                            CompletedUtc = [DateTime]::UtcNow.ToString('o')
+                            ObjectResolved = ($null -ne $acq)
+                        }
+                    }
+                    catch {
+                        $script:ComOperationState = 'AcquisitionLookupException'
+                        Write-ObserverLifecycleEvent -Event 'acquisition_lookup_exception' -Data @{
+                            CompletedUtc = [DateTime]::UtcNow.ToString('o')
+                            HResult = ('0x{0:X8}' -f ([int64]$_.Exception.HResult -band 0xFFFFFFFFL))
+                            ExceptionType = $_.Exception.GetType().FullName
+                        }
+                        throw
+                    }
                     $c1 = Get-XStreamObject -Parent $acq -Name 'C1'
                     $horizontal = Get-XStreamObject -Parent $acq -Name 'Horizontal'
                     $trigger = Get-XStreamObject -Parent $acq -Name 'Trigger'
@@ -395,6 +445,8 @@ try {
         ComRootActivationCompletedUtc = $script:ComRootActivationCompletedUtc
         AcquisitionLookupFirstStartedUtc = $script:AcquisitionLookupFirstStartedUtc
         RpcServerUnavailableUtc = $script:RpcServerUnavailableUtc
+        LifecycleEventsPath = $script:LifecycleEventsPath
+        ComOperationState = $script:ComOperationState
         XStreamLaunchCount = $script:LaunchCount
         ExpectedPrelaunchedProcessId = $ExpectedPrelaunchedProcessId
         ExplicitAcquireCount = $script:ExplicitAcquireCount
@@ -403,12 +455,27 @@ try {
         OrderlyCloseRequested = $closeRequested
         XStreamProcessRemaining = $processRemaining
     }
+    $script:ComOperationState = 'Completed'
+    Write-ObserverLifecycleEvent -Event 'observer_completed' -Data @{
+        Result = 'PASS'
+        ExplicitAcquireCount = $script:ExplicitAcquireCount
+    }
     Write-JsonExclusive -Path $script:ResultPath -Value $result
     Write-Host 'XSTREAM SINGLE WAVEFORM: PASS'
     exit 0
 }
 catch {
     if ($script:EvidenceInitialized) {
+        $failureHResult = ('0x{0:X8}' -f ([int64]$_.Exception.HResult -band 0xFFFFFFFFL))
+        try {
+            Write-ObserverLifecycleEvent -Event 'observer_exception' -Data @{
+                CompletedUtc = [DateTime]::UtcNow.ToString('o')
+                PreviousComOperationState = $script:ComOperationState
+                HResult = $failureHResult
+                ExceptionType = $_.Exception.GetType().FullName
+            }
+        } catch { }
+        $script:ComOperationState = 'ObserverException'
         try {
             New-ExclusiveTextFile -Path $script:ExceptionPath `
                 -Text (($_ | Format-List * -Force | Out-String))
@@ -425,6 +492,8 @@ catch {
                     ComRootActivationCompletedUtc=$script:ComRootActivationCompletedUtc
                     AcquisitionLookupFirstStartedUtc=$script:AcquisitionLookupFirstStartedUtc
                     RpcServerUnavailableUtc=$script:RpcServerUnavailableUtc
+                    LifecycleEventsPath=$script:LifecycleEventsPath
+                    ComOperationState=$script:ComOperationState
                 })
             } catch { }
         }

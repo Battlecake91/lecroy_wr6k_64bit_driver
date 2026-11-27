@@ -74,6 +74,16 @@ try {
         ($launchExit -eq 0 -and (Test-Path $dispatch) -and (Test-Path $ready) -and
          $launcherMetadata.capture_classification -eq 'complete_normal' -and
          $launcherMetadata.footer_present -and $launcherMetadata.parent_flush_succeeded)
+    Check 'natural target exit has separate create, resume, wait and exit timestamps' `
+        (-not [string]::IsNullOrWhiteSpace($launcherMetadata.process_create_returned_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.resume_thread_called_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.resume_thread_returned_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_wait_started_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_wait_completed_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_exit_observed_utc) -and
+         $launcherMetadata.wait_result -eq 'WAIT_OBJECT_0' -and
+         -not [bool]$launcherMetadata.target_was_alive_at_timeout -and
+         [string]::IsNullOrWhiteSpace($launcherMetadata.termination_requested_utc))
 
     $classificationPath = Join-Path $privateRoot 'classification.json'
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
@@ -184,6 +194,7 @@ try {
     # timeout; its exit code and parsed classification are the assertions.
     & $launcher --timeout-seconds 1 $target $hangTrace $hangReady
     $hangExit = $LASTEXITCODE
+    $hangResultData = Get-Content -Raw -LiteralPath $hangResult | ConvertFrom-Json
     Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
         -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
@@ -197,6 +208,18 @@ try {
         ($hangExit -ne 0 -and $hangClass.Classification -eq 'VALID_PARTIAL_LAUNCHER_TERMINATION' -and
          [int]$hangClass.TraceRecordCount -ge 6 -and (Test-Path $hangDispatch) -and
          @(Get-Process -Id ([int]$hangReadyData.Pid) -ErrorAction SilentlyContinue).Count -eq 0)
+    $waitExpired = [DateTime]::Parse($hangResultData.target_wait_completed_utc).ToUniversalTime()
+    $terminateRequested = [DateTime]::Parse($hangResultData.termination_requested_utc).ToUniversalTime()
+    $terminateReturned = [DateTime]::Parse($hangResultData.terminate_process_returned_utc).ToUniversalTime()
+    $exitObserved = [DateTime]::Parse($hangResultData.target_exit_observed_utc).ToUniversalTime()
+    Check 'launcher timeout proves target alive at deadline and records exact termination order' `
+        ($hangResultData.target_was_alive_at_timeout -and
+         $hangResultData.wait_result -eq 'WAIT_OBJECT_0_AFTER_TERMINATION' -and
+         $hangResultData.terminate_process_succeeded -and
+         $waitExpired -le $terminateRequested -and
+         $terminateRequested -le $terminateReturned -and
+         $terminateReturned -le $exitObserved -and
+         $hangResultData.target_deadline_utc)
 
     $crashTrace = Join-Path $privateRoot 'crash.jsonl'
     $crashReady = Join-Path $privateRoot 'crash.ready'
@@ -375,6 +398,10 @@ try {
          [int]$orchestration.Capture.RequestCount -eq 7 -and
          $orchestration.Waveform.Result -eq 'PASS' -and
          (Test-Path -LiteralPath $orchestrationDispatch))
+    Check 'offline orchestration preserves Windows executable paths without escape parsing' `
+        ($orchestration.Result -eq 'PASS' -and
+         $orchestration.ObserverProcess.Executable -match '\\WindowsPowerShell\\v1\.0\\powershell\.exe$' -and
+         $orchestration.ObserverProcess.ProcessId -gt 0)
     Check 'orchestration result exposes hashes and metadata but no opaque bytes' `
         ((Get-Content -Raw -LiteralPath `
             (Join-Path $orchestrationRoot 'result.json')) -notmatch 'input_hex|output_hex')

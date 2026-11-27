@@ -34,6 +34,7 @@ $runnerSource = Join-Path $repo 'scripts\native-process.ps1'
 $noLaunchRunnerSource = Join-Path $repo 'scripts\invoke-no-launch-preparation.ps1'
 $xstreamRunnerSource = Join-Path $repo 'scripts\invoke-xstream-single-waveform.ps1'
 $xstreamLifecycleSource = Join-Path $repo 'scripts\xstream-com-lifecycle.ps1'
+$xstreamDiagnosticsSource = Join-Path $repo 'scripts\xstream-process-diagnostics.ps1'
 $lecdiagMockTest = Join-Path $PSScriptRoot 'test-lecdiag-command-chain.ps1'
 $mockSource = Join-Path $PSScriptRoot 'fixtures\mock-diagnostic-native.cs'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) `
@@ -77,6 +78,7 @@ function New-TestContext {
     Copy-Item -LiteralPath $noLaunchRunnerSource -Destination $scripts
     Copy-Item -LiteralPath $xstreamRunnerSource -Destination $scripts
     Copy-Item -LiteralPath $xstreamLifecycleSource -Destination $scripts
+    Copy-Item -LiteralPath $xstreamDiagnosticsSource -Destination $scripts
     & git -C $fixture init --quiet
     & git -C $fixture config user.email 'offline-test@example.invalid'
     & git -C $fixture config user.name 'Offline Test'

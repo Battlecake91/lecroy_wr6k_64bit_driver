@@ -134,3 +134,29 @@ complete 14-byte response through a test-only shim and error/termination
 classifications.
 No XStream executable, device, driver, kernel capture component or hardware
 was used. Do not commit these generated binaries or synthetic raw traces.
+
+## Batch 33 timeout and process-lifetime evidence
+
+The native launcher now records UTC timestamps for process creation, resume,
+target wait/deadline, timeout observation, termination request, the
+`TerminateProcess` result, wait completion and observed process exit. A timeout
+result records whether the target was unsignaled at the deadline and the exact
+wait outcome. Failure finalization still emits partial-trace metadata; it does
+not promote a missing footer to a complete capture.
+
+The PowerShell supervisor writes a flushed JSONL lifecycle journal before
+synchronous COM operations, after their return or exception, and at each
+supervision boundary. It snapshots target and observer process/thread state
+before cleanup where available. The native-process runner additionally
+persists its wait deadline, process-tree cleanup request/result and exit
+observation in the exclusive process-info file. These records separate
+observer timeout from target timeout and allow the next offline review to
+correlate RPC errors with server lifetime. Thread wait reasons are descriptive
+snapshots, not proof of a kernel wait dependency.
+
+Batch 32's recorded `0x800706BA` overlaps the possible 260-second target
+timeout window because its launcher did not record the exact resume/termination
+times. This is strong temporal evidence for a launcher-induced RPC failure,
+but not proof; see the [Batch 33 handoff](../../docs/handoffs/batch-33-xstream-com-timeout-causality.md).
+The changes are offline-only and do not alter IOCTLs, the driver or capture
+hook behavior. No XStream or hardware run was performed for Batch 33.

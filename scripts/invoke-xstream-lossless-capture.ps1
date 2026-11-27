@@ -44,6 +44,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'native-process.ps1')
+. (Join-Path $PSScriptRoot 'xstream-process-diagnostics.ps1')
 
 function New-ExclusiveTextFile {
     param([string]$Path,[string]$Text)
@@ -80,8 +81,18 @@ $traceProcess = $null
 $stdoutTask = $null
 $stderrTask = $null
 $traceExitCode = $null
+$traceStopwatch = $null
 $targetPid = 0
 $targetProcessRemaining = $false
+$observerResult = $null
+$observerProcessSnapshot = $null
+$observerTargetSnapshot = $null
+$observerStateAtCompletion = $null
+$causalAssessment = 'INDETERMINATE'
+$waveformEvidence = $null
+$supervisorEventsPath = $null
+$observerProcessInfoPath = $null
+$observerLifecyclePath = $null
 $captureMetadata = $null
 $captureClassification = $null
 $captureClassificationPath = $null
@@ -113,6 +124,11 @@ try {
     [IO.Directory]::CreateDirectory($EvidenceRoot) | Out-Null
     $resultPath = Join-Path $EvidenceRoot 'result.json'
     $exceptionPath = Join-Path $EvidenceRoot 'exception.txt'
+    $supervisorEventsPath = Join-Path $EvidenceRoot 'xstream-supervisor-events.jsonl'
+    $observerProcessInfoPath = Join-Path $EvidenceRoot 'waveform-observer-process.txt'
+    New-XStreamLifecycleJournal -Path $supervisorEventsPath
+    Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+        -Event 'supervisor_started' -Data @{ TimeoutSeconds=$TimeoutSeconds }
 
     Assert-PinnedFile $TraceLauncherPath $ExpectedTraceLauncherHash 'Trace launcher'
     Assert-PinnedFile $TraceHookPath $ExpectedTraceHookHash 'Trace hook'
@@ -155,7 +171,7 @@ try {
     $traceStdout = Join-Path $EvidenceRoot 'trace-launcher.stdout.txt'
     $traceStderr = Join-Path $EvidenceRoot 'trace-launcher.stderr.txt'
     $traceArguments = @('--embedding','--timeout-seconds',
-        ($TimeoutSeconds + 20).ToString(),$XStreamExecutablePath,$rawTrace,$readyMarker)
+        ($TimeoutSeconds + 60).ToString(),$XStreamExecutablePath,$rawTrace,$readyMarker)
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $TraceLauncherPath
     $start.Arguments = [LecS65.NativeProcessRunner]::BuildArgumentString($traceArguments)
@@ -167,7 +183,10 @@ try {
     $start.RedirectStandardError = $true
     $traceProcess = [Diagnostics.Process]::new()
     $traceProcess.StartInfo = $start
+    $traceStopwatch = [Diagnostics.Stopwatch]::StartNew()
     if (-not $traceProcess.Start()) { throw 'Trace launcher did not start.' }
+    Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+        -Event 'trace_launcher_started' -Data @{ ProcessId=$traceProcess.Id }
     $stdoutTask = $traceProcess.StandardOutput.ReadToEndAsync()
     $stderrTask = $traceProcess.StandardError.ReadToEndAsync()
 
@@ -191,6 +210,8 @@ try {
         $targetPid -le 0) {
         throw 'Trace readiness marker is malformed.'
     }
+    Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+        -Event 'target_capture_ready' -Data @{ TargetProcessId=$targetPid }
 
     $waveformEvidence = Join-Path $EvidenceRoot 'waveform-evidence'
     $waveformMode = if ($Mode -eq 'RunAuthorized') {'RunAuthorized'} else {'OfflineMock'}
@@ -207,17 +228,61 @@ try {
         $waveformArguments += @('-ExpectedPrelaunchedProcessId',$targetPid.ToString())
     }
     else { $waveformArguments += @('-MockStatePath',$MockStatePath) }
+    $observerLifecyclePath = Join-Path $waveformEvidence 'observer-lifecycle.jsonl'
+    $observerDispatchUtc = [DateTime]::UtcNow.ToString('o')
+    Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+        -Event 'waveform_observer_dispatched' -Data @{
+            DispatchUtc=$observerDispatchUtc
+            TargetProcessId=$targetPid
+            ObserverTimeoutSeconds=($TimeoutSeconds + 5)
+            TargetTimeoutSeconds=($TimeoutSeconds + 60)
+        }
     $waveform = Invoke-LecS65NativeProcess -Name 'Pinned XStream waveform observer' `
         -FilePath $childPowerShellPath -Arguments $waveformArguments `
         -WorkingDirectory (Split-Path $WaveformRunnerPath -Parent) `
         -LogPath (Join-Path $EvidenceRoot 'waveform-runner.log') `
         -EnvironmentVariables $childPowerShellEnvironment `
-        -TimeoutSeconds ($TimeoutSeconds + 30) -ReturnOnNonZeroExit
+        -TimeoutSeconds ($TimeoutSeconds + 5) -StreamDrainTimeoutSeconds 2 `
+        -ProcessInfoPath $observerProcessInfoPath `
+        -ReturnOnTimeout -ReturnOnNonZeroExit
+    $observerResult = $waveform
+    $observerProcessSnapshot = if (Test-Path -LiteralPath $observerProcessInfoPath) {
+        $processInfo = @{}
+        foreach ($line in Get-Content -LiteralPath $observerProcessInfoPath) {
+            $separator = $line.IndexOf('=')
+            if ($separator -gt 0) {
+                $processInfo[$line.Substring(0,$separator)] = $line.Substring($separator + 1)
+            }
+        }
+        [pscustomobject]$processInfo
+    } else { $null }
+    $observerTargetSnapshot = if ($targetPid -gt 0) {
+        Get-XStreamProcessSnapshot -ProcessId $targetPid
+    } else { $null }
+    if (Test-Path -LiteralPath $observerLifecyclePath -PathType Leaf) {
+        try {
+            $lastObserverLine = Get-Content -LiteralPath $observerLifecyclePath -Tail 1
+            if ($lastObserverLine) { $observerStateAtCompletion = $lastObserverLine | ConvertFrom-Json }
+        } catch { }
+    }
+    Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+        -Event 'waveform_observer_supervised_result' -Data @{
+            CompletedUtc=[DateTime]::UtcNow.ToString('o')
+            ProcessId=$waveform.ProcessId
+            ExitCode=$waveform.ExitCode
+            TimedOut=$waveform.TimedOut
+            ProcessTreeClosed=$waveform.ProcessTreeClosed
+            ObserverState=$observerStateAtCompletion
+            TargetSnapshot=$observerTargetSnapshot
+        }
+    if ($waveform.TimedOut) {
+        throw 'Waveform observer exceeded its independent process deadline; see lifecycle and process snapshots.'
+    }
     if ($waveform.ExitCode -ne 0) {
         throw "Waveform observer exited with code $($waveform.ExitCode)."
     }
 
-    if (-not $traceProcess.WaitForExit(30000)) {
+    if (-not $traceProcess.WaitForExit(90000)) {
         throw 'Instrumented XStream process remained after the observer completed.'
     }
     $traceExitCode = $traceProcess.ExitCode
@@ -227,6 +292,19 @@ try {
         throw 'Trace launcher exited without durable capture-finalization metadata.'
     }
     $captureMetadata = Get-Content -Raw -LiteralPath $captureResultPath | ConvertFrom-Json
+    $waveformResult = Get-Content -Raw -LiteralPath `
+        (Join-Path $waveformEvidence 'result.json') | ConvertFrom-Json
+    $causalAssessment = Get-XStreamFailureClassification `
+        -ObserverState 'ObserverCompleted' `
+        -ObserverRpcUtc $waveformResult.RpcServerUnavailableUtc `
+        -ObserverFailureUtc $waveformResult.CompletedUtc `
+        -ObserverTimedOut $false `
+        -TargetStateAtObserverTimeout ([string]$(if ($observerTargetSnapshot) { $observerTargetSnapshot.State } else { 'UNKNOWN' })) `
+        -TargetTermination ([string]$captureMetadata.termination) `
+        -TargetTerminationRequestedUtc ([string]$captureMetadata.termination_requested_utc) `
+        -TargetExitObservedUtc ([string]$captureMetadata.target_exit_observed_utc) `
+        -TargetExitCode ([int]$captureMetadata.target_exit_code) `
+        -PartialTrace (-not [bool]$captureMetadata.footer_present)
 
     $classificationArguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
         '-File',$TraceValidatorPath,'-TracePath',$rawTrace,
@@ -268,8 +346,6 @@ try {
     }
     $capture = Get-Content -Raw -LiteralPath $validationPath | ConvertFrom-Json
     if ($capture.Result -ne 'PASS') { throw 'Lossless trace validation failed.' }
-    $waveformResult = Get-Content -Raw -LiteralPath `
-        (Join-Path $waveformEvidence 'result.json') | ConvertFrom-Json
     $result = [ordered]@{
         Schema = 1; Result = 'PASS'; Mode = $Mode
         CompletedUtc = [datetime]::UtcNow.ToString('o')
@@ -280,6 +356,10 @@ try {
         CaptureClassification = $captureClassification
         Capture = $capture
         Waveform = $waveformResult
+        ObserverProcess = $observerProcessSnapshot
+        TargetSnapshotAtObserverCompletion = $observerTargetSnapshot
+        CausalAssessment = $causalAssessment
+        SupervisorEventsPath = $supervisorEventsPath
         RetryCount = 0
     }
     Write-JsonExclusive $resultPath $result
@@ -287,12 +367,29 @@ try {
 }
 catch {
     if ($targetPid -gt 0) {
-        $target = @(Get-Process -Id $targetPid -ErrorAction SilentlyContinue)
-        foreach ($process in $target) {
-            try { [void]$process.CloseMainWindow() } catch {}
+        if ($null -eq $observerTargetSnapshot) {
+            $observerTargetSnapshot = Get-XStreamProcessSnapshot -ProcessId $targetPid
         }
-        if ($target.Count -ne 0) {
-            try { [void]$traceProcess.WaitForExit(30000) } catch {}
+        try {
+            Write-XStreamLifecycleEvent -Path $supervisorEventsPath `
+                -Event 'failure_target_snapshot_before_cleanup' -Data @{
+                    Snapshot=$observerTargetSnapshot
+                    ObserverProcess=$observerProcessSnapshot
+                }
+        } catch { }
+        if ($null -eq $observerResult -and $null -ne $observerTargetSnapshot -and
+            $observerTargetSnapshot.State -eq 'RUNNING') {
+            $target = @(Get-Process -Id $targetPid -ErrorAction SilentlyContinue)
+            foreach ($process in $target) {
+                try { [void]$process.CloseMainWindow() } catch {}
+            }
+        }
+        if ($null -ne $traceProcess -and -not $traceProcess.HasExited -and
+            $null -ne $traceStopwatch) {
+            $targetBoundMilliseconds = ($TimeoutSeconds + 60) * 1000
+            $waitMilliseconds = [Math]::Max(1000,
+                $targetBoundMilliseconds - [int]$traceStopwatch.ElapsedMilliseconds + 15000)
+            try { [void]$traceProcess.WaitForExit($waitMilliseconds) } catch { }
         }
         $targetProcessRemaining = @(
             Get-Process -Id $targetPid -ErrorAction SilentlyContinue).Count -ne 0
@@ -330,6 +427,61 @@ catch {
         (Test-Path -LiteralPath $captureResultPath -PathType Leaf)) {
         try { $captureMetadata = Get-Content -Raw -LiteralPath $captureResultPath | ConvertFrom-Json } catch { }
     }
+    $waveformResult = $null
+    if ($null -ne $observerResult -and
+        (Test-Path -LiteralPath (Join-Path $waveformEvidence 'result.json') -PathType Leaf)) {
+        try { $waveformResult = Get-Content -Raw -LiteralPath `
+            (Join-Path $waveformEvidence 'result.json') | ConvertFrom-Json } catch { }
+    }
+    $lastObserverEvent = $observerStateAtCompletion
+    if ($null -eq $lastObserverEvent -and
+        (Test-Path -LiteralPath $observerLifecyclePath -PathType Leaf)) {
+        try {
+            $lastLine = Get-Content -LiteralPath $observerLifecyclePath -Tail 1
+            if ($lastLine) { $lastObserverEvent = $lastLine | ConvertFrom-Json }
+        } catch { }
+    }
+    $lastObserverEventName = if ($null -ne $lastObserverEvent) {
+        [string]$lastObserverEvent.Event
+    } else { '' }
+    $observerState = if ($lastObserverEventName -eq 'acquisition_lookup_started') {
+        'AcquisitionLookupInProgress'
+    } elseif ($lastObserverEventName -eq 'acquisition_lookup_exception') {
+        'AcquisitionLookupException'
+    } elseif ($lastObserverEventName -eq 'com_root_activation_started') {
+        'ComRootActivationInProgress'
+    } else { $lastObserverEventName }
+    $observerRpcUtc = ''
+    $observerFailureUtc = ''
+    if ($null -ne $waveformResult) {
+        $observerRpcUtc = [string]$waveformResult.RpcServerUnavailableUtc
+        $observerFailureUtc = [string]$waveformResult.CompletedUtc
+    }
+    $targetTermination = 'unknown_termination'
+    $targetTerminationRequestedUtc = ''
+    $targetExitObservedUtc = ''
+    $targetExitCode = -1
+    $partialTrace = $false
+    if ($null -ne $captureMetadata) {
+        $targetTermination = [string]$captureMetadata.termination
+        $targetTerminationRequestedUtc = [string]$captureMetadata.termination_requested_utc
+        $targetExitObservedUtc = [string]$captureMetadata.target_exit_observed_utc
+        if ($null -ne $captureMetadata.target_exit_code) {
+            $targetExitCode = [int64]$captureMetadata.target_exit_code
+        }
+        $partialTrace = -not [bool]$captureMetadata.footer_present
+    }
+    $causalAssessment = Get-XStreamFailureClassification `
+        -ObserverState $observerState `
+        -ObserverRpcUtc $observerRpcUtc `
+        -ObserverFailureUtc $observerFailureUtc `
+        -ObserverTimedOut ([bool]($null -ne $observerResult -and $observerResult.TimedOut)) `
+        -TargetStateAtObserverTimeout ([string]$(if ($observerTargetSnapshot) { $observerTargetSnapshot.State } else { 'UNKNOWN' })) `
+        -TargetTermination $targetTermination `
+        -TargetTerminationRequestedUtc $targetTerminationRequestedUtc `
+        -TargetExitObservedUtc $targetExitObservedUtc `
+        -TargetExitCode $targetExitCode `
+        -PartialTrace $partialTrace
     if ($null -ne $captureClassificationPath -and
         (Test-Path -LiteralPath $captureClassificationPath -PathType Leaf)) {
         try { $captureClassification = Get-Content -Raw -LiteralPath $captureClassificationPath | ConvertFrom-Json } catch { }
@@ -346,6 +498,12 @@ catch {
                 TargetProcessRemaining=$targetProcessRemaining
                 CaptureFinalization=$captureMetadata
                 CaptureClassification=$captureClassification
+                Waveform=$waveformResult
+                ObserverProcess=$observerProcessSnapshot
+                ObserverState=$observerState
+                TargetSnapshotAtObserverCompletion=$observerTargetSnapshot
+                CausalAssessment=$causalAssessment
+                SupervisorEventsPath=$supervisorEventsPath
                 RetryCount=0;Message=$_.Exception.Message
             })
         } catch {}

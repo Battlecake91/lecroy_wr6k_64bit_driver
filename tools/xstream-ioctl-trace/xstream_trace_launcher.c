@@ -6,7 +6,104 @@
 
 #define TRACE_ENV_NAME L"LECS65_TRACE_PATH"
 
+typedef struct CAPTURE_TIMELINE {
+    char processCreateReturnedUtc[32];
+    char resumeThreadCalledUtc[32];
+    char resumeThreadReturnedUtc[32];
+    char targetWaitStartedUtc[32];
+    char targetDeadlineUtc[32];
+    char targetWaitCompletedUtc[32];
+    char terminationWaitCompletedUtc[32];
+    char terminationRequestedUtc[32];
+    char terminateProcessReturnedUtc[32];
+    char targetExitObservedUtc[32];
+    char waitResult[48];
+    DWORD terminationError;
+    int terminationSucceeded;
+    int aliveAtTimeout;
+} CAPTURE_TIMELINE;
+
+static CAPTURE_TIMELINE g_timeline;
+
 static void print_win32_error(const char* what);
+
+static void format_utc_filetime(const FILETIME* value,char* output,size_t capacity)
+{
+    SYSTEMTIME systemTime;
+    if (!value || !output || !capacity) return;
+    if (!FileTimeToSystemTime(value,&systemTime)) {
+        output[0] = '\0';
+        return;
+    }
+    _snprintf_s(output,capacity,_TRUNCATE,
+        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ",
+        (unsigned)systemTime.wYear,(unsigned)systemTime.wMonth,
+        (unsigned)systemTime.wDay,(unsigned)systemTime.wHour,
+        (unsigned)systemTime.wMinute,(unsigned)systemTime.wSecond,
+        (unsigned)systemTime.wMilliseconds);
+}
+
+static void timestamp_now(char* output,size_t capacity)
+{
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    format_utc_filetime(&now,output,capacity);
+}
+
+static void timestamp_after_seconds(
+    const char* start,DWORD seconds,char* output,size_t capacity)
+{
+    SYSTEMTIME systemTime;
+    FILETIME fileTime;
+    ULARGE_INTEGER ticks;
+    if (!start || !*start || !output || !capacity) return;
+    memset(&systemTime,0,sizeof(systemTime));
+    if (sscanf_s(start,"%4hu-%2hu-%2huT%2hu:%2hu:%2hu.%3huZ",
+            &systemTime.wYear,&systemTime.wMonth,&systemTime.wDay,
+            &systemTime.wHour,&systemTime.wMinute,&systemTime.wSecond,
+            &systemTime.wMilliseconds) != 7 ||
+        !SystemTimeToFileTime(&systemTime,&fileTime)) {
+        output[0] = '\0';
+        return;
+    }
+    ticks.LowPart = fileTime.dwLowDateTime;
+    ticks.HighPart = fileTime.dwHighDateTime;
+    ticks.QuadPart += (ULONGLONG)seconds * 10000000ULL;
+    fileTime.dwLowDateTime = ticks.LowPart;
+    fileTime.dwHighDateTime = ticks.HighPart;
+    format_utc_filetime(&fileTime,output,capacity);
+}
+
+static DWORD terminate_target(
+    HANDLE process,DWORD code,DWORD* exitCode)
+{
+    DWORD waitResult;
+    timestamp_now(g_timeline.terminationRequestedUtc,
+        sizeof(g_timeline.terminationRequestedUtc));
+    g_timeline.terminationSucceeded =
+        TerminateProcess(process,code) != 0;
+    g_timeline.terminationError = g_timeline.terminationSucceeded ? 0 :
+        GetLastError();
+    timestamp_now(g_timeline.terminateProcessReturnedUtc,
+        sizeof(g_timeline.terminateProcessReturnedUtc));
+    waitResult = WaitForSingleObject(process,5000);
+    timestamp_now(g_timeline.terminationWaitCompletedUtc,
+        sizeof(g_timeline.terminationWaitCompletedUtc));
+    if (waitResult == WAIT_OBJECT_0) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_OBJECT_0_AFTER_TERMINATION");
+        timestamp_now(g_timeline.targetExitObservedUtc,
+            sizeof(g_timeline.targetExitObservedUtc));
+        if (exitCode) GetExitCodeProcess(process,exitCode);
+    } else if (waitResult == WAIT_TIMEOUT) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_TIMEOUT_AFTER_TERMINATION");
+    } else if (waitResult == WAIT_FAILED) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_FAILED_AFTER_TERMINATION");
+    }
+    return waitResult;
+}
 
 static int make_result_path(const WCHAR* tracePath,WCHAR* resultPath,DWORD capacity)
 {
@@ -35,7 +132,7 @@ static int write_capture_result(
     int launcherTermination = termination &&
         wcsncmp(termination,L"launcher_",8) == 0 &&
         wcsstr(termination,L"_terminated") != NULL;
-    char json[1024];
+    char json[4096];
     int jsonLength;
 
     trace = CreateFileW(
@@ -85,14 +182,39 @@ static int write_capture_result(
         "{\"schema\":1,\"target_pid\":%lu,\"target_exit_code\":%lu,"
         "\"termination\":\"%ls\",\"footer_present\":%s,"
         "\"footer_write_failed\":%s,\"parent_flush_succeeded\":%s,"
-        "\"capture_classification\":\"%s\"}\r\n",
+        "\"capture_classification\":\"%s\","
+        "\"process_create_returned_utc\":\"%s\","
+        "\"resume_thread_called_utc\":\"%s\","
+        "\"resume_thread_returned_utc\":\"%s\","
+        "\"target_wait_started_utc\":\"%s\","
+        "\"target_deadline_utc\":\"%s\","
+        "\"target_wait_completed_utc\":\"%s\","
+        "\"termination_wait_completed_utc\":\"%s\","
+        "\"wait_result\":\"%s\","
+        "\"target_was_alive_at_timeout\":%s,"
+        "\"termination_requested_utc\":\"%s\","
+        "\"terminate_process_returned_utc\":\"%s\","
+        "\"terminate_process_succeeded\":%s,"
+        "\"termination_error\":%lu,"
+        "\"target_exit_observed_utc\":\"%s\"}\r\n",
         (unsigned long)pid,(unsigned long)exitCode,termination,
         footerPresent ? "true" : "false",
         footerWriteFailed ? "true" : "false",
         flushOk ? "true" : "false",
         footerPresent && !footerWriteFailed && flushOk ? "complete_normal" :
             (launcherTermination ?
-                "partial_launcher_terminated" : "unknown_termination"));
+                "partial_launcher_terminated" : "unknown_termination"),
+        g_timeline.processCreateReturnedUtc,
+        g_timeline.resumeThreadCalledUtc,g_timeline.resumeThreadReturnedUtc,
+        g_timeline.targetWaitStartedUtc,g_timeline.targetDeadlineUtc,
+        g_timeline.targetWaitCompletedUtc,
+        g_timeline.terminationWaitCompletedUtc,g_timeline.waitResult,
+        g_timeline.aliveAtTimeout ? "true" : "false",
+        g_timeline.terminationRequestedUtc,
+        g_timeline.terminateProcessReturnedUtc,
+        g_timeline.terminationSucceeded ? "true" : "false",
+        (unsigned long)g_timeline.terminationError,
+        g_timeline.targetExitObservedUtc);
     if (jsonLength < 0 || (size_t)jsonLength >= sizeof(json)) return 0;
 
     result = CreateFileW(
@@ -431,11 +553,11 @@ int wmain(int argc,WCHAR** argv)
         print_win32_error("CreateProcessW");
         return 1;
     }
+    timestamp_now(g_timeline.processCreateReturnedUtc,
+        sizeof(g_timeline.processCreateReturnedUtc));
 
     if (!inject_dll_and_initialize(pi.hProcess,hookPath)) {
-        TerminateProcess(pi.hProcess,1);
-        WaitForSingleObject(pi.hProcess,INFINITE);
-        GetExitCodeProcess(pi.hProcess,&exitCode);
+        (void)terminate_target(pi.hProcess,1,&exitCode);
         write_capture_result(
             tracePath,resultPath,pi.dwProcessId,exitCode,
             L"launcher_injection_failure_terminated");
@@ -445,9 +567,7 @@ int wmain(int argc,WCHAR** argv)
     }
 
     if (!write_ready_marker(readyPath,pi.dwProcessId,embedding)) {
-        TerminateProcess(pi.hProcess,1);
-        WaitForSingleObject(pi.hProcess,INFINITE);
-        GetExitCodeProcess(pi.hProcess,&exitCode);
+        (void)terminate_target(pi.hProcess,1,&exitCode);
         write_capture_result(
             tracePath,resultPath,pi.dwProcessId,exitCode,
             L"launcher_readiness_failure_terminated");
@@ -456,11 +576,13 @@ int wmain(int argc,WCHAR** argv)
         return 1;
     }
 
+    timestamp_now(g_timeline.resumeThreadCalledUtc,
+        sizeof(g_timeline.resumeThreadCalledUtc));
     if (ResumeThread(pi.hThread) == (DWORD)-1) {
+        timestamp_now(g_timeline.resumeThreadReturnedUtc,
+            sizeof(g_timeline.resumeThreadReturnedUtc));
         print_win32_error("ResumeThread");
-        TerminateProcess(pi.hProcess,1);
-        WaitForSingleObject(pi.hProcess,INFINITE);
-        GetExitCodeProcess(pi.hProcess,&exitCode);
+        (void)terminate_target(pi.hProcess,1,&exitCode);
         write_capture_result(
             tracePath,resultPath,pi.dwProcessId,exitCode,
             L"launcher_resume_failure_terminated");
@@ -468,22 +590,48 @@ int wmain(int argc,WCHAR** argv)
         CloseHandle(pi.hProcess);
         return 1;
     }
+    timestamp_now(g_timeline.resumeThreadReturnedUtc,
+        sizeof(g_timeline.resumeThreadReturnedUtc));
 
     wprintf(L"Tracing PID %lu. Close XStream normally to finish capture.\n",
         (unsigned long)pi.dwProcessId);
 
-    waitResult = WaitForSingleObject(
-        pi.hProcess,timeoutSeconds ? timeoutSeconds*1000UL : INFINITE);
+    timestamp_now(g_timeline.targetWaitStartedUtc,
+        sizeof(g_timeline.targetWaitStartedUtc));
+    if (timeoutSeconds)
+        timestamp_after_seconds(g_timeline.targetWaitStartedUtc,
+            timeoutSeconds,g_timeline.targetDeadlineUtc,
+            sizeof(g_timeline.targetDeadlineUtc));
+    waitResult = WaitForSingleObject(pi.hProcess,
+        timeoutSeconds ? timeoutSeconds*1000UL : INFINITE);
+    timestamp_now(g_timeline.targetWaitCompletedUtc,
+        sizeof(g_timeline.targetWaitCompletedUtc));
+    if (waitResult == WAIT_OBJECT_0) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_OBJECT_0");
+        timestamp_now(g_timeline.targetExitObservedUtc,
+            sizeof(g_timeline.targetExitObservedUtc));
+    } else if (waitResult == WAIT_TIMEOUT) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_TIMEOUT");
+        g_timeline.aliveAtTimeout = 1;
+    } else if (waitResult == WAIT_FAILED) {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "WAIT_FAILED");
+    } else {
+        strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+            "OTHER");
+    }
     if (waitResult == WAIT_TIMEOUT || waitResult == WAIT_FAILED) {
         timeoutTermination = waitResult == WAIT_TIMEOUT;
         terminationCode = waitResult == WAIT_TIMEOUT ?
             ERROR_TIMEOUT : ERROR_INVALID_DATA;
-        launcherTerminated = TerminateProcess(pi.hProcess,terminationCode) != 0;
-        if (launcherTerminated) {
-            waitResult = WaitForSingleObject(pi.hProcess,INFINITE);
-        } else {
-            waitResult = WaitForSingleObject(pi.hProcess,5000);
-        }
+        launcherTerminated = 1;
+        waitResult = terminate_target(pi.hProcess,terminationCode,&exitCode);
+        if (!g_timeline.terminationSucceeded) launcherTerminated = 0;
+        if (waitResult == WAIT_OBJECT_0)
+            strcpy_s(g_timeline.waitResult,sizeof(g_timeline.waitResult),
+                "WAIT_OBJECT_0_AFTER_TERMINATION");
     }
     if (!GetExitCodeProcess(pi.hProcess,&exitCode)) {
         print_win32_error("GetExitCodeProcess");

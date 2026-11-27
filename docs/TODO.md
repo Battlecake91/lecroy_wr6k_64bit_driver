@@ -20,8 +20,14 @@ This file tracks unfinished work and deferred features. The current, verified ca
   unreadable, so do not retry or assume the launch limit is unused. See the
   [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Batch 32
   also passed the focused observer suites and rebuilt/validated the production
-  trace launcher/hook. See the
-  [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
+  trace launcher/hook. Batch 33 found that the native target deadline window
+  overlaps the recorded RPC error, so timeout causality remains indeterminate
+  (launcher-induced failure is strongly plausible, not proven). Implemented
+  offline lifecycle journaling and independent timeout/process evidence; a
+  fresh, separately authorized experiment is still required to distinguish a
+  blocked COM server from spontaneous RPC loss. Do not run XStream or infer the
+  MAM latch is unused. See the
+  [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
