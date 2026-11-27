@@ -90,11 +90,11 @@ try {
         -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
         -TracePath $trace -ResultPath $result `
         -CaptureResultPath $captureResult -PrivateEvidenceRoot $privateRoot -RepositoryRoot $repo `
-        -ExpectedRequestCount 6 -ExpectedRequestHash $expectedRequestHash
+        -ExpectedRequestCount 7 -ExpectedRequestHash $expectedRequestHash
     $validationExit = $LASTEXITCODE
     $summary = Get-Content -Raw -LiteralPath $result | ConvertFrom-Json
-    Check 'six complete 130-byte requests validate' `
-        ($validationExit -eq 0 -and [int]$summary.RequestCount -eq 6)
+    Check 'six Win32 and one native 130-byte request validate' `
+        ($validationExit -eq 0 -and [int]$summary.RequestCount -eq 7)
     Check 'binary request including NUL bytes is preserved without truncation' `
         ($summary.AllRequestsIdentical -eq $true -and
          @($summary.UniqueRequestHashes).Count -eq 1 -and
@@ -102,17 +102,24 @@ try {
     Check 'concurrent request correlation retains multiple threads and handles' `
         (@($summary.Requests.ThreadId | Sort-Object -Unique).Count -ge 2 -and
          @($summary.Requests.Handle | Sort-Object -Unique).Count -ge 2)
-    Check 'timestamps, sequence and error response metadata are retained' `
+    Check 'timestamps, sequence and Win32 error metadata are retained' `
         (@($summary.Requests | Where-Object {
             [string]::IsNullOrWhiteSpace($_.TimestampUtc) -or
-            [int64]$_.Sequence -le 0 -or $null -eq $_.LastError
+            [int64]$_.Sequence -le 0 -or
+            ($_.Api -eq 'ioctl' -and $null -eq $_.LastError)
         }).Count -eq 0)
+    $nativeRequests = @($summary.Requests | Where-Object {$_.Api -eq 'nt_ioctl'})
+    Check 'native NTSTATUS and IO_STATUS_BLOCK.Information are retained' `
+        ($nativeRequests.Count -eq 1 -and
+         [string]$nativeRequests[0].NtStatus -match '^0xC[0-9A-Fa-f]{7}$' -and
+         [int64]$nativeRequests[0].ResponseBytes -eq 0)
 
     $jsonRecords = @(Get-Content -LiteralPath $trace | ForEach-Object {
         if (-not [string]::IsNullOrWhiteSpace($_)) { $_ | ConvertFrom-Json }
     })
     $targets = @($jsonRecords | Where-Object {
-        $_.type -eq 'ioctl' -and $_.ioctl -eq '0xCFDC2110'
+        ($_.type -eq 'ioctl' -or $_.type -eq 'nt_ioctl') -and
+        $_.ioctl -eq '0xCFDC2110'
     })
     Check 'production records carry exact lengths, family and opcode' `
         (@($targets | Where-Object {
@@ -144,7 +151,7 @@ try {
         -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
         -TracePath $successTrace -CaptureResultPath $successResult `
         -ResultPath $responseValidation -PrivateEvidenceRoot $privateRoot `
-        -RepositoryRoot $repo -ExpectedRequestCount 6 `
+        -RepositoryRoot $repo -ExpectedRequestCount 7 `
         -ExpectedRequestHash $expectedRequestHash
     $responseValidationExit = $LASTEXITCODE
     $responseSummary = Get-Content -Raw -LiteralPath $responseValidation | ConvertFrom-Json
@@ -155,11 +162,14 @@ try {
             $responseSha.ComputeHash($expectedResponse))).Replace('-','')
     }
     finally { $responseSha.Dispose() }
-    Check 'synthetic response fixture records all 14 returned bytes per request' `
+    Check 'synthetic response fixture records six 14-byte API replies and native failure information' `
         ($responseLaunchExit -eq 0 -and $responseValidationExit -eq 0 -and
          @($responseSummary.Requests | Where-Object {
             [int]$_.ResponseBytes -ne 14 -or
             [string]$_.ResponseSha256 -ne $expectedResponseHash
+         }).Count -eq 1 -and
+         @($responseSummary.Requests | Where-Object {
+            $_.Api -eq 'nt_ioctl' -and [int]$_.ResponseBytes -ne 0
          }).Count -eq 0)
     Remove-Item Env:LECS65_TEST_IOCTL_SUCCESS -ErrorAction SilentlyContinue
 
@@ -362,7 +372,7 @@ try {
         (Join-Path $orchestrationRoot 'result.json') | ConvertFrom-Json
     Check 'complete offline orchestration preserves the production launch path' `
         ($orchestrationExit -eq 0 -and $orchestration.Result -eq 'PASS' -and
-         [int]$orchestration.Capture.RequestCount -eq 6 -and
+         [int]$orchestration.Capture.RequestCount -eq 7 -and
          $orchestration.Waveform.Result -eq 'PASS' -and
          (Test-Path -LiteralPath $orchestrationDispatch))
     Check 'orchestration result exposes hashes and metadata but no opaque bytes' `

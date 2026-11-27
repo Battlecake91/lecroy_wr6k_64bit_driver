@@ -186,9 +186,10 @@ directly and under strict parent output capture. The first two incomplete
 private output roots remain preserved; those failed package attempts did not
 sign. The subsequent single signing promotion is recorded below.
 
-## Passive host snapshot
+## Passive pre-install snapshot
 
-On 2026-11-26, read-only checks observed Windows 10 Pro x64, build 19045; the
+Before the separately authorized Batch 31 installation, read-only checks on
+2026-11-26 observed Windows 10 Pro x64, build 19045; the
 stable PCI instance
 `PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0` was `OK` with
 problem code zero and bound to `oem108.inf`, version `0.2026.1030.2`. Service
@@ -196,27 +197,26 @@ problem code zero and bound to `oem108.inf`, version `0.2026.1030.2`. Service
 `2F0F53A707C6B658FF28FAFC4A8904E7EEB5F7B2E9D2BC414A2382A859C68653`. No
 XStream/acquisition-named process was present. No device handle was opened.
 
-The five interface instances were not re-enumerated during Batch 31. The
-test-signing state could not be freshly read: `bcdedit /enum {current}` exited
-1 in this shell. Capture readiness and the rollback set were not revalidated
-in this package pass. These are explicit preflight checks for any later
-installation; no claim is made that they passed here.
+The five interfaces, test-signing state, kernel-capture readiness and rollback
+set were verified in the subsequent installation preflight, documented in
+“Controlled installation and runtime qualification” above. The final
+post-install snapshots also re-enumerated all five interface classes.
 
-## Status correction and next gates
+## Status correction and current qualification boundary
 
 The fixed source preserves the operation status (`STATUS_DEVICE_BUSY` on
 exhausted launch limit) when no-launch cleanup succeeds. Cleanup failure
 remains authoritative and follows existing fail-closed handling. Invalid SG
 segment counts fail explicitly. The denial remains pre-arm and does not permit
 DMA arm, INTEN enable, or MAMRGO; no completion count is fabricated. The
-installed `oem108.inf` still contains the old status-overwrite behavior.
+corrected candidate is now installed as `oem109.inf`; the exact R0 9/9 and R1
+2/2 results are in the runtime qualification section above. No live XStream
+startup, opcode-`0x03` request, or MAM-limit denial was exercised by Batch 31.
 
-Signing is complete. The next step requires separate explicit installation
-approval and a fresh passive preflight of
-the package hashes, test-signing, device/service/interface state, capture
-readiness, acquisition-client absence, and verified rollback retention. After
-installation, qualify R0 9/9 and R1 2/2 once. Any XStream startup requires
-another fresh authorization and confirmation that the productive x86 disk is
-physically isolated; preserve `MamLaunchLimit=1`, and treat the possible one
-MAM GO as an explicitly authorized DMA experiment. Do not repeat Batch 28's
-consumed authorization.
+The remaining next gate is a new XStreamWithCapture attempt, which is not
+authorized by the package/install qualification. It requires complete pinned
+capture identities, current passive preflight, fresh owner confirmation that
+the productive x86 disk is physically disconnected, and explicit authorization
+for one COM startup, its automatic initialization requests, private capture,
+and at most one MAM GO. Preserve `MamLaunchLimit=1`; do not reset it or replay
+Batch 28/29 authorizations.

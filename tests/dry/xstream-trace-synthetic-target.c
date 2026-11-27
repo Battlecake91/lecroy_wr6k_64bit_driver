@@ -2,8 +2,18 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <stdint.h>
+#include <string.h>
 
 #define TARGET_IOCTL 0xCFDC2110U
+
+typedef struct TEST_IO_STATUS_BLOCK {
+    LONG Status;
+    ULONG_PTR Information;
+} TEST_IO_STATUS_BLOCK;
+
+typedef LONG (NTAPI *PFN_NtDeviceIoControlFile)(
+    HANDLE,HANDLE,PVOID,PVOID,TEST_IO_STATUS_BLOCK*,ULONG,
+    PVOID,ULONG,PVOID,ULONG);
 
 typedef struct TRACE_THREAD_CONTEXT {
     HANDLE Device;
@@ -86,6 +96,30 @@ static int issue_successful_output_ioctl(void)
     return 1;
 }
 
+static int issue_native_ioctl(const BYTE request[130])
+{
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    FARPROC entry;
+    PFN_NtDeviceIoControlFile nativeCall = NULL;
+    HANDLE device;
+    BYTE output[14];
+    TEST_IO_STATUS_BLOCK ioStatus;
+    LONG status;
+    if (!ntdll) return 0;
+    entry = GetProcAddress(ntdll,"NtDeviceIoControlFile");
+    if (!entry || sizeof(nativeCall) != sizeof(entry)) return 0;
+    CopyMemory(&nativeCall,&entry,sizeof(nativeCall));
+    device = CreateFileW(L"NUL",GENERIC_READ|GENERIC_WRITE,
+        FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+    if (device == INVALID_HANDLE_VALUE) return 0;
+    ZeroMemory(output,sizeof(output));
+    ZeroMemory(&ioStatus,sizeof(ioStatus));
+    status = nativeCall(device,NULL,NULL,NULL,&ioStatus,TARGET_IOCTL,
+        (PVOID)request,130,output,sizeof(output));
+    CloseHandle(device);
+    return status < 0 && ioStatus.Information == 0;
+}
+
 static int write_dispatch_marker(void)
 {
     WCHAR path[MAX_PATH*4];
@@ -164,7 +198,8 @@ int wmain(int argc,WCHAR** argv)
         CloseHandle(devices[index]);
     }
     if (!issue_successful_output_ioctl()) return 12;
-    if (calls != 6 || failures != 0 || !write_dispatch_marker()) return 14;
+    if (calls != 6 || failures != 0 || !issue_native_ioctl(request) ||
+        !write_dispatch_marker()) return 14;
     if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
         lstrcmpiW(mode,L"hang-after-requests") == 0) {
         for (;;) Sleep(1000);

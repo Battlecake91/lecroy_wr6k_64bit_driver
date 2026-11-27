@@ -109,3 +109,28 @@ It covers exact 130/14-byte binary preservation including NULs, concurrency,
 multiple handles, failures, output capture, write failure, collision handling,
 `/Embedding`, private-evidence containment, footer integrity and the complete
 mocked launch/validation chain. It performs no driver or hardware operation.
+
+## Batch 32 production rebuild and synthetic validation
+
+The production x86 launcher and hook were rebuilt from the tracked sources at
+commit `efb1ad4fbf1100c8ff2648bedba6a4b0717f5998` using MSVC x86 toolset
+14.41.34120 under Windows PowerShell 5.1. The resulting ignored local outputs
+are pinned by SHA-256:
+
+| Artifact | SHA-256 |
+|---|---|
+| `build\x86\xstream_trace_launcher.exe` | `75AA30B4F6E09D7BC7C86DDB707B32C3C07FE38EAF8D4F3CF67C3726FAD1EE0B` |
+| `build\x86\xstream_io_hook.dll` | `B3BBE925B6CF93376200D2282F4C8AF8ABCD36D3C4272C663549F1044F3E1712` |
+
+Both artifacts are PE x86 (`0x014C`) and import only `KERNEL32.dll`. A
+synthetic x86 target was run through these production binaries; six Win32 and
+one direct `NtDeviceIoControlFile` request each carried the complete 130-byte
+payload. The native record also preserved returned NTSTATUS and
+`IO_STATUS_BLOCK.Information`. The `NUL` target returned an expected failure
+and zero bytes, so this run does not claim a successful 14-byte production
+response. Normal trace finalization, parent flush and validator `PASS` were
+confirmed. The 29/29 focused test-mode suite separately verifies a synthetic
+complete 14-byte response through a test-only shim and error/termination
+classifications.
+No XStream executable, device, driver, kernel capture component or hardware
+was used. Do not commit these generated binaries or synthetic raw traces.
