@@ -18,9 +18,9 @@ This file tracks unfinished work and deferred features. The current, verified ca
   authorization must explicitly account for it. See the
   [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Batch 32
   offline checks reconfirmed the installed identity and passed focused observer
-  suites, but production trace launcher/hook files were not located and the
-  current test-signing state could not be read without an elevated token. No
-  live attempt occurred; see the
+  suites and rebuilt/validated the production trace launcher/hook. Elevated
+  test-signing and Driver Verifier checks still require an elevated token; no
+  live attempt occurred. See the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test

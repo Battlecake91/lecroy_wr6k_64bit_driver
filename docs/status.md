@@ -52,12 +52,13 @@
   hashes match their approved identities. No XStream, capture, IOCTL, MAM GO,
   or other hardware operation occurred.
 - Offline Windows PowerShell 5.1 tests passed: launcher mock suite 51/51,
-  COM lifecycle 8/8, IOCTL trace 28/28, and single-waveform observer 13/13.
+  COM lifecycle 8/8, IOCTL trace 29/29, and single-waveform observer 13/13.
   The test-only trace artifacts are not production capture binaries.
-- Batch 32 remains offline-only. The production trace launcher and hook were
-  not found in the scoped local search, the elevated BCD check could not run
-  from the non-elevated shell, and no fresh physical x86-disk isolation
-  confirmation or XStream authorization was provided. See the
+- Batch 32 restored the production x86 trace launcher and hook from tracked
+  source; the production pair passed a synthetic end-to-end capture. Elevated
+  BCD/Verifier checks remain unavailable from the non-elevated shell, and no
+  fresh physical x86-disk isolation confirmation or XStream authorization was
+  provided. No live XStream, capture-driver load, IOCTL or GO occurred. See the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 ## Batch 30 MAM status propagation

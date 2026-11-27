@@ -13,9 +13,10 @@ artificial launch-limit case. See the
 [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
 Batch 32 did not exercise the corrected status on hardware. Its passive
-inspection reconfirmed the installed image, and focused observer tests passed,
-but production capture binaries were not found and no fresh live authorization
-was given. Therefore the real XStream result, exhausted-limit
+inspection reconfirmed the installed image; the production capture pair was
+rebuilt and passed a synthetic end-to-end capture, and focused observer tests
+passed. No fresh live authorization was given. Therefore the real XStream
+result, exhausted-limit
 `STATUS_DEVICE_BUSY`/zero-information behavior, opcode-`0x03` transaction,
 and waveform delivery remain unqualified. See the
 [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
