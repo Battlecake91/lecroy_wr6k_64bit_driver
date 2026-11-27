@@ -12,13 +12,16 @@ qualification-gate behavior; the original x86 driver has no equivalent
 artificial launch-limit case. See the
 [Batch 31 handoff](handoffs/batch-31-package-qualification.md).
 
-Batch 32 did not exercise the corrected status on hardware. Its passive
-inspection reconfirmed the installed image; the production capture pair was
-rebuilt and passed a synthetic end-to-end capture, and focused observer tests
-passed. No fresh live authorization was given. Therefore the real XStream
-result, exhausted-limit
-`STATUS_DEVICE_BUSY`/zero-information behavior, opcode-`0x03` transaction,
-and waveform delivery remain unqualified. See the
+Batch 32 made one authorized XStream attempt on `oem109.inf`. COM root
+activation succeeded, but resolving `Acquisition` ended with RPC unavailable
+(`0x800706BA`). The partial private trace has no family-2 opcode `0x03`, direct
+`CFDC2138` IOCTL, or waveform. All 482 captured `CFDC2110` native calls
+returned NTSTATUS success, but that does not qualify the missing opcode or
+acquisition path. The kernel trace contained no `CFDC2138` or `MAMRGO` marker;
+no GO was observed, though the attempt's incomplete footer prevents treating
+the launch latch as reusable. Exhausted-limit `STATUS_DEVICE_BUSY`/zero-
+information behavior, corrected opcode-`0x03` transport, and waveform delivery
+remain unqualified. See the
 [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 

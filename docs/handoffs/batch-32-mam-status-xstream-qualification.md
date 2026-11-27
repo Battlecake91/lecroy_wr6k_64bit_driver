@@ -2,11 +2,16 @@
 
 ## Scope and result
 
-Batch 32 completed offline preparation and passive host inspection only. No
-XStream process was started, no COM activation or device IOCTL occurred, no
-kernel capture was started, and no MAM GO was dispatched. The Batch 32 GO
-count is zero. The existing Batch 28/29 evidence remains historical and is
-not reused as authorization or as a result for the installed Batch 31 image.
+Batch 32 completed offline preparation, elevated passive preflight and exactly
+one freshly authorized `XStreamWithCapture` attempt. The attempt failed while
+resolving the COM `Acquisition` object with RPC error `0x800706BA`. No explicit
+`Acquire()` or waveform was observed. The private IOCTL trace is a valid
+partial trace terminated at the configured timeout and has no footer. It
+contains no family-2 opcode `0x03` request and no direct `CFDC2138` device
+control. The kernel capture contains no `CFDC2138` or `MAMRGO` marker; no MAM GO
+was observed. Treat the inaccessible FDO-local launch latch as uncertain and
+do not retry. The capture and XStream processes ended; the installed driver
+and device remain healthy.
 
 The source branch was created from the required Batch 31 HEAD
 `2282727655258d0661bd61324c1dafd17d0b7eb2` as
@@ -42,10 +47,18 @@ three-file installable `package` directory. Manifest metadata records
 disabled. This metadata does not establish that the current FDO launch latch
 is unused.
 
-The read-only BCD query could not open the boot configuration store because
-the current shell is not elevated (`Access denied`). Therefore this run does
-not independently verify current test-signing state. No privilege elevation
-or BCD change was attempted.
+An elevated 64-bit Windows PowerShell 5.1 passive check ran at
+`2026-11-27T00:34:25.9458495Z`. BCD `{current}` reported `testsigning Yes`;
+`verifier /querysettings` reported flags `0x00000000` and no selected drivers;
+`verifier /query` reported no drivers currently verified. The PCI instance,
+`oem109.inf`, version, running service and loaded SYS hash matched the pinned
+baseline. No XStream/acquisition client was running before dispatch. The owner
+freshly confirmed that the productive Windows x86 disk remained physically
+disconnected; the passive disk inventory exposed only the test NVMe. The
+preflight JSON SHA-256 is
+`CA4C7BF228763D93D2DF00BE0F7ED9D18D89D4850E47292026E093005472BDDF`; the
+transcript SHA-256 is
+`07BC8B962EB42D0C72E8D5A85BA430912D3F7D10854C4ACFB2A0C762885A62EE`.
 
 ## Production observer rebuild and qualification
 
@@ -99,7 +112,7 @@ artifacts:
 | `xstream_io_hook.dll` | 103,424 | `B3BBE925B6CF93376200D2282F4C8AF8ABCD36D3C4272C663549F1044F3E1712` |
 
 The old production hashes did not match these new binaries and are superseded
-for this prepared local execution only. The built binaries were copied into a
+for this local execution. The built binaries were copied into a
 separate clean detached worktree at the exact tested script HEAD
 `efb1ad4fbf1100c8ff2648bedba6a4b0717f5998`:
 `C:\Users\LeCroyUser\.codex\worktrees\batch32-live-candidate`. Its Git status
@@ -139,19 +152,25 @@ Current script SHA-256 identities:
 
 DebugView 5.02 is present with the documented SHA-256
 `7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B` and a
-valid Microsoft Authenticode signature. Its kernel component was not loaded.
+valid Microsoft Authenticode signature. During the authorized run its kernel
+component loaded temporarily. The capture readiness record confirmed kernel
+and verbose-kernel modes, healthy collector process, initialized capture and a
+stable independently attributable StorNVMe `POWER: ACTIVE` message. After the
+300-second capture duration, the DebugView process had ended and no `Dbgv`
+system-driver service remained.
 The COM server executable remains pinned at SHA-256
 `27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F`.
 
-## Prepared, not executed, XStream invocation
+## Executed once: pinned XStream invocation
 
-The following command is pinned to the clean detached worktree above and the
-current signed candidate. It is prepared only: do not run it until an elevated
-passive preflight succeeds, the owner freshly confirms physical x86-disk
-isolation, and the owner explicitly authorizes one XStream COM startup, its
-automatic initialization IOCTLs, private capture, and at most one MAM GO. It
-contains the authorization switches only as the future command shape; this
-handoff is not authorization. Evidence root must still be absent at dispatch.
+The following documented command was executed exactly once from the elevated
+64-bit Windows PowerShell 5.1 parent, using the clean detached worktree above,
+the frozen Batch 31 package and authorization ID
+`B32-XSTREAM-20261127-01`. Its authorization is consumed. Do not replay it.
+The evidence directory was new at dispatch. The initial attempt to extract the
+block from the older pinned worktree stopped before process start; no capture
+or XStream action occurred in that failed preparation. The single actual
+execution used this exact block from the updated Batch 32 handoff.
 
 ```powershell
 $repo = 'C:\Users\LeCroyUser\.codex\worktrees\batch32-live-candidate'
@@ -195,31 +214,72 @@ $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.ex
   -CaptureReadinessTimeoutSeconds 60 -CaptureShutdownGraceSeconds 15
 ```
 
-## Qualification meaning and blockers
+## Authorized attempt timeline and results
 
-Batch 30's source fix preserves `STATUS_DEVICE_BUSY` after successful cleanup
-for launch-limit rejections. The installed Batch 31 candidate includes that
-fix, but neither R0/R1 nor this passive inspection exercised an exhausted
-MAM request. Batch 32 therefore has no real-hardware result for denied-request
-status, `IO_STATUS_BLOCK.Information`, completion bytes, GO count during
-XStream, COM Acquisition resolution, opcode `0x03`, or waveform delivery.
+All times below are UTC. The capture process started at `00:36:04.184Z`.
+DebugView reported successful kernel-driver startup and emitted an attributable
+StorNVMe kernel line. Capture readiness was persisted at `00:36:07.202Z`.
+The XStream dispatch marker was written at `00:36:10.088Z`; exactly one
+`lecroyxstreamdso.exe` process was created. COM root activation started at
+`00:36:10.163Z` and completed at `00:36:28.525Z`. The first `Acquisition`
+lookup began at `00:36:28.530Z`. It ended at `00:40:28.343Z` with
+`0x800706BA`; the observer result records one XStream launch and zero explicit
+`Acquire()` calls. The trace launcher timed out and terminated the target with
+exit code `1460`. Capture stopped normally after its bounded 300-second
+duration at `00:41:04Z`.
 
-Before live execution, all of the following remain required:
+The outer launcher result is `FAIL`, exit code 1, with one capture invocation,
+one XStream invocation, zero install/PnP/no-launch invocations and no retry.
+The XStream capture classification is
+`VALID_PARTIAL_LAUNCHER_TERMINATION`: 3,748 trace records, one header, no
+footer, parent flush successful. The 482 captured `CFDC2110` calls all use the
+native API, have NTSTATUS `0x00000000`, are non-pending, and have neither input
+nor output truncation. The captured protocol identities contain no family-2
+opcode `0x03`; the expected 130-byte request and 14-byte response were not
+observed. No direct user-mode IOCTL `0xCFDC2138` was recorded. Therefore there
+is no `CFDC2138` return status to report for this run.
 
-1. Run the elevated read-only preflight to verify BCD test-signing state,
-   Driver Verifier state and the exact driver/package state immediately before
-   the attempt. This task's shell was not elevated; BCD access returned
-   `Access denied`, so those checks remain unverified.
-2. Obtain fresh owner confirmation that the productive Windows x86 disk is
-   physically disconnected.
-3. Obtain explicit authorization for exactly one XStream COM startup, its
-   automatic initialization IOCTLs, private full IOCTL capture, and at most one
-   MAM hardware GO. No explicit `Acquire()`, CVar changes, retry, driver
-   restart, or launch-limit reset is permitted.
-4. Establish genuine kernel capture readiness before dispatch. DebugView
-   binary identity alone is not capture readiness.
+The kernel log contains 42,154 lines and no `CFDC2138` transaction or `MAMRGO`
+marker. The driver source emits its `CFDC2138` transaction trace at error
+level; the verbose kernel capture did not receive it. **Observed MAM GO count:
+zero.** This is an evidence-based no-GO result for the captured attempt, but
+the internal one-shot latch cannot be queried; preserve the no-retry rule and
+do not assume the latch is reusable. No DMA completion, IRQ/DPC transfer,
+waveform, or acquisition was observed.
 
-The exact next live stage is one fresh `XStreamWithCapture` attempt using the
-verified `oem109.inf` image and the corrected Batch 29 observer, after these
-gates. Stop after that attempt; preserve incomplete traces without claiming
-transport, DMA, or waveform success.
+The raw private IOCTL trace is 2,214,085 bytes with SHA-256
+`B30AD0D22D60F0FBA74B7B47D13574D260DCA42184B7C633FDC87AFAADBD2593`.
+The kernel capture log is 3,398,232 bytes with SHA-256
+`7D5DDE3DE7B232E4F34096F00DC3CB5E6C68E435F2430E36DBF025B617C644C8`; the
+live stdout capture is 3,440,492 bytes with SHA-256
+`F3455131761A1BA62CCA1793DC144B992B3DC7BFC15FA8F0B01283A3DE103C36`. The
+capture readiness JSON hash is
+`47A314F5E5EF5C14097359A3D0769728D77C4C500B7E3B47AA9DD2F064AD655B`.
+The outer launcher result hash is
+`E95E636FDE1BE2C7FD5B12601F2AA07278ACD4E289E5C5E61B47FEBD06FF4C27`;
+the detailed XStream result hash is
+`564F244EF3464C35B0C4D2E9F1B6C51DDED26B3602FE3C405DE14DCDCB8C0D5E`;
+and the waveform observer result hash is
+`4B95EDEB5BE63E95D435C2CFA424B0A0D365F02AFDBA025AB277F1C633CD6B1C`.
+Raw traces and payloads remain outside the public repository. The sanitized,
+JSON-validated analysis summary is stored beside the private evidence at
+`batch32-analysis-summary-final.json` (SHA-256
+`4D0D0C04DFA1C15247DDDEECBCCF98676E4A5FD9BE43827D65D6C9484C6C10CC`).
+
+After capture, passive verification at `00:45:53Z` confirmed the exact same
+`oem109.inf`, version, loaded SYS hash, device `OK`, problem code 0, running
+service and five enabled interfaces. No XStream or DebugView process and no
+`Dbgv` service key, system-driver entry, or `%SystemRoot%\System32\drivers\Dbgv.sys`
+file remained. No relevant System Kernel-PnP, WHEA or service events were
+found. Code Integrity 3033/3089 events at `00:35:37Z` and
+`00:38:35Z` concern `svchost.exe` loading Bonjour `mdnsNSP.dll`; one occurrence
+preceded dispatch and none named LeCroy, XStream or DebugView. The OS remained
+responsive.
+
+Batch 32 is stopped. Opcode `0x03`, `CFDC2138` completion/status,
+`IO_STATUS_BLOCK.Information` for that request, Acquisition object availability
+and waveform delivery remain unqualified. Any future test requires a new
+diagnosis of the RPC server lifetime, a fresh owner authorization, and a plan
+that treats the FDO-local MAM launch latch as unknown. Do not repeat this run,
+call `Acquire()`, reset the launch limit, reload the driver, or start a second
+COM activation under this authorization.

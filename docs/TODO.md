@@ -7,20 +7,20 @@ This file tracks unfinished work and deferred features. The current, verified ca
 - [ ] **Runtime-qualify restored `CFDC2110` family-2 opcode `0x03`, then
   requalify one waveform.** The native exact-shape transport path remains
   Dry-qualified; do not fabricate the opaque request body. The Batch 28 XStream
-  COM attempt failed resolving `Acquisition` with RPC server unavailable
-  (`0x800706BA`); its trace was incomplete and no explicit `Acquire()` or
-  waveform was observed. Batch 31 installed the fixed signed candidate as
+  COM attempt on `oem108.inf` failed resolving `Acquisition` with RPC server
+  unavailable (`0x800706BA`). Batch 31 installed the fixed signed candidate as
   `oem109.inf` and passed R0 9/9 plus R1 2/2. That safe ABI result does not
   authorize XStream. RPC server lifetime and the corrected opcode-`0x03`
-  request/response remain unresolved. Require fresh explicit authorization
-  and physical-isolation confirmation before another XStream attempt. Preserve
-  `MamLaunchLimit=1`; a new driver start may permit one MAM GO, so the owner
-  authorization must explicitly account for it. See the
+  request/response remain unresolved. Batch 32 performed one freshly
+  authorized attempt on `oem109.inf`: root COM activation succeeded, then the
+  `Acquisition` lookup failed with the same RPC error. The private trace ended
+  partial at the bounded timeout, contains no opcode `0x03` or direct
+  `CFDC2138` call, and no waveform was observed. The kernel trace had no
+  `CFDC2138`/`MAMRGO` marker; no GO was observed, but the FDO launch latch is
+  unreadable, so do not retry or assume the launch limit is unused. See the
   [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Batch 32
-  offline checks reconfirmed the installed identity and passed focused observer
-  suites and rebuilt/validated the production trace launcher/hook. Elevated
-  test-signing and Driver Verifier checks still require an elevated token; no
-  live attempt occurred. See the
+  also passed the focused observer suites and rebuilt/validated the production
+  trace launcher/hook. See the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test

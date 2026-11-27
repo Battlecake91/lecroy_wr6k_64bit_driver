@@ -44,21 +44,43 @@
 - Signing was completed once for the frozen candidate described below. The
   later authorized installation and R0/R1 qualification are recorded above.
 
-## Batch 32 offline XStream/MAM status preparation
+## Batch 32 XStream/MAM qualification result
 
 - Passive inspection reconfirmed `oem109.inf` / `0.2026.1126.1`, the expected
   loaded SYS hash, device `OK` / problem code 0, running service, and all five
   enabled interface instances. The frozen Batch 31 INF/CAT/SYS/PDB/manifest
-  hashes match their approved identities. No XStream, capture, IOCTL, MAM GO,
-  or other hardware operation occurred.
+  hashes matched their approved identities at preflight, before the single
+  authorized XStream attempt described below. No installation or PnP operation
+  occurred.
 - Offline Windows PowerShell 5.1 tests passed: launcher mock suite 51/51,
   COM lifecycle 8/8, IOCTL trace 29/29, and single-waveform observer 13/13.
-  The test-only trace artifacts are not production capture binaries.
-- Batch 32 restored the production x86 trace launcher and hook from tracked
-  source; the production pair passed a synthetic end-to-end capture. Elevated
-  BCD/Verifier checks remain unavailable from the non-elevated shell, and no
-  fresh physical x86-disk isolation confirmation or XStream authorization was
-  provided. No live XStream, capture-driver load, IOCTL or GO occurred. See the
+  The production x86 launcher/hook also passed synthetic end-to-end capture.
+- One freshly authorized `XStreamWithCapture` attempt ran with authorization
+  ID `B32-XSTREAM-20261127-01`. Elevated passive readback showed BCD
+  `testsigning Yes`, Driver Verifier flags `0`, no verified drivers, and the
+  expected healthy device/package. Capture readiness was established by a
+  captured StorNVMe kernel message. One XStream process/root COM activation
+  occurred; the first `Acquisition` lookup failed with RPC server unavailable
+  (`0x800706BA`) after about four minutes. No explicit `Acquire()` occurred.
+- The XStream observer returned failure and the trace launcher terminated its
+  target at the bounded timeout (exit `1460`). The private trace has 3,748
+  records, no footer, and classification
+  `VALID_PARTIAL_LAUNCHER_TERMINATION`. It contains 482 complete native
+  `CFDC2110` calls, all with NTSTATUS `0x00000000`, none pending or truncated;
+  family-2 opcode `0x03` and direct `CFDC2138` calls are absent. The kernel log
+  has no `CFDC2138` or `MAMRGO` marker. **No MAM GO was observed; because the
+  capture is partial and the FDO launch latch is not readable, do not treat the
+  limit as reusable or retry.** No waveform was returned.
+- After capture ended, `oem109.inf`, SYS hash, device `OK` / problem code 0,
+  running service, and all five enabled interface classes were unchanged.
+  XStream and DebugView processes ended; the `Dbgv` system-driver service is
+  absent. No relevant Kernel-PnP, WHEA, or Service Control Manager errors were
+  found. Code Integrity 3033/3089 events were for `svchost.exe` loading
+  Bonjour `mdnsNSP.dll`, including an occurrence before dispatch; they are not
+  LeCroy driver failures.
+- Raw IOCTL and kernel traces remain private and were not committed. Their
+  hashes, exact event timeline, preflight evidence and the incomplete-capture
+  limits are recorded in the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
 ## Batch 30 MAM status propagation

@@ -1,27 +1,33 @@
 # Phase 2C kernel-runtime qualification plan
 
-## Batch 32 offline status and live gate
+## Batch 32 XStream attempt result
 
 The Batch 31 installed candidate remains `oem109.inf`, version
 `0.2026.1126.1`, with the qualified SYS identity recorded in
 [`docs/status.md`](status.md). Batch 32 passive inspection reconfirmed the
 loaded image hash, device health, service, and five enabled interface
-instances. The production trace launcher and hook were rebuilt from tracked
-source and passed a synthetic end-to-end capture. Focused Windows PowerShell
-5.1 observer tests passed. The read-only BCD query was denied because the
-current shell was not elevated. No capture driver, XStream process,
-COM activation, device handle, IOCTL, or MAM launch was used. The exact evidence
-and offline test counts are in the
+instances. One authorized elevated `XStreamWithCapture` attempt verified BCD
+`testsigning Yes`, Driver Verifier flags `0` with no verified drivers, and the
+expected package/device state. DebugView captured an attributable StorNVMe
+kernel message before the one XStream process and COM root activation. The
+first `Acquisition` lookup failed with RPC server unavailable
+(`0x800706BA`). The observer returned nonzero; its target was terminated at
+the configured timeout. Its private trace is valid partial evidence without a
+footer. It has no family-2 opcode `0x03` or direct `CFDC2138` request. The
+kernel capture has no `CFDC2138`/`MAMRGO` marker, so no MAM GO was observed;
+the internal launch latch is not readable, and the result must not be retried.
+No explicit `Acquire()` or waveform was observed. The production trace binaries
+were built from tracked source and separately passed synthetic end-to-end
+validation; focused PowerShell 5.1 suites passed. Full results and hashes are
+in the
 [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
 
-Do not start the next XStream attempt until an elevated passive preflight
-verifies test-signing, Driver Verifier and package state, the owner freshly
-confirms physical disconnection of the productive Windows x86 disk, and the
-owner explicitly authorizes one COM
-startup with its automatic IOCTLs, private capture, and at most one MAM GO.
-Do not call `Acquire()`, change CVars, retry, reset the MAM launch limit, reload
-the driver, or claim opcode-`0x03`/waveform qualification without direct
-complete evidence.
+The attempt stopped after one XStream start. Preserve the private trace and
+post-test device state. Do not retry, call `Acquire()`, change CVars, reset the
+MAM launch limit, reload the driver, or claim opcode-`0x03`/waveform
+qualification from this partial evidence. A new live attempt requires fresh
+authorization and an explicit plan addressing the same RPC failure and the
+unknown FDO-local MAM latch state.
 
 ## Batch 31 candidate readiness
 
