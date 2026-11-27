@@ -208,7 +208,113 @@ reach capture readiness or XStream dispatch. The stop condition was honored;
 do not repair and rerun under this authorization. Any future active run
 requires fresh owner approval, with the FDO-local MAM latch still unknown.
 
-## Ready for the next startup authorization
+## Authorized startup on November 28, 2026
+
+Authorization `B33-XSTREAM-ACQUISITION-20261128-01` was used once with
+`f43988551967d6cca376ff9773c398f738f993ae` and the installed `oem109.inf`
+candidate. The owner reconfirmed that the productive x86 disk was physically
+disconnected. The captured host readback passed BCD test signing and both
+Verifier queries. A StorNVMe kernel message established capture readiness.
+The outer launcher recorded one XStream dispatch, one capture, and zero
+install, restart, or no-launch invocations. It returned exit 1. There was one
+root COM activation and zero explicit `Acquire()` calls.
+
+| UTC, November 27 | Recorded event |
+|---|---|
+| `23:22:33.054` | Kernel capture ready. |
+| `23:22:34.190` | The native launcher resumed instrumented PID 1824. |
+| `23:22:36.998` | The observer began the root COM activation. |
+| `23:22:37.027` | A second `lecroyxstreamdso.exe` process, PID 9160, was created in the same session. Its recorded parent, PID 884, hosted `DcomLaunch` and other services. |
+| `23:22:55.051` | COM root activation returned. `Acquisition` returned an object about 297 ms after its first lookup began. |
+| `23:24:44.336` | Final captured LeCroy native completion, family 1 opcode `0x81`, sequence 3748. |
+| `23:25:54.318` | The optional debugger gate observed a returned lookup and skipped CDB. |
+| `23:26:39.124` | The last of 718 recorded `Acquisition` calls returned an object. Median call duration was 11 ms, maximum 297 ms. |
+| `23:26:39.400` | The independent observer deadline expired. The supervisor closed the observer job and reported timeout 124. |
+| `23:26:39.472` | Instrumented PID 1824 was still alive. Its 33 threads reported 30 `UserRequest` waits and three `EventPairLow` waits. This was thread-state metadata without stacks or waited-object identity. |
+| `23:27:34.191` | The native launcher reached its 300-second target deadline and its termination request succeeded. |
+| `23:27:34.287` | PID 1824 exit observed with code 1460. The private IOCTL trace had no footer. |
+| `23:27:36.283` | The outer launcher persisted failure. |
+| `23:31:26.610` | Passive inspection confirmed that DebugView and its kernel service were absent and that PID 9160 remained present. The device was OK, problem code zero, with the expected running service and SYS hash. |
+
+The observed process count exceeded the intended one-process condition.
+The observer invoked root activation once. The start timing and parent of
+PID 9160 strongly support a separate COM server launch. Neither the COM
+interface pointer's server PID nor the second process's command line was
+captured. Automation responses therefore cannot be tied to the instrumented
+process. The observer's prior guard checked for another server only after
+its normal waveform path. It failed to detect the split in this run.
+PID 9160 was left alone after the run. Passive inspection found no relevant
+PnP, WHEA, DCOM, Code Integrity, crash or hang event in the checked interval.
+
+Batch 32's `Acquisition` wait did not reproduce. This run recorded no
+`0x800706BA` before the observer stopped, about 55 seconds before target
+termination. There was no live observer to report a later RPC result. The
+current timing therefore does not resolve the older RPC failure. The observer
+produced no waveform result. Its internal waveform polling deadline started
+after activation and fell about 16 seconds after its independent process
+deadline. The last recorded successful `Acquisition` call cannot establish
+which later property or waveform condition prevented delivery.
+
+### Event and DMA evidence
+
+Both the saved kernel log and live collector output contain 511 WR6k IOCTL
+entries and 511 corresponding completions by code. Every entry belongs to
+instrumented PID 1824. There are six creates and six closes for that PID and
+no captured WR6k IOCTL from PID 9160. The private trace classifies as valid
+partial launcher termination and has 3,748 records plus the header, with
+532 completed native calls. All 511 LeCroy completions succeeded at the
+NTSTATUS boundary without pending returns. The 483 `CFDC2110` records had no
+capture truncation. Matching kernel counts argue against an open WR6k IOCTL
+inside the logged dispatch interval. They do not rule out a wait in user
+mode, below the visible capture boundary, or on an event.
+
+The event registrations `CFDC2180`, `CFDC218C` and `0x00223100` succeeded
+before the early acknowledgement and enable calls. The recorded `0x85`
+enable mask reached `0x02BF`, as in both known-good traces. Those traces then
+reach `85FB/40/01` reporting sticky pending `0x0080`, the corresponding
+`0x88` acknowledgement and the second `CFDC2184`; none of those post-startup
+operations arrived in the retained current run. The driver source latches
+enabled interrupt bits before signaling its registered event in the DPC.
+The installed build does not journal the relevant interrupt source, DPC
+pending mask, or `KeSetEvent` decision. Registration success and the missing
+status query cannot prove a lost signal, a lost replay, or that the expected
+interrupt was raised. The same registration code did not replay pending state
+in the earlier working source. Treat the process split as a confirmed
+diagnostic defect before changing driver event semantics.
+
+Neither source recorded `CFDC2124`, `CFDC2138`, a MAM admission or GO,
+or DMA retirement. No family 1 opcode `0x51` or family 2 opcode `0x03`
+was captured. The evidence establishes no observed MAM GO and gives no basis
+for assuming that the FDO-local latch is unused.
+
+The following hashes identify private originals. The capture worker did not
+publish an exit sidecar after the outer run failed, although DebugView was
+subsequently observed to exit and both kernel outputs were preserved.
+
+| Evidence | SHA-256 |
+|---|---|
+| Kernel raw log | `8605C1371A7271C6CA192CE1413909E5F9D3D11097DDC30ED9ED1E2E702ECD14` |
+| Kernel live stdout | `D22EAFD49402B0C58F9A389FEF116E58F6EFEBB3BDBB2337854945B5FF5EAE2E` |
+| Private IOCTL trace | `FBA3259B36F57F18982AAAEEAC55F7E5C2B2F7BFC41C5009C3E0F2F0D6AD17AC` |
+| Observer lifecycle | `30459D1449D9CB04AA6CBD4AAE9B617A9B2DD4E5A5B999D3454D6B04A253584D` |
+| Native target termination record | `89C69EB6671FBFEA3C04A1EAA1AA3CB408B791F7DB955E4C4891A463E826121F` |
+| Final passive state | `99D951E7E9A8113DB117B8BEB5E7DFF299684E958E2BA0C81DF67523867BFBA2` |
+
+### Prepared observer correction
+
+The observer now verifies after COM activation that the only matching
+XStream process still has the captured PID, executable path and creation
+time. It journals the visible process identities and stops before the first
+`Acquisition` lookup if the check fails. This detects the observed split
+once activation returns. It cannot prevent COM from
+creating a second process during activation or independently resolve the
+server PID behind a proxy. Focused Windows PowerShell 5.1 tests passed
+30/30 COM lifecycle cases and 13/13 single-waveform mocks. Before another
+hardware run, establish offline how to demonstrate one instrumented COM
+server, then refresh the approved pins. The installed driver and latch
+were untouched by the correction.
+
+## Pre-run preparation and executed command
 
 `XStreamWithCapture` now performs its own read-only BCD and Verifier queries
 in the versioned launcher. It writes the commands' combined output, exit
@@ -247,17 +353,14 @@ STA automation client, then performs one root activation and looks up
 server's apartment or show whether the GUI and embedded paths initialize the
 same workers. Keep the launch mode fixed for this attempt.
 
-### Proposed invocation
+### Invocation used at the original approved revision
 
-Run from an already elevated 64-bit Windows PowerShell 5.1 console in the
-clean worktree. Set `$ApprovedHead` to the full reviewed PR head SHA. Use
-authorization ID `B33-XSTREAM-ACQUISITION-20261128-01` once and leave the
-evidence directory absent until dispatch. This command requires fresh approval
-for one capture, one XStream process and COM activation, automatic IOCTLs,
-private evidence and at most one automatic MAM GO. The current latch is
-unknown. The command requests 420 seconds of kernel capture to cover the
-readiness window, 300-second target bound and evidence finalization. Readiness
-still requires an attributable kernel line before XStream dispatch.
+This historical command was used from an elevated 64-bit Windows PowerShell
+5.1 process with `$ApprovedHead` set to
+`f43988551967d6cca376ff9773c398f738f993ae`. Its authorization ID and evidence
+directory are consumed. The pins apply to that revision. The 420-second
+kernel capture duration covered readiness, the 300-second target bound, and
+evidence finalization. Readiness required an attributable kernel line.
 
 ```powershell
 $repo = (Get-Location).Path

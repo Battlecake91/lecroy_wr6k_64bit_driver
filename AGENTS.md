@@ -53,8 +53,9 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   Batch 33 found the RPC time overlaps the possible 260-second launcher
   deadline; launcher-induced failure is strongly plausible but not proven.
   The versioned launcher now checks BCD and Verifier before capture.
-  The next XStream startup requires fresh authorization. The missing
-  event-status transition is the current diagnostic focus.
+  The latest XStream attempt observed two servers during one COM activation.
+  The observer now detects that split before reading `Acquisition`.
+  Establish single-server attribution before another authorized run.
   See the Batch 32 and Batch 33 handoffs for evidence and the next test gate.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 

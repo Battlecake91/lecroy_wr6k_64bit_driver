@@ -77,6 +77,44 @@ Check 'ordinary failures are not misclassified as RPC loss' `
 Check 'PowerShell COM probe runs in STA for this test host' `
     ([Threading.Thread]::CurrentThread.GetApartmentState() -eq [Threading.ApartmentState]::STA)
 
+$processIdentity = @{
+    ExpectedProcessId = 123
+    ExpectedExecutablePath = 'C:\XStream\lecroyxstreamdso.exe'
+    ExpectedCreationDate = [datetime]'2026-11-28T00:00:00'
+}
+$captured = [pscustomobject]@{
+    ProcessId = 123
+    ExecutablePath = 'C:\XStream\LecroyXStreamDSO.exe'
+    CreationDate = $processIdentity.ExpectedCreationDate
+}
+$newServer = [pscustomobject]@{
+    ProcessId = 456
+    ExecutablePath = $captured.ExecutablePath
+    CreationDate = $captured.CreationDate.AddSeconds(3)
+}
+$reusedPid = [pscustomobject]@{
+    ProcessId = $captured.ProcessId
+    ExecutablePath = $captured.ExecutablePath
+    CreationDate = $newServer.CreationDate
+}
+$unreadablePath = [pscustomobject]@{
+    ProcessId = $captured.ProcessId
+    ExecutablePath = $null
+    CreationDate = $captured.CreationDate
+}
+Check 'COM activation identity permits the original captured process' `
+    (Test-XStreamCapturedServerProcess -Processes @($captured) @processIdentity)
+Check 'COM activation identity rejects a second same-image server' `
+    (-not (Test-XStreamCapturedServerProcess -Processes @($captured,$newServer) @processIdentity))
+Check 'COM activation identity rejects a successor as the sole server' `
+    (-not (Test-XStreamCapturedServerProcess -Processes @($newServer) @processIdentity))
+Check 'COM activation identity rejects PID reuse' `
+    (-not (Test-XStreamCapturedServerProcess -Processes @($reusedPid) @processIdentity))
+Check 'COM activation identity rejects an unverified image path' `
+    (-not (Test-XStreamCapturedServerProcess -Processes @($unreadablePath) @processIdentity))
+Check 'COM activation identity rejects an absent capture target' `
+    (-not (Test-XStreamCapturedServerProcess -Processes @() @processIdentity))
+
 $diagnosticRoot = Join-Path ([IO.Path]::GetTempPath()) `
     ('lec-xstream-lifecycle-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($diagnosticRoot) | Out-Null

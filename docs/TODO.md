@@ -4,13 +4,18 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Resolve XStream Acquisition initialization.** Run the prepared bounded
-  startup on `oem109.inf` after fresh approval and disk-isolation confirmation.
-  Correlate the blocked property lookup and server lifetime with stacks and the
-  missing event-status transition. The partial Batch 32 trace does not
-  establish whether XStream skipped the query or was waiting for an operation
-  that never returned. Investigate opcode `0x03` only if the new trace shows
-  that startup reaches or depends on it. Keep the FDO launch latch unknown.
+- [ ] **Establish one instrumented XStream COM server.** The November 28 run
+  observed a second XStream process during COM activation. Establish offline
+  how to verify the proxy's server or use the existing server without a
+  separate activation. Resolve the remaining process state before any new
+  startup. The new observer guard detects the observed split, but it does
+  not change COM launch behavior. Any new hardware run requires fresh
+  approval and disk-isolation confirmation.
+- [ ] **Explain the missing event transition.** After establishing a single
+  server, correlate event ownership, pending-mask latching, the DPC's
+  signal decision and the first `85FB/40/01` transaction. Investigate
+  opcode `0x03` if startup reaches or depends on it. Keep the FDO launch
+  latch unknown.
   See the [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
 - [ ] **Restore repeatable waveform acquisition.** Verify a displayed C1

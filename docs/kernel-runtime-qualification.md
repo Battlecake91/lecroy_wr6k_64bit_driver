@@ -42,6 +42,13 @@ admission remains.
 
 See the detailed [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
+The November 28 follow-up observed two XStream processes after one COM
+activation. The captured process reached the event-enable mask without a
+visible pending-status query or MAM launch. Its COM server identity was
+unverified despite repeated successful `Acquisition` lookups. The next
+qualification must establish single-server attribution. See the
+[actual run and timing](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
+
 ### Authorized follow-up stopped in preflight
 
 A later single-run authorization did not reach the production launcher. Its

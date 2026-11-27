@@ -292,8 +292,8 @@ try {
         $processRemaining = $false
     }
     else {
-        $existingProcesses = @(Get-CimInstance Win32_Process -Filter `
-            "Name = 'lecroyxstreamdso.exe'" -ErrorAction SilentlyContinue)
+        $processFilter = "Name = 'lecroyxstreamdso.exe'"
+        $existingProcesses = @(Get-CimInstance Win32_Process -Filter $processFilter)
         if ($ExpectedPrelaunchedProcessId -eq 0) {
             if ($existingProcesses.Count -ne 0) {
                 throw 'XStream is already running.'
@@ -301,12 +301,11 @@ try {
         }
         else {
             if ($existingProcesses.Count -ne 1 -or
-                [int]$existingProcesses[0].ProcessId -ne
-                    $ExpectedPrelaunchedProcessId -or
-                -not [string]::Equals(
-                    [IO.Path]::GetFullPath([string]$existingProcesses[0].ExecutablePath),
-                    [IO.Path]::GetFullPath($XStreamExecutablePath),
-                    [StringComparison]::OrdinalIgnoreCase)) {
+                $existingProcesses[0].CreationDate -isnot [datetime] -or
+                -not (Test-XStreamCapturedServerProcess -Processes $existingProcesses `
+                    -ExpectedProcessId $ExpectedPrelaunchedProcessId `
+                    -ExpectedExecutablePath $XStreamExecutablePath `
+                    -ExpectedCreationDate $existingProcesses[0].CreationDate)) {
                 throw 'The prelaunched XStream process identity does not match the pinned capture target.'
             }
         }
@@ -328,6 +327,22 @@ try {
             $script:ComOperationState = 'ComRootActivated'
             Write-ObserverLifecycleEvent -Event 'com_root_activation_returned' -Data @{
                 CompletedUtc = $script:ComRootActivationCompletedUtc
+            }
+            if ($ExpectedPrelaunchedProcessId -ne 0) {
+                $servers = @(Get-CimInstance Win32_Process -Filter $processFilter)
+                $captureTargetOnly = Test-XStreamCapturedServerProcess -Processes $servers `
+                    -ExpectedProcessId $ExpectedPrelaunchedProcessId `
+                    -ExpectedExecutablePath $XStreamExecutablePath `
+                    -ExpectedCreationDate $existingProcesses[0].CreationDate
+                Write-ObserverLifecycleEvent -Event 'com_server_process_check' -Data @{
+                    ExpectedProcessId = $ExpectedPrelaunchedProcessId
+                    CaptureTargetOnly = $captureTargetOnly
+                    Servers = @($servers | Select-Object ProcessId,ParentProcessId,SessionId,CreationDate)
+                }
+                if (-not $captureTargetOnly) {
+                    $script:ComOperationState = 'CapturedServerMismatch'
+                    throw 'COM activation did not leave exactly the pinned XStream process. Capture cannot attribute automation to its target.'
+                }
             }
             $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
             $lastError = 'automation model not ready'

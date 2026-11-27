@@ -2924,7 +2924,15 @@ the later working MTT traffic make MTT a credible obstacle to complete GUI
 initialization once startup reaches that stage. Neither MTT nor family 2
 opcode `0x03` presently explains the Batch 32 block. The modern hook records
 completed calls, so an outstanding call remains possible. See the
-[next controlled startup](handoffs/batch-33-xstream-com-timeout-causality.md).
+[Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+
+The later Batch 33 capture confirmed the early event registrations and
+`0x85` mask `0x02BF`, with matching enter/done counts for all 511 captured
+WR6k IOCTLs. It again lacked the pending-status query and MAM transition.
+The root activation also coincided with a second XStream process, so the
+returned automation object cannot be attributed to the captured process.
+Successful event registration still does not show the DPC set the event.
+See the [authorized run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
 
 
 ## Trace 011938: normal oscilloscope controls remain stable
