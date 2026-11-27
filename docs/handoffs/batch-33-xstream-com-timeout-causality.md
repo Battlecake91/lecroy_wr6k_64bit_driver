@@ -195,10 +195,47 @@ acquisition. At completion, do not infer DMA from IOCTL success; require the
 appropriate kernel GO/IRQ/DPC/completion evidence. No such experiment was
 executed in Batch 33; it requires a new explicit authorization.
 
+## Freshly authorized follow-up: stopped before capture
+
+On 2026-11-27 the owner freshly confirmed physical disconnection of the
+productive x86 disk and authorized one additional `XStreamWithCapture` run on
+the unchanged `oem109.inf` candidate. The elevated 64-bit PowerShell 5.1
+bootstrap started once but failed closed before invoking the repository's
+diagnostic launcher. Its Driver Verifier command returned flags
+`0x00000000` and output `Überprüfte Treiber: Keine`; however, a temporary
+bootstrap file written as UTF-8 without a BOM contained a literal German
+`Überprüfte Treiber` regex. Windows PowerShell 5.1 decoded the no-BOM script
+using the legacy ANSI code page, so the regex returned false and the bootstrap
+mistook the inactive state for an unproven state. An ASCII-only PS 5.1 check
+that constructed the German characters from Unicode code points matched the
+same read-only Verifier output, confirming the false-negative parser cause.
+
+Control flow shows that the bootstrap passed its BCD `testsigning Yes`
+assertion before stopping at the Verifier guard; the raw BCD text was not
+persisted, so this is a control-flow inference rather than retained command
+output. The private failure JSON is
+`batch33-bootstrap-failure.json` in the private attempt directory,
+SHA-256 `C936EB1BCD9DDF20F81AB590F3F31BE7E6BF696CEDBAD3EC564A00DF55DC36FC`.
+It contains the complete verifier output and preflight error. No production
+launcher `result.json`, capture-attempt marker, XStream-attempt marker, raw
+capture, DebugView process, `Dbgv` service, XStream process, COM activation,
+device handle, IOCTL, or MAM GO was created or dispatched. The evidence
+directory contains only this failure JSON.
+
+Post-stop passive checks at `2026-11-27T22:38:45.2349851Z` confirmed
+`oem109.inf`, version `0.2026.1126.1`, device `OK` / problem code 0, service
+running, loaded SYS SHA-256
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`, and no
+XStream/DebugView process or `Dbgv` service. The authorized run itself did not
+reach capture readiness or XStream dispatch. The stop condition was honored;
+do not repair and rerun under this authorization. Any future active run
+requires fresh owner approval, with the FDO-local MAM latch still unknown.
+
 ## Repository state
 
 - Starting commit: `f1bbd89dfa57fdac8b74641f859e443456c18ca3`.
 - Development branch: `codex/phase2c-runtime-batch33`.
-- Related pull request: #57, base `codex/phase2c-runtime-batch31`.
+- Batch 32 parent pull request: #57, base `codex/phase2c-runtime-batch31`.
+- Batch 33 pull request: #58, base `codex/phase2c-runtime-batch32`.
 - Batch 33 contains no raw trace, opaque request/response data, vendor binary,
   or private system evidence.

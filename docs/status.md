@@ -116,6 +116,20 @@
   lifecycle/process-deadline 24/24, trace/orchestration 32/32, and
   single-waveform observer 13/13. The x86 launcher/hook tests used synthetic
   processes only; no vendor COM server, driver or hardware was used.
+- A later fresh owner authorization for one more XStream run stopped during
+  elevated preflight, before the production launcher, DebugView capture, or
+  XStream dispatch. The temporary bootstrap was saved as UTF-8 without a BOM;
+  Windows PowerShell 5.1 therefore misread the German `Überprüfte Treiber`
+  regex literal. Verifier output itself showed flags `0x00000000` and `Keine`
+  verified drivers; an ASCII-only PS 5.1 regex using Unicode code points
+  matched the same read-only output. The bootstrap failure log SHA-256 is
+  `C936EB1BCD9DDF20F81AB590F3F31BE7E6BF696CEDBAD3EC564A00DF55DC36FC` and
+  remains private. No capture or XStream attempt marker exists. Post-stop
+  passive inspection confirmed `oem109.inf`, version `0.2026.1126.1`, the
+  expected loaded SYS hash, device `OK` / problem code 0, service running,
+  and no XStream, DebugView, or `Dbgv` service. The authorized live run was
+  not dispatched; the explicit stop condition was honored. Any future live
+  attempt requires fresh owner authorization.
 
 ## Batch 30 MAM status propagation
 

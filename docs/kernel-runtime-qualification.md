@@ -42,6 +42,25 @@ admission remains.
 
 See the detailed [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
+### Authorized follow-up stopped in preflight
+
+A later single-run authorization did not reach the production launcher. Its
+temporary elevated PowerShell 5.1 bootstrap was UTF-8 without a BOM and used a
+literal German word in a Verifier-output regex. PowerShell 5.1 decoded that
+script using the active legacy code page, so the fail-closed parser rejected
+the output despite Verifier flags `0x00000000` and no verified drivers. An
+ASCII-only PS 5.1 check with the German characters constructed as Unicode code
+points matched the same read-only command output. The bootstrap stopped before
+starting DebugView or creating capture/XStream attempt markers; no XStream
+process, COM activation, IOCTL, or MAM GO was dispatched. The saved private
+failure log SHA-256 is
+`C936EB1BCD9DDF20F81AB590F3F31BE7E6BF696CEDBAD3EC564A00DF55DC36FC`.
+Post-stop passive inspection confirmed the same healthy `oem109.inf` device
+and loaded SYS identity, with no DebugView process or `Dbgv` service. The
+authorization's stop condition was honored; any future live run requires a
+new explicit approval. Do not treat the FDO-local `MamLaunchLimit=1` latch as
+unused.
+
 ## Batch 32 XStream attempt result
 
 The Batch 31 installed candidate remains `oem109.inf`, version

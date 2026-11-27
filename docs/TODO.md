@@ -24,9 +24,11 @@ This file tracks unfinished work and deferred features. The current, verified ca
   overlaps the recorded RPC error, so timeout causality remains indeterminate
   (launcher-induced failure is strongly plausible, not proven). Implemented
   offline lifecycle journaling and independent timeout/process evidence; a
-  fresh, separately authorized experiment is still required to distinguish a
-  blocked COM server from spontaneous RPC loss. Do not run XStream or infer the
-  MAM latch is unused. See the
+  later fresh authorization was stopped by an elevated-preflight parser
+  false-negative before capture or XStream dispatch. The temporary UTF-8
+  without BOM PowerShell 5.1 bootstrap misread its localized Verifier regex
+  even though the output showed flags zero and no selected drivers. Do not
+  resume without fresh authorization or infer the MAM latch is unused. See the
   [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
