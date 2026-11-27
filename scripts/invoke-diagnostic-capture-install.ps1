@@ -699,6 +699,13 @@ try {
     Write-LauncherOutput "BEGIN $Mode $([DateTime]::UtcNow.ToString('o'))"
     $state = Assert-PassiveIdentity -Repository $repository -Package $package `
         -DebugView $debugView
+    if ($Mode -eq 'XStreamWithCapture' -and -not $TestMode) {
+        . (Join-Path $PSScriptRoot 'xstream-host-preflight.ps1')
+        $hostReadback = Get-XStreamHostPreflight
+        Write-ExclusiveTextFile -Path (Join-Path $evidence 'xstream-host-preflight.json') `
+            -Text (($hostReadback | ConvertTo-Json) + [Environment]::NewLine)
+        Assert-XStreamHostPreflight -Readback $hostReadback
+    }
     Write-LauncherOutput 'PASSIVE PREFLIGHT PASS'
     if ($Mode -eq 'Preflight') {
         Write-Result 'PASS' 0 'Passive preflight completed; no active operation was invoked.'

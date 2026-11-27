@@ -348,3 +348,40 @@ as one path, not independently probed at every register.
 The diagnostic initialized but did not print or retain the 16-byte destination
 after completion. This result proves the bounded DMA/IRQ/DPC/lifetime path for
 the test shape, not waveform content, repeated operation or XStream parity.
+## Readiness for repeated XStream MAM transfers
+
+The WDM-v3 path already has the normal lifecycle needed for consecutive
+requests. The process-owned `CFDC2124` registration holds the locked MDLs.
+`LecIoctlAcquireBufferedOneChannel` serializes a request under `TransferMutex`
+and takes a reference to the DMA publication. `LecDmaPnpExecuteLegacyTransfer`
+separately owns the active transaction and shared descriptor table. It maps
+the MDLs for each request and builds the table from Windows DMA-logical
+addresses. On matching normal completion it retires the mapping, releases
+the SG list, clears the active stage owner, and permits a new request to use the
+same registration. The descriptor table can be rebuilt only with ownership of
+the stage and while the prior request has relinquished it.
+
+The per-FDO interrupt generation in `Acquisition.c` is distinct from the
+transaction model reinitialized for each serialized request. The hardware
+path clears stale interrupt state and resets the completion event before
+arming. The DPC checks the selected transfer, its generation and the
+completion tracker before signaling. These checks protect against stale
+software completion. A late physical interrupt carries no software generation
+tag, so the one successful 3,072-byte WDM-v3 transfer is not evidence of
+repeated reuse or post-timeout recovery. If GO is possible and retirement is
+uncertain, quarantine holds mappings and descriptor storage, and
+`DmaUnknownActive` blocks new acquisition. Batch 30's pre-GO denial survives
+successful cleanup with `STATUS_DEVICE_BUSY` and zero returned bytes.
+
+The installed candidate additionally enforces one cumulative launch per FDO.
+Its latch cannot be read back as an availability guarantee. Establish the
+startup blocker on this candidate first. If startup reaches the limit, the
+next candidate should have a small, reviewed cumulative budget and preserve
+normal retirement and terminal quarantine on every request. Check two
+successive matched IRQ/DPC completions, clear ownership between requests,
+descriptor reuse, and no new admission during teardown or quarantine before
+expanding the budget. Normal acquisition should ultimately admit the next
+serialized request only when the device is eligible and the previous request
+retired normally. Keep the cumulative gate for bounded experiments and avoid
+resetting it after each transfer. The default no-launch build and the MTT gate
+remain separate from any multi-launch candidate.

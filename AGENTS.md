@@ -52,10 +52,9 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   launch latch cannot be read, so do not retry or assume the limit is unused.
   Batch 33 found the RPC time overlaps the possible 260-second launcher
   deadline; launcher-induced failure is strongly plausible but not proven.
-  A later freshly authorized follow-up stopped during elevated preflight
-  before capture because a temporary UTF-8-without-BOM PowerShell 5.1
-  bootstrap misread its localized Verifier regex. No XStream dispatch occurred;
-  do not resume without fresh authorization.
+  The versioned launcher now checks BCD and Verifier before capture.
+  The next XStream startup requires fresh authorization. The missing
+  event-status transition is the current diagnostic focus.
   See the Batch 32 and Batch 33 handoffs for evidence and the next test gate.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 

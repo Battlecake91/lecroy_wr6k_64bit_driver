@@ -1,5 +1,24 @@
 # Current project status
 
+## XStream acquisition restoration
+
+- The installed `oem109.inf` WDM-v3 candidate is healthy in passive readback.
+  The next single startup is prepared and requires fresh approval and physical
+  x86-disk isolation confirmation. The versioned launcher now records BCD
+  and Driver Verifier readback before capture. Its PowerShell 5.1 gate passed
+  15 cases including retained and passive live Verifier output. The launcher
+  mock suite passed 51/51. The rebuilt x86 trace launcher contains the new
+  timing fields, and the proposed invocation pins its binaries and scripts.
+- The known-good traces reach a pending-event status query and MAM before
+  their first MTT request. Batch 32 reaches the early event registrations and
+  transport traffic but lacks that later transition in its retained prefix.
+  The blocking mechanism and RPC/termination order remain unresolved.
+  See the [trace comparison](runtime-trace.md#comparison-with-the-stalled-batch-32-com-startup)
+  and [next invocation](handoffs/batch-33-xstream-com-timeout-causality.md#proposed-invocation).
+- The normal WDM-v3 retirement path supports reuse by design. The installed
+  one-launch budget rules out regular operation. Consecutive hardware
+  completions and a valid C1 waveform against a known signal remain open.
+
 ## Batch 31 installed candidate runtime qualification
 
 - The signed Release x64 candidate `0.2026.1126.1` was installed once as

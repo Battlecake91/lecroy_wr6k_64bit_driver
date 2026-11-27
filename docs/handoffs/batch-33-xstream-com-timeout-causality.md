@@ -172,29 +172,6 @@ processes; they do not instantiate the vendor COM server. No driver build,
 signing, installation, kernel capture driver, device handle, IOCTL, or
 hardware operation occurred.
 
-## Next bounded experiment (not executed)
-
-Use the currently installed `oem109.inf` candidate only after fresh owner
-authorization and fresh confirmation that the productive x86 disk is
-physically disconnected. First recheck device health, the loaded SYS identity,
-active acquisition processes, and capture-tool identity passively. Preserve
-the MAM one-shot latch as unknown; do not reload the driver or attempt to reset
-it. Any approval must explicitly account for a possible automatic MAM GO from
-XStream initialization, with the existing kernel limit of one.
-
-For the single approved XStream startup, run the updated pinned
-`XStreamWithCapture` chain once. Capture the COM observer's pre-call journal,
-its success/exception record, native observer-process timeout metadata, target
-process/thread snapshot at the separate observer bound, and native target
-resume/deadline/termination/exit timeline. The 245-second observer bound must
-expire before the 300-second target bound, leaving time to observe the target
-before the native launcher terminates it. Keep full private IOCTL and kernel
-capture; publish only hashes and redacted metadata. Do not invoke `Acquire()`
-explicitly, retry, reload the driver, reset the MAM limit, or start another
-acquisition. At completion, do not infer DMA from IOCTL success; require the
-appropriate kernel GO/IRQ/DPC/completion evidence. No such experiment was
-executed in Batch 33; it requires a new explicit authorization.
-
 ## Freshly authorized follow-up: stopped before capture
 
 On 2026-11-27 the owner freshly confirmed physical disconnection of the
@@ -230,6 +207,140 @@ XStream/DebugView process or `Dbgv` service. The authorized run itself did not
 reach capture readiness or XStream dispatch. The stop condition was honored;
 do not repair and rerun under this authorization. Any future active run
 requires fresh owner approval, with the FDO-local MAM latch still unknown.
+
+## Ready for the next startup authorization
+
+`XStreamWithCapture` now performs its own read-only BCD and Verifier queries
+in the versioned launcher. It writes the commands' combined output, exit
+codes and the timestamp to private
+`xstream-host-preflight.json` before evaluating the gate. The Verifier regex
+uses ASCII source with Unicode escapes. Nonzero flags, selected or running
+drivers, contradictory fields, unrecognized output and command failures block
+capture. Under Windows PowerShell 5.1 the focused check passed 13 fixtures,
+the retained Verifier output and passive live Verifier readback. The last two
+cases supply a simulated positive BCD value. The actual BCD read requires the
+elevated launcher and must pass at dispatch. The existing launcher mock suite
+passed 51/51 on Windows PowerShell 5.1 using its test-only elevation override.
+Package hashes, running service,
+problem code zero and the SYS at the service path were checked passively.
+
+The native artifacts were rebuilt from the Batch 33 source with the production
+build command. Both PE images are x86. The launcher contains the resume,
+termination API and exit-observation fields, which the earlier Batch 32
+launcher on disk lacked. A synthetic `/Embedding` run using the pinned
+production binaries exited zero and preserved seven complete requests,
+the normal footer and the new resume and exit timestamps. The committed
+source and on-disk artifact hashes are
+separate pins. The command below records both identities; the only inputs
+supplied at the approval boundary are the exact reviewed Git HEAD and the
+fresh owner authorization, including physical x86-disk isolation.
+
+The [trace comparison](../runtime-trace.md#comparison-with-the-stalled-batch-32-com-startup)
+narrows the useful question to the transition from the initial transport and
+event registrations to the first `85FB/40/01` pending-status query and MAM.
+The first MTT request followed MAM in both known-good traces. The historical
+tests used the normal GUI and kernel-ring recording. The logs lack historical
+process arguments and COM apartment metadata. The upcoming test uses the
+32-bit COM local server prelaunched suspended with `/Embedding` and a 64-bit
+STA automation client, then performs one root activation and looks up
+`Acquisition` synchronously. The client's STA setting does not establish the
+server's apartment or show whether the GUI and embedded paths initialize the
+same workers. Keep the launch mode fixed for this attempt.
+
+### Proposed invocation
+
+Run from an already elevated 64-bit Windows PowerShell 5.1 console in the
+clean worktree. Set `$ApprovedHead` to the full reviewed PR head SHA. Use
+authorization ID `B33-XSTREAM-ACQUISITION-20261128-01` once and leave the
+evidence directory absent until dispatch. This command requires fresh approval
+for one capture, one XStream process and COM activation, automatic IOCTLs,
+private evidence and at most one automatic MAM GO. The current latch is
+unknown. The command requests 420 seconds of kernel capture to cover the
+readiness window, 300-second target bound and evidence finalization. Readiness
+still requires an attributable kernel line before XStream dispatch.
+
+```powershell
+$repo = (Get-Location).Path
+$backup = Join-Path $env:USERPROFILE '.codex\driver-backups'
+$pkg = Join-Path $backup 'Batch31-SignedCandidate-20261126-01'
+$evidence = Join-Path $backup 'Batch33-XStreamWithCapture-20261128-01'
+if (Test-Path -LiteralPath $evidence) { throw 'Attempt evidence already exists.' }
+if ($ApprovedHead -notmatch '^[0-9a-fA-F]{40}$') { throw 'Set the approved review commit.' }
+$launcher = Join-Path $repo 'scripts\invoke-diagnostic-capture-install.ps1'
+if ((Get-FileHash -LiteralPath $launcher).Hash -ne 'A4A27E8C6B9DFE2893475DBFA5190EBB6957468B2865EF86037E40384EC3EEDA') {
+    throw 'Outer launcher hash mismatch.'
+}
+$debugView = Join-Path $env:USERPROFILE '.codex\tools\sysinternals\DebugView-5.02\extracted\dbgviewcli64.exe'
+$sysHash = '6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75'
+$ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+& $ps51 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher `
+  -Mode XStreamWithCapture -RepositoryRoot $repo -ExpectedLauncherCommit $ApprovedHead `
+  -PackageRoot $pkg -ExpectedManifestHash '3A7EB449FD7394EAF7E28C04226131EB7FF65EE561A1EDC2DD171078FECC8647' `
+  -ExpectedPackageWorkflowCommit '2e0e9a781e6df68fa83795889cf6bbcf85ef5472' `
+  -ExpectedDriverSourceCommit '50530b8d88cfee36ec23b8648611a4bafd6dfc4e' `
+  -ExpectedDriverTree '5225aaed874c2f5b461280b63f234d83563cd2e3' `
+  -ExpectedIncludeTree 'eb1420b7c97a5e9d827aee59dadd8b0d6dbf3add' `
+  -ExpectedDriverVer '11/26/2026,0.2026.1126.1' `
+  -ExpectedCertificateThumbprint '4296FA2E355613DF0D5CE6F24D0898E00B706472' `
+  -ExpectedInfHash 'AF7A16A700B5D90B9EA5DFDB0B243464804DF63F785423CE2D9F39E2969449EF' `
+  -ExpectedCatHash 'BEE0B662B55AEB0931806F9E0A9056330FCE64E02B182FC6014423601112D789' `
+  -ExpectedSysHash $sysHash -ExpectedPdbHash '020EC0333DB143AE76EA71B28CBF66DBFA1F86816724D7EA8A4A81C97F4F2484' `
+  -DebugViewPath $debugView -ExpectedDebugViewHash '7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B' `
+  -EvidenceRoot $evidence -AuthorizationId 'B33-XSTREAM-ACQUISITION-20261128-01' `
+  -AuthorizeKernelCapture -AuthorizeXStream -ConfirmPhysicalDiskDisconnected `
+  -ExpectedCurrentInf 'oem109.inf' -ExpectedCurrentVersion '0.2026.1126.1' -ExpectedCurrentSysHash $sysHash `
+  -XStreamExecutablePath 'C:\Program Files (x86)\LeCroy\XStream\lecroyxstreamdso.exe' `
+  -ExpectedXStreamExecutableHash '27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F' `
+  -XStreamRunnerPath (Join-Path $repo 'scripts\invoke-xstream-lossless-capture.ps1') `
+  -ExpectedXStreamRunnerHash '994229B4ECE93C845004A33DCA8FE417A98DD86733706E133B64B984CF4EE555' `
+  -XStreamWaveformRunnerPath (Join-Path $repo 'scripts\invoke-xstream-single-waveform.ps1') `
+  -ExpectedXStreamWaveformRunnerHash 'AFD7807C14E3E671C19BD8E54D877CF6D5628BA443B82A1BC854AF4007650941' `
+  -XStreamTraceLauncherPath (Join-Path $repo 'tools\xstream-ioctl-trace\build\x86\xstream_trace_launcher.exe') `
+  -ExpectedXStreamTraceLauncherHash '42E87BCFE64ADBA12CF5888C1AD0CE29825E9BF19F8A93988F5677C3726218B8' `
+  -XStreamTraceHookPath (Join-Path $repo 'tools\xstream-ioctl-trace\build\x86\xstream_io_hook.dll') `
+  -ExpectedXStreamTraceHookHash 'C7BFA34E380DA0D6090D28F1F6F397C6A7E288B00FE0B0BBE8F602D03012E43E' `
+  -XStreamTraceValidatorPath (Join-Path $repo 'scripts\validate-xstream-ioctl-capture.ps1') `
+  -ExpectedXStreamTraceValidatorHash '745CB6BAB8A05768CDFA2E9518D579B1F00FB9B01695E5452B2669C780CB68C9' `
+  -XStreamTimeoutSeconds 240 -CaptureDurationSeconds 420 `
+  -CaptureReadinessTimeoutSeconds 60 -CaptureShutdownGraceSeconds 15
+```
+
+### Evidence during the same attempt
+
+- If `acquisition_lookup_started` remains the last observer journal event
+  about 200 seconds after observer dispatch, take one bounded CDB snapshot
+  in parallel, subject to the same approval. Verify the PID from the new
+  `xstream-trace-ready.txt` against the live executable path and process
+  start time within the attempt before querying it. Use the x86 Windows SDK
+  CDB `10.0.28000.2526`, SHA-256
+  `80E8C4F8437D273DFF3A72AAE6DE01EEF91E16A2BE3D4B64251395A5C651391F`.
+  Call the existing `Invoke-LecS65NativeProcess` with CDB arguments
+  `@('-pvr','-p',$targetId.ToString(),'-sins','-netsyms:no','-c','~* k 12;q')`,
+  `-TimeoutSeconds 10 -StreamDrainTimeoutSeconds 2`, and a fresh private log.
+  Record UTC boundaries and return status. `-pvr` is a noninvasive session
+  without target suspension per the [CDB options reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options).
+  The exact command shape returned wait frames and left a synthetic x86
+  process running. Vendor symbols and reliable unwind are not guaranteed.
+  Skip the snapshot on PID mismatch, early completion or insufficient time.
+- Retain the built-in snapshot at the 245-second observer process bound and
+  native target termination metadata at the 300-second target bound. Compare
+  the journal HRESULT timestamp separately with termination request, API
+  return and observed exit. If the observer is stopped first, treat the RPC
+  observation as censored by that independent cutoff. A live server with the
+  call still pending does not establish a particular wait cause.
+- Correlate any RPC, event wait, lock wait or `NtDeviceIoControlFile` frame
+  with the same thread's latest completed call and the kernel trace. A stack
+  may localize a wait. The completed-call hook alone cannot identify an
+  unmatched call or prove which IOCTL is in flight. Keep raw stacks, kernel
+  logs and transport bytes private.
+- Check `85FB/40/01`, acknowledgement and any `CFDC2124` or `CFDC2138`
+  outcome, including launch-limit denial, separately from a matched
+  GO/IRQ/DPC/retirement. If initialization completes, record whether a C1
+  waveform was delivered. Functional acceptance also requires comparison
+  against a known physical input and successive valid acquisitions.
+- Stop after the single attempt or the first prerequisite failure. No
+  explicit `Acquire()`, CVar change, retry, PnP transition, driver replacement
+  or latch reset is part of the proposed action.
 
 ## Repository state
 

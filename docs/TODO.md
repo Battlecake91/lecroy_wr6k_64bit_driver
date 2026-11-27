@@ -4,32 +4,21 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Runtime-qualify restored `CFDC2110` family-2 opcode `0x03`, then
-  requalify one waveform.** The native exact-shape transport path remains
-  Dry-qualified; do not fabricate the opaque request body. The Batch 28 XStream
-  COM attempt on `oem108.inf` failed resolving `Acquisition` with RPC server
-  unavailable (`0x800706BA`). Batch 31 installed the fixed signed candidate as
-  `oem109.inf` and passed R0 9/9 plus R1 2/2. That safe ABI result does not
-  authorize XStream. RPC server lifetime and the corrected opcode-`0x03`
-  request/response remain unresolved. Batch 32 performed one freshly
-  authorized attempt on `oem109.inf`: root COM activation succeeded, then the
-  `Acquisition` lookup failed with the same RPC error. The private trace ended
-  partial at the bounded timeout, contains no opcode `0x03` or direct
-  `CFDC2138` call, and no waveform was observed. The kernel trace had no
-  `CFDC2138`/`MAMRGO` marker; no GO was observed, but the FDO launch latch is
-  unreadable, so do not retry or assume the launch limit is unused. See the
-  [Batch 31 handoff](handoffs/batch-31-package-qualification.md). Batch 32
-  also passed the focused observer suites and rebuilt/validated the production
-  trace launcher/hook. Batch 33 found that the native target deadline window
-  overlaps the recorded RPC error, so timeout causality remains indeterminate
-  (launcher-induced failure is strongly plausible, not proven). Implemented
-  offline lifecycle journaling and independent timeout/process evidence; a
-  later fresh authorization was stopped by an elevated-preflight parser
-  false-negative before capture or XStream dispatch. The temporary UTF-8
-  without BOM PowerShell 5.1 bootstrap misread its localized Verifier regex
-  even though the output showed flags zero and no selected drivers. Do not
-  resume without fresh authorization or infer the MAM latch is unused. See the
-  [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+- [ ] **Resolve XStream Acquisition initialization.** Run the prepared bounded
+  startup on `oem109.inf` after fresh approval and disk-isolation confirmation.
+  Correlate the blocked property lookup and server lifetime with stacks and the
+  missing event-status transition. The partial Batch 32 trace does not
+  establish whether XStream skipped the query or was waiting for an operation
+  that never returned. Investigate opcode `0x03` only if the new trace shows
+  that startup reaches or depends on it. Keep the FDO launch latch unknown.
+  See the [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+
+- [ ] **Restore repeatable waveform acquisition.** Verify a displayed C1
+  waveform against a known physical input. If startup reaches the one-launch
+  limit, qualify successive matched completions and mapping retirements with
+  a separately approved bounded candidate before selecting regular serialized
+  admission. Preserve quarantine and investigate MTT once startup actually
+  reaches that request. See [DMA architecture](dma-architecture.md#readiness-for-repeated-xstream-mam-transfers).
 
 - [ ] **Establish recoverable Verifier readiness.** Create and boot-test
   official Windows 10 x64 UEFI recovery media; copy the hash-verified rollback,
