@@ -2880,6 +2880,79 @@ This trace changes the project phase from basic x64 acquisition bring-up to
 feature/stability regression. It is the reference trace to protect against
 future regressions.
 
+### Comparison with the stalled Batch 32 COM startup
+
+The retained `005808` and `011938` captures were compared with the native
+completion records in the partial Batch 32 user-mode trace. Use returned byte
+counts and the captured byte span separately. Historical kernel-ring records
+may store only the first 128 bytes of a larger reply. Sequence numbers are
+local to each capture, and the capture layers have different coverage.
+
+| Observation | Waveform references `005808` / `011938` | Batch 32 |
+|---|---|---|
+| First byte difference for an identical request in the aligned transport prefix | Family 1 `0x99`, seq 5 in both captures | Seq 382 differs at offsets 14–127 from both early references. All 128 comparable bytes match the later successful `233125` trace after `3490709`. |
+| First exact request difference in the `CFDC2110`/`CFDC2184` prefix | 158 requests match, then family 0 `0x84` at seq 175 | Seq 1332 has the same opcode and length with different request bytes. The following call order differs too. |
+| Family 1 `0x81` | 61 / 63 replies, 16 bytes each | 63 replies, all 63 have a historical request match in both references. Full reply matches 23 / 20. Remaining byte differences are confined to offsets 14–15. |
+| Family 0 `0x84` | 51 / 54 replies, 14 bytes each | 52 replies. 46 / 47 have exact historical request matches and every such reply matches byte for byte. |
+| Early event path | `CFDC2180`, `CFDC218C`, `0x88`, `0x85`, `CFDC2184` | Both event registrations succeed. The early `0x85` and `0x88` replies match the references for identical requests. |
+| First acquisition transition | `85FB/40/01` reports enabled `0x02BF`, pending `0x0080`, then `0x88`, `CFDC2184`, follow-up transport and `CFDC2138` at seq 983 / 1073 | No completed `85FB/40/01` or `CFDC2138` in the surviving prefix. The second `CFDC2184` and the post-calibration transition are absent. |
+| MTT family 1 `0x51` | First completions at seq 984 / 1074, immediately after the first MAM completion in both references | No completed `0x51` in the surviving prefix. |
+
+The first mechanistically useful difference is the missing transition into
+event-driven acquisition. The earlier `0x84` traffic varies and its matched
+responses agree, while `0x81` payload differences remain an open lead. The
+response status and framing agree in the compared `0x81` and `0x84` traffic.
+Their application-level interpretation and the reason for the missing event
+transition remain unknown. The kernel latches enabled pending bits in the DPC
+and signals the registered event. `0x85` sets the enable mask, `0x88` clears
+sticky pending bits, `85FB/40/01` reports them, and `CFDC2184` is a local no-op
+in the current source. Event registration clears the event object and
+publishes it without replaying a sticky bit into the new object. The observed
+registration precedes the compared transition, so the traces do not establish
+a missed replay, a missing interrupt, or an application-side decision to skip
+the query. Correlate the target's wait with kernel and IOCTL evidence before
+changing event delivery. The source still contains the source-specific CLRIRQ
+acknowledgement and the corrected actual-length/`0xFF` response framing.
+
+No direct `CFDC2124` appears before the first `CFDC2138` in either early
+reference, although the same traces record 67 and 494 registrations later.
+The separate `235712` startup explicitly captured `CFDC2124` before its first
+MAM. Earlier registration coverage in `005808`/`011938` is unresolved. Their
+ordering and the separate `235712` run argue against making MTT a prerequisite
+for the first MAM completion. The `235712` failure after that completion and
+the later working MTT traffic make MTT a credible obstacle to complete GUI
+initialization once startup reaches that stage. Neither MTT nor family 2
+opcode `0x03` presently explains the Batch 32 block. The modern hook records
+completed calls, so an outstanding call remains possible. See the
+[Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+
+The later Batch 33 capture confirmed the early event registrations and
+`0x85` mask `0x02BF`, with matching enter/done counts for all 511 captured
+WR6k IOCTLs. It again lacked the pending-status query and MAM transition.
+The root activation also coincided with a second XStream process, so the
+returned automation object cannot be attributed to the captured process.
+Successful event registration still does not show the DPC set the event.
+See the [authorized run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
+
+The attributable GUI run diverged earlier than the embedded trace. The
+first Dallas ROM-ID IOCTL returned `STATUS_IO_TIMEOUT` with no data after
+all ten 1-Wire reset polls ended at `0xFFFFFFFF`. Both historical GUI
+captures passed that IOCTL and proceeded to Dallas memory read. The GUI
+displayed `No Hardware Detected (2)` and CDB showed a modal message wait.
+Calibration, event registration and MAM were not reached in the new run.
+See the [GUI result](handoffs/batch-33-xstream-com-timeout-causality.md#gui-result-and-first-failing-operation).
+
+After a full cold boot the same driver passed the PCI and three DWORD
+checks. The subsequent one-process GUI startup completed the ROM-ID and
+memory reads, reached event registration and programmed mask `0x02BF`.
+The main window showed trigger `Stop` and no waveform. The surviving
+native records and kernel log showed no acquisition status query, MAM
+request or GO. The GUI exited zero on normal close and the native trace
+lacked its footer. The observation establishes a working cold-boot GUI
+startup. It does not establish calibration completion, a lost interrupt
+or the behavior of a deliberate transition out of Stop. See the
+[cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
+
 
 ## Trace 011938: normal oscilloscope controls remain stable
 

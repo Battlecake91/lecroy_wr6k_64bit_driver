@@ -50,7 +50,16 @@ Keep this section limited to the latest verified state. Replace obsolete values 
   footer. No explicit `Acquire()` or waveform was observed. Kernel capture
   contains no `CFDC2138`/`MAMRGO` marker; no GO was observed, but the FDO-local
   launch latch cannot be read, so do not retry or assume the limit is unused.
-  See `docs/handoffs/batch-32-mam-status-xstream-qualification.md`.
+  Batch 33 found the RPC time overlaps the possible 260-second launcher
+  deadline; launcher-induced failure is strongly plausible but not proven.
+  The versioned launcher now checks BCD and Verifier before capture.
+  The latest XStream attempt observed two servers during one COM activation.
+  The observer now detects that split before reading `Acquisition`.
+  The subsequent ordinary GUI run, without COM automation, stopped on
+  the first Dallas ROM-ID request after all-ones 1-Wire reads. A later PCI
+  snapshot showed memory decode disabled and zero BAR bases despite
+  reported D0. Confirm decode and BAR assignments before MMIO after resume.
+  See the Batch 32 and Batch 33 handoffs for evidence and the next test gate.
 - Dallas WRITE `0x00223088` and serial FPGA/GPIO writer `0xCFDC2130` remain deliberately absent from the native driver.
 
 Detailed and rapidly changing test status belongs in `docs/status.md`, not in this file.

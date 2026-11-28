@@ -25,6 +25,27 @@ and probe control. It is also distinct from the PCI card's
 | Dallas EEPROM read | `0x00223084`, request 1..512 bytes, read from address `0x0000` | Implemented, including full 512-byte reads; `lecdiag dallas-read` prints hex, and new **`lecdiag dallas-backup`** saves a *binary* private backup. |
 | Dallas EEPROM write | `0x00223088`, recovered original x86 handler, 1..512-byte input, 32-byte chunks and read-back verification in legacy analysis | **NOT implemented** in the current native x64 `driver/Ioctl.c`; no `lecdiag` writer or eraser. Do not imply writable x64 memory has already been validated. |
 
+The attributable GUI run on `oem109.inf` saw ten 1-Wire reset timeouts
+with final `BAR2+0x040` values of `0xFFFFFFFF`. The ROM-ID request ended
+before presence, ROM identifier or CRC sampling. The offline source
+treats an exhausted all-ones busy poll as `STATUS_DEVICE_NOT_CONNECTED`
+and stops further ROM retries. Ordinary busy polling and the successful
+command sequence are unchanged. This distinguishes a register access
+failure from ordinary busy timeout without deciding why access failed.
+A later read-only PCI configuration snapshot from the same boot found
+Memory Space Enable clear and zero BAR bases despite assigned resources.
+The diagnostic stopped before ONEWIRE or either version register was
+read. This establishes a PCI accessibility failure at snapshot time.
+The condition at the earlier ROM-ID call was inferred from its timeout
+and final all-ones reads. A chip-local Dallas fault remains unproven.
+The same unchanged driver recovered PCI decode after a full cold boot.
+The approved idle ONEWIRE read returned zero and the following single
+ordinary GUI startup reported successful eight-byte ROM ID and 512-byte
+memory reads. This establishes recovery in that run, without qualifying
+suspend/resume. See the
+[cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
+See the [Batch 33 snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
+
 The x64 controller is `BAR2+0x040 ONEWIRE`. The
 physical schematic identifies the DS2433 behind
 the PCI FPGA's `ID_DATA` net. The schematic does

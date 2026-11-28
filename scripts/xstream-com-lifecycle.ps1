@@ -35,3 +35,24 @@ function Get-XStreamObject {
     }
     throw "Could not resolve XStream object '$Name': $($errors -join ' | ')"
 }
+function Test-XStreamCapturedServerProcess {
+    param(
+        [AllowEmptyCollection()][object[]]$Processes,
+        [Parameter(Mandatory=$true)][int]$ExpectedProcessId,
+        [Parameter(Mandatory=$true)][string]$ExpectedExecutablePath,
+        [Parameter(Mandatory=$true)][datetime]$ExpectedCreationDate
+    )
+
+    if ($Processes.Count -ne 1) { return $false }
+    $process = $Processes[0]
+    if ([int]$process.ProcessId -ne $ExpectedProcessId -or
+        $process.CreationDate -isnot [datetime] -or
+        $process.CreationDate -ne $ExpectedCreationDate -or
+        [string]::IsNullOrWhiteSpace($process.ExecutablePath)) {
+        return $false
+    }
+    return [string]::Equals(
+        [IO.Path]::GetFullPath($process.ExecutablePath),
+        [IO.Path]::GetFullPath($ExpectedExecutablePath),
+        [StringComparison]::OrdinalIgnoreCase)
+}

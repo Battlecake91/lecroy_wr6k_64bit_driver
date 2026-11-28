@@ -1,5 +1,44 @@
 # Original x86, historical x64 and current acquisition parity
 
+## Batch 33 Acquisition COM blocking analysis
+
+Batch 32's `Get-XStreamObject -Parent $app -Name 'Acquisition'` performs a
+synchronous automation `Item('Acquisition')` call, then tries the legacy
+`Objects.Item`/`Object.Item` fallbacks only for ordinary dispatch errors. An
+RPC-server-unavailable HRESULT is rethrown immediately. The observer's
+deadline loop surrounds this call but cannot preempt a synchronous COM/RPC
+dispatch. This explains how the observer can pass its 240-s deadline without
+recording the timeout until the call returns; it does not identify what the
+XStream server was doing internally.
+
+The retained Batch 32 sequence shows root COM activation returning at
+`00:36:28.5251868Z`, the first Acquisition lookup beginning at
+`00:36:28.5301839Z`, and `0x800706BA` recorded at `00:40:28.3430275Z`. The
+configured native target timeout was 260 s after `ResumeThread`; because the
+resume time was not persisted, its deadline window overlaps the RPC time.
+The launcher did terminate the XStream process with code 1460, but existing
+evidence cannot establish whether that happened before or after the COM error.
+Classification: **indeterminate; launcher-induced RPC loss is strongly
+plausible, not proven**.
+
+The private trace has 532 completed native IOCTL records, including 482
+`CFDC2110` completions with NTSTATUS success and no captured truncation. Its
+final completed LeCroy IOCTL is sequence 3748 at `00:38:18.0196946Z`. Family
+1/opcode `0x81` and family 0/opcode `0x84` calls recur and are still observed
+during the blocked property lookup. The hook emits a record after the native
+API returns, so no unmatched entry record is available and an in-flight call
+cannot be ruled out. Captured NTSTATUS success does not establish that XStream
+accepted the returned protocol response. No family-2 opcode `0x03`, direct
+`CFDC2138`, MAM GO, or waveform was observed.
+
+Batch 28's earlier COM/RPC investigation also lacked timestamped target
+termination and observer-call boundaries; a later Batch 28 continuation had
+different transport activity and must not be treated as an identical startup.
+The new lifecycle records and process timeline are intended to separate those
+cases in a future, freshly authorized attempt. No driver or hardware change is
+part of this analysis. See the
+[Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+
 ## Batch 31 candidate
 
 The corrected pre-GO status behavior is present in locally test-signed Release x64

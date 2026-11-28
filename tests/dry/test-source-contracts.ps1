@@ -242,6 +242,11 @@ Test-Contract "remaining hazardous controls stay absent from Ioctl.c dispatch/so
     $ioctlText -notmatch 'LECS65_IOCTL_PROG_SERTRIG_FPGA|0xCFDC2130'
 }
 
+Test-Contract "exhausted all-ones one-wire poll stops Dallas ROM retries" {
+    $ioctlText -match '(?s)LecOneWireIssue\(.+?i < LECS65_ONEWIRE_POLL_LIMIT.+?if \(value == MAXULONG\) \{[^}]*return STATUS_DEVICE_NOT_CONNECTED;[^}]*\}.+?return STATUS_IO_TIMEOUT;' -and
+    $ioctlText -match '(?s)LecDallasReadId\(.+?for \(attempt = 0; attempt < 10;.+?status = LecOneWireReset\(DevExt\);.+?if \(status == STATUS_DEVICE_NOT_CONNECTED\) \{\s*break;\s*\}.+?if \(!NT_SUCCESS\(status\)\) \{\s*continue;'
+}
+
 Test-Contract "SetOneRegister stays bounded to the known 43-entry native table" {
     $driverText -match 'LECS65_IOCTL_SET_ONE_REGISTER\s+.*?0x0022303C' -and
     $ioctlText -match 'case\s+LECS65_IOCTL_SET_ONE_REGISTER' -and
@@ -958,6 +963,7 @@ Test-Contract "diagnostic launcher keeps every active capture mode explicitly ga
     $diagnosticLauncherText -match "'RestartWithCapture'" -and
     $diagnosticLauncherText -match "'NoLaunchWithCapture'" -and
     $diagnosticLauncherText -match "'XStreamWithCapture'" -and
+    $diagnosticLauncherText -match "'XStreamGuiWithCapture'" -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeKernelCapture' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizeInstallation' -and
     $diagnosticLauncherText -match '\[switch\]\$AuthorizePnpRestart' -and
@@ -971,7 +977,7 @@ Test-Contract "diagnostic launcher keeps every active capture mode explicitly ga
     $diagnosticLauncherText -match 'PnpRestartInvocations\+\+' -and
     $diagnosticLauncherText -match 'NoLaunchInvocations\+\+' -and
     $diagnosticLauncherText -match 'XStreamInvocations\+\+' -and
-    $diagnosticLauncherText -match 'Real XStreamWithCapture requires the complete pinned lossless-capture chain' -and
+    $diagnosticLauncherText -match 'XStream capture requires the complete pinned lossless-capture chain' -and
     $diagnosticLauncherText -match 'ExpectedXStreamTraceLauncherHash' -and
     $diagnosticLauncherText -match 'ExpectedXStreamTraceHookHash' -and
     $diagnosticLauncherText -match 'ExpectedXStreamTraceValidatorHash' -and

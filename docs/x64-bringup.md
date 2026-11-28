@@ -364,6 +364,12 @@ interrupt line/pin. In particular, inspect:
 
 Do not add speculative BAR writes while the device still reads all ones.
 
+Before using an existing MMIO mapping after resume, confirm Memory Space
+Enable and verify that the decoded BAR bases agree with the assigned PCI
+resources. A valid vendor/device ID proves configuration-space visibility.
+The Windows resource list and reported D0 can persist when memory decode
+is disabled. See the [post-resume PCI snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
+
 
 ### Rebuild requirement for new diagnostics
 

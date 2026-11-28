@@ -74,6 +74,16 @@ try {
         ($launchExit -eq 0 -and (Test-Path $dispatch) -and (Test-Path $ready) -and
          $launcherMetadata.capture_classification -eq 'complete_normal' -and
          $launcherMetadata.footer_present -and $launcherMetadata.parent_flush_succeeded)
+    Check 'natural target exit has separate create, resume, wait and exit timestamps' `
+        (-not [string]::IsNullOrWhiteSpace($launcherMetadata.process_create_returned_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.resume_thread_called_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.resume_thread_returned_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_wait_started_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_wait_completed_utc) -and
+         -not [string]::IsNullOrWhiteSpace($launcherMetadata.target_exit_observed_utc) -and
+         $launcherMetadata.wait_result -eq 'WAIT_OBJECT_0' -and
+         -not [bool]$launcherMetadata.target_was_alive_at_timeout -and
+         [string]::IsNullOrWhiteSpace($launcherMetadata.termination_requested_utc))
 
     $classificationPath = Join-Path $privateRoot 'classification.json'
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
@@ -184,6 +194,7 @@ try {
     # timeout; its exit code and parsed classification are the assertions.
     & $launcher --timeout-seconds 1 $target $hangTrace $hangReady
     $hangExit = $LASTEXITCODE
+    $hangResultData = Get-Content -Raw -LiteralPath $hangResult | ConvertFrom-Json
     Remove-Item Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
         -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $validator `
@@ -197,6 +208,18 @@ try {
         ($hangExit -ne 0 -and $hangClass.Classification -eq 'VALID_PARTIAL_LAUNCHER_TERMINATION' -and
          [int]$hangClass.TraceRecordCount -ge 6 -and (Test-Path $hangDispatch) -and
          @(Get-Process -Id ([int]$hangReadyData.Pid) -ErrorAction SilentlyContinue).Count -eq 0)
+    $waitExpired = [DateTime]::Parse($hangResultData.target_wait_completed_utc).ToUniversalTime()
+    $terminateRequested = [DateTime]::Parse($hangResultData.termination_requested_utc).ToUniversalTime()
+    $terminateReturned = [DateTime]::Parse($hangResultData.terminate_process_returned_utc).ToUniversalTime()
+    $exitObserved = [DateTime]::Parse($hangResultData.target_exit_observed_utc).ToUniversalTime()
+    Check 'launcher timeout proves target alive at deadline and records exact termination order' `
+        ($hangResultData.target_was_alive_at_timeout -and
+         $hangResultData.wait_result -eq 'WAIT_OBJECT_0_AFTER_TERMINATION' -and
+         $hangResultData.terminate_process_succeeded -and
+         $waitExpired -le $terminateRequested -and
+         $terminateRequested -le $terminateReturned -and
+         $terminateReturned -le $exitObserved -and
+         $hangResultData.target_deadline_utc)
 
     $crashTrace = Join-Path $privateRoot 'crash.jsonl'
     $crashReady = Join-Path $privateRoot 'crash.ready'
@@ -375,9 +398,73 @@ try {
          [int]$orchestration.Capture.RequestCount -eq 7 -and
          $orchestration.Waveform.Result -eq 'PASS' -and
          (Test-Path -LiteralPath $orchestrationDispatch))
+    Check 'offline orchestration preserves Windows executable paths without escape parsing' `
+        ($orchestration.Result -eq 'PASS' -and
+         $orchestration.ObserverProcess.Executable -match '\\WindowsPowerShell\\v1\.0\\powershell\.exe$' -and
+         $orchestration.ObserverProcess.ProcessId -gt 0)
     Check 'orchestration result exposes hashes and metadata but no opaque bytes' `
         ((Get-Content -Raw -LiteralPath `
             (Join-Path $orchestrationRoot 'result.json')) -notmatch 'input_hex|output_hex')
+
+    $guiRoot = Join-Path $privateRoot 'gui-trace'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = Join-Path $privateRoot 'gui.dispatch'
+    Remove-Item Env:LECS65_EXPECT_EMBEDDING -ErrorAction SilentlyContinue
+    $env:LECS65_EXPECT_NORMAL_STARTUP = '1'
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'gui-test'
+    $guiParameters = @{
+        Mode = 'OfflineMock'; EvidenceRoot = $guiRoot; GuiOnly = $true
+        TraceLauncherPath = $launcher
+        ExpectedTraceLauncherHash = (Get-FileHash -LiteralPath $launcher).Hash
+        TraceHookPath = $hook
+        ExpectedTraceHookHash = (Get-FileHash -LiteralPath $hook).Hash
+        TraceValidatorPath = $validator
+        ExpectedTraceValidatorHash = (Get-FileHash -LiteralPath $validator).Hash
+        XStreamExecutablePath = $target
+        ExpectedXStreamExecutableHash = (Get-FileHash -LiteralPath $target).Hash
+        ExpectedInf = 'oem-mock.inf'; ExpectedVersion = '0.0.0.1'; ExpectedSysHash = '6'*64
+        OwnerAuthorized = $true; PhysicalDiskDisconnectedConfirmed = $true
+        TimeoutSeconds = 30
+    }
+    try {
+        & $captureRunner @guiParameters
+        $guiExit = $LASTEXITCODE
+        $guiResult = Get-Content -Raw -LiteralPath (Join-Path $guiRoot 'result.json') | ConvertFrom-Json
+        Check 'normal GUI mode verifies identity and captures with zero application arguments' `
+            ($guiExit -eq 0 -and $guiResult.Startup -eq 'GUI' -and
+             $guiResult.TargetProcessRemaining -eq $false -and
+             $guiResult.CaptureClassification.Classification -eq 'COMPLETE_NORMAL_CAPTURE' -and
+             (Select-String -Quiet -LiteralPath $guiResult.SupervisorEventsPath -Pattern 'gui_target_validated') -and
+             (Test-Path -LiteralPath $env:LECS65_SYNTHETIC_DISPATCH_MARKER))
+        Check 'normal GUI mode produces no observer evidence' `
+            (-not (Test-Path -LiteralPath (Join-Path $guiRoot 'waveform-evidence')))
+        $guiParameters.EvidenceRoot = Join-Path $privateRoot 'gui-rejects-observer'
+        $guiParameters.WaveformRunnerPath = $waveformRunner
+        try { & $captureRunner @guiParameters } catch { }
+        $rejection = Get-Content -Raw -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'result.json') | ConvertFrom-Json
+        Check 'GUI startup rejects COM observer parameters before trace dispatch' `
+            ($rejection.Result -eq 'FAIL' -and $rejection.Message -like '*cannot accept a COM*' -and
+             -not (Test-Path -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'xstream-trace-ready.txt')))
+        $guiParameters.Remove('WaveformRunnerPath')
+        $guiParameters.EvidenceRoot = Join-Path $privateRoot 'gui-rejects-competing-target'
+        $env:LECS65_SYNTHETIC_TARGET_MODE = 'hang'
+        $other = Start-Process -WindowStyle Hidden -FilePath $target -PassThru
+        try {
+            try { & $captureRunner @guiParameters } catch { }
+            $rejection = Get-Content -Raw -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'result.json') | ConvertFrom-Json
+            Check 'GUI startup rejects a preexisting target without manipulating it' `
+                ($rejection.Result -eq 'FAIL' -and $rejection.Message -like '*already running before GUI*' -and
+                 -not $other.HasExited -and
+                 -not (Test-Path -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'xstream-trace-ready.txt')))
+        }
+        finally {
+            if (-not $other.HasExited) { $other.Kill(); [void]$other.WaitForExit(5000) }
+            $other.Dispose()
+        }
+    }
+    finally {
+        Remove-Item Env:LECS65_EXPECT_NORMAL_STARTUP,Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+        $env:LECS65_EXPECT_EMBEDDING = '1'
+    }
 
     $nonzeroOrchestrationRoot = Join-Path $privateRoot 'orchestration-nonzero'
     $nonzeroOrchestrationDispatch = Join-Path $privateRoot 'orchestration-nonzero.dispatch'

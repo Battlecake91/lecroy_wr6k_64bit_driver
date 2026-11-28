@@ -1,5 +1,58 @@
 # Current project status
 
+## XStream acquisition restoration
+
+- The post-resume snapshot before the cold boot found `1570:0005` in PCI configuration
+  space, with Command `0x0000`, Memory Space Enable clear and BAR0–BAR2
+  raw values zero. Windows still reported the prior assigned ranges,
+  D0, and OK/problem code zero. The comparison stopped before any MMIO.
+  The installed `oem109.inf` identity and service remained unchanged.
+  The mismatch establishes a PCI memory-decode problem at snapshot time.
+  Its onset and the cause of configuration loss remain unknown.
+  One authorized cold boot restored Command `0x0006` and BAR assignments.
+  Reading FVER, ACQFVER and ONEWIRE returned `0x2`, `0x3` and `0x0`.
+  The unchanged driver's ordinary XStream GUI then passed Dallas ROM ID
+  and opened its main window in trigger `Stop`. No waveform, MAM request,
+  GO or admission-limit denial was observed. The event enable mask
+  reached `0x02BF` but the historical `85FB/40/01` transition was absent.
+  The GUI exited zero after normal close, with a missing native trace
+  footer. See the [cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
+  See the [resume snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
+
+- One ordinary GUI launch on the unchanged `oem109.inf` reached a black
+  `LeCroy DSO` window and a `No Hardware Detected (2)` dialog. The first
+  WR6k request, `GET_DALLAS_ID`, failed after ten 1-Wire reset polls that
+  ended at `0xFFFFFFFF`. CDB located the visible wait in the message box.
+  Calibration, event status and MAM were not reached. The prior embedded
+  attempt on the same driver passed the ID query. Windows woke from sleep
+  about 110 seconds before the GUI launch, making resume a lead for the
+  unavailable register response.
+- The source now stops Dallas ROM retries after an exhausted poll ends in
+  an all-ones read. Host-only cases passed 5/5 and source contracts 77/77.
+  This offline correction was not deployed. The installed device continues
+  to report OK/problem code zero. See the
+  [GUI result](handoffs/batch-33-xstream-com-timeout-causality.md#gui-result-and-first-failing-operation).
+
+- The November 28 Batch 33 run passed host and capture preflight. The one
+  COM activation coincided with a second XStream process from the service
+  host running `DcomLaunch`. All 718 observed `Acquisition` lookups
+  returned, but their COM server PID is unverified. The observer timed out
+  with no waveform, then the instrumented target was terminated 55 seconds
+  later. No RPC exception was recorded before the observer stopped.
+- All 511 captured WR6k dispatches from the instrumented PID completed. Event
+  registration and the enable mask reached the historical baseline, while
+  the later `85FB/40/01` status query and associated acknowledgement were
+  absent again. There was no observed MAM request or GO. The capture cannot
+  establish whether the expected interrupt or event signal occurred.
+- The embedded run's second process was absent before the later GUI
+  attempt. Any activity between those checks remains unknown. The normal
+  GUI trace observed only its instrumented process. The driver still allows
+  at most one MAM admission and the latch remains unknown.
+  See the [Batch 33 run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
+- The normal WDM-v3 retirement path supports reuse by design. The installed
+  one-launch budget rules out regular operation. Consecutive hardware
+  completions and a valid C1 waveform against a known signal remain open.
+
 ## Batch 31 installed candidate runtime qualification
 
 - The signed Release x64 candidate `0.2026.1126.1` was installed once as
@@ -82,6 +135,54 @@
   hashes, exact event timeline, preflight evidence and the incomplete-capture
   limits are recorded in the
   [Batch 32 handoff](handoffs/batch-32-mam-status-xstream-qualification.md).
+
+## Batch 33 offline RPC-timeout analysis
+
+- Batch 32's `0x800706BA` is **indeterminate, with strong timing correlation
+  to launcher termination**. The observer recorded the error at
+  `00:40:28.3430275Z`; the root COM call returned at `00:36:28.5251868Z`, so
+  the call lasted 239.813 s. The internal 240-s observer deadline was
+  `00:40:28.5251868Z`, 182 ms later. That deadline could not interrupt the
+  synchronous `Item('Acquisition')` COM dispatch.
+- The native launcher waited 260 s after `ResumeThread` and then terminated
+  the target with exit code 1460. The retained hook header at
+  `00:36:08.1847243Z` preceded resume; the observer was dispatched at
+  `00:36:08.7843545Z`. Therefore the possible native target deadline spans
+  the RPC timestamp. Batch 32 did not record resume, timeout, termination-call
+  or actual-exit timestamps, so it cannot establish which occurred first.
+- The private trace contains 3,748 records, including 532 completed native
+  `NtDeviceIoControlFile` records and 482 completed `CFDC2110` calls. Those
+  calls returned NTSTATUS success without captured truncation, but protocol
+  response semantics were not validated. Repeated family-1/opcode-`0x81`
+  and family-0/opcode-`0x84` calls continued during the blocked lookup; the
+  final completed native IOCTL was sequence 3748 at `00:38:18.0196946Z`.
+  The hook logs after an API call returns and has no in-flight entry record,
+  so an active call at termination cannot be excluded. No opcode `0x03`,
+  direct `CFDC2138`, MAM GO or waveform was observed.
+- Offline diagnostic changes now journal COM call entry/return/exception,
+  independently timestamp observer and target deadlines, record process/thread
+  snapshots, and persist launcher termination and exit timing. The next
+  experiment remains unauthorized and requires fresh physical isolation
+  confirmation; the MAM one-shot latch remains unknown. See the
+  [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
+- Focused Windows PowerShell 5.1 validation passed: launcher 51/51, COM
+  lifecycle/process-deadline 24/24, trace/orchestration 32/32, and
+  single-waveform observer 13/13. The x86 launcher/hook tests used synthetic
+  processes only; no vendor COM server, driver or hardware was used.
+- A later fresh owner authorization for one more XStream run stopped during
+  elevated preflight, before the production launcher, DebugView capture, or
+  XStream dispatch. The temporary bootstrap was saved as UTF-8 without a BOM;
+  Windows PowerShell 5.1 therefore misread the German `Überprüfte Treiber`
+  regex literal. Verifier output itself showed flags `0x00000000` and `Keine`
+  verified drivers; an ASCII-only PS 5.1 regex using Unicode code points
+  matched the same read-only output. The bootstrap failure log SHA-256 is
+  `C936EB1BCD9DDF20F81AB590F3F31BE7E6BF696CEDBAD3EC564A00DF55DC36FC` and
+  remains private. No capture or XStream attempt marker exists. Post-stop
+  passive inspection confirmed `oem109.inf`, version `0.2026.1126.1`, the
+  expected loaded SYS hash, device `OK` / problem code 0, service running,
+  and no XStream, DebugView, or `Dbgv` service. The authorized live run was
+  not dispatched; the explicit stop condition was honored. Any future live
+  attempt requires fresh owner authorization.
 
 ## Batch 30 MAM status propagation
 

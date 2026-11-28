@@ -36,6 +36,15 @@ namespace LecS65
         public string StdErr { get; set; }
         public bool JobAssigned { get; set; }
         public bool ProcessTreeClosed { get; set; }
+        public string ProcessStartedUtc { get; set; }
+        public string WaitStartedUtc { get; set; }
+        public string DeadlineUtc { get; set; }
+        public string WaitCompletedUtc { get; set; }
+        public string TerminationRequestedUtc { get; set; }
+        public string JobCloseReturnedUtc { get; set; }
+        public string ProcessExitObservedUtc { get; set; }
+        public bool JobCloseSucceeded { get; set; }
+        public int JobCloseError { get; set; }
     }
 
     public static class NativeProcessRunner
@@ -215,6 +224,7 @@ namespace LecS65
                     try { if (!process.HasExited) process.Kill(); } catch { }
                     throw new Win32Exception(error, "AssignProcessToJobObject failed.");
                 }
+                string processStartedUtc = DateTime.UtcNow.ToString("o");
                 if (!String.IsNullOrWhiteSpace(processInfoPath))
                 {
                     using (FileStream info = new FileStream(processInfoPath,
@@ -224,8 +234,7 @@ namespace LecS65
                     {
                         writer.WriteLine("ProcessId=" + process.Id.ToString());
                         writer.WriteLine("Executable=" + fileName);
-                        writer.WriteLine("StartedUtc=" +
-                            DateTime.UtcNow.ToString("o"));
+                        writer.WriteLine("StartedUtc=" + processStartedUtc);
                     }
                 }
 
@@ -256,14 +265,27 @@ namespace LecS65
                 };
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
+                DateTime waitStarted = DateTime.UtcNow;
+                string waitStartedUtc = waitStarted.ToString("o");
+                string deadlineUtc = waitStarted.AddMilliseconds(
+                    timeoutMilliseconds).ToString("o");
                 bool exited = process.WaitForExit(timeoutMilliseconds);
+                string waitCompletedUtc = DateTime.UtcNow.ToString("o");
                 int exitCode = exited ? process.ExitCode : 124;
+                string terminationRequestedUtc = exited ? null :
+                    DateTime.UtcNow.ToString("o");
 
-                CloseHandle(job);
-                job = IntPtr.Zero;
+                bool jobCloseSucceeded = CloseHandle(job);
+                int jobCloseError = jobCloseSucceeded ? 0 :
+                    Marshal.GetLastWin32Error();
+                string jobCloseReturnedUtc = DateTime.UtcNow.ToString("o");
+                if (jobCloseSucceeded)
+                    job = IntPtr.Zero;
 
                 Stopwatch drainWatch = Stopwatch.StartNew();
                 bool processStopped = exited || process.WaitForExit(streamDrainMilliseconds);
+                string processExitObservedUtc = processStopped && process.HasExited ?
+                    DateTime.UtcNow.ToString("o") : null;
                 int remainingDrainMilliseconds = Math.Max(0,
                     streamDrainMilliseconds - (int)drainWatch.ElapsedMilliseconds);
                 bool stdoutDrained = stdoutClosed.WaitOne(remainingDrainMilliseconds);
@@ -289,7 +311,16 @@ namespace LecS65
                     StdOut = capturedStdout,
                     StdErr = capturedStderr,
                     JobAssigned = true,
-                    ProcessTreeClosed = processStopped
+                    ProcessTreeClosed = processStopped,
+                    ProcessStartedUtc = processStartedUtc,
+                    WaitStartedUtc = waitStartedUtc,
+                    DeadlineUtc = deadlineUtc,
+                    WaitCompletedUtc = waitCompletedUtc,
+                    TerminationRequestedUtc = terminationRequestedUtc,
+                    JobCloseReturnedUtc = jobCloseReturnedUtc,
+                    ProcessExitObservedUtc = processExitObservedUtc,
+                    JobCloseSucceeded = jobCloseSucceeded,
+                    JobCloseError = jobCloseError
                 };
                 }
             }
@@ -357,6 +388,7 @@ function Invoke-LecS65NativeProcess {
         [hashtable]$EnvironmentVariables,
         [switch]$SuppressConsoleOutput,
         [switch]$AllowPositiveExitCode,
+        [switch]$ReturnOnTimeout,
         [switch]$ReturnOnNonZeroExit
     )
 
@@ -456,6 +488,24 @@ function Invoke-LecS65NativeProcess {
         throw $message
     }
 
+    if ($null -ne $resolvedProcessInfo) {
+        $metadata = @(
+            "WaitStartedUtc=$($result.WaitStartedUtc)"
+            "DeadlineUtc=$($result.DeadlineUtc)"
+            "WaitCompletedUtc=$($result.WaitCompletedUtc)"
+            "TerminationRequestedUtc=$($result.TerminationRequestedUtc)"
+            "JobCloseReturnedUtc=$($result.JobCloseReturnedUtc)"
+            "JobCloseSucceeded=$($result.JobCloseSucceeded.ToString().ToLowerInvariant())"
+            "JobCloseError=$($result.JobCloseError)"
+            "ProcessExitObservedUtc=$($result.ProcessExitObservedUtc)"
+            "ExitCode=$($result.ExitCode)"
+            "TimedOut=$($result.TimedOut.ToString().ToLowerInvariant())"
+            "ProcessTreeClosed=$($result.ProcessTreeClosed.ToString().ToLowerInvariant())"
+        ) -join [Environment]::NewLine
+        [System.IO.File]::AppendAllText($resolvedProcessInfo,
+            $metadata + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false)))
+    }
     if ($null -ne $resolvedLog) {
         $summary = if ($result.StreamDrainTimedOut) {
             "=== PROCESS RESULT UNCERTAIN: OUTPUT STREAM DRAIN TIMED OUT; EXIT CODE: $($result.ExitCode) ==="
@@ -475,7 +525,7 @@ function Invoke-LecS65NativeProcess {
     if (-not $SuppressConsoleOutput -and -not [string]::IsNullOrEmpty($result.StdErr)) {
         [Console]::Error.Write($result.StdErr)
     }
-    if ($result.TimedOut) {
+    if ($result.TimedOut -and -not $ReturnOnTimeout) {
         throw "$Name timed out after $TimeoutSeconds seconds; its assigned process tree was terminated."
     }
     if ($result.ExitCode -ne 0 -and

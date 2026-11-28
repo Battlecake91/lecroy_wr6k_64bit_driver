@@ -214,6 +214,16 @@ LecOneWireIssue(
         }
     }
 
+    if (value == MAXULONG) {
+        /*
+         * A full busy poll ending with an all-ones BAR read did not
+         * establish a usable controller response. Do not retry the ROM
+         * transaction against this register mapping.
+         */
+        LecTrace("ONEWIRE unavailable after poll: command=%lu\n", Command);
+        return STATUS_DEVICE_NOT_CONNECTED;
+    }
+
     LecTrace(
         "ONEWIRE timeout: command=%lu last=0x%08lX\n",
         Command,
@@ -364,22 +374,17 @@ LecDallasReadId(
         ULONG i;
 
         status = LecOneWireReset(DevExt);
-        if (!NT_SUCCESS(status)) {
-            continue;
+        if (NT_SUCCESS(status)) {
+            status = LecOneWireWriteByte(DevExt, 0x33);
         }
 
-        status = LecOneWireWriteByte(DevExt, 0x33);
-        if (!NT_SUCCESS(status)) {
-            continue;
-        }
-
-        for (i = 0; i < 8; ++i) {
+        for (i = 0; NT_SUCCESS(status) && i < 8; ++i) {
             status = LecOneWireReadByte(DevExt, &Id[i]);
-            if (!NT_SUCCESS(status)) {
-                break;
-            }
         }
 
+        if (status == STATUS_DEVICE_NOT_CONNECTED) {
+            break;
+        }
         if (!NT_SUCCESS(status)) {
             continue;
         }
