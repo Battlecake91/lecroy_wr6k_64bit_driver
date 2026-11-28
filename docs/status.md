@@ -9,6 +9,8 @@
   The installed `oem109.inf` identity and service remained unchanged.
   The mismatch establishes a PCI memory-decode problem at snapshot time.
   Its onset and the cause of configuration loss remain unknown.
+  The full-shutdown experiment and conditional one-shot GUI run are
+  prepared and await owner authorization.
   See the [resume snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
 
 - One ordinary GUI launch on the unchanged `oem109.inf` reached a black

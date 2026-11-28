@@ -8,10 +8,13 @@ This file tracks unfinished work and deferred features. The current, verified ca
   separately authorize one cold boot and capture the Command register,
   BAR assignments and reported power state before starting any client.
   Read the three approved DWORDs only when PCI memory decode is enabled
-  and the BAR bases match the assigned resources. If healthy, use that
-  baseline for a later explicitly authorized sleep/resume comparison.
-  Audit system-to-device power-IRP sequencing before addressing any
-  remaining board-context restore. See [power/PnP lifetime](power-pnp-dma-lifetime.md#pci-configuration-and-board-context-on-resume).
+  and the BAR bases match the assigned resources. Continue directly to
+  one ordinary GUI capture if its conditional authorization is in place.
+  See the [prepared experiment](handoffs/batch-33-xstream-com-timeout-causality.md#prepared-cold-boot-and-conditional-gui-experiment).
+- [ ] **Qualify suspend/resume separately.** Determine the WDM power-policy
+  owner, trace system/device SET_POWER ordering, then qualify PCI decode,
+  vendor context and IRQ/DMA admission after D0. See the
+  [power-management workstream](power-pnp-dma-lifetime.md#separate-power-management-workstream).
 - [ ] **Explain the missing event transition.** After establishing a single
   GUI process, correlate event ownership, pending-mask latching, the DPC's
   signal decision and the first `85FB/40/01` transaction. Investigate

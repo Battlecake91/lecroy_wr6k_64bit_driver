@@ -795,6 +795,138 @@ The PCI stdout SHA-256 is
 The manifest covers the passive snapshots and the single PCI query's
 attempt, result, stdout and stderr.
 
+## Prepared cold-boot and conditional GUI experiment
+
+Preparation started from `2492fe2120ed24cb9158ba79f98a7a47b7106ffe`
+on PR #58. Retain `oem109.inf`, version `0.2026.1126.1`, with SYS SHA-256
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+The source-only Dallas correction remains undeployed. Offline file checks
+matched the signed manifest and four artifacts, the capture launcher and
+all six tool/script pins from the [executed GUI invocation](#executed-gui-invocation),
+`lecdiag`, and optional x86 CDB. The two evidence roots below were absent.
+Passive startup and running-process checks found no matching XStream
+entry or process. Windows PowerShell 5.1.19041.6456 x64 parsed both new
+command blocks. Offline checks passed all three register request
+encodings and four 1-Wire status cases (idle with either DATA value,
+busy, and all ones). None of these checks executed a capture or device
+IOCTL.
+
+### 1. Full shutdown and manual power-on
+
+Obtain explicit approval `B33-COLD-BOOT-01` for one full shutdown and cold
+boot of this installation and its one-shot read-only diagnostics. Before
+shutdown, save open work, confirm the expected driver and absence of acquisition
+clients, and record approval, current boot timestamp and latest
+Kernel-Boot event 27 in the fresh private evidence root
+`Batch33-ColdBoot-01` under the local driver-backups directory. After
+recording the shutdown attempt, invoke once from the local x64 session:
+
+```powershell
+& (Join-Path $env:SystemRoot 'System32\shutdown.exe') /s /t 0
+```
+
+Wait for full power-off, then power on the scope locally and return to the
+Windows x64 session. Microsoft documents `/s /t 0` as full shutdown and
+`/hybrid` as the optional Fast Startup path. Leave Windows power settings
+and startup tasks unchanged. The cold boot recreates the FDO and can
+refresh the cumulative `MamLaunchLimit=1`. Record that boundary
+explicitly. The counter value itself is not measured by the read-only
+diagnostics. See [Microsoft full shutdown instructions](https://learn.microsoft.com/en-us/troubleshoot/windows-client/setup-upgrade-and-drivers/fast-startup-causes-system-hibernation-shutdown-fail).
+
+### 2. PCI and three bounded reads
+
+In elevated x64 Windows PowerShell 5.1, record the new CIM boot timestamp,
+new Kernel-Boot event 27 with `BootType=0`, and latest Power-Troubleshooter
+wake record. Stop if the boot is not new or sleep/resume intervened.
+Verify the same stable PCI instance `1570:0005` from the
+[post-resume snapshot](#post-resume-pci-decode-snapshot), expected bound
+INF/version/SYS, running service, problem zero, reported D0
+(`DEVPKEY_Device_PowerData`), and no acquisition client. Capture current
+resources using `Win32_PNPAllocatedResource`. Record BDF, which can
+change with enumeration.
+
+Use the existing `scripts/native-process.ps1` runner (SHA-256
+`F2D6C82AFB059457BAB3AE587DC41F811E8286D1201F6BE407F75C30C1DF0F5B`).
+Run each row of the table as a separate bounded child, with the exact
+array shown passed as `-Arguments`. From the verified clean repository
+root, set `$name` and `$diagArgs` to the corresponding row and use:
+
+```powershell
+$repo = (Get-Location).Path
+$evidence = Join-Path $env:USERPROFILE '.codex\driver-backups\Batch33-ColdBoot-01'
+$diag = Join-Path $repo 'tools\lecdiag\build\lecdiag.exe'
+$native = Join-Path $repo 'scripts\native-process.ps1'
+if ((Get-FileHash -LiteralPath $diag).Hash -ne '374FC640A1DD8CFDC73FFE854DA988AA5ABFAB854D1F096EF5AD2F6747CA2CF0' -or
+    (Get-FileHash -LiteralPath $native).Hash -ne 'F2D6C82AFB059457BAB3AE587DC41F811E8286D1201F6BE407F75C30C1DF0F5B') {
+    throw 'Read-only diagnostic or process runner hash mismatch.'
+}
+. $native
+$result = Invoke-LecS65NativeProcess -Name $name -FilePath $diag -Arguments $diagArgs -WorkingDirectory $repo -TimeoutSeconds 5 -StreamDrainTimeoutSeconds 2 -ProcessInfoPath (Join-Path $evidence "$name.process.txt") -LogPath (Join-Path $evidence "$name.log")
+if ($result.StreamDrainTimedOut) { throw 'Diagnostic output is incomplete.' }
+```
+
+Persist the attempt marker before dispatch. Require the diagnostic to
+show the expected interface for the stable instance. Record each result
+and hash the passive snapshots and per-command logs.
+
+| Name | Exact argument array | Requirement |
+| --- | --- | --- |
+| `pci` | `@('pci')` | 64 configuration bytes, 84-byte IOCTL reply, correct PCI identity |
+| `bar0-fver` | `@('raw-ioctl','0xCFDC21C0','0000000000','4')` | `0x00000002` |
+| `bar1-acqfver` | `@('raw-ioctl','0xCFDC21C0','010C000000','4')` | `0x00000003` |
+| `bar2-onewire` | `@('raw-ioctl','0xCFDC21C0','0240000000','4')` | A value other than all ones, with BUSY clear |
+
+After `pci`, preserve the raw Command, BAR0–BAR2, IRQ line/pin and INTx
+disable fields. Require `(Command -band 0x0006) -eq 0x0006` and
+three distinct, nonzero 32-bit memory BAR bases. Mask the low four BAR
+attribute bits before comparing the bases against the actual three
+Windows memory resource starts. Retain each range end and the Windows
+IRQ allocation. Do not use old addresses or IRQ line 19 as hard-coded
+gates. Stop before MMIO on invalid PCI state or uncertain mapping.
+
+For each approved DWORD, require process exit 0 and an actual four-byte
+reply. Decode the hex as a little-endian DWORD. The reviewed installed
+handler returns `STATUS_SUCCESS` on this branch. `lecdiag` reports a
+Win32 error on failure, so leave exact NTSTATUS unknown if the command
+fails. For ONEWIRE, BUSY is bit 0 and sampled DATA is bit 1. An idle
+read with either DATA value is acceptable. The historical idle snapshot
+was `0x00000000`. An all-ones value or BUSY set stops progression without
+a repeat read. No Dallas ROM-ID request is part of this read-only stage.
+
+### 3. Authorized conditional GUI startup
+
+Only after both prior stages pass, proceed directly if the owner has
+also explicitly authorized the GUI stage and confirmed physical
+isolation of the productive x86 disk. In the elevated x64 Windows
+PowerShell 5.1 console, use the full
+[GUI invocation](#executed-gui-invocation) with these substitutions
+before invoking `& $entry @argsForGui` once:
+
+| Parameter | Cold-boot experiment value |
+| --- | --- |
+| `$ApprovedHead` | Exact clean continuation commit reviewed by the owner for this run |
+| `EvidenceRoot` | `Join-Path $backup 'Batch33-XStreamGui-ColdBoot-01'` |
+| `AuthorizationId` | `B33-XSTREAM-GUI-COLD-01` |
+
+Keep the same package and executable pins, capture readiness check,
+240-second GUI limit and 420-second capture bound. This authorization
+must cover temporary kernel capture, native private IOCTL tracing, one
+normal GUI start and the possibility of one automatic MAM GO on the
+recreated FDO. One previously qualified non-suspending CDB snapshot
+on a confirmed stall is optional when included in that approval. Follow
+the [existing identity and time-bound checks](#boundaries-and-operation).
+The GUI invocation uses no observer or explicit COM activation. Leave
+application settings unchanged and stop at the first error, timeout
+or uncertain outcome. Preserve the private evidence and compare the
+Dallas ROM-ID outcome, transport and calibration milestones,
+`85FB/40/01`, MAM admission/denials, IRQ/DPC/completion and any visible
+waveform. If the launch limit becomes the first functional blocker,
+prioritize the separately qualified bounded repeated-MAM candidate.
+
+No shutdown, post-boot PCI/MMIO read, capture or XStream dispatch has
+occurred during preparation. The separate [power-management workstream](../power-pnp-dma-lifetime.md#separate-power-management-workstream)
+remains open.
+
 ## Repository state
 
 - Starting commit: `f1bbd89dfa57fdac8b74641f859e443456c18ca3`.

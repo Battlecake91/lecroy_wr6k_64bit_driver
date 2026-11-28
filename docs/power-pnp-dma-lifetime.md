@@ -98,6 +98,22 @@ restore. The snapshot does not show which IRPs ran at wake or when the
 configuration was lost. Replaying the x86 MMIO sequence with disabled
 decoding would use mappings that have not been validated.
 
+### Separate power-management workstream
+
+Use the controlled cold-boot baseline for functional acquisition
+development while suspend/resume is still unqualified. For the separate
+power workstream, establish the policy owner and trace both system and
+device SET_POWER, including forward/completion status. Review the
+documented `PoRequestPowerIrp` model and retain the remove lock and
+publication references through the dependent completions. Validate BARs
+and memory decode after lower-stack restoration before any vendor MMIO.
+Determine which vendor context actually needs saving and restoring,
+including interrupt masks and acquisition shadows. Keep IRQ/DMA
+admission closed until the applicable hardware and software state is
+ready, preserving UnknownActive quarantine. Leave PCI configuration
+restoration to the Windows PCI stack and derive any board sequence from
+evidence specific to this device.
+
 See Microsoft [PCI power management and device drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/pci/pci-power-management-and-device-drivers),
 [system set-power IRP in a device power policy owner](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/handling-a-system-set-power-irp-in-a-device-power-policy-owner),
 and [CM_POWER_DATA](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-cm_power_data_s).
