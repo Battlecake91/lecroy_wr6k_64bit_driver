@@ -25,6 +25,15 @@ and probe control. It is also distinct from the PCI card's
 | Dallas EEPROM read | `0x00223084`, request 1..512 bytes, read from address `0x0000` | Implemented, including full 512-byte reads; `lecdiag dallas-read` prints hex, and new **`lecdiag dallas-backup`** saves a *binary* private backup. |
 | Dallas EEPROM write | `0x00223088`, recovered original x86 handler, 1..512-byte input, 32-byte chunks and read-back verification in legacy analysis | **NOT implemented** in the current native x64 `driver/Ioctl.c`; no `lecdiag` writer or eraser. Do not imply writable x64 memory has already been validated. |
 
+The attributable GUI run on `oem109.inf` saw ten 1-Wire reset timeouts
+with final `BAR2+0x040` values of `0xFFFFFFFF`. The ROM-ID request ended
+before presence, ROM identifier or CRC sampling. The offline source
+treats an exhausted all-ones busy poll as `STATUS_DEVICE_NOT_CONNECTED`
+and stops further ROM retries. Ordinary busy polling and the successful
+command sequence are unchanged. This distinguishes a register access
+failure from ordinary busy timeout without deciding why access failed.
+See the [GUI evidence and remaining cause](handoffs/batch-33-xstream-com-timeout-causality.md#narrow-correction-and-remaining-cause).
+
 The x64 controller is `BAR2+0x040 ONEWIRE`. The
 physical schematic identifies the DS2433 behind
 the PCI FPGA's `ID_DATA` net. The schematic does

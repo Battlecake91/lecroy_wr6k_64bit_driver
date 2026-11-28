@@ -2,6 +2,20 @@
 
 ## XStream acquisition restoration
 
+- One ordinary GUI launch on the unchanged `oem109.inf` reached a black
+  `LeCroy DSO` window and a `No Hardware Detected (2)` dialog. The first
+  WR6k request, `GET_DALLAS_ID`, failed after ten 1-Wire reset polls that
+  ended at `0xFFFFFFFF`. CDB located the visible wait in the message box.
+  Calibration, event status and MAM were not reached. The prior embedded
+  attempt on the same driver passed the ID query. Windows woke from sleep
+  about 110 seconds before the GUI launch, making resume a lead for the
+  unavailable register response.
+- The source now stops Dallas ROM retries after an exhausted poll ends in
+  an all-ones read. Host-only cases passed 5/5 and source contracts 77/77.
+  This offline correction was not deployed. The installed device continues
+  to report OK/problem code zero. See the
+  [GUI result](handoffs/batch-33-xstream-com-timeout-causality.md#gui-result-and-first-failing-operation).
+
 - The November 28 Batch 33 run passed host and capture preflight. The one
   COM activation coincided with a second XStream process from the service
   host running `DcomLaunch`. All 718 observed `Acquisition` lookups
@@ -13,13 +27,10 @@
   the later `85FB/40/01` status query and associated acknowledgement were
   absent again. There was no observed MAM request or GO. The capture cannot
   establish whether the expected interrupt or event signal occurred.
-- Passive readback still shows healthy `oem109.inf` and the expected SYS
-  hash. DebugView exited. The second XStream process was still present at
-  the final passive check of that run. The later preparation check found
-  zero XStream processes. Any activity between checks remains unknown.
-  The next baseline uses ordinary GUI startup with native and kernel
-  tracing, without an observer or COM automation. It remains pending fresh
-  authorization. The driver still allows at most one MAM admission.
+- The embedded run's second process was absent before the later GUI
+  attempt. Any activity between those checks remains unknown. The normal
+  GUI trace observed only its instrumented process. The driver still allows
+  at most one MAM admission and the latch remains unknown.
   See the [Batch 33 run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
 - The normal WDM-v3 retirement path supports reuse by design. The installed
   one-launch budget rules out regular operation. Consecutive hardware

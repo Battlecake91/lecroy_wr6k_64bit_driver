@@ -4,12 +4,12 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Restore an attributable XStream GUI baseline.** Run a single normal
-  GUI startup with kernel and native trace on the installed package after
-  fresh approval and disk-isolation confirmation. Verify sole process
-  identity and compare observed initialization, event status and MAM
-  traffic to the two successful historical GUI traces. Defer COM
-  class-factory and proxy attribution to automation-specific work.
+- [ ] **Localize the startup 1-Wire failure.** The attributable normal GUI
+  launch failed on the first ROM-ID request after Windows resumed. Compare
+  BAR0 and BAR2 accessibility with the reported PCI power and resource
+  state in a separately authorized read-only check. Preserve the installed
+  package, known register order, and Dallas contents. Defer another GUI
+  startup until this early boundary is understood.
 - [ ] **Explain the missing event transition.** After establishing a single
   GUI process, correlate event ownership, pending-mask latching, the DPC's
   signal decision and the first `85FB/40/01` transaction. Investigate

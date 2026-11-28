@@ -445,7 +445,7 @@ $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.ex
   explicit `Acquire()`, CVar change, retry, PnP transition, driver replacement
   or latch reset is part of the proposed action.
 
-## Next experiment: ordinary XStream GUI startup
+## Ordinary XStream GUI startup
 
 ### Residual process and COM registration
 
@@ -542,11 +542,12 @@ verified one dispatch, retained kernel collector evidence on GUI failure,
 and both authorization gates. No vendor process or driver I/O was started
 by these tests.
 
-### Proposed command after owner approval
+### Executed GUI invocation
 
-Set `$ApprovedHead` to the full reviewed commit containing this GUI mode.
-The proposed one-use authorization ID and fresh private evidence path
-are explicit below.
+The November 28 attempt used the command below with `$ApprovedHead` set
+to `ea836cc8e8eb2c3a2a1650e1be5534e859fee06c`. Authorization
+`B33-XSTREAM-GUI-01` and the evidence directory are consumed. The command
+is retained as an execution record.
 
 ```powershell
 $repo = (Get-Location).Path
@@ -601,6 +602,108 @@ $argsForGui = @{
 }
 & $entry @argsForGui
 ```
+
+### GUI result and first failing operation
+
+On November 28, the elevated preflight and kernel capture readiness passed.
+Exactly one `XStreamGuiWithCapture` invocation started the pinned XStream
+executable without arguments in session 1. The monitor confirmed PID 13628,
+parent PID 2484 and the expected image. No second XStream process or
+automation observer was observed.
+
+| UTC | Recorded event |
+|---|---|
+| `11:12:04.148` | Windows recorded wake from system sleep. The sleep event predates this attempt. |
+| `11:13:59.222` | Native launcher resumed the traced GUI process. |
+| `11:13:59.968` | The process exposed its `LeCroy DSO` window. |
+| `11:14:00.671` | The first and only WR6k IOCTL completed with `STATUS_IO_TIMEOUT` and zero bytes. |
+| `11:15:44.257` | One bounded non-suspending CDB snapshot began and exited zero about 0.6 seconds later. |
+| `11:17:59.374` | The native launcher observed target exit 1460 after its 240-second deadline. |
+| `11:20:57.319` | Kernel capture worker completed with exit zero. The outer launcher reported GUI failure with exit 1. |
+
+The visible main client area remained black. The modal title was
+`No Hardware Detected (2)`. No calibration UI or waveform was observed.
+The debugger showed the primary thread in `win32u!NtUserWaitMessage` through
+`USER32!SoftModalMessageBox`, `MessageBoxTimeoutW` and `MessageBoxW`. This
+locates the visible wait in the error dialog after the IOCTL had returned.
+Vendor frame unwinding was unreliable and does not identify the source
+method. The first CDB preparation stopped before dispatch because a
+PowerShell JSON date was compared as text. A normalized creation-time check
+then verified the same PID, path, parent and session and dispatched CDB
+once. The modal was left untouched and the native deadline ended the target.
+
+The historical `005808` and `011938` GUI traces and the earlier embedded
+attempt on this same installed driver started with:
+
+| Operation | Historical and earlier embedded result | This GUI run |
+|---|---|---|
+| `0x00223080` GET_DALLAS_ID | Success, eight bytes | `0xC00000B5`, zero bytes from the kernel. |
+| `0x00222400` | Success | Absent. |
+| `0x00223084` Dallas memory read | Success | Absent. |
+| First `CFDC2110`, event setup, and later acquisition | Reached transport and event setup. The historical GUI traces reached `85FB/40/01` with pending `0x0080` and MAM. | Absent from both user and kernel traces. |
+
+The completed collector recorded one WR6k entry and one completion. In
+that request the installed `LecOneWireIssue` exhausted its busy polling
+after the reset command ten times, with final `BAR2+0x040` read
+`0xFFFFFFFF` each time. It returned a timeout before proceeding to the
+ROM command, presence sample, or CRC. The native trace's information field
+for the failed call is implausible for an eight-byte output. The kernel
+completion is the source for zero bytes. The private native trace is
+classified as valid partial launcher termination with 340 records plus its
+header and no footer.
+
+No event registration, `85FB/40/01` query, MAM request, limit rejection,
+GO, IRQ/DPC completion, or mapping retirement was observed. This run stopped
+earlier than both the known-good GUI profiles and the earlier embedded
+attempt. Movement of the MAM latch is not evidenced.
+
+### Narrow correction and remaining cause
+
+The all-ones BAR response shows that the polled register did not supply
+a usable response. It does not prove a missing Dallas chip or localize the
+fault to the PCI BAR, address decoding, FPGA, or resume path. The ROM read
+and 1-Wire source was identical in `6cc5a238`, `34907090` and the installed
+source revision `50530b8d`. This same installed image returned eight bytes
+from GET_DALLAS_ID in the preceding embedded attempt. Windows logged a
+sleep/wake interval between attempts, with wake about 110 seconds before
+this startup. The PCI device still reported problem code zero. The power
+record makes resume a concrete lead, without proving when or why BAR2
+became unresponsive.
+
+The source correction preserves the command sequence and polling bound.
+If the busy poll is exhausted and the last value is all ones, it returns
+`STATUS_DEVICE_NOT_CONNECTED` and ends the ROM retry loop. A transient
+all-ones sample followed by valid completion behaves as before. A genuine
+busy timeout with another terminal value still follows the previous
+bounded retry path. This avoids the observed repeated resets and separates
+the unavailable-controller result from an ordinary timeout. It neither
+fabricates an ID nor attempts hardware recovery. The source contract suite
+passed 77/77, and a host-only harness compiled the exact changed production
+functions with five mock cases. No driver was built, packaged or installed.
+
+The next diagnostic boundary is a separately approved, narrowly scoped
+read-only comparison of BAR accessibility and reported PCI power/resource
+state before considering any recovery or repeat GUI run. Compare BAR0 and
+BAR2 to distinguish a broad PCI access failure from a narrower controller
+failure. The current evidence does not justify changing BAR order, injecting
+interrupts, replaying pending bits or touching EEPROM contents.
+
+Passive completion at `11:21:39.742Z` showed `oem109.inf`
+`0.2026.1126.1` with the approved SYS, device OK/problem code zero and the
+service running. XStream, CDB and DebugView were absent, with no capture
+driver service left. The interval had no matching Application, Kernel-PnP,
+WHEA or DCOM event. The Code Integrity 3033/3089 records concerned
+`mdnsNSP.dll` and `svchost.exe`.
+
+| Private evidence | SHA-256 |
+|---|---|
+| Kernel capture | `8811717AACB118A66B88AED174BCFE9829BFDE00D89C53B4FF2A83B6C4990E26` |
+| IOCTL trace | `86402E679792F908C04E73F601DAC53917CDBB4B695B0E3E0A107DA0989CB2EC` |
+| Native target termination | `E13886B91580733CCD67FA58C7088C0D2D8171005D590D5562B1428BB03E9111` |
+| CDB output | `2336B4937103824BE976AB3E0B1B683B7E022EC026A6E0B408522023855ED32A` |
+| Operator observation | `F61F532835647158149D1470EEC31413E02704134342F41CD259D849A82CDE51` |
+| Collector completion | `820D84AB9A0727F90BDCA306E7AD1694FB71E6E7FB7CC34CA1B9D06A3C34A558` |
+| Passive post-run state | `6851D38BD54302228899FCDF5552B1A2042B943DCF690E7F43E1A8DD3A70D1D9` |
 
 ## Repository state
 
