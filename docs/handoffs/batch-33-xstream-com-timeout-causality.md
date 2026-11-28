@@ -445,6 +445,163 @@ $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.ex
   explicit `Acquire()`, CVar change, retry, PnP transition, driver replacement
   or latch reset is part of the proposed action.
 
+## Next experiment: ordinary XStream GUI startup
+
+### Residual process and COM registration
+
+Passive process enumeration on November 28 at `00:00:08Z` found zero
+`lecroyxstreamdso.exe` or `XStream.exe` instances. PID 9160 from the previous
+attempt was no longer an XStream process. Its exit mechanism and actions
+after capture ended are unknown, so the FDO's remaining MAM admission is
+unknown. Its executable arguments, effective security context, windows and
+stacks can no longer be inspected. The earlier evidence establishes only
+its image name, creation time, session, and DcomLaunch service-host parent.
+
+The installed ProgID `LeCroy.XStreamDSO` resolves to CLSID
+`{03960F1A-A888-4335-AB08-6F8BE55F0D9B}`. The merged and machine Registry32
+views identify the quoted `C:\Program Files (x86)\LeCroy\XStream\lecroyxstreamdso.exe`
+without extra arguments, with AppID `{1719D3E3-9F5B-4B27-AEB3-07443CCEA0A6}`
+and no observed `ServerExecutable`, `RunAs` or `LocalService` override in the
+keys inspected. The 64-bit view resolves the same ProgID and executable AppID
+alias but did not expose a `LocalServer32` value for the class. No per-user
+override was found in either view. The x86 executable imports
+`CoRegisterClassObject`, `CoResumeClassObjects` and `CoRevokeClassObject`.
+The imports establish capability. Actual class registration timing, flags and
+reuse of the manually started server remain unproven. No live XStream process
+was available to establish an XStream Running Object Table (ROT) entry.
+The executable has no direct `RegisterActiveObject` or
+`GetRunningObjectTable` import in the inspected table, which cannot exclude
+registration by another module or a dynamically resolved call.
+
+[COM appends `-Embedding` to LocalServer32](https://learn.microsoft.com/en-us/windows/win32/com/localserver32).
+The previous native launcher explicitly passed `/Embedding`. Whether this
+XStream version treats the spellings identically remains unverified.
+The new GUI path passes no application arguments. The readied marker is
+written after trace-hook initialization and before `ResumeThread`. It proves
+neither class registration nor [publication of a running object](https://learn.microsoft.com/en-us/windows/win32/api/objbase/nf-objbase-getrunningobjecttable).
+Registering a [COM class factory](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coregisterclassobject)
+and registering an already running object are separate operations. The prior
+instrumented process resumed 2.808 seconds before activation. A second
+process appeared approximately 29 ms after activation began. A longer wait
+or different switch spelling is a hypothesis. The two-process run cannot
+attribute the successful COM replies to the traced hardware process or
+establish a driver-side interrupt or pending-bit signaling failure.
+
+### Boundaries and operation
+
+Use `XStreamGuiWithCapture` from an elevated 64-bit Windows PowerShell 5.1
+window on the interactive user desktop. Obtain fresh owner approval for a
+single GUI startup, temporary kernel capture, private tracing, optional CDB
+if the GUI stalls, and the cleanup described below. Reconfirm physical
+disconnection of the productive x86 disk. Re-enumerate XStream processes.
+If one exists, verify PID, image path, creation time, session and ownership
+and stop before dispatch. Its closure requires separate explicit approval.
+The current passive check requires no residual-process action.
+
+The launcher verifies the unchanged installed `oem109.inf` candidate, the
+signed artifacts and diagnostic tools, BCD, Verifier and kernel capture
+readiness. It dispatches the x86 tracer exactly once with no `--embedding`.
+The tracer starts XStream without arguments in the executable's directory.
+The observer is absent from this mode. The supervisor records the hooked
+PID, native parent, session, creation time, executable path, command line
+and sampled window changes. A competing XStream process fails attribution.
+The expected hardware exposure is ordinary application startup and
+automatic IOCTLs, with at most one admission under the existing kernel
+MAM limit. The existing latch, MTT gate and DMA quarantine stay in effect.
+
+The GUI target has a 240-second native deadline. Observe startup, errors,
+calibration and any visible C1 waveform without changing controls. Record
+windows or screenshots in the private evidence directory. Exit the verified
+GUI normally before the deadline when safe, to allow a trace footer. If it
+stalls, an approved operator may take one bounded non-suspending stack
+snapshot before the deadline. Use the confirmed `gui_target_validated` PID
+with the matching path and creation time still present. Apply the pinned CDB
+and 10-second supervised command from the preceding evidence section. The
+condition is observable GUI progress having stalled. A COM lookup is not
+part of this test. On unresolved state the native deadline terminates only
+its owned target. An unexpected process is never selected for automated
+cleanup. No automatic retry, device reset, reload or further acquisition
+follows the attempt.
+
+Compare the native IOCTL trace and kernel data for event registration,
+`0x85` enable, `85FB/40/01`, pending status, `0x88`, `CFDC2184`, and
+`CFDC2124`/`CFDC2138`. Compare against the known-good GUI traces
+`005808` and `011938`. Distinguish MAM admission or limit rejection from
+GO, IRQ/DPC completion and mapping retirement. Without a corresponding
+kernel marker or usable wait evidence, report the exact evidence gap. A
+complete trace or nonempty window alone does not establish waveform
+acquisition. Check device health and residual process state passively after
+the 420-second kernel capture finishes. Preserve and hash the raw originals
+privately.
+
+Offline validation on Windows PowerShell 5.1 passed 36/36 native trace cases
+and 4/4 focused outer launcher cases. The synthetic target verified zero
+application arguments, trace and process identity, a complete capture
+without an observer, and rejection of a preexisting process. The outer mock
+verified one dispatch, retained kernel collector evidence on GUI failure,
+and both authorization gates. No vendor process or driver I/O was started
+by these tests.
+
+### Proposed command after owner approval
+
+Set `$ApprovedHead` to the full reviewed commit containing this GUI mode.
+The proposed one-use authorization ID and fresh private evidence path
+are explicit below.
+
+```powershell
+$repo = (Get-Location).Path
+$backup = Join-Path $env:USERPROFILE '.codex\driver-backups'
+$scripts = Join-Path $repo 'scripts'
+$traceTools = Join-Path $repo 'tools\xstream-ioctl-trace\build\x86'
+$entry = Join-Path $scripts 'invoke-diagnostic-capture-install.ps1'
+if ($ApprovedHead -notmatch '^[0-9a-fA-F]{40}$' -or
+    (Get-FileHash -LiteralPath $entry).Hash -ne '4B416D46BD7EDC92789D6654D5167B84B2141823C0D5915D806E3BBBB9EDF915') {
+    throw 'The approved commit or launcher hash is missing or incorrect.'
+}
+$argsForGui = @{
+    Mode = 'XStreamGuiWithCapture'
+    RepositoryRoot = $repo
+    ExpectedLauncherCommit = $ApprovedHead
+    EvidenceRoot = (Join-Path $backup 'Batch33-XStreamGui-01')
+    AuthorizationId = 'B33-XSTREAM-GUI-01'
+    AuthorizeKernelCapture = $true
+    AuthorizeXStream = $true
+    ConfirmPhysicalDiskDisconnected = $true
+    PackageRoot = (Join-Path $backup 'Batch31-SignedCandidate-20261126-01')
+    ExpectedManifestHash = '3A7EB449FD7394EAF7E28C04226131EB7FF65EE561A1EDC2DD171078FECC8647'
+    ExpectedPackageWorkflowCommit = '2e0e9a781e6df68fa83795889cf6bbcf85ef5472'
+    ExpectedDriverSourceCommit = '50530b8d88cfee36ec23b8648611a4bafd6dfc4e'
+    ExpectedDriverTree = '5225aaed874c2f5b461280b63f234d83563cd2e3'
+    ExpectedIncludeTree = 'eb1420b7c97a5e9d827aee59dadd8b0d6dbf3add'
+    ExpectedDriverVer = '11/26/2026,0.2026.1126.1'
+    ExpectedCertificateThumbprint = '4296FA2E355613DF0D5CE6F24D0898E00B706472'
+    ExpectedInfHash = 'AF7A16A700B5D90B9EA5DFDB0B243464804DF63F785423CE2D9F39E2969449EF'
+    ExpectedCatHash = 'BEE0B662B55AEB0931806F9E0A9056330FCE64E02B182FC6014423601112D789'
+    ExpectedSysHash = '6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75'
+    ExpectedPdbHash = '020EC0333DB143AE76EA71B28CBF66DBFA1F86816724D7EA8A4A81C97F4F2484'
+    ExpectedCurrentInf = 'oem109.inf'
+    ExpectedCurrentVersion = '0.2026.1126.1'
+    ExpectedCurrentSysHash = '6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75'
+    DebugViewPath = (Join-Path $env:USERPROFILE '.codex\tools\sysinternals\DebugView-5.02\extracted\dbgviewcli64.exe')
+    ExpectedDebugViewHash = '7954A8BBEB1F650BB5D2B8C4C6B642FD4585319D2092433CA841C7D672A4634B'
+    XStreamExecutablePath = 'C:\Program Files (x86)\LeCroy\XStream\lecroyxstreamdso.exe'
+    ExpectedXStreamExecutableHash = '27664EBDB356BB11740312AA68FAF38FB2739D7B4E6421C0A4ADA9FF0C3D0A4F'
+    XStreamRunnerPath = (Join-Path $scripts 'invoke-xstream-lossless-capture.ps1')
+    ExpectedXStreamRunnerHash = 'C0C757642332694DF7D7CF53F0CFE84044A0D84A233520ED2B8EF5802D21AD50'
+    XStreamTraceLauncherPath = (Join-Path $traceTools 'xstream_trace_launcher.exe')
+    ExpectedXStreamTraceLauncherHash = '42E87BCFE64ADBA12CF5888C1AD0CE29825E9BF19F8A93988F5677C3726218B8'
+    XStreamTraceHookPath = (Join-Path $traceTools 'xstream_io_hook.dll')
+    ExpectedXStreamTraceHookHash = 'C7BFA34E380DA0D6090D28F1F6F397C6A7E288B00FE0B0BBE8F602D03012E43E'
+    XStreamTraceValidatorPath = (Join-Path $scripts 'validate-xstream-ioctl-capture.ps1')
+    ExpectedXStreamTraceValidatorHash = '745CB6BAB8A05768CDFA2E9518D579B1F00FB9B01695E5452B2669C780CB68C9'
+    XStreamTimeoutSeconds = 240
+    CaptureDurationSeconds = 420
+    CaptureReadinessTimeoutSeconds = 60
+    CaptureShutdownGraceSeconds = 15
+}
+& $entry @argsForGui
+```
+
 ## Repository state
 
 - Starting commit: `f1bbd89dfa57fdac8b74641f859e443456c18ca3`.

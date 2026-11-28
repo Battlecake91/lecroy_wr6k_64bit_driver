@@ -4,15 +4,14 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Establish one instrumented XStream COM server.** The November 28 run
-  observed a second XStream process during COM activation. Establish offline
-  how to verify the proxy's server or use the existing server without a
-  separate activation. Resolve the remaining process state before any new
-  startup. The new observer guard detects the observed split, but it does
-  not change COM launch behavior. Any new hardware run requires fresh
-  approval and disk-isolation confirmation.
+- [ ] **Restore an attributable XStream GUI baseline.** Run a single normal
+  GUI startup with kernel and native trace on the installed package after
+  fresh approval and disk-isolation confirmation. Verify sole process
+  identity and compare observed initialization, event status and MAM
+  traffic to the two successful historical GUI traces. Defer COM
+  class-factory and proxy attribution to automation-specific work.
 - [ ] **Explain the missing event transition.** After establishing a single
-  server, correlate event ownership, pending-mask latching, the DPC's
+  GUI process, correlate event ownership, pending-mask latching, the DPC's
   signal decision and the first `85FB/40/01` transaction. Investigate
   opcode `0x03` if startup reaches or depends on it. Keep the FDO launch
   latch unknown.

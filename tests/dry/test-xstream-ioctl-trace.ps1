@@ -406,6 +406,66 @@ try {
         ((Get-Content -Raw -LiteralPath `
             (Join-Path $orchestrationRoot 'result.json')) -notmatch 'input_hex|output_hex')
 
+    $guiRoot = Join-Path $privateRoot 'gui-trace'
+    $env:LECS65_SYNTHETIC_DISPATCH_MARKER = Join-Path $privateRoot 'gui.dispatch'
+    Remove-Item Env:LECS65_EXPECT_EMBEDDING -ErrorAction SilentlyContinue
+    $env:LECS65_EXPECT_NORMAL_STARTUP = '1'
+    $env:LECS65_SYNTHETIC_TARGET_MODE = 'gui-test'
+    $guiParameters = @{
+        Mode = 'OfflineMock'; EvidenceRoot = $guiRoot; GuiOnly = $true
+        TraceLauncherPath = $launcher
+        ExpectedTraceLauncherHash = (Get-FileHash -LiteralPath $launcher).Hash
+        TraceHookPath = $hook
+        ExpectedTraceHookHash = (Get-FileHash -LiteralPath $hook).Hash
+        TraceValidatorPath = $validator
+        ExpectedTraceValidatorHash = (Get-FileHash -LiteralPath $validator).Hash
+        XStreamExecutablePath = $target
+        ExpectedXStreamExecutableHash = (Get-FileHash -LiteralPath $target).Hash
+        ExpectedInf = 'oem-mock.inf'; ExpectedVersion = '0.0.0.1'; ExpectedSysHash = '6'*64
+        OwnerAuthorized = $true; PhysicalDiskDisconnectedConfirmed = $true
+        TimeoutSeconds = 30
+    }
+    try {
+        & $captureRunner @guiParameters
+        $guiExit = $LASTEXITCODE
+        $guiResult = Get-Content -Raw -LiteralPath (Join-Path $guiRoot 'result.json') | ConvertFrom-Json
+        Check 'normal GUI mode verifies identity and captures with zero application arguments' `
+            ($guiExit -eq 0 -and $guiResult.Startup -eq 'GUI' -and
+             $guiResult.TargetProcessRemaining -eq $false -and
+             $guiResult.CaptureClassification.Classification -eq 'COMPLETE_NORMAL_CAPTURE' -and
+             (Select-String -Quiet -LiteralPath $guiResult.SupervisorEventsPath -Pattern 'gui_target_validated') -and
+             (Test-Path -LiteralPath $env:LECS65_SYNTHETIC_DISPATCH_MARKER))
+        Check 'normal GUI mode produces no observer evidence' `
+            (-not (Test-Path -LiteralPath (Join-Path $guiRoot 'waveform-evidence')))
+        $guiParameters.EvidenceRoot = Join-Path $privateRoot 'gui-rejects-observer'
+        $guiParameters.WaveformRunnerPath = $waveformRunner
+        try { & $captureRunner @guiParameters } catch { }
+        $rejection = Get-Content -Raw -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'result.json') | ConvertFrom-Json
+        Check 'GUI startup rejects COM observer parameters before trace dispatch' `
+            ($rejection.Result -eq 'FAIL' -and $rejection.Message -like '*cannot accept a COM*' -and
+             -not (Test-Path -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'xstream-trace-ready.txt')))
+        $guiParameters.Remove('WaveformRunnerPath')
+        $guiParameters.EvidenceRoot = Join-Path $privateRoot 'gui-rejects-competing-target'
+        $env:LECS65_SYNTHETIC_TARGET_MODE = 'hang'
+        $other = Start-Process -WindowStyle Hidden -FilePath $target -PassThru
+        try {
+            try { & $captureRunner @guiParameters } catch { }
+            $rejection = Get-Content -Raw -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'result.json') | ConvertFrom-Json
+            Check 'GUI startup rejects a preexisting target without manipulating it' `
+                ($rejection.Result -eq 'FAIL' -and $rejection.Message -like '*already running before GUI*' -and
+                 -not $other.HasExited -and
+                 -not (Test-Path -LiteralPath (Join-Path $guiParameters.EvidenceRoot 'xstream-trace-ready.txt')))
+        }
+        finally {
+            if (-not $other.HasExited) { $other.Kill(); [void]$other.WaitForExit(5000) }
+            $other.Dispose()
+        }
+    }
+    finally {
+        Remove-Item Env:LECS65_EXPECT_NORMAL_STARTUP,Env:LECS65_SYNTHETIC_TARGET_MODE -ErrorAction SilentlyContinue
+        $env:LECS65_EXPECT_EMBEDDING = '1'
+    }
+
     $nonzeroOrchestrationRoot = Join-Path $privateRoot 'orchestration-nonzero'
     $nonzeroOrchestrationDispatch = Join-Path $privateRoot 'orchestration-nonzero.dispatch'
     $env:LECS65_SYNTHETIC_DISPATCH_MARKER = $nonzeroOrchestrationDispatch

@@ -157,6 +157,9 @@ int wmain(int argc,WCHAR** argv)
         (DWORD)(sizeof(expectEmbedding)/sizeof(expectEmbedding[0])));
     if (expectLength != 0 &&
         (argc != 2 || lstrcmpiW(argv[1],L"/Embedding") != 0)) return 13;
+    if (GetEnvironmentVariableW(L"LECS65_EXPECT_NORMAL_STARTUP",
+            expectEmbedding,(DWORD)(sizeof(expectEmbedding)/sizeof(expectEmbedding[0]))) != 0 &&
+        argc != 1) return 13;
 
     modeLength = GetEnvironmentVariableW(
         L"LECS65_SYNTHETIC_TARGET_MODE",mode,
@@ -206,5 +209,7 @@ int wmain(int argc,WCHAR** argv)
     }
     if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
         lstrcmpiW(mode,L"exit23") == 0) return 23;
+    if (modeLength && modeLength < sizeof(mode)/sizeof(mode[0]) &&
+        lstrcmpiW(mode,L"gui-test") == 0) Sleep(3000);
     return 0;
 }

@@ -15,8 +15,11 @@
   establish whether the expected interrupt or event signal occurred.
 - Passive readback still shows healthy `oem109.inf` and the expected SYS
   hash. DebugView exited. The second XStream process was still present at
-  the final passive check. The observer now rejects a process split
-  after activation and before attempting the `Acquisition` lookup.
+  the final passive check of that run. The later preparation check found
+  zero XStream processes. Any activity between checks remains unknown.
+  The next baseline uses ordinary GUI startup with native and kernel
+  tracing, without an observer or COM automation. It remains pending fresh
+  authorization. The driver still allows at most one MAM admission.
   See the [Batch 33 run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
 - The normal WDM-v3 retirement path supports reuse by design. The installed
   one-launch budget rules out regular operation. Consecutive hardware

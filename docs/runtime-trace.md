@@ -2934,6 +2934,13 @@ returned automation object cannot be attributed to the captured process.
 Successful event registration still does not show the DPC set the event.
 See the [authorized run](handoffs/batch-33-xstream-com-timeout-causality.md#authorized-startup-on-november-28-2026).
 
+The next comparison uses `XStreamGuiWithCapture` to restore the historical
+normal GUI startup conditions while retaining native and kernel evidence.
+The native launcher starts the executable without arguments, the supervisor
+monitors the target identity and visible window changes, and an owner-approved
+stack snapshot can localize a GUI stall. The lab COM observer remains a
+separate mode. See the [normal GUI experiment](handoffs/batch-33-xstream-com-timeout-causality.md#next-experiment-ordinary-xstream-gui-startup).
+
 
 ## Trace 011938: normal oscilloscope controls remain stable
 

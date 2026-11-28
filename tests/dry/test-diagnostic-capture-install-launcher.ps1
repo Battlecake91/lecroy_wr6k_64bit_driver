@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$EvidenceLog,
     [Parameter(Mandatory=$true)][string]$ResultPath,
-    [switch]$AllowNonElevatedTestMode
+    [switch]$AllowNonElevatedTestMode,
+    [switch]$GuiCasesOnly
 )
 
 Set-StrictMode -Version Latest
@@ -79,6 +80,23 @@ function New-TestContext {
     Copy-Item -LiteralPath $xstreamRunnerSource -Destination $scripts
     Copy-Item -LiteralPath $xstreamLifecycleSource -Destination $scripts
     Copy-Item -LiteralPath $xstreamDiagnosticsSource -Destination $scripts
+    $guiRunner = Join-Path $scripts 'mock-xstream-gui.ps1'
+    @'
+param([string]$Mode,[string]$EvidenceRoot,[string]$XStreamExecutablePath,
+    [string]$ExpectedXStreamExecutableHash,[string]$ExpectedInf,[string]$ExpectedVersion,
+    [string]$ExpectedSysHash,[string]$DeviceInstanceId,[int]$TimeoutSeconds,
+    [string]$TraceLauncherPath,[string]$ExpectedTraceLauncherHash,[string]$TraceHookPath,
+    [string]$ExpectedTraceHookHash,[string]$TraceValidatorPath,[string]$ExpectedTraceValidatorHash,
+    [switch]$GuiOnly,[switch]$OwnerAuthorized,[switch]$PhysicalDiskDisconnectedConfirmed)
+if (-not $GuiOnly -or $Mode -ne 'OfflineMock' -or -not $OwnerAuthorized -or
+    -not $PhysicalDiskDisconnectedConfirmed -or $args.Count -ne 0) { exit 90 }
+if ($env:LECS65_DIAGNOSTIC_MOCK_COUNTER -match 'gui-fails-counter') { exit 23 }
+[IO.Directory]::CreateDirectory($EvidenceRoot) | Out-Null
+@{Result='PASS';Startup='GUI';RetryCount=0;TargetProcessRemaining=$false;
+  CaptureClassification=@{Classification='COMPLETE_NORMAL_CAPTURE'}} |
+    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $EvidenceRoot 'result.json')
+exit 0
+'@ | Set-Content -LiteralPath $guiRunner -Encoding ASCII
     & git -C $fixture init --quiet
     & git -C $fixture config user.email 'offline-test@example.invalid'
     & git -C $fixture config user.name 'Offline Test'
@@ -118,6 +136,7 @@ function New-TestContext {
         -OutputAssembly $mockExe -OutputType ConsoleApplication
     $mockHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $mockExe).Hash
     $noLaunchBuild = Join-Path $tempRoot 'no-launch-mock-build'
+    if (-not $GuiCasesOnly) {
     & $lecdiagMockTest -EvidenceRoot $noLaunchBuild | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'No-launch mock executable qualification failed.'
@@ -125,6 +144,8 @@ function New-TestContext {
     $noLaunchExe = Join-Path $noLaunchBuild 'lecdiag-mock.exe'
     $noLaunchHash = (Get-FileHash -Algorithm SHA256 `
         -LiteralPath $noLaunchExe).Hash
+    }
+    else { $noLaunchExe = ''; $noLaunchHash = '' }
     $noLaunchRunner = Join-Path $scripts 'invoke-no-launch-preparation.ps1'
     $noLaunchRunnerHash = (Get-FileHash -Algorithm SHA256 `
         -LiteralPath $noLaunchRunner).Hash
@@ -141,6 +162,7 @@ function New-TestContext {
         NoLaunchExe=$noLaunchExe;NoLaunchHash=$noLaunchHash
         NoLaunchRunner=$noLaunchRunner;NoLaunchRunnerHash=$noLaunchRunnerHash
         XStreamRunner=$xstreamRunner;XStreamRunnerHash=$xstreamRunnerHash
+        GuiRunner=$guiRunner;GuiRunnerHash=(Get-FileHash -LiteralPath $guiRunner).Hash
     }
 }
 
@@ -150,7 +172,7 @@ function Invoke-Case {
     param(
         [string]$Name,
         [ValidateSet('Preflight','CaptureQualification','InstallWithCapture',
-            'RestartWithCapture','NoLaunchWithCapture','XStreamWithCapture')]
+            'RestartWithCapture','NoLaunchWithCapture','XStreamWithCapture','XStreamGuiWithCapture')]
         [string]$Mode='Preflight',
         [string]$Scenario='Success',
         [string]$FailureInjection='',
@@ -173,7 +195,7 @@ function Invoke-Case {
     if ($EvidencePathIsFile) {
         Set-Content -LiteralPath $caseRoot -Value 'not a directory'
     }
-    else {
+    elseif ($Mode -ne 'XStreamGuiWithCapture') {
         [IO.Directory]::CreateDirectory($caseRoot) | Out-Null
         if ($ExistingCaptureMarker) {
             Set-Content -LiteralPath (Join-Path $caseRoot 'capture-attempt.marker') -Value existing
@@ -241,6 +263,21 @@ function Invoke-Case {
                 '-ExpectedXStreamExecutableHash',$context.MockHash,
                 '-XStreamTimeoutSeconds','30')
         }
+        elseif ($Mode -eq 'XStreamGuiWithCapture') {
+            if (-not $OmitXStreamAuthorization) { $arguments += '-AuthorizeXStream' }
+            if (-not $OmitPhysicalDiskConfirmation) { $arguments += '-ConfirmPhysicalDiskDisconnected' }
+            $arguments += @('-XStreamRunnerPath',$context.GuiRunner,
+                '-ExpectedXStreamRunnerHash',$context.GuiRunnerHash,
+                '-XStreamExecutablePath',$context.MockExe,
+                '-ExpectedXStreamExecutableHash',$context.MockHash,
+                '-XStreamTimeoutSeconds','30',
+                '-XStreamTraceLauncherPath',$context.MockExe,
+                '-ExpectedXStreamTraceLauncherHash',$context.MockHash,
+                '-XStreamTraceHookPath',$context.MockExe,
+                '-ExpectedXStreamTraceHookHash',$context.MockHash,
+                '-XStreamTraceValidatorPath',$context.GuiRunner,
+                '-ExpectedXStreamTraceValidatorHash',$context.GuiRunnerHash)
+        }
         $hostPath = Join-Path $PSHOME 'powershell.exe'
         $outerLog = Join-Path $tempRoot ("$Name-outer.log")
         $result = Invoke-LecS65NativeProcess -Name "Case $Name" -FilePath $hostPath `
@@ -257,6 +294,25 @@ function Invoke-Case {
 }
 
 try {
+    if ($GuiCasesOnly) {
+        $run = Invoke-Case -Name 'gui-pass' -Mode XStreamGuiWithCapture -Scenario DelayedFileFlush
+        $res = Get-Content -Raw -LiteralPath (Join-Path $run.Evidence 'result.json') | ConvertFrom-Json
+        Add-Result 'GUI dispatch uses one capture and no waveform observer arguments' (
+            $run.ExitCode -eq 0 -and $run.Invocations -eq 1 -and $res.XStreamInvocations -eq 1)
+        $run = Invoke-Case -Name 'gui-fails' -Mode XStreamGuiWithCapture -Scenario DelayedFileFlush
+        $res = Get-Content -Raw -LiteralPath (Join-Path $run.Evidence 'result.json') | ConvertFrom-Json
+        Add-Result 'GUI failure preserves the kernel capture worker result without retry' (
+            $run.ExitCode -ne 0 -and $run.Invocations -eq 1 -and $res.XStreamInvocations -eq 1 -and
+            $res.Message -match 'GUI runner exited with code 23' -and
+            (Test-Path -LiteralPath (Join-Path $run.Evidence 'capture-worker.result.json')))
+        $run = Invoke-Case -Name 'gui-no-auth' -Mode XStreamGuiWithCapture -OmitXStreamAuthorization
+        Add-Result 'GUI mode requires authorization before capture' ($run.ExitCode -ne 0 -and $run.Invocations -eq 0)
+        $run = Invoke-Case -Name 'gui-no-isolation' -Mode XStreamGuiWithCapture -OmitPhysicalDiskConfirmation
+        Add-Result 'GUI mode requires physical isolation before capture' ($run.ExitCode -ne 0 -and $run.Invocations -eq 0)
+        Write-Host ("XSTREAM GUI LAUNCHER TESTS: {0}/{1} passed; {2} failed." -f $script:Passed,$script:Checks,$script:Failed)
+        if ($script:Failed -ne 0) { exit 1 }
+        exit 0
+    }
     $success = Invoke-Case -Name 'preflight-success'
     Add-Result 'successful elevated passive preflight' ($success.ExitCode -eq 0 -and $success.Invocations -eq 0)
     Add-Result 'preflight creates complete launcher evidence' (

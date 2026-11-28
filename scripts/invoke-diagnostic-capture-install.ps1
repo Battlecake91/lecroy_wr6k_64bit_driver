@@ -2,7 +2,7 @@
 .SYNOPSIS
   Validate or execute one diagnostic capture/installation attempt.
 .DESCRIPTION
-  This fail-closed launcher has six explicit modes. Preflight is passive.
+  This fail-closed launcher has explicit modes. Preflight is passive.
   CaptureQualification may start only the pinned capture executable.
   InstallWithCapture may invoke the pinned PnPUtil executable at most once,
   and only after capture readiness. RestartWithCapture may invoke exactly one
@@ -10,14 +10,15 @@
   may invoke exactly one pinned no-launch runner after live kernel capture is
   ready. Real XStreamWithCapture may invoke exactly one pinned lossless
   user-mode tracer/orchestrator after live kernel capture is ready; that
-  orchestrator invokes the pinned single-waveform observer once. The launcher never elevates
-  itself, retries, rolls back or changes system policy.
+  orchestrator invokes the pinned single-waveform observer once. XStreamGuiWithCapture
+  traces one normal GUI startup without invoking that observer. The launcher never
+  elevates itself, retries, rolls back or changes system policy.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('Preflight', 'CaptureQualification', 'InstallWithCapture',
-        'RestartWithCapture', 'NoLaunchWithCapture', 'XStreamWithCapture')]
+        'RestartWithCapture', 'NoLaunchWithCapture', 'XStreamWithCapture', 'XStreamGuiWithCapture')]
     [string]$Mode,
     [Parameter(Mandatory=$true)][string]$RepositoryRoot,
     [Parameter(Mandatory=$true)]
@@ -516,6 +517,9 @@ function Complete-CaptureJob {
 }
 
 try {
+    $xstreamGui = $Mode -eq 'XStreamGuiWithCapture'
+    $xstreamCapture = $xstreamGui -or $Mode -eq 'XStreamWithCapture'
+    $guiFailure = $null
     $principal = [Security.Principal.WindowsPrincipal](
         [Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole(
@@ -542,6 +546,11 @@ try {
     $package = Get-AbsolutePath $PackageRoot 'PackageRoot'
     $debugView = Get-AbsolutePath $DebugViewPath 'DebugViewPath'
     $evidence = Get-AbsolutePath $EvidenceRoot 'EvidenceRoot'
+    if ($xstreamGui -and ((Test-Path -LiteralPath $evidence) -or
+        $evidence -eq $repository -or
+        $evidence.StartsWith($repository.TrimEnd('\') + '\',[StringComparison]::OrdinalIgnoreCase))) {
+        throw 'XStream GUI evidence requires a fresh directory outside the repository.'
+    }
     if (-not (Test-Path -LiteralPath $evidence)) {
         [IO.Directory]::CreateDirectory($evidence) | Out-Null
     }
@@ -644,7 +653,7 @@ try {
             $AuthorizePnpRestart -or $AuthorizeNoLaunch -or -not $AuthorizeXStream -or
             -not $ConfirmPhysicalDiskDisconnected -or
             [string]::IsNullOrWhiteSpace($AuthorizationId)) {
-            throw 'XStreamWithCapture requires explicit capture, physical-isolation and XStream authorization.'
+            throw 'XStream capture requires explicit capture, physical-isolation and XStream authorization.'
         }
         if ([string]::IsNullOrWhiteSpace($XStreamRunnerPath) -or
             [string]::IsNullOrWhiteSpace($ExpectedXStreamRunnerHash) -or
@@ -659,33 +668,44 @@ try {
             -Label 'XStream execution runner'
         Assert-FileHash -Path $xstreamExecutable `
             -Expected $ExpectedXStreamExecutableHash -Label 'XStream executable'
-        if (-not $TestMode) {
+        if ($xstreamGui -and ($XStreamWaveformRunnerPath -or $ExpectedXStreamWaveformRunnerHash)) {
+            throw 'GUI capture cannot accept a COM waveform observer.'
+        }
+        if (-not $TestMode -or $xstreamGui) {
             $losslessParameters = @(
-                $XStreamWaveformRunnerPath,$ExpectedXStreamWaveformRunnerHash,
                 $XStreamTraceLauncherPath,$ExpectedXStreamTraceLauncherHash,
                 $XStreamTraceHookPath,$ExpectedXStreamTraceHookHash,
                 $XStreamTraceValidatorPath,$ExpectedXStreamTraceValidatorHash)
+            if (-not $xstreamGui) {
+                $losslessParameters += @($XStreamWaveformRunnerPath,$ExpectedXStreamWaveformRunnerHash)
+            }
             if (@($losslessParameters | Where-Object {
                     [string]::IsNullOrWhiteSpace([string]$_)
                 }).Count -ne 0) {
-                throw 'Real XStreamWithCapture requires the complete pinned lossless-capture chain.'
+                throw 'XStream capture requires the complete pinned lossless-capture chain.'
             }
-            $xstreamWaveformRunner = Get-AbsolutePath `
-                $XStreamWaveformRunnerPath 'XStreamWaveformRunnerPath'
+            if (-not $xstreamGui) {
+                $xstreamWaveformRunner = Get-AbsolutePath `
+                    $XStreamWaveformRunnerPath 'XStreamWaveformRunnerPath'
+                Assert-FileHash $xstreamWaveformRunner `
+                    $ExpectedXStreamWaveformRunnerHash 'XStream waveform runner'
+            }
             $xstreamTraceLauncher = Get-AbsolutePath `
                 $XStreamTraceLauncherPath 'XStreamTraceLauncherPath'
             $xstreamTraceHook = Get-AbsolutePath `
                 $XStreamTraceHookPath 'XStreamTraceHookPath'
             $xstreamTraceValidator = Get-AbsolutePath `
                 $XStreamTraceValidatorPath 'XStreamTraceValidatorPath'
-            Assert-FileHash $xstreamWaveformRunner `
-                $ExpectedXStreamWaveformRunnerHash 'XStream waveform runner'
             Assert-FileHash $xstreamTraceLauncher `
                 $ExpectedXStreamTraceLauncherHash 'XStream trace launcher'
             Assert-FileHash $xstreamTraceHook `
                 $ExpectedXStreamTraceHookHash 'XStream trace hook'
             Assert-FileHash $xstreamTraceValidator `
                 $ExpectedXStreamTraceValidatorHash 'XStream trace validator'
+        }
+        if ($xstreamGui -and -not $TestMode -and
+            $CaptureDurationSeconds -lt ($CaptureReadinessTimeoutSeconds + $XStreamTimeoutSeconds + 60)) {
+            throw 'Kernel capture must cover GUI readiness, the GUI deadline, and finalization.'
         }
         $xstreamManifest = Get-Content -Raw -LiteralPath `
             (Join-Path $package 'evidence\manifest.json') | ConvertFrom-Json
@@ -699,7 +719,7 @@ try {
     Write-LauncherOutput "BEGIN $Mode $([DateTime]::UtcNow.ToString('o'))"
     $state = Assert-PassiveIdentity -Repository $repository -Package $package `
         -DebugView $debugView
-    if ($Mode -eq 'XStreamWithCapture' -and -not $TestMode) {
+    if ($xstreamCapture -and -not $TestMode) {
         . (Join-Path $PSScriptRoot 'xstream-host-preflight.ps1')
         $hostReadback = Get-XStreamHostPreflight
         Write-ExclusiveTextFile -Path (Join-Path $evidence 'xstream-host-preflight.json') `
@@ -939,7 +959,7 @@ try {
         }
         Write-LauncherOutput 'NO-LAUNCH CHILD PASS'
     }
-    elseif ($Mode -eq 'XStreamWithCapture') {
+    elseif ($xstreamCapture) {
         Assert-CaptureJobRunning -Job $script:CaptureJob `
             -WorkerResultPath $captureWorkerResult -Boundary 'the XStream attempt marker'
         Write-ExclusiveTextFile -Path $xstreamMarker `
@@ -961,7 +981,7 @@ try {
             '-ExpectedSysHash', $ExpectedCurrentSysHash,
             '-DeviceInstanceId', $DeviceInstanceId,
             '-TimeoutSeconds', $XStreamTimeoutSeconds.ToString())
-        if ($TestMode) {
+        if ($TestMode -and -not $xstreamGui) {
             $xstreamArguments += @('-MockStatePath', $MockStatePath)
         }
         else {
@@ -971,45 +991,72 @@ try {
                 '-TraceHookPath',$xstreamTraceHook,
                 '-ExpectedTraceHookHash',$ExpectedXStreamTraceHookHash,
                 '-TraceValidatorPath',$xstreamTraceValidator,
-                '-ExpectedTraceValidatorHash',$ExpectedXStreamTraceValidatorHash,
-                '-WaveformRunnerPath',$xstreamWaveformRunner,
-                '-ExpectedWaveformRunnerHash',$ExpectedXStreamWaveformRunnerHash)
+                '-ExpectedTraceValidatorHash',$ExpectedXStreamTraceValidatorHash)
+            if ($xstreamGui) {
+                $xstreamArguments += '-GuiOnly'
+            }
+            else {
+                $xstreamArguments += @(
+                    '-WaveformRunnerPath',$xstreamWaveformRunner,
+                    '-ExpectedWaveformRunnerHash',$ExpectedXStreamWaveformRunnerHash)
+            }
         }
         $xstreamArguments += @('-OwnerAuthorized',
             '-PhysicalDiskDisconnectedConfirmed')
         $script:XStreamInvocations++
         $xstreamResult = Invoke-LecS65NativeProcess `
-            -Name 'Approved one-time XStream waveform attempt' `
+            -Name 'Approved one-time XStream attempt' `
             -FilePath (Join-Path $PSHOME 'powershell.exe') `
             -Arguments $xstreamArguments -WorkingDirectory $repository `
             -LogPath (Join-Path $evidence 'xstream-runner.log') `
             -TimeoutSeconds ($XStreamTimeoutSeconds + 120) -ReturnOnNonZeroExit
-        if ($xstreamResult.ExitCode -ne 0) {
+        if ($xstreamGui) {
+            # Preserve the bounded collector's own completion record even if the GUI stalls.
+            if ($xstreamResult.ExitCode -ne 0) {
+                $guiFailure = "XStream GUI runner exited with code $($xstreamResult.ExitCode)."
+            }
+            else {
+                try {
+                    $guiResult = Get-Content -Raw -LiteralPath (Join-Path $xstreamEvidence 'result.json') |
+                        ConvertFrom-Json
+                    if ($guiResult.Result -ne 'PASS' -or $guiResult.Startup -ne 'GUI' -or
+                        $guiResult.RetryCount -ne 0 -or $guiResult.TargetProcessRemaining -ne $false -or
+                        $guiResult.CaptureClassification.Classification -ne 'COMPLETE_NORMAL_CAPTURE') {
+                        $guiFailure = 'XStream GUI runner result contract mismatch.'
+                    }
+                }
+                catch { $guiFailure = "Could not validate the XStream GUI result. $($_.Exception.Message)" }
+            }
+        }
+        elseif ($xstreamResult.ExitCode -ne 0) {
             throw "XStream runner exited with code $($xstreamResult.ExitCode); no retry was attempted."
         }
-        $xstreamResultPath = Join-Path $xstreamEvidence 'result.json'
-        if (-not (Test-Path -LiteralPath $xstreamResultPath -PathType Leaf)) {
-            throw 'XStream runner did not produce result.json.'
+        if (-not $xstreamGui) {
+            $xstreamResultPath = Join-Path $xstreamEvidence 'result.json'
+            if (-not (Test-Path -LiteralPath $xstreamResultPath -PathType Leaf)) {
+                throw 'XStream runner did not produce result.json.'
+            }
+            $xstreamContract = Get-Content -Raw -LiteralPath $xstreamResultPath |
+                ConvertFrom-Json
+            $waveformContract = if ($TestMode) { $xstreamContract } else {
+                $xstreamContract.Waveform
+            }
+            if ($xstreamContract.Result -ne 'PASS' -or
+                [int]$waveformContract.XStreamLaunchCount -ne 1 -or
+                [int]$waveformContract.ExplicitAcquireCount -ne 0 -or
+                -not [bool]$waveformContract.Waveform.Observed -or
+                (-not $TestMode -and $xstreamContract.Capture.Result -ne 'PASS')) {
+                throw 'XStream runner result contract mismatch.'
+            }
         }
-        $xstreamContract = Get-Content -Raw -LiteralPath $xstreamResultPath |
-            ConvertFrom-Json
-        $waveformContract = if ($TestMode) { $xstreamContract } else {
-            $xstreamContract.Waveform
-        }
-        if ($xstreamContract.Result -ne 'PASS' -or
-            [int]$waveformContract.XStreamLaunchCount -ne 1 -or
-            [int]$waveformContract.ExplicitAcquireCount -ne 0 -or
-            -not [bool]$waveformContract.Waveform.Observed -or
-            (-not $TestMode -and $xstreamContract.Capture.Result -ne 'PASS')) {
-            throw 'XStream runner result contract mismatch.'
-        }
-        Write-LauncherOutput 'XSTREAM CHILD PASS'
+        if ($null -eq $guiFailure) { Write-LauncherOutput 'XSTREAM CHILD PASS' }
     }
 
     $script:CaptureResult = Complete-CaptureJob -Job $script:CaptureJob `
         -WorkerResultPath $captureWorkerResult `
         -TimeoutSeconds ($CaptureDurationSeconds + $CaptureShutdownGraceSeconds)
     Write-LauncherOutput 'CAPTURE CHILD PASS'
+    if ($null -ne $guiFailure) { throw $guiFailure }
     Write-Result 'PASS' 0 "$Mode completed without retry."
     Write-LauncherOutput "DIAGNOSTIC LAUNCHER PASS ($Mode)"
     exit 0
