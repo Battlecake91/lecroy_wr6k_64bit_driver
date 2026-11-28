@@ -681,12 +681,9 @@ fabricates an ID nor attempts hardware recovery. The source contract suite
 passed 77/77, and a host-only harness compiled the exact changed production
 functions with five mock cases. No driver was built, packaged or installed.
 
-The next diagnostic boundary is a separately approved, narrowly scoped
-read-only comparison of BAR accessibility and reported PCI power/resource
-state before considering any recovery or repeat GUI run. Compare BAR0 and
-BAR2 to distinguish a broad PCI access failure from a narrower controller
-failure. The current evidence does not justify changing BAR order, injecting
-interrupts, replaying pending bits or touching EEPROM contents.
+The separately authorized follow-up reached the PCI configuration check
+and found disabled memory decode. See the
+[post-resume snapshot](#post-resume-pci-decode-snapshot).
 
 Passive completion at `11:21:39.742Z` showed `oem109.inf`
 `0.2026.1126.1` with the approved SYS, device OK/problem code zero and the
@@ -704,6 +701,99 @@ WHEA or DCOM event. The Code Integrity 3033/3089 records concerned
 | Operator observation | `F61F532835647158149D1470EEC31413E02704134342F41CD259D849A82CDE51` |
 | Collector completion | `820D84AB9A0727F90BDCA306E7AD1694FB71E6E7FB7CC34CA1B9D06A3C34A558` |
 | Passive post-run state | `6851D38BD54302228899FCDF5552B1A2042B943DCF690E7F43E1A8DD3A70D1D9` |
+
+## Post-resume PCI decode snapshot
+
+The owner confirmed physical isolation of the productive x86 disk and
+authorized a bounded read-only comparison on the installed driver.
+This continuation started at commit `746a19d143020a049339bf0bb6e94bd64e901051`.
+The stable PCI instance was
+`PCI\VEN_1570&DEV_0005&SUBSYS_00000000&REV_00\4&39FD0A79&0&08F0`.
+Windows 10 x64 build 19045 reported boot at
+`2026-11-27T19:00:54.7311200Z`. Power-Troubleshooter record 6655 gave
+sleep at `2026-11-28T01:42:10.9274089Z` and wake at
+`2026-11-28T11:12:04.1477941Z` (target and effective system state both
+4, S3). The GUI resumed about 115 seconds after this wake. There was no
+intervening reboot or later wake in this snapshot.
+
+The passive snapshots at `12:06:40.3934779Z` and `12:06:41.4302768Z`
+agreed on device OK, problem zero, observed BDF `5:1.0`, and the most
+recent reported device state `1` (D0) from `CM_POWER_DATA`. The service
+`LecS65AcqDrv` was running and the file at its loaded-image path matched
+SHA-256 `6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+The binding remained `oem109.inf` `0.2026.1126.1`. No matching
+acquisition or diagnostic client was present before or after the check.
+
+One invocation of the qualified `lecdiag.exe pci` started at
+`12:06:40.5379545Z` and exited 0 at `12:06:40.6299685Z`. Tool SHA-256
+was `374FC640A1DD8CFDC73FFE854DA988AA5ABFAB854D1F096EF5AD2F6747CA2CF0`.
+The installed driver path uses the documented legacy
+`HalGetBusDataByOffset` read via an existing private read-only IOCTL.
+Microsoft documents this as a compatibility fallback for
+[PCI configuration-space access](https://learn.microsoft.com/en-us/windows-hardware/drivers/pci/accessing-pci-device-configuration-space).
+The handler returned `STATUS_SUCCESS`, with 64 configuration bytes
+read and an 84-byte IOCTL response. The standard header returned
+`1570:0005`, revision 0 and status `0x0208`. The Batch 31 comparator
+used the same installed candidate and the same diagnostic executable.
+
+| Observation | Batch 31 healthy PCI config | Post-resume PCI config | Current assigned resource |
+| --- | --- | --- | --- |
+| Command | `0x0006` | `0x0000` | n/a |
+| Memory Space Enable / Bus Master Enable | Enabled / enabled | Disabled / disabled | n/a |
+| BAR0 | `0xF7CBFE00` | `0x00000000` | `0xF7CBFE00–0xF7CBFFFF` (512 B) |
+| BAR1 | `0xF7CC0000` | `0x00000000` | `0xF7CC0000–0xF7CFFFFF` (256 KiB) |
+| BAR2 | `0xF7CBFC00` | `0x00000000` | `0xF7CBFC00–0xF7CBFDFF` (512 B) |
+| Interrupt line / pin | 19 / 1 | 255 / 1 | IRQ 19 |
+
+The healthy comparator is retained in the
+[Batch 31 handoff](batch-31-package-qualification.md). The wrapper stopped
+with exit 1 on the configuration mismatch. Memory decode was disabled
+and the live BAR values did not match the OS resource list, so it
+dispatched zero memory-register reads. There is no new per-register
+NTSTATUS, returned byte count or value.
+
+| Approved register | Historical healthy value | Current result |
+| --- | --- | --- |
+| BAR0+0x000 FVER | `0x00000002` | Not dispatched |
+| BAR1+0x00C ACQFVER | `0x00000003` | Not dispatched |
+| BAR2+0x040 ONEWIRE | `0x00000000` (idle sample) | Not dispatched |
+
+The installed source's `0xCFDC21C0` five-byte request resolves each
+selected BAR/offset and issues a single `READ_REGISTER_ULONG`. FVER
+and ACQFVER are version registers, and the recovered x86 `0x16CA4`
+uses a standalone read for ONEWIRE status. The table's historical values
+come from the [startup probe reference](../x64-bringup.md#startup-probe-runtime-confirmation).
+No MMIO write, Dallas command, DMA, XStream, driver restart, new boot or
+latch change occurred in this follow-up.
+
+This is a function-wide memory-decode failure at snapshot time. The
+configuration transaction responding and the Windows-reported D0/OK
+state can coexist with BARs that cannot decode the assigned addresses.
+The earlier BAR2 all-ones failure is consistent with this condition.
+The PCI header was not recorded during that call, so its exact state at
+GUI startup, the sequence of IRPs at wake, and the cause of the lost
+configuration remain unproven. A BAR2-only or Dallas-local fault cannot
+be inferred from these data. See
+[power/PnP lifetime](../power-pnp-dma-lifetime.md#pci-configuration-and-board-context-on-resume)
+for the x86 quiesce/restore and native x64 power-policy differences.
+
+**Next experiment.** With separate authorization, cold boot the same
+Windows test installation once and collect the PCI header and resource
+snapshot before any XStream or acquisition client starts. If memory
+decoding is enabled and the BARs match the assigned resources, read the
+three selected DWORDs once. A later, separately authorized sleep/resume
+comparison against that healthy baseline can determine whether the
+configuration loss recurs and when it becomes visible. Each phase should
+stop at configuration mismatch. A cold boot recreates the FDO and may
+refresh its one-admission count. It supplies no authorization for a GO.
+
+Private evidence is in `Batch33-PostResume-BarRead-20261128-01` under
+the local driver-backups root. The SHA-256 of `sha256-manifest.txt` is
+`BFA86CE46E25CA8B0992E53289549813E6C522CE50A217AA2F5271C8C23182D7`.
+The PCI stdout SHA-256 is
+`0D102925712FF6BA9C278647FA00DC16F46596DAF716964A97F5E1091C7E6E3D`.
+The manifest covers the passive snapshots and the single PCI query's
+attempt, result, stdout and stderr.
 
 ## Repository state
 

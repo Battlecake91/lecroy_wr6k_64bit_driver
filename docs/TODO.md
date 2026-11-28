@@ -4,12 +4,14 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Localize the startup 1-Wire failure.** The attributable normal GUI
-  launch failed on the first ROM-ID request after Windows resumed. Compare
-  BAR0 and BAR2 accessibility with the reported PCI power and resource
-  state in a separately authorized read-only check. Preserve the installed
-  package, known register order, and Dallas contents. Defer another GUI
-  startup until this early boundary is understood.
+- [ ] **Establish a cold-boot PCI baseline.** On the same installed driver,
+  separately authorize one cold boot and capture the Command register,
+  BAR assignments and reported power state before starting any client.
+  Read the three approved DWORDs only when PCI memory decode is enabled
+  and the BAR bases match the assigned resources. If healthy, use that
+  baseline for a later explicitly authorized sleep/resume comparison.
+  Audit system-to-device power-IRP sequencing before addressing any
+  remaining board-context restore. See [power/PnP lifetime](power-pnp-dma-lifetime.md#pci-configuration-and-board-context-on-resume).
 - [ ] **Explain the missing event transition.** After establishing a single
   GUI process, correlate event ownership, pending-mask latching, the DPC's
   signal decision and the first `85FB/40/01` transaction. Investigate

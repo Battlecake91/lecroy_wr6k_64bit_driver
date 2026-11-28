@@ -2,6 +2,15 @@
 
 ## XStream acquisition restoration
 
+- The latest post-resume snapshot found `1570:0005` in PCI configuration
+  space, with Command `0x0000`, Memory Space Enable clear and BAR0–BAR2
+  raw values zero. Windows still reported the prior assigned ranges,
+  D0, and OK/problem code zero. The comparison stopped before any MMIO.
+  The installed `oem109.inf` identity and service remained unchanged.
+  The mismatch establishes a PCI memory-decode problem at snapshot time.
+  Its onset and the cause of configuration loss remain unknown.
+  See the [resume snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
+
 - One ordinary GUI launch on the unchanged `oem109.inf` reached a black
   `LeCroy DSO` window and a `No Hardware Detected (2)` dialog. The first
   WR6k request, `GET_DALLAS_ID`, failed after ten 1-Wire reset polls that
