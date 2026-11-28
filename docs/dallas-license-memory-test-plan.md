@@ -38,6 +38,12 @@ The diagnostic stopped before ONEWIRE or either version register was
 read. This establishes a PCI accessibility failure at snapshot time.
 The condition at the earlier ROM-ID call was inferred from its timeout
 and final all-ones reads. A chip-local Dallas fault remains unproven.
+The same unchanged driver recovered PCI decode after a full cold boot.
+The approved idle ONEWIRE read returned zero and the following single
+ordinary GUI startup reported successful eight-byte ROM ID and 512-byte
+memory reads. This establishes recovery in that run, without qualifying
+suspend/resume. See the
+[cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
 See the [Batch 33 snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
 
 The x64 controller is `BAR2+0x040 ONEWIRE`. The

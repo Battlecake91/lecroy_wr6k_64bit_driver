@@ -2,15 +2,21 @@
 
 ## XStream acquisition restoration
 
-- The latest post-resume snapshot found `1570:0005` in PCI configuration
+- The post-resume snapshot before the cold boot found `1570:0005` in PCI configuration
   space, with Command `0x0000`, Memory Space Enable clear and BAR0–BAR2
   raw values zero. Windows still reported the prior assigned ranges,
   D0, and OK/problem code zero. The comparison stopped before any MMIO.
   The installed `oem109.inf` identity and service remained unchanged.
   The mismatch establishes a PCI memory-decode problem at snapshot time.
   Its onset and the cause of configuration loss remain unknown.
-  The full-shutdown experiment and conditional one-shot GUI run are
-  prepared and await owner authorization.
+  One authorized cold boot restored Command `0x0006` and BAR assignments.
+  Reading FVER, ACQFVER and ONEWIRE returned `0x2`, `0x3` and `0x0`.
+  The unchanged driver's ordinary XStream GUI then passed Dallas ROM ID
+  and opened its main window in trigger `Stop`. No waveform, MAM request,
+  GO or admission-limit denial was observed. The event enable mask
+  reached `0x02BF` but the historical `85FB/40/01` transition was absent.
+  The GUI exited zero after normal close, with a missing native trace
+  footer. See the [cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
   See the [resume snapshot](handoffs/batch-33-xstream-com-timeout-causality.md#post-resume-pci-decode-snapshot).
 
 - One ordinary GUI launch on the unchanged `oem109.inf` reached a black

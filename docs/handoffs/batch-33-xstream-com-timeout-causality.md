@@ -923,9 +923,119 @@ Dallas ROM-ID outcome, transport and calibration milestones,
 waveform. If the launch limit becomes the first functional blocker,
 prioritize the separately qualified bounded repeated-MAM candidate.
 
-No shutdown, post-boot PCI/MMIO read, capture or XStream dispatch has
-occurred during preparation. The separate [power-management workstream](../power-pnp-dma-lifetime.md#separate-power-management-workstream)
+The separate [power-management workstream](../power-pnp-dma-lifetime.md#separate-power-management-workstream)
 remains open.
+
+### Cold-boot and GUI result
+
+The owner confirmed physical isolation of the productive x86 disk and
+approved the combined experiment. The shutdown and GUI authorization IDs
+were consumed once. The executed revision was
+`8a44e34e5ff70a29f4da0babcb434902a7e1918d`. The installed
+`oem109.inf`, version `0.2026.1126.1`, retained SYS SHA-256
+`6596BF9F486DABE2A3D1CF36AE8906DB24663381D724B85CB42C34777F3D3D75`.
+
+| UTC, 2026-11-28 | Evidence |
+| --- | --- |
+| `13:14:38.653` | Durable one-shot shutdown marker. `shutdown.exe /s /t 0` returned 0. |
+| `13:15:05.500` | New Windows boot. Kernel-Boot record 6685 reported `BootType=0`. The latest wake event still belonged to the previous boot. |
+| `13:18:39–13:18:40` | Elevated x64 Windows PowerShell 5.1.19041.6456 completed PCI and all three read-only queries. |
+| `13:19:39.613` | Capture readiness recorded a confirmed kernel message before XStream dispatch. |
+| `13:19:41.766` | Native launcher resumed verified GUI PID 3736, without application arguments or a COM observer. |
+| `13:19:43.554` | `GET_DALLAS_ID` returned `STATUS_SUCCESS` and eight bytes. |
+| `13:19:47.135` | The verified GUI title became `Teledyne LeCroy WR6200A`. |
+| `13:20:37` | A private screenshot showed the oscilloscope UI, trigger `Stop` and an empty waveform grid. |
+| `13:21:42.271` | The owner-approved close request was sent to the verified GUI window and accepted. |
+| `13:21:48.627` | The native launcher observed target exit code 0, before its deadline and without forced termination. |
+
+The first post-boot shell defaulted to the other checkout. The read-only
+wrapper rejected its HEAD before recording a PCI attempt or invoking
+any diagnostic. Its exception was retained. With the absolute approved
+worktree selected, the first and only hardware query sequence passed.
+There was one PCI-header query, one read for each selected DWORD, and no
+repeat shutdown.
+
+| Hardware evidence | Post-resume | After cold boot |
+| --- | --- | --- |
+| PCI function | `1570:0005` | `1570:0005`, same instance, observed BDF `5:1.0` |
+| Command / Status | `0x0000 / 0x0208` | `0x0006 / 0x0208` |
+| Memory decode / bus mastering | Disabled / disabled | Enabled / enabled |
+| BAR0 | `0x00000000` | `0xF7CBFE00`, Windows range through `0xF7CBFFFF` |
+| BAR1 | `0x00000000` | `0xF7CC0000`, Windows range through `0xF7CFFFFF` |
+| BAR2 | `0x00000000` | `0xF7CBFC00`, Windows range through `0xF7CBFDFF` |
+| Interrupt line / pin | `255 / 1` | `19 / 1`, Windows IRQ 19, INTx enabled |
+| BAR0+0x000 FVER | No read dispatched | `0x00000002` |
+| BAR1+0x00C ACQFVER | No read dispatched | `0x00000003` |
+| BAR2+0x040 ONEWIRE | No read dispatched | `0x00000000`, BUSY clear |
+
+The PCI query returned `STATUS_SUCCESS`, 64 configuration bytes and an
+84-byte reply. Each register returned `STATUS_SUCCESS` and four bytes.
+Problem code was zero and reported D0 and the running service agreed
+with the passive checks. The cold boot recreated the FDO and could
+refresh its MAM admission count. The test did not read or infer the
+remaining admission count.
+
+The native trace records the Dallas EEPROM read returning 512 bytes,
+three successful event registrations (`CFDC2180`, `CFDC218C`,
+`0x00223100`), and the early `CFDC2184` reply. Its 512 surviving WR6k
+native completions all reported `STATUS_SUCCESS`. Of those, 482 were
+`CFDC2110` with no recorded request or response truncation. The
+family-0 `0x85` requests reached mask `0x02BF` at sequence 2326,
+as in both known-good GUI references. No `85FB/40/01` query,
+post-startup `0x0080` acknowledgement, second `CFDC2184`, family-2
+opcode `0x03` or family-1 `0x51` was seen. Calibration completion was
+unverified. The application showed trigger `Stop`, so the missing query
+does not establish an interrupt, DPC or pending-bit defect.
+
+The kernel capture contains no `CFDC2124`, `CFDC2138`, MAM admission,
+limit denial, GO or matching IRQ/DPC completion or mapping retirement.
+The surviving native trace likewise has zero MAM requests. There was
+no observed waveform and no observed GO. The one-launch limit was
+therefore not shown to block this run. No explicit acquisition or
+trigger change, second launch, direct PCI configuration write, driver
+replacement or additional reboot occurred. CDB was unnecessary for the
+responsive GUI.
+
+The native sidecar records successful parent flush and no termination
+request, but no footer. The classifier therefore reports
+`UNKNOWN_TERMINATION` and retains 3,817 records plus the header.
+This limits trace completeness. It does not change the independently
+observed accepted close request and exit status. The driver kernel
+capture corroborates Dallas success and the absence of observed MAM.
+The source writes the footer from the hook's `DLL_PROCESS_DETACH`
+handler. The reason it is absent here is unverified.
+
+The 420-second collector completed at `13:26:40.815Z` with exit 0,
+closed its process tree and drained its streams. Both kernel outputs
+retained 496 WR6k dispatch entries for PID 3736 and 494 success
+completion lines, fewer than the 512 native completions. The count
+difference prevents a claim of lossless kernel capture. The outer GUI
+launcher exited 1 at `13:26:41.114Z` because the GUI runner rejected
+the missing footer. It invoked capture and XStream once each.
+
+Passive postflight at `13:27:12.192Z` found device OK, problem code
+zero, the same SYS/package and a running service. No XStream,
+DebugView or CDB process or DebugView driver service remained. The
+GUI interval had no matching device/driver Kernel-PnP, Code Integrity,
+WHEA, service, or application crash/hang event.
+
+| Private evidence | SHA-256 |
+| --- | --- |
+| Cold-boot manifest | `EFAAA28D7C37DECAE5F791C925C7BF7E5C5A8E095C9E4120CA916EC618CBFE14` |
+| GUI and dispatch manifest, 41 verified files | `F671C36336D7A31B3CEE7277BA33070DBDF85F6D9DB0B4C50F82FB6780BC626E` |
+| Kernel raw log | `8DA53FF8B5C17C4D5B8469CDEBCF6E50BC2ED6AAA47EB50C5BE561BA3CF58AE9` |
+| Kernel live stdout | `34858A92E90315BF32D6EADD22156C8BC1C713F2B0695BDCE0617EE8670BEF2B` |
+| Native IOCTL trace | `C664F15B41DBBC8D6862C15945BFEC020B65C919053223C699A619B8C8034424` |
+| Native completion sidecar | `30EF833FD83B17C664984BD75CD41D88B4E448A0D808C5C8F0E7755E5921A63B` |
+| GUI screenshot | `BC2E5A80E6D916B61F874232826E69125B3ABA08F956E7ED68ADAB09ECB710DF` |
+| Passive postflight | `D40F4A68266DAC68A325CC3885EDFC12D64A2D8024371621F666F3129D917208` |
+
+The cold-boot baseline and Dallas recovery are established for this
+run. Repeatable acquisition is still open. Before a separately
+approved attempt that transitions the GUI out of Stop, review the
+native footer path offline. The current absence of acquisition
+traffic supplies no reason to raise the launch limit. The original
+post-resume PCI failure remains a separate power-management issue.
 
 ## Repository state
 

@@ -4,22 +4,19 @@ This file tracks unfinished work and deferred features. The current, verified ca
 
 ## Active compatibility work
 
-- [ ] **Establish a cold-boot PCI baseline.** On the same installed driver,
-  separately authorize one cold boot and capture the Command register,
-  BAR assignments and reported power state before starting any client.
-  Read the three approved DWORDs only when PCI memory decode is enabled
-  and the BAR bases match the assigned resources. Continue directly to
-  one ordinary GUI capture if its conditional authorization is in place.
-  See the [prepared experiment](handoffs/batch-33-xstream-com-timeout-causality.md#prepared-cold-boot-and-conditional-gui-experiment).
+
 - [ ] **Qualify suspend/resume separately.** Determine the WDM power-policy
   owner, trace system/device SET_POWER ordering, then qualify PCI decode,
   vendor context and IRQ/DMA admission after D0. See the
   [power-management workstream](power-pnp-dma-lifetime.md#separate-power-management-workstream).
-- [ ] **Explain the missing event transition.** After establishing a single
-  GUI process, correlate event ownership, pending-mask latching, the DPC's
-  signal decision and the first `85FB/40/01` transaction. Investigate
-  opcode `0x03` if startup reaches or depends on it. Keep the FDO launch
-  latch unknown.
+- [ ] **Qualify the first acquisition transition from the cold-boot GUI
+  baseline.** The one normal startup succeeded through hardware detection
+  and event registration with the GUI in trigger `Stop`. The next active
+  capture needs separate approval for one deliberate transition out of
+  Stop, with the existing hardware GO limit. Correlate event ownership,
+  pending-mask latching, the DPC signal decision and the first
+  `85FB/40/01` transaction if reached. Diagnose the missing native trace
+  footer offline and keep the FDO launch latch unknown.
   See the [Batch 33 handoff](handoffs/batch-33-xstream-com-timeout-causality.md).
 
 - [ ] **Restore repeatable waveform acquisition.** Verify a displayed C1

@@ -2942,6 +2942,17 @@ displayed `No Hardware Detected (2)` and CDB showed a modal message wait.
 Calibration, event registration and MAM were not reached in the new run.
 See the [GUI result](handoffs/batch-33-xstream-com-timeout-causality.md#gui-result-and-first-failing-operation).
 
+After a full cold boot the same driver passed the PCI and three DWORD
+checks. The subsequent one-process GUI startup completed the ROM-ID and
+memory reads, reached event registration and programmed mask `0x02BF`.
+The main window showed trigger `Stop` and no waveform. The surviving
+native records and kernel log showed no acquisition status query, MAM
+request or GO. The GUI exited zero on normal close and the native trace
+lacked its footer. The observation establishes a working cold-boot GUI
+startup. It does not establish calibration completion, a lost interrupt
+or the behavior of a deliberate transition out of Stop. See the
+[cold-boot result](handoffs/batch-33-xstream-com-timeout-causality.md#cold-boot-and-gui-result).
+
 
 ## Trace 011938: normal oscilloscope controls remain stable
 
